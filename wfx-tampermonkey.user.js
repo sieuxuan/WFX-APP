@@ -166,10 +166,27 @@
   }
 
   function findModuleAnchor(moduleId) {
-    const container = document.getElementById(moduleId);
-    if (!container) return null;
-    if (container.matches("a")) return container;
-    return container.querySelector("a");
+    for (const context of getAccessibleContexts()) {
+      const container = context.document.getElementById(moduleId);
+      if (container) {
+        if (container.matches("a")) return container;
+        const childAnchor = container.querySelector("a");
+        if (childAnchor) return childAnchor;
+      }
+      try {
+        const exact = context.document.evaluate(
+          `//*[@id="${moduleId}"]/a`,
+          context.document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null,
+        ).singleNodeValue;
+        if (exact) return exact;
+      } catch (_error) {
+        // Một số trang WFX cũ vô hiệu XPath; getElementById phía trên vẫn là đường chính.
+      }
+    }
+    return null;
   }
 
   function getAuthState() {
@@ -213,10 +230,157 @@
 
   function clickElement(element) {
     if (!element) return false;
-    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-    element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-    element.click();
-    return true;
+    try {
+      element.scrollIntoView?.({ block: "center", inline: "center" });
+      element.focus?.({ preventScroll: true });
+      element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
+      element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window, button: 0 }));
+      element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window, button: 0 }));
+      element.click();
+      return true;
+    } catch (error) {
+      console.error("[WFX Smart] Click thất bại:", error);
+      return false;
+    }
+  }
+
+  function installPopupTracker() {
+    try {
+      const pageWindow = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+      if (pageWindow.open?.__wfxSmartWrapped) return;
+      const nativeOpen = pageWindow.open.bind(pageWindow);
+      const trackedOpen = function (...args) {
+        const popup = nativeOpen(...args);
+        if (popup) popupWindows.add(popup);
+        return popup;
+      };
+      trackedOpen.__wfxSmartWrapped = true;
+      trackedOpen.__wfxSmartNative = nativeOpen;
+      pageWindow.open = trackedOpen;
+    } catch (error) {
+      console.warn("[WFX Smart] Không thể theo dõi popup WFX:", error);
+    }
+  }
+
+  function getAccessibleContexts(startWindow = window) {
+    const contexts = [];
+    const visited = new Set();
+    const visit = (candidate) => {
+      if (!candidate || visited.has(candidate)) return;
+      visited.add(candidate);
+      try {
+        const candidateDocument = candidate.document;
+        contexts.push({
+          window: candidate,
+          document: candidateDocument,
+          name: String(candidate.name || ""),
+          url: String(candidate.location?.href || ""),
+        });
+        for (let index = 0; index < candidate.frames.length; index += 1) {
+          visit(candidate.frames[index]);
+        }
+      } catch (_error) {
+        // Bỏ qua frame khác origin. Các frame Catalog WFX là cùng origin.
+      }
+    };
+    visit(startWindow);
+    return contexts;
+  }
+
+  function elementIsUsable(element) {
+    try {
+      if (!element || !element.isConnected) return false;
+      const view = element.ownerDocument?.defaultView || window;
+      const style = view.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && !element.disabled;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function normalizeText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function waitFor(check, timeoutMs = 15000, intervalMs = 220) {
+    const startedAt = Date.now();
+    return new Promise((resolve, reject) => {
+      const poll = async () => {
+        try {
+          const result = await check();
+          if (result) {
+            resolve(result);
+            return;
+          }
+        } catch (_error) {
+          // WFX thường thay frame trong lúc load; thử lại cho tới timeout.
+        }
+        if (Date.now() - startedAt >= timeoutMs) {
+          reject(new Error("TIMEOUT"));
+          return;
+        }
+        window.setTimeout(poll, intervalMs);
+      };
+      void poll();
+    });
+  }
+
+  function dispatchFilledValue(input, value) {
+    setNativeValue(input, value);
+    input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "a" }));
+  }
+
+  function setCatalogProgress(message, tone = "info") {
+    if (!ui) return;
+    ui.catalogProgress.textContent = message;
+    ui.catalogProgress.dataset.tone = tone;
+    ui.catalogProgress.hidden = false;
+  }
+
+  function setAutomationBusy(isBusy, message = "Đang xử lý...") {
+    automationInFlight = isBusy;
+    if (!ui) return;
+    ui.catalogActionButtons.forEach((button) => { button.disabled = isBusy; });
+    ui.moduleButtons.forEach((button) => { button.disabled = isBusy; });
+    ui.catalogCard.classList.toggle("catalog-busy", isBusy);
+    if (isBusy) setCatalogProgress(message, "info");
+    else saveCatalogForm();
+  }
+
+  function readCatalogForm() {
+    return {
+      categoryName: ui.catalogCategory.value,
+      categoryValue: CATEGORIES[ui.catalogCategory.value],
+      code: ui.catalogCode.value.trim(),
+      buyerReference: ui.catalogBuyerReference.value.trim(),
+    };
+  }
+
+  function saveCatalogForm() {
+    if (!ui) return;
+    const form = readCatalogForm();
+    writeValue(STORAGE.catalog, {
+      categoryName: form.categoryName,
+      code: form.code,
+      buyerReference: form.buyerReference,
+    });
+    const apparel = form.categoryValue === "01";
+    ui.destinationButtons.forEach((button) => {
+      button.disabled = automationInFlight || !apparel;
+      button.title = apparel ? "" : "Costsheet/BOM chỉ hỗ trợ Category Apparel";
+    });
+  }
+
+  function restoreCatalogForm() {
+    if (!ui) return;
+    const saved = readValue(STORAGE.catalog, {});
+    const categoryName = Object.hasOwn(CATEGORIES, saved?.categoryName)
+      ? saved.categoryName
+      : "Apparel";
+    ui.catalogCategory.value = categoryName;
+    ui.catalogCode.value = String(saved?.code || "");
+    ui.catalogBuyerReference.value = String(saved?.buyerReference || "");
+    saveCatalogForm();
   }
 
   function startPendingLogin(source) {
@@ -343,24 +507,15 @@
   async function waitForModuleAnchor(moduleId, timeoutMs = 6500) {
     const immediate = findModuleAnchor(moduleId);
     if (immediate) return immediate;
-    return new Promise((resolve) => {
-      const timeout = window.setTimeout(() => {
-        observer.disconnect();
-        resolve(null);
-      }, timeoutMs);
-      const observer = new MutationObserver(() => {
-        const anchor = findModuleAnchor(moduleId);
-        if (!anchor) return;
-        window.clearTimeout(timeout);
-        observer.disconnect();
-        resolve(anchor);
-      });
-      observer.observe(document.documentElement, { childList: true, subtree: true });
-    });
+    try {
+      return await waitFor(() => findModuleAnchor(moduleId), timeoutMs, 180);
+    } catch (_error) {
+      return null;
+    }
   }
 
   async function openModule(module) {
-    if (!module) return;
+    if (!module || automationInFlight) return;
     if (getAuthState() !== "authenticated") {
       writeValue(STORAGE.pendingAction, {
         type: "module",
@@ -373,20 +528,288 @@
       return;
     }
 
-    const anchor = await waitForModuleAnchor(module.id);
-    if (!anchor) {
-      showToast(`Không tìm thấy menu ${module.name} trên trang hiện tại.`, "error", 5000);
+    setAutomationBusy(true, `Đang mở ${module.name}...`);
+    try {
+      const anchor = await waitForModuleAnchor(module.id);
+      if (!anchor) {
+        showToast(`Không tìm thấy menu ${module.name}. Hãy về trang WFX Home rồi thử lại.`, "error", 5200);
+        return;
+      }
+      deleteValue(STORAGE.pendingAction);
+      setCatalogProgress(`Đã gửi lệnh mở ${module.name}.`, "success");
+      const clicked = clickElement(anchor);
+      if (!clicked) throw new Error("CLICK_FAILED");
+      showToast(`Đã click ${module.name}.`, "success");
+      if (getPreferences().closeAfterModule) {
+        window.setTimeout(closePanel, 280);
+      }
+    } catch (error) {
+      console.error("[WFX Smart] Module error:", error);
+      showToast(`Không mở được ${module.name}.`, "error", 5000);
+    } finally {
+      window.setTimeout(() => setAutomationBusy(false), 450);
+    }
+  }
+
+  function findContextWith(selector) {
+    return getAccessibleContexts().find((context) => context.document.querySelector(selector)) || null;
+  }
+
+  async function waitForContextWith(selector, timeoutMs = 18000) {
+    return waitFor(() => findContextWith(selector), timeoutMs, 220);
+  }
+
+  async function selectCatalogCategory(categoryName, categoryValue) {
+    setCatalogProgress(`Đang chọn Category: ${categoryName}...`);
+    let leftContext = await waitForContextWith("#ddlCategory", 18000);
+    let select = leftContext.document.querySelector("#ddlCategory");
+    if (String(select.value) === categoryValue) {
+      setCatalogProgress(`Category ${categoryName} đã sẵn sàng.`, "success");
+      return leftContext;
+    }
+
+    select.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: leftContext.window }));
+    await waitFor(() => {
+      leftContext = findContextWith("#ddlCategory");
+      select = leftContext?.document.querySelector("#ddlCategory");
+      return select?.querySelector(`option[value="${categoryValue}"]`) ? select : null;
+    }, 7000, 160);
+
+    select.value = categoryValue;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await waitFor(() => {
+      const current = findContextWith("#ddlCategory");
+      const currentSelect = current?.document.querySelector("#ddlCategory");
+      return String(currentSelect?.value || "") === categoryValue ? current : null;
+    }, 9000, 180);
+    setCatalogProgress(`Đã chọn Category: ${categoryName}.`, "success");
+    return findContextWith("#ddlCategory");
+  }
+
+  async function clickCatalogMaster() {
+    setCatalogProgress("Đang mở Catalog → Master...");
+    const master = await waitFor(() => {
+      const leftContext = findContextWith("#ddlCategory");
+      if (!leftContext) return null;
+      const candidates = [...leftContext.document.querySelectorAll("a, button, [onclick], span, td, div")];
+      const exact = candidates.find((element) => normalizeText(element.textContent) === "Master");
+      return exact?.closest("a, button, [onclick]") || exact || null;
+    }, 20000, 220);
+    if (!clickElement(master)) throw new Error("MASTER_CLICK_FAILED");
+  }
+
+  async function waitForCatalogGrid() {
+    const context = await waitFor(() => {
+      for (const candidate of getAccessibleContexts()) {
+        if (
+          candidate.document.querySelector('.ag-root-wrapper') ||
+          candidate.document.querySelector('input[aria-label="Code Filter Input"]')
+        ) return candidate;
+      }
+      return null;
+    }, 22000, 240);
+
+    const showFilter = context.document.querySelector("#showfloatingfilter");
+    if (showFilter && elementIsUsable(showFilter)) {
+      setCatalogProgress("Đang bật Floating Filters...");
+      clickElement(showFilter);
+    }
+
+    const filterContext = await waitFor(() => {
+      for (const candidate of getAccessibleContexts()) {
+        if (candidate.document.querySelector('input[aria-label="Code Filter Input"]')) return candidate;
+      }
+      return null;
+    }, 16000, 200);
+    setCatalogProgress("Floating Filter đã sẵn sàng.", "success");
+    return filterContext;
+  }
+
+  function readGridResults(gridDocument, filterKind) {
+    const valueColumn = filterKind === "buyer_reference" ? "lblBuyerReference" : "lnkArticleCode";
+    const valueCells = [...gridDocument.querySelectorAll(`[role="gridcell"][col-id="${valueColumn}"]`)];
+    const codeButtons = [...gridDocument.querySelectorAll('[role="gridcell"][col-id="lnkArticleCode"] input[type="button"]')]
+      .filter(elementIsUsable);
+    const values = valueCells.map((cell) => {
+      if (valueColumn === "lnkArticleCode") {
+        return normalizeText(cell.querySelector('input[type="button"]')?.value);
+      }
+      return normalizeText(cell.textContent);
+    }).filter(Boolean);
+    const codes = codeButtons.map((button) => normalizeText(button.value)).filter(Boolean);
+    return { values, codes, codeButtons };
+  }
+
+  async function filterCatalogGrid(gridContext, filterKind, query) {
+    const label = filterKind === "buyer_reference" ? "Buyer Reference" : "Code";
+    const selector = filterKind === "buyer_reference"
+      ? 'input[aria-label="Buyer Reference Filter Input"]'
+      : 'input[aria-label="Code Filter Input"]';
+    let currentContext = gridContext;
+    const getFilter = () => {
+      const matchingContext = getAccessibleContexts().find((context) => context.document.querySelector(selector));
+      if (matchingContext) currentContext = matchingContext;
+      return currentContext?.document.querySelector(selector) || null;
+    };
+
+    for (const oldSelector of [
+      'input[aria-label="Code Filter Input"]',
+      'input[aria-label="Buyer Reference Filter Input"]',
+    ]) {
+      const oldInput = currentContext.document.querySelector(oldSelector);
+      if (oldInput && elementIsUsable(oldInput)) dispatchFilledValue(oldInput, "");
+    }
+
+    const filterInput = await waitFor(getFilter, 7000, 160);
+    setCatalogProgress(`Đang lọc ${label}: ${query}...`);
+    dispatchFilledValue(filterInput, query);
+
+    await new Promise((resolve) => window.setTimeout(resolve, 900));
+    let lastResult = { values: [], codes: [], codeButtons: [] };
+    try {
+      lastResult = await waitFor(() => {
+        const latestInput = getFilter();
+        const latestDocument = latestInput?.ownerDocument || currentContext.document;
+        lastResult = readGridResults(latestDocument, filterKind);
+        const queryLower = query.toLocaleLowerCase("vi");
+        const filterApplied = lastResult.values.length > 0 && lastResult.values.every((value) =>
+          value.toLocaleLowerCase("vi").includes(queryLower),
+        );
+        const noRows = Boolean(latestDocument.querySelector(".ag-overlay-no-rows-center, .ag-overlay-no-rows-wrapper:not(.ag-hidden)"));
+        if (filterApplied || noRows) return lastResult;
+        return null;
+      }, 16000, 280);
+    } catch (_error) {
+      const latestInput = getFilter();
+      lastResult = readGridResults(latestInput?.ownerDocument || currentContext.document, filterKind);
+    }
+
+    if (!lastResult.codes.length) {
+      setCatalogProgress(`Không tìm thấy ${label}: ${query}.`, "error");
+      showToast(`Không tìm thấy kết quả cho ${label}: ${query}.`, "warning", 5000);
+      return { outcome: "none", ...lastResult };
+    }
+    if (lastResult.codes.length > 1) {
+      setCatalogProgress(`Có ${lastResult.codes.length} kết quả: ${lastResult.codes.slice(0, 4).join(", ")}`, "warning");
+      showToast(`Có ${lastResult.codes.length} kết quả; giữ danh sách để bạn tự chọn.`, "info", 5000);
+      return { outcome: "multiple", ...lastResult };
+    }
+
+    const target = lastResult.codeButtons.find((button) => normalizeText(button.value) === lastResult.codes[0]);
+    if (!target || !clickElement(target)) throw new Error("ARTICLE_CLICK_FAILED");
+    setCatalogProgress(`Đã mở style ${lastResult.codes[0]}.`, "success");
+    showToast(`Đã tìm và mở style ${lastResult.codes[0]}.`, "success");
+    return { outcome: "opened", articleCode: lastResult.codes[0], ...lastResult };
+  }
+
+  async function openArticleDestination(destination, articleCode) {
+    const destinations = {
+      costsheet: { label: "Costsheet", selector: "#CostSheet" },
+      bom: { label: "BOM", selector: "#BOMMaster" },
+    };
+    const targetDefinition = destinations[destination];
+    if (!targetDefinition) return;
+    setCatalogProgress(`Đang chờ Article để mở ${targetDefinition.label}...`);
+
+    const target = await waitFor(() => {
+      const roots = [window, ...popupWindows].filter((candidate) => {
+        try { return candidate && !candidate.closed; } catch (_error) { return false; }
+      });
+      for (const rootWindow of roots) {
+        for (const context of getAccessibleContexts(rootWindow)) {
+          if (context.name === "ArticleTop" || context.document.querySelector(targetDefinition.selector)) {
+            const element = context.document.querySelector(targetDefinition.selector);
+            if (element) return element;
+          }
+        }
+      }
+      return null;
+    }, 40000, 280);
+    if (!clickElement(target)) throw new Error("DESTINATION_CLICK_FAILED");
+    setCatalogProgress(`Đã mở ${articleCode} → ${targetDefinition.label}.`, "success");
+    showToast(`Đã mở ${targetDefinition.label}.`, "success");
+  }
+
+  async function runCatalogRequest(request) {
+    if (automationInFlight) return;
+    if (getAuthState() !== "authenticated") {
+      writeValue(STORAGE.pendingAction, { ...request, expiresAt: Date.now() + PENDING_TTL_MS });
+      showToast("Sẽ chạy Catalog sau khi đăng nhập.", "info");
+      await continueLogin({ reset: true, source: "catalog" });
       return;
     }
+
     deleteValue(STORAGE.pendingAction);
-    showToast(`Đang mở ${module.name}...`, "success");
-    if (getPreferences().closeAfterModule) closePanel();
-    window.setTimeout(() => clickElement(anchor), 100);
+    setAutomationBusy(true, "Đang mở Catalog...");
+    try {
+      const catalogAnchor = await waitForModuleAnchor("0003_6200", 8000);
+      if (!catalogAnchor) throw new Error("CATALOG_MENU_NOT_FOUND");
+      setCatalogProgress("Đang mở Catalog...");
+      if (!clickElement(catalogAnchor)) throw new Error("CATALOG_CLICK_FAILED");
+      await selectCatalogCategory(request.categoryName, request.categoryValue);
+      await clickCatalogMaster();
+      const gridContext = await waitForCatalogGrid();
+      if (request.mode === "prepare") {
+        setCatalogProgress(`Catalog ${request.categoryName} đã sẵn sàng để lọc.`, "success");
+        showToast("Đã mở Catalog → Master → Floating Filter.", "success");
+        return;
+      }
+      const result = await filterCatalogGrid(gridContext, request.filterKind, request.query);
+      if (request.destination && result.outcome === "opened") {
+        await openArticleDestination(request.destination, result.articleCode);
+      }
+    } catch (error) {
+      const messages = {
+        CATALOG_MENU_NOT_FOUND: "Không tìm thấy menu Catalog trên WFX Home.",
+        TIMEOUT: "WFX tải quá chậm hoặc cấu trúc Catalog đã thay đổi.",
+      };
+      const message = messages[error?.message] || `Catalog lỗi: ${error?.message || error}`;
+      console.error("[WFX Smart] Catalog error:", error);
+      setCatalogProgress(message, "error");
+      showToast(message, "error", 6000);
+    } finally {
+      setAutomationBusy(false);
+      saveCatalogForm();
+    }
+  }
+
+  function startCatalogAction(mode, filterKind = null, destination = null) {
+    if (automationInFlight) return;
+    const form = readCatalogForm();
+    const query = filterKind === "buyer_reference" ? form.buyerReference : form.code;
+    if (mode === "search" && !query) {
+      const field = filterKind === "buyer_reference" ? ui.catalogBuyerReference : ui.catalogCode;
+      field.focus();
+      showToast(`Vui lòng nhập ${filterKind === "buyer_reference" ? "Buyer Reference" : "Code"}.`, "warning");
+      return;
+    }
+    if (destination && form.categoryValue !== "01") {
+      showToast("Costsheet và BOM chỉ hỗ trợ Category Apparel.", "warning", 4500);
+      return;
+    }
+    saveCatalogForm();
+    void runCatalogRequest({
+      type: "catalog",
+      mode,
+      filterKind,
+      query,
+      destination,
+      categoryName: form.categoryName,
+      categoryValue: form.categoryValue,
+      expiresAt: Date.now() + PENDING_TTL_MS,
+    });
   }
 
   async function processPendingAction() {
     const action = getPending(STORAGE.pendingAction);
-    if (!action || action.type !== "module" || getAuthState() !== "authenticated") return;
+    if (!action || getAuthState() !== "authenticated") return;
+    if (action.type === "catalog") {
+      await runCatalogRequest(action);
+      return;
+    }
+    if (action.type !== "module") return;
     const module = ALL_MODULES.find((item) => item.id === action.moduleId) || {
       id: action.moduleId,
       name: action.moduleName || "module",
@@ -651,6 +1074,39 @@
             </button>
           </section>
 
+          <section class="catalog-card">
+            <div class="catalog-heading">
+              <div><span class="catalog-kicker">QUICK AUTOMATION</span><strong>Catalog Control</strong></div>
+              <button class="catalog-open-button" type="button" data-catalog-action="prepare">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6l2 2h8v12H4V5Z"/><path d="m9 14 2 2 4-5"/></svg>
+                Mở Catalog
+              </button>
+            </div>
+            <label class="catalog-category-row">
+              <span>Category</span>
+              <select class="catalog-category">
+                ${Object.keys(CATEGORIES).map((name) => `<option value="${name}">${name}</option>`).join("")}
+              </select>
+            </label>
+            <div class="catalog-query-row">
+              <label><span>Code</span><input class="catalog-code" type="text" autocomplete="off" placeholder="Nhập article code..." /></label>
+              <div class="catalog-query-actions">
+                <button type="button" data-catalog-action="code-find">Tìm</button>
+                <button class="destination-button" type="button" data-catalog-action="code-costsheet">Costsheet</button>
+                <button class="destination-button" type="button" data-catalog-action="code-bom">BOM</button>
+              </div>
+            </div>
+            <div class="catalog-query-row">
+              <label><span>Buyer Reference</span><input class="catalog-buyer-reference" type="text" autocomplete="off" placeholder="Nhập buyer reference..." /></label>
+              <div class="catalog-query-actions">
+                <button type="button" data-catalog-action="buyer-find">Tìm</button>
+                <button class="destination-button" type="button" data-catalog-action="buyer-costsheet">Costsheet</button>
+                <button class="destination-button" type="button" data-catalog-action="buyer-bom">BOM</button>
+              </div>
+            </div>
+            <div class="catalog-progress" data-tone="info" hidden>Sẵn sàng.</div>
+          </section>
+
           <label class="search-box">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
             <input type="search" placeholder="Tìm nhanh module..." autocomplete="off" />
@@ -702,6 +1158,13 @@
       statusTitle: shadow.querySelector(".status-title"),
       statusDetail: shadow.querySelector(".status-detail"),
       accountChip: shadow.querySelector(".account-chip"),
+      catalogCard: shadow.querySelector(".catalog-card"),
+      catalogCategory: shadow.querySelector(".catalog-category"),
+      catalogCode: shadow.querySelector(".catalog-code"),
+      catalogBuyerReference: shadow.querySelector(".catalog-buyer-reference"),
+      catalogProgress: shadow.querySelector(".catalog-progress"),
+      catalogActionButtons: [...shadow.querySelectorAll("[data-catalog-action]")],
+      destinationButtons: [...shadow.querySelectorAll(".destination-button")],
       searchInput: shadow.querySelector(".search-box input"),
       hotkeyLabel: shadow.querySelector(".hotkey-label"),
       moduleButtons: [...shadow.querySelectorAll(".module-button")],
@@ -725,6 +1188,30 @@
     ui.settingsButton.addEventListener("click", openSettings);
     ui.settingsCloseButton.addEventListener("click", closeSettings);
     ui.loginButton.addEventListener("click", () => void continueLogin({ reset: true, source: "login-button" }));
+    ui.catalogCategory.addEventListener("change", saveCatalogForm);
+    ui.catalogCode.addEventListener("input", saveCatalogForm);
+    ui.catalogBuyerReference.addEventListener("input", saveCatalogForm);
+    ui.catalogCode.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") startCatalogAction("search", "code");
+    });
+    ui.catalogBuyerReference.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") startCatalogAction("search", "buyer_reference");
+    });
+    ui.catalogActionButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const actions = {
+          prepare: ["prepare", null, null],
+          "code-find": ["search", "code", null],
+          "code-costsheet": ["search", "code", "costsheet"],
+          "code-bom": ["search", "code", "bom"],
+          "buyer-find": ["search", "buyer_reference", null],
+          "buyer-costsheet": ["search", "buyer_reference", "costsheet"],
+          "buyer-bom": ["search", "buyer_reference", "bom"],
+        };
+        const args = actions[button.dataset.catalogAction];
+        if (args) startCatalogAction(...args);
+      });
+    });
     ui.searchInput.addEventListener("input", (event) => filterModules(event.target.value));
     ui.searchInput.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
@@ -753,6 +1240,7 @@
     ui.passwordInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") saveSettings();
     });
+    restoreCatalogForm();
     updateHotkeyLabels();
     refreshStatus();
   }
@@ -807,8 +1295,9 @@
     .launcher-active { transform: scale(.9); opacity: .75; }
 
     .panel {
-      position: fixed; z-index: 2147483646; right: 22px; bottom: 94px; width: min(470px, calc(100vw - 24px)); height: min(760px, calc(100vh - 118px));
-      display: flex; flex-direction: column; overflow: hidden; color: #e9f4f8; font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      position: fixed; z-index: 2147483646; right: 22px; bottom: 94px; width: min(530px, calc(100vw - 24px)); height: min(820px, calc(100vh - 118px));
+      display: flex; flex-direction: column; overflow: hidden; color: #e9f4f8; font-family: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+      font-size: 14px; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
       border: 1px solid rgba(164, 220, 235, .18); border-radius: 26px; background: rgba(8, 20, 29, .97);
       box-shadow: 0 32px 90px rgba(0, 0, 0, .56), inset 0 1px 0 rgba(255,255,255,.07);
       opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(20px) scale(.965); transform-origin: right bottom;
@@ -822,8 +1311,8 @@
     .brand-logo svg { width: 27px; fill: rgba(39,202,226,.08); stroke: #65e8fb; stroke-width: 1.35; }
     .brand-logo .brand-mark { fill: none; stroke: white; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .brand strong, .brand span { display: block; }
-    .brand strong { color: #f4fcff; font-size: 16px; line-height: 1.25; letter-spacing: .01em; }
-    .brand span { margin-top: 2px; color: #708995; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
+    .brand strong { color: #f4fcff; font-size: 17px; line-height: 1.25; letter-spacing: .01em; }
+    .brand span { margin-top: 2px; color: #89a0aa; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
     .header-actions { display: flex; gap: 7px; }
     .icon-button { width: 35px; height: 35px; display: grid; place-items: center; padding: 0; color: #8fa5af; cursor: pointer; border: 1px solid rgba(255,255,255,.07); border-radius: 11px; background: rgba(255,255,255,.035); transition: .2s ease; }
     .icon-button:hover { color: #ecfbff; border-color: rgba(95,225,244,.26); background: rgba(74,205,225,.1); }
@@ -840,10 +1329,10 @@
     .status-card[data-tone="warning"] .status-orbit { border-color: rgba(255,190,91,.38); color: #ffbe5b; }
     .status-card[data-tone="warning"] .status-orbit span { background: #ffbe5b; }
     .status-card strong, .status-card span { display: block; }
-    .status-card strong { overflow: hidden; color: #effbfe; font-size: 13px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-    .status-detail { max-width: 180px; margin-top: 3px; overflow: hidden; color: #88a0aa; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-    .account-chip { position: relative; z-index: 1; align-self: start; max-width: 145px; padding: 5px 8px; overflow: hidden; color: #91acb6; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; background: rgba(4,13,19,.28); }
-    .primary-button { position: relative; z-index: 1; grid-column: 1 / -1; height: 41px; display: flex; align-items: center; justify-content: center; gap: 9px; overflow: hidden; color: #05202a; font-size: 12.5px; font-weight: 750; cursor: pointer; border: 0; border-radius: 12px; background: linear-gradient(105deg, #6ceafb, #4bd5e9 56%, #73edc4); box-shadow: 0 9px 23px rgba(39,202,225,.15); transition: transform .18s ease, filter .18s ease; }
+    .status-card strong { overflow: hidden; color: #effbfe; font-size: 14px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+    .status-detail { max-width: 210px; margin-top: 3px; overflow: hidden; color: #a0b4bc; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .account-chip { position: relative; z-index: 1; align-self: start; max-width: 160px; padding: 6px 9px; overflow: hidden; color: #adc0c7; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(4,13,19,.28); }
+    .primary-button { position: relative; z-index: 1; grid-column: 1 / -1; height: 43px; display: flex; align-items: center; justify-content: center; gap: 9px; overflow: hidden; color: #05202a; font-size: 13.5px; font-weight: 750; cursor: pointer; border: 0; border-radius: 12px; background: linear-gradient(105deg, #6ceafb, #4bd5e9 56%, #73edc4); box-shadow: 0 9px 23px rgba(39,202,225,.15); transition: transform .18s ease, filter .18s ease; }
     .primary-button:hover { filter: brightness(1.07); transform: translateY(-1px); }
     .primary-button:active { transform: scale(.985); }
     .primary-button:disabled { cursor: wait; opacity: .78; }
@@ -853,32 +1342,60 @@
     .primary-button.is-loading i { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    .catalog-card { position: relative; margin-top: 12px; padding: 13px; border: 1px solid rgba(111,222,239,.14); border-radius: 17px; background: linear-gradient(145deg,rgba(23,50,64,.72),rgba(12,30,41,.72)); transition: opacity .2s, border-color .2s; }
+    .catalog-card.catalog-busy { border-color: rgba(92,224,242,.32); }
+    .catalog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+    .catalog-heading strong, .catalog-heading span { display: block; }
+    .catalog-heading strong { margin-top: 2px; color: #edfaff; font-size: 15px; }
+    .catalog-kicker { color: #63d9e9; font-size: 9.5px; font-weight: 800; letter-spacing: .12em; }
+    .catalog-open-button { height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 10px; color: #7ee5f2; font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid rgba(102,222,239,.23); border-radius: 9px; background: rgba(58,192,211,.08); transition: .18s; }
+    .catalog-open-button:hover { color: #e9fdff; border-color: rgba(102,222,239,.44); background: rgba(58,192,211,.15); }
+    .catalog-open-button svg { width: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .catalog-category-row { display: grid; grid-template-columns: 105px minmax(0,1fr); align-items: center; gap: 9px; margin-bottom: 9px; }
+    .catalog-category-row > span, .catalog-query-row label > span { color: #a8bbc2; font-size: 12px; font-weight: 650; }
+    .catalog-card select, .catalog-card input { width: 100%; height: 37px; padding: 0 10px; color: #eaf8fb; font-size: 13.5px; outline: 0; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; background: #102a37; transition: border-color .2s, background .2s; }
+    .catalog-card select:focus, .catalog-card input:focus { border-color: rgba(91,220,239,.48); background: #123140; }
+    .catalog-card select option { color: #eef9fc; background: #102a37; }
+    .catalog-card input::placeholder { color: #617b86; }
+    .catalog-query-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 9px; margin-top: 8px; }
+    .catalog-query-row label > span { display: block; margin: 0 0 5px 2px; }
+    .catalog-query-actions { display: flex; gap: 5px; padding-bottom: 1px; }
+    .catalog-query-actions button { height: 36px; padding: 0 9px; color: #c5d8de; font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(255,255,255,.04); transition: .18s; }
+    .catalog-query-actions button:first-child { color: #74e2f1; border-color: rgba(95,218,237,.2); background: rgba(58,192,211,.07); }
+    .catalog-query-actions button:hover:not(:disabled) { color: #f1fdff; border-color: rgba(95,218,237,.38); transform: translateY(-1px); }
+    .catalog-query-actions button:disabled, .catalog-open-button:disabled { cursor: not-allowed; opacity: .38; }
+    .catalog-progress { margin-top: 10px; padding: 8px 10px; color: #b9d6dc; font-size: 11.5px; line-height: 1.4; border-left: 3px solid #56d9ea; border-radius: 6px; background: rgba(48,184,204,.07); }
+    .catalog-progress[hidden] { display: none; }
+    .catalog-progress[data-tone="success"] { color: #a7ead2; border-left-color: #48dda8; background: rgba(54,208,155,.07); }
+    .catalog-progress[data-tone="warning"] { color: #f1d09b; border-left-color: #ffc166; background: rgba(255,188,91,.07); }
+    .catalog-progress[data-tone="error"] { color: #f4aab2; border-left-color: #ff6e7d; background: rgba(255,86,105,.07); }
+
     .search-box { height: 43px; display: flex; align-items: center; gap: 9px; margin: 13px 0 8px; padding: 0 11px; border: 1px solid rgba(255,255,255,.075); border-radius: 13px; background: rgba(255,255,255,.035); transition: border-color .2s, background .2s; }
     .search-box:focus-within { border-color: rgba(86,222,242,.38); background: rgba(57,174,194,.065); }
     .search-box svg { width: 17px; flex: 0 0 auto; fill: none; stroke: #718a95; stroke-width: 1.8; stroke-linecap: round; }
-    .search-box input { min-width: 0; flex: 1; color: #e8f5f8; font-size: 12px; outline: 0; border: 0; background: transparent; }
+    .search-box input { min-width: 0; flex: 1; color: #e8f5f8; font-size: 13px; outline: 0; border: 0; background: transparent; }
     .search-box input::placeholder { color: #647a84; }
-    kbd { padding: 4px 6px; color: #79909a; font-family: inherit; font-size: 9.5px; white-space: nowrap; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; background: rgba(4,12,18,.35); }
+    kbd { padding: 4px 7px; color: #9aafb7; font-family: inherit; font-size: 10.5px; white-space: nowrap; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; background: rgba(4,12,18,.35); }
     .modules-scroll { min-height: 0; flex: 1; overflow: auto; padding: 3px 3px 16px 0; scrollbar-width: thin; scrollbar-color: rgba(93,197,214,.25) transparent; }
     .modules-scroll::-webkit-scrollbar { width: 6px; }
     .modules-scroll::-webkit-scrollbar-thumb { border-radius: 9px; background: rgba(93,197,214,.22); }
     .module-group { margin-top: 12px; }
     .module-group[hidden], .module-button[hidden] { display: none !important; }
-    .group-heading { display: flex; align-items: center; gap: 7px; margin: 0 3px 7px; color: #92a9b2; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .group-heading { display: flex; align-items: center; gap: 7px; margin: 0 3px 7px; color: #a9bbc2; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     .group-accent { width: 5px; height: 5px; border-radius: 50%; }
     .group-count { margin-left: auto; color: #526770; font-size: 9.5px; }
     .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-    .module-button { min-width: 0; min-height: 48px; display: grid; grid-template-columns: 31px minmax(0,1fr) 13px; align-items: center; gap: 8px; padding: 7px 9px; color: #c9d9df; text-align: left; cursor: pointer; border: 1px solid rgba(255,255,255,.065); border-radius: 12px; background: rgba(255,255,255,.027); transition: transform .18s ease, color .18s, border-color .18s, background .18s; }
+    .module-button { min-width: 0; min-height: 52px; display: grid; grid-template-columns: 33px minmax(0,1fr) 13px; align-items: center; gap: 9px; padding: 8px 10px; color: #d4e2e7; text-align: left; cursor: pointer; border: 1px solid rgba(255,255,255,.075); border-radius: 12px; background: rgba(255,255,255,.03); transition: transform .18s ease, color .18s, border-color .18s, background .18s; }
     .module-button:hover { color: #f2fcff; border-color: rgba(93,218,238,.22); background: rgba(62,180,199,.075); transform: translateY(-1px); }
     .module-button:active { transform: scale(.985); }
-    .module-icon { width: 31px; height: 31px; display: grid; place-items: center; font-size: 9px; font-weight: 800; letter-spacing: .03em; border: 1px solid currentColor; border-radius: 9px; background: rgba(255,255,255,.025); }
+    .module-icon { width: 33px; height: 33px; display: grid; place-items: center; font-size: 10px; font-weight: 800; letter-spacing: .03em; border: 1px solid currentColor; border-radius: 9px; background: rgba(255,255,255,.025); }
     .accent-cyan { color: #64deef; background-color: rgba(53,197,220,.09); }
     .accent-violet { color: #b7a0ff; background-color: rgba(145,113,255,.09); }
     .accent-amber { color: #ffc36d; background-color: rgba(255,177,61,.09); }
     .group-accent.accent-cyan { background: #64deef; box-shadow: 0 0 8px #64deef; }
     .group-accent.accent-violet { background: #b7a0ff; box-shadow: 0 0 8px #b7a0ff; }
     .group-accent.accent-amber { background: #ffc36d; box-shadow: 0 0 8px #ffc36d; }
-    .module-name { overflow: hidden; font-size: 11.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .module-name { overflow: hidden; font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
     .module-button > svg { width: 13px; fill: none; stroke: #536972; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s, stroke .18s; }
     .module-button:hover > svg { stroke: #7cdae8; transform: translateX(2px); }
     .empty-state { height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #667c85; text-align: center; }
@@ -927,7 +1444,7 @@
     .save-button:hover { filter: brightness(1.07); transform: translateY(-1px); }
 
     .toast-stack { position: fixed; z-index: 2147483647; right: 28px; bottom: 102px; width: min(340px, calc(100vw - 30px)); display: flex; flex-direction: column; align-items: flex-end; gap: 7px; pointer-events: none; font-family: Inter,"Segoe UI",system-ui,sans-serif; }
-    .panel-open + .toast-stack { right: 510px; }
+    .panel-open + .toast-stack { right: 570px; }
     .toast { max-width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: #dcebef; font-size: 11px; line-height: 1.35; border: 1px solid rgba(255,255,255,.1); border-radius: 11px; background: rgba(10,26,35,.97); box-shadow: 0 13px 34px rgba(0,0,0,.32); opacity: 0; transform: translateY(7px) scale(.98); transition: .2s ease; }
     .toast-visible { opacity: 1; transform: translateY(0) scale(1); }
     .toast-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #5edced; box-shadow: 0 0 8px currentColor; }
@@ -946,12 +1463,16 @@
       .hotkey-label { display: none; }
       .form-grid { grid-template-columns: 1fr; }
       .password-field { grid-column: auto; }
+      .catalog-query-row { grid-template-columns: 1fr; }
+      .catalog-query-actions button { flex: 1; }
+      .catalog-category-row { grid-template-columns: 82px minmax(0,1fr); }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
     }
   `;
 
+  installPopupTracker();
   createUI();
   registerMenuCommands();
   document.addEventListener("keydown", handleKeydown, true);
