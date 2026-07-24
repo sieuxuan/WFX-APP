@@ -1,22 +1,61 @@
-// ==UserScript==
-// @name         WFX Smart Automation Panel
-// @namespace    local.wfx.automation
-// @version      1.9.1
-// @description  Panel automation đầy đủ, Catalog Quick Search, hotkey và tự đăng nhập WFX ngay trên tab hiện tại.
-// @author       WFX Automation
-// @match        https://prosports.worldfashionexchange.com/*
-// @icon         https://prosports.worldfashionexchange.com/favicon.ico
-// @run-at       document-idle
-// @noframes
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        GM_deleteValue
-// @grant        GM_registerMenuCommand
-// @grant        unsafeWindow
-// ==/UserScript==
+"use strict";
 
+// Generated Chrome MV3 main-world adapter. Source of truth: ../../wfx-tampermonkey.user.js
+(() => {
+  if (window.__wfxSmartChromeExtensionLoaded) return;
+  window.__wfxSmartChromeExtensionLoaded = true;
+
+  const MESSAGE_SOURCE = "wfx-smart-chrome-extension";
+  let started = false;
+  let applyStorageUpdate = () => {};
+  let handleExtensionCommand = () => {};
+
+  const post = (type, payload = {}) => {
+    window.postMessage({
+      source: MESSAGE_SOURCE,
+      type,
+      ...payload,
+    }, window.location.origin);
+  };
+
+  const start = (bridgeToken, initialValues) => {
+    if (started) return;
+    started = true;
+    const extensionCache = { ...(initialValues || {}) };
+    const unsafeWindow = window;
+
+    const GM_getValue = (key) => extensionCache[key];
+    const GM_setValue = (key, value) => {
+      extensionCache[key] = value;
+      post("storage-request", {
+        token: bridgeToken,
+        operation: "set",
+        key,
+        value,
+      });
+    };
+    const GM_deleteValue = (key) => {
+      delete extensionCache[key];
+      post("storage-request", {
+        token: bridgeToken,
+        operation: "remove",
+        key,
+      });
+    };
+    const GM_registerMenuCommand = () => {};
+    applyStorageUpdate = (token, updates) => {
+      if (token !== bridgeToken || !updates) return;
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === undefined) delete extensionCache[key];
+        else extensionCache[key] = value;
+      }
+    };
+    handleExtensionCommand = (token, command) => {
+      if (token !== bridgeToken || command !== "toggle-panel") return;
+      document.dispatchEvent(new CustomEvent("wfx-smart-extension-toggle-panel"));
+    };
 // CHANGELOG 1.2.0 (fix CATALOG_CLICK_FAILED / mọi click đều không mở được / kẹt "Đang đăng nhập..."):
-// - Tampermonkey chạy script trong "isolated world" riêng biệt với trang WFX thật. Toàn bộ script
+// - Chrome Extension chạy script trong "isolated world" riêng biệt với trang WFX thật. Toàn bộ script
 //   trước đây dùng `new MouseEvent(...)`, `new Event(...)`, `new KeyboardEvent(...)` của world cô lập
 //   này rồi dispatch lên phần tử DOM thật của WFX (hoặc của frame khác) → trình duyệt coi đây là
 //   Event "khác thực thể" và có thể ném lỗi ngay ở bước mouseover/mousedown đầu tiên. Vì hàm click
@@ -155,13 +194,13 @@
 //   động sau khi bị invalidate) thay vì im lặng nuốt lỗi.
 // - Adapter Chrome Extension (build-extension.ps1) chuyển tiếp message đó thành CustomEvent
 //   "wfx-smart-extension-context-lost" trên `document`, và panel (core script, chạy chung cho cả
-//   Tampermonkey lẫn Chrome Extension) hiện toast yêu cầu người dùng tải lại trang — Tampermonkey
+//   Chrome Extension lẫn Chrome Extension) hiện toast yêu cầu người dùng tải lại trang — Chrome Extension
 //   không bao giờ dispatch event này nên không bị ảnh hưởng.
 
 (function () {
   "use strict";
 
-  // Trang WFX thật (page world), KHÔNG phải world cô lập của Tampermonkey. Bắt buộc dùng cái này
+  // Trang WFX thật (page world), KHÔNG phải world cô lập của Chrome Extension. Bắt buộc dùng cái này
   // để lấy đúng constructor Event/MouseEvent/KeyboardEvent khi cần fallback (không có ownerDocument).
   const PAGE_WINDOW = typeof unsafeWindow !== "undefined" && unsafeWindow ? unsafeWindow : window;
 
@@ -421,7 +460,7 @@
   function setNativeValue(input, value) {
     // input có thể thuộc frame khác (left panel Catalog, popup Article...), nên phải lấy
     // HTMLInputElement/Event đúng "thế giới" (window) sở hữu nó, không dùng constructor của
-    // world cô lập Tampermonkey — nếu không instanceof sẽ sai và Event dispatch có thể bị bỏ qua.
+    // world cô lập Chrome Extension — nếu không instanceof sẽ sai và Event dispatch có thể bị bỏ qua.
     const view = input.ownerDocument?.defaultView || PAGE_WINDOW;
     const isTextArea = typeof view.HTMLTextAreaElement === "function" && input instanceof view.HTMLTextAreaElement;
     const prototype = isTextArea ? view.HTMLTextAreaElement.prototype : view.HTMLInputElement.prototype;
@@ -449,7 +488,7 @@
     }
     // QUAN TRỌNG: phải dùng MouseEvent của đúng "thế giới" (window) sở hữu element — tức
     // ownerDocument.defaultView của chính element đó (top page, iframe "left"/grid, hay popup
-    // Article đều khác nhau) — KHÔNG dùng MouseEvent của world cô lập Tampermonkey. Trước đây
+    // Article đều khác nhau) — KHÔNG dùng MouseEvent của world cô lập Chrome Extension. Trước đây
     // dùng chung 1 MouseEvent "lạ thế giới" rồi dispatch cho mọi frame khiến trình duyệt có thể
     // ném lỗi ngay ở bước mouseover, và vì tất cả nằm chung 1 try/catch nên element.click() thật
     // sự phía sau không bao giờ chạy → mọi nút bấm xong nhưng WFX không phản ứng gì.
@@ -1946,7 +1985,7 @@
       theme: getSelectedTheme(),
     });
     if (!accountSaved || !preferencesSaved) {
-      showToast("Không thể lưu thiết lập Tampermonkey.", "error");
+      showToast("Không thể lưu thiết lập Chrome Extension.", "error");
       return;
     }
     closeSettings();
@@ -2067,14 +2106,14 @@
         </div>
 
         <footer class="panel-footer">
-          <span><i></i> Tampermonkey active</span>
+          <span><i></i> Chrome Extension active</span>
           <span>v${SCRIPT_VERSION}</span>
         </footer>
 
         <div class="settings-overlay" aria-label="Thiết lập WFX">
           <div class="settings-sheet">
             <div class="sheet-handle"></div>
-            <div class="sheet-heading"><div><strong>Thiết lập thông minh</strong><span>Lưu riêng trong Tampermonkey trên máy này</span></div><button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+            <div class="sheet-heading"><div><strong>Thiết lập thông minh</strong><span>Lưu riêng trong Chrome Extension trên máy này</span></div><button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
             <div class="settings-status">
               <div class="status-card" data-tone="neutral">
                 <span class="status-orbit"><span></span></span>
@@ -2101,7 +2140,7 @@
                 <button class="seg-button" type="button" data-theme-choice="dark" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.3 6.3 0 0 0 9.5 9.5Z"/></svg>Tối</button>
               </div>
             </div>
-            <div class="security-note"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span>Mật khẩu nằm trong vùng lưu trữ của userscript, không đưa vào DOM hay localStorage của trang WFX.</span></div>
+            <div class="security-note"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span>Mật khẩu nằm trong vùng lưu trữ của extension, không đưa vào DOM hay localStorage của trang WFX.</span></div>
             <button class="save-button" type="button">Lưu thiết lập &amp; kết nối</button>
           </div>
         </div>
@@ -2546,7 +2585,7 @@
   document.addEventListener("wfx-smart-extension-toggle-panel", togglePanel);
   // Chỉ Chrome Extension dispatch event này (khi bridge.js phát hiện "Extension context
   // invalidated" sau khi extension được reload/cập nhật trong lúc tab vẫn mở — không có cách nào
-  // tự phục hồi). Tampermonkey không bao giờ dispatch nên listener này vô hại/không chạy ở đó.
+  // tự phục hồi). Chrome Extension không bao giờ dispatch nên listener này vô hại/không chạy ở đó.
   document.addEventListener("wfx-smart-extension-context-lost", () => {
     showToast("Extension WFX Smart vừa được cập nhật. Hãy tải lại (F5) trang để tiếp tục dùng.", "warning", 8000);
   });
@@ -2555,4 +2594,42 @@
     void resumePendingWork();
   });
   void resumePendingWork();
+})();
+
+  };
+
+  window.addEventListener("message", (event) => {
+    if (
+      event.source !== window ||
+      event.origin !== window.location.origin ||
+      event.data?.source !== MESSAGE_SOURCE
+    ) {
+      return;
+    }
+    const message = event.data;
+    if (message.type === "bridge-ready") {
+      post("main-ready");
+      return;
+    }
+    if (message.type === "bootstrap" && typeof message.token === "string") {
+      start(message.token, message.values);
+      return;
+    }
+    if (message.type === "storage-update") {
+      applyStorageUpdate(message.token, message.updates);
+      return;
+    }
+    if (message.type === "extension-command") {
+      handleExtensionCommand(message.token, message.command);
+      return;
+    }
+    if (message.type === "extension-context-lost") {
+      // Bridge (ISOLATED world) mất quyền truy cập chrome.storage/chrome.runtime vì extension
+      // vừa được reload/cập nhật trong khi tab này vẫn mở. Không còn cách nào tự phục hồi — báo
+      // cho core script (đã chạy trong scope start() bên dưới) qua CustomEvent trên `document`,
+      // giống cách handleExtensionCommand chuyển tiếp lệnh toggle-panel.
+      document.dispatchEvent(new CustomEvent("wfx-smart-extension-context-lost"));
+    }
+  });
+  post("main-ready");
 })();
