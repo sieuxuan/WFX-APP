@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from wfx_panel import constants, log_bridge, prefs as prefs_default
 
