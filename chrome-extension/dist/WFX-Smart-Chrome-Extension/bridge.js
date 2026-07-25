@@ -68,22 +68,11 @@
     });
   };
 
-  // Chạy từ document_start, trước listener của WFX. Không khai báo Ctrl+Alt+X trong manifest vì
-  // Chrome từ chối tổ hợp này ở commands.suggested_key.
-  document.addEventListener("keydown", (event) => {
-    if (
-      event.code !== "KeyX" ||
-      !event.ctrlKey ||
-      !event.altKey ||
-      event.shiftKey ||
-      event.metaKey
-    ) {
-      return;
-    }
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    requestPanelToggle();
-  }, true);
+  // Hotkey Ctrl+Shift+X do chrome.commands (manifest suggested_key) xử lý ở cấp trình duyệt: nó
+  // bắt được cả khi focus đang nằm TRONG iframe của WFX — thứ mà listener keydown in-page (chỉ chạy
+  // ở top frame) không làm được. Command -> background.js -> chrome.runtime.sendMessage
+  // "wfx-smart-toggle-panel" -> requestPanelToggle() (xem onMessage bên dưới). Không còn bắt keydown
+  // ở đây nữa để tránh double-toggle (Chrome command + keydown cùng bắn khi focus ở top frame).
 
   window.addEventListener("message", (event) => {
     if (

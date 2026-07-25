@@ -834,11 +834,22 @@ ARTICLE_DESTINATION_NOT_FOUND
 
 ## Hotkey Chrome Extension
 
-Manifest không được đặt lại `"default": "Ctrl+Alt+X"` vì Chrome từ chối manifest
-trên máy này. Chỉ khai báo command `toggle-panel` không có `suggested_key`.
-Người dùng tự gán `Ctrl+Alt+X` tại `chrome://extensions/shortcuts`. Background service
-worker phải nhận `chrome.commands.onCommand` và gửi message toggle tới tab WFX đang
-active; nếu chưa có tab WFX thì mở/focus WFX trước.
+Hotkey mặc định là `Ctrl+Shift+X` (khác `Ctrl+Alt+X` cũ — tổ hợp `Ctrl+Alt` bị Chrome
+từ chối trong `suggested_key` vì trùng `AltGr`). `Ctrl+Shift+X` là tổ hợp hợp lệ nên
+manifest command `toggle-panel` KHAI BÁO `suggested_key.default = "Ctrl+Shift+X"` để Chrome
+tự bind sẵn, người dùng không phải gán tay tại `chrome://extensions/shortcuts`.
+
+Lý do dùng Chrome command thay vì bắt keydown in-page: WFX chạy nội dung trong iframe, mà
+content script chỉ chạy ở top frame (`all_frames:false`) nên keydown khi focus trong iframe
+không tới được listener top → hotkey "không phản hồi trên màn WFX". `chrome.commands` bắt phím
+ở cấp trình duyệt, độc lập với frame nào đang focus. Background service worker nhận
+`chrome.commands.onCommand` và gửi message toggle tới tab WFX đang active; nếu chưa có tab WFX
+thì mở/focus WFX trước.
+
+Vì command đã là nguồn hotkey duy nhất của bản extension: bridge.js KHÔNG bắt keydown nữa và
+core `handleKeydown` bỏ nhánh toggle khi `window.__wfxSmartChromeExtensionLoaded` (tránh
+double-toggle mở-rồi-đóng khi focus ở top frame). Tampermonkey không có command API nên vẫn dùng
+hotkey in-page cấu hình được trong panel.
 
 ## Tiêu chí nghiệm thu
 
@@ -852,5 +863,6 @@ active; nếu chưa có tab WFX thì mở/focus WFX trước.
 5. Code và Buyer Reference đều fill được và có xác nhận giá trị.
 6. Một unique Code tự mở Article; nhiều Code không tự mở.
 7. Costsheet/BOM chờ đúng popup `ArticleTop`.
-8. `Ctrl+Alt+X` gán từ trang Chrome shortcuts hoạt động.
+8. `Ctrl+Shift+X` (suggested_key trong manifest) mở/đóng panel được ngay cả khi focus đang
+   nằm trong iframe của WFX, không cần gán tay ở `chrome://extensions/shortcuts`.
 9. Build extension lấy từ `src`, không sửa trực tiếp chỉ mỗi file trong `dist`.
