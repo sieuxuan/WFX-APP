@@ -29,7 +29,7 @@ class FakeLogin:
     def quick_find_catalog(self, category_name, category_value, filter_kind, query,
                            user_id, password, company_id="psh", log=print, destination=None):
         self.calls.append(("quick_find_catalog", category_name, category_value,
-                           filter_kind, query, destination))
+                           filter_kind, query, user_id, password, destination))
         return {"ok": True, "code": "RESULT_OPENED", "message": query, "codes": [query]}
 
 
@@ -44,14 +44,14 @@ def test_find_code_calls_quick_find(tmp_path):
     api, fake = make_api(tmp_path)
     result = api.find_code("Apparel", "ABC123", destination="bom")
     assert result["code"] == "RESULT_OPENED"
-    assert ("quick_find_catalog", "Apparel", "01", "code", "ABC123", "bom") in fake.calls
+    assert ("quick_find_catalog", "Apparel", "01", "code", "ABC123", "u", "p", "bom") in fake.calls
 
 
 def test_find_buyer_reference_uses_buyer_kind(tmp_path):
     prefs.save_account("u", "p", base_dir=tmp_path)
     api, fake = make_api(tmp_path)
     api.find_buyer_reference("Apparel", "PO-9")
-    assert ("quick_find_catalog", "Apparel", "01", "buyer_reference", "PO-9", None) in fake.calls
+    assert ("quick_find_catalog", "Apparel", "01", "buyer_reference", "PO-9", "u", "p", None) in fake.calls
 
 
 def test_open_module_builds_xpath(tmp_path):
@@ -74,6 +74,7 @@ def test_log_sink_receives_lines(tmp_path):
     api.set_log_sink(lines.append)
     api.login()
     assert any("fake login" in line for line in lines)
+    assert ("run", "u", "p", "psh") in fake.calls
 
 
 def test_get_initial_state(tmp_path):
