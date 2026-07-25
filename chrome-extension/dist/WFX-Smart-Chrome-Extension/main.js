@@ -196,6 +196,26 @@
 //   "wfx-smart-extension-context-lost" trên `document`, và panel (core script, chạy chung cho cả
 //   Chrome Extension lẫn Chrome Extension) hiện toast yêu cầu người dùng tải lại trang — Chrome Extension
 //   không bao giờ dispatch event này nên không bị ảnh hưởng.
+//
+// CHANGELOG 1.9.2 (hotkey Ctrl+Shift+X chạy toàn cục + UI gọn cho laptop + fix font build):
+// - Đổi hotkey mặc định Ctrl+Alt+X → Ctrl+Shift+X (DEFAULT_HOTKEY cho Chrome Extension + nhãn UI).
+// - Bản Chrome Extension: hotkey không phản hồi khi focus nằm trong iframe của WFX (content script
+//   chỉ chạy ở top frame). Chuyển hotkey sang chrome.commands với suggested_key "Ctrl+Shift+X" —
+//   Chrome bắt phím ở cấp trình duyệt, độc lập frame, không cần người dùng gán tay. Bỏ keydown
+//   in-page trong bridge.js và bỏ nhánh toggle trong handleKeydown khi
+//   window.__wfxSmartChromeExtensionLoaded để tránh double-toggle (mở-rồi-đóng) ở top frame.
+// - UI gọn lại cho laptop 15": thu nhỏ panel (440×600, trước 520×820), giảm min-height/padding của
+//   header, status card, catalog card, search box, module button (44→38px) và footer.
+// - Fix mojibake tiếng Việt trong bản build: build-extension.ps1 đọc extension bằng Get-Content -Raw
+//   không chỉ định encoding, trên Windows PowerShell 5.1 mặc định codepage ANSI nên UTF-8 (không BOM)
+//   bị đọc sai ("mở" → "má»Ÿ"). Chuyển sang [System.IO.File]::ReadAllText(UTF8).
+// - Enter trong ô Code/Buyer Reference giờ tìm ngay: handleKeydown (capture-phase, stopPropagation
+//   chống WFX nuốt phím) trước đây chặn luôn listener keydown trên chính ô đó nên Enter vô hiệu.
+//   Chuyển xử lý Enter vào thẳng handleKeydown.
+// - Panel hiển thị được trong tab/popup Article mở bằng window.open(): thêm match_about_blank:true
+//   cho content_scripts để Chrome inject cả vào cửa sổ about:blank (trước đó chỉ có tab đầu có UI).
+// - Bỏ chữ "QUICK AUTOMATION"; nút "Mở Catalog" chuyển xuống cạnh dropdown Category.
+// - Trạng thái phiên WFX (Đã đăng nhập / Sẵn sàng login...) hiển thị luôn ở footer, cạnh dòng active.
 
 (function () {
   "use strict";
@@ -205,7 +225,7 @@
   const PAGE_WINDOW = typeof unsafeWindow !== "undefined" && unsafeWindow ? unsafeWindow : window;
 
   const HOME_URL = "https://prosports.worldfashionexchange.com/wfx_Home.aspx";
-  const SCRIPT_VERSION = "1.9.1";
+  const SCRIPT_VERSION = "1.9.2";
   const ROOT_ID = "wfx-smart-automation-root";
   const PENDING_TTL_MS = 2 * 60 * 1000;
 
@@ -229,8 +249,8 @@
 
   const DEFAULT_HOTKEY = Object.freeze({
     ctrl: true,
-    alt: true,
-    shift: false,
+    alt: false,
+    shift: true,
     meta: false,
     code: "KeyX",
     key: "X",
@@ -289,6 +309,9 @@
   let automationInFlight = false;
   let statusTimer = 0;
   let automationLogs = [];
+  // Khi có message tiến trình Catalog, footer hiển thị message đó thay cho trạng thái đăng nhập
+  // (refreshStatus sẽ không ghi đè). Reset về trạng thái đăng nhập mỗi lần mở panel.
+  let catalogFooterActive = false;
   const popupWindows = new Set();
 
   function readValue(key, fallback) {
@@ -750,9 +773,12 @@
 
   function setCatalogProgress(message, tone = "info") {
     if (!ui) return;
-    ui.catalogProgress.textContent = message;
-    ui.catalogProgress.dataset.tone = tone;
-    ui.catalogProgress.hidden = false;
+    // Tiến trình Catalog hiển thị ở footer (cạnh trạng thái đăng nhập) thay vì một block riêng
+    // trong Catalog Control card, cho gọn. Tone của catalog (info/success/warning/error) map sang
+    // tone của footer; "info" dùng neutral để không nhầm với trạng thái phiên.
+    catalogFooterActive = true;
+    ui.footerStatus.dataset.tone = tone === "info" ? "neutral" : tone;
+    ui.footerStatusText.textContent = message;
   }
 
   function setAutomationBusy(isBusy, message = "Đang xử lý...") {
@@ -1852,9 +1878,34 @@
     if (hotkeyCapture) return;
 
     if (isOwnEditableKeydown(event)) {
+      // handleKeydown chạy ở capture-phase trên document rồi stopPropagation() để WFX không nuốt
+      // phím gõ trong ô của panel (xem isOwnEditableKeydown). Nhưng stopPropagation cũng chặn luôn
+      // listener keydown gắn TRỰC TIẾP trên chính ô đó, nên Enter-để-tìm phải xử lý NGAY tại đây.
+      if (event.key === "Enter") {
+        const target = event.composedPath ? event.composedPath()[0] : event.target;
+        if (target === ui.catalogCode) {
+          event.preventDefault();
+          event.stopPropagation();
+          startCatalogAction("search", "code");
+          return;
+        }
+        if (target === ui.catalogBuyerReference) {
+          event.preventDefault();
+          event.stopPropagation();
+          startCatalogAction("search", "buyer_reference");
+          return;
+        }
+      }
       event.stopPropagation();
       return;
     }
+
+    // Bản Chrome Extension: hotkey do chrome.commands (suggested_key Ctrl+Shift+X) xử lý ở cấp trình
+    // duyệt nên bắt được cả khi focus nằm trong iframe WFX. Nếu ở đây cũng tự toggle thì khi focus ở
+    // top frame sẽ bị double-toggle (mở rồi đóng ngay). Chrome Extension không có command API nên vẫn
+    // dùng nhánh dưới. (Đường Chrome command đi qua handleExtensionCommand -> CustomEvent, không qua
+    // handleKeydown này.)
+    if (PAGE_WINDOW.__wfxSmartChromeExtensionLoaded) return;
 
     if (eventMatchesHotkey(event)) {
       event.preventDefault();
@@ -1869,6 +1920,10 @@
     ui.statusCard.dataset.tone = details.tone;
     ui.statusTitle.textContent = details.label;
     ui.statusDetail.textContent = details.detail;
+    if (!catalogFooterActive) {
+      ui.footerStatus.dataset.tone = details.tone;
+      ui.footerStatusText.textContent = loginInFlight ? "Đang đăng nhập..." : details.label;
+    }
     ui.accountChip.textContent = getAccount().userId || "Chưa có account";
     ui.loginButton.querySelector("span").textContent = loginInFlight ? "Đang đăng nhập..." : "Kết nối / Login";
     // Đã đăng nhập rồi thì không cần hiện nút Kết nối/Login nữa (chỉ hiện khi chưa đăng nhập
@@ -1896,6 +1951,8 @@
     ui.panel.classList.add("panel-open");
     ui.launcher.classList.add("launcher-active");
     ui.panel.setAttribute("aria-hidden", "false");
+    // Mở panel: footer trở lại trạng thái đăng nhập (không giữ message Catalog của lần trước).
+    catalogFooterActive = false;
     refreshStatus();
     window.clearInterval(statusTimer);
     statusTimer = window.setInterval(refreshStatus, 1500);
@@ -2059,18 +2116,18 @@
         <div class="panel-body">
           <section class="catalog-card">
             <div class="catalog-heading">
-              <div><span class="catalog-kicker">QUICK AUTOMATION</span><strong>Catalog Control</strong></div>
+              <strong>Catalog Control</strong>
+            </div>
+            <div class="catalog-category-row">
+              <span>Category</span>
+              <select class="catalog-category">
+                ${Object.keys(CATEGORIES).map((name) => `<option value="${name}">${name}</option>`).join("")}
+              </select>
               <button class="catalog-open-button" type="button" data-catalog-action="prepare">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6l2 2h8v12H4V5Z"/><path d="m9 14 2 2 4-5"/></svg>
                 Mở Catalog
               </button>
             </div>
-            <label class="catalog-category-row">
-              <span>Category</span>
-              <select class="catalog-category">
-                ${Object.keys(CATEGORIES).map((name) => `<option value="${name}">${name}</option>`).join("")}
-              </select>
-            </label>
             <div class="catalog-query-row">
               <label><span>Code</span><input class="catalog-code" type="text" autocomplete="off" placeholder="Nhập article code..." /></label>
               <div class="catalog-query-actions">
@@ -2087,13 +2144,12 @@
                 <button class="destination-button" type="button" data-catalog-action="buyer-bom">BOM</button>
               </div>
             </div>
-            <div class="catalog-progress" data-tone="info" hidden>Sẵn sàng.</div>
           </section>
 
           <label class="search-box">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
             <input type="search" placeholder="Tìm nhanh module..." autocomplete="off" />
-            <kbd class="hotkey-label">Ctrl + Alt + X</kbd>
+            <kbd class="hotkey-label">Ctrl + Shift + X</kbd>
           </label>
 
           <div class="modules-scroll">
@@ -2106,8 +2162,8 @@
         </div>
 
         <footer class="panel-footer">
-          <span><i></i> Chrome Extension active</span>
-          <span>v${SCRIPT_VERSION}</span>
+          <span class="footer-status" data-tone="neutral"><i></i><b class="footer-status-text">Đang kiểm tra...</b></span>
+          <span class="footer-meta">Chrome Extension active · v${SCRIPT_VERSION}</span>
         </footer>
 
         <div class="settings-overlay" aria-label="Thiết lập WFX">
@@ -2131,7 +2187,7 @@
               <label><span>Company ID</span><input class="company-input" type="text" autocomplete="organization" value="psh" /></label>
               <label class="password-field"><span>Password</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="WFX Password" /><button class="toggle-password" type="button">Hiện</button></div></label>
             </div>
-            <div class="setting-row hotkey-row"><div><strong>Hotkey mở panel</strong><span>Nhấn nút rồi nhập tổ hợp mới</span></div><button class="hotkey-button" type="button">Ctrl + Alt + X</button></div>
+            <div class="setting-row hotkey-row"><div><strong>Hotkey mở panel</strong><span>Nhấn nút rồi nhập tổ hợp mới</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
             <label class="setting-row toggle-row"><div><strong>Tự login khi mở panel</strong><span>Chạy trên chính tab WFX hiện tại</span></div><input class="auto-login-input" type="checkbox" checked /><i></i></label>
             <label class="setting-row toggle-row"><div><strong>Đóng panel sau khi mở module</strong><span>Giữ màn hình làm việc gọn hơn</span></div><input class="close-module-input" type="checkbox" checked /><i></i></label>
             <div class="setting-row appearance-row"><div><strong>Giao diện</strong><span>Chọn nền sáng hoặc tối</span></div>
@@ -2173,12 +2229,13 @@
       statusCard: shadow.querySelector(".status-card"),
       statusTitle: shadow.querySelector(".status-title"),
       statusDetail: shadow.querySelector(".status-detail"),
+      footerStatus: shadow.querySelector(".footer-status"),
+      footerStatusText: shadow.querySelector(".footer-status-text"),
       accountChip: shadow.querySelector(".account-chip"),
       catalogCard: shadow.querySelector(".catalog-card"),
       catalogCategory: shadow.querySelector(".catalog-category"),
       catalogCode: shadow.querySelector(".catalog-code"),
       catalogBuyerReference: shadow.querySelector(".catalog-buyer-reference"),
-      catalogProgress: shadow.querySelector(".catalog-progress"),
       logButton: shadow.querySelector(".log-button"),
       logOverlay: shadow.querySelector(".log-overlay"),
       logCloseButton: shadow.querySelector(".log-close-button"),
@@ -2223,12 +2280,8 @@
       event.stopPropagation();
       void copyAutomationLog();
     });
-    ui.catalogCode.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") startCatalogAction("search", "code");
-    });
-    ui.catalogBuyerReference.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") startCatalogAction("search", "buyer_reference");
-    });
+    // Enter-để-tìm cho ô Code/Buyer Reference được xử lý trong handleKeydown (capture-phase trên
+    // document), vì stopPropagation ở đó chặn mọi listener keydown gắn trực tiếp trên các ô này.
     ui.catalogActionButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const actions = {
@@ -2383,32 +2436,32 @@
     .launcher-active { transform: scale(.9); opacity: .75; }
 
     .panel {
-      position: fixed; z-index: 2147483646; right: 22px; bottom: 94px; width: min(520px, calc(100vw - 24px)); height: min(820px, calc(100vh - 118px));
+      position: fixed; z-index: 2147483646; right: 20px; bottom: 84px; width: min(440px, calc(100vw - 20px)); height: min(600px, calc(100vh - 92px));
       display: flex; flex-direction: column; overflow: hidden; color: var(--text);
       font-family: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
-      font-size: 14.5px; line-height: 1.4; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
-      border: 1px solid var(--panel-border); border-radius: 24px; background: var(--panel-bg);
+      font-size: 13.5px; line-height: 1.35; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+      border: 1px solid var(--panel-border); border-radius: 18px; background: var(--panel-bg);
       box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
       opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(20px) scale(.965); transform-origin: right bottom;
       transition: opacity .22s ease, transform .3s cubic-bezier(.2,.85,.25,1), visibility .22s;
     }
     .panel-open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0) scale(1); }
     .panel-glow { position: absolute; inset: -180px -120px auto auto; width: 340px; height: 340px; pointer-events: none; border-radius: 50%; background: var(--glow); filter: blur(55px); }
-    .panel-header { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 68px; padding: 14px 16px 12px 18px; border-bottom: 1px solid var(--border); }
-    .brand { display: flex; align-items: center; gap: 11px; }
-    .brand-logo { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--accent-border); border-radius: 13px; background: var(--accent-soft); }
-    .brand-logo svg { width: 26px; fill: none; stroke: var(--accent); stroke-width: 1.4; }
+    .panel-header { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 6px 12px 6px 14px; border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 9px; }
+    .brand-logo { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-soft); }
+    .brand-logo svg { width: 21px; fill: none; stroke: var(--accent); stroke-width: 1.4; }
     .brand-logo .brand-mark { fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .brand strong, .brand span { display: block; }
-    .brand strong { color: var(--text); font-size: 17px; font-weight: 700; line-height: 1.25; letter-spacing: .01em; }
-    .brand span { margin-top: 2px; color: var(--text-3); font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
-    .header-actions { display: flex; gap: 7px; }
-    .icon-button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; color: var(--text-2); cursor: pointer; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-3); transition: .2s ease; }
+    .brand strong { color: var(--text); font-size: 15px; font-weight: 700; line-height: 1.2; letter-spacing: .01em; }
+    .brand span { margin-top: 1px; color: var(--text-3); font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+    .header-actions { display: flex; gap: 6px; }
+    .icon-button { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; color: var(--text-2); cursor: pointer; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-3); transition: .2s ease; }
     .icon-button:hover { color: var(--accent-strong); border-color: var(--accent-border); background: var(--accent-soft); }
     .icon-button svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
-    .panel-body { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 12px 15px 0; }
-    .settings-status { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding: 12px; overflow: hidden; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+    .panel-body { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 9px 12px 0; }
+    .settings-status { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 9px; padding: 9px 10px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
     .settings-status .primary-button { width: 100%; }
     .login-button[hidden] { display: none; }
     .status-card { position: relative; z-index: 1; display: flex; align-items: center; gap: 9px; min-width: 0; }
@@ -2420,7 +2473,7 @@
     .status-card strong { overflow: hidden; color: var(--text); font-size: 14.5px; font-weight: 650; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
     .status-detail { max-width: 210px; margin-top: 3px; overflow: hidden; color: var(--text-2); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
     .account-chip { position: relative; z-index: 1; align-self: start; max-width: 160px; padding: 6px 9px; overflow: hidden; color: var(--text-2); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-3); }
-    .primary-button { position: relative; z-index: 1; grid-column: 1 / -1; height: 43px; display: flex; align-items: center; justify-content: center; gap: 9px; overflow: hidden; color: var(--accent-ink); font-size: 14px; font-weight: 750; cursor: pointer; border: 0; border-radius: 12px; background: var(--accent-grad); box-shadow: var(--shadow-sm); transition: transform .18s ease, filter .18s ease; }
+    .primary-button { position: relative; z-index: 1; grid-column: 1 / -1; height: 38px; display: flex; align-items: center; justify-content: center; gap: 8px; overflow: hidden; color: var(--accent-ink); font-size: 13.5px; font-weight: 750; cursor: pointer; border: 0; border-radius: 10px; background: var(--accent-grad); box-shadow: var(--shadow-sm); transition: transform .18s ease, filter .18s ease; }
     .primary-button:hover { filter: brightness(1.07); transform: translateY(-1px); }
     .primary-button:active { transform: scale(.985); }
     .primary-button:disabled { cursor: wait; opacity: .78; }
@@ -2430,18 +2483,18 @@
     .primary-button.is-loading i { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .catalog-card { position: relative; margin-top: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); box-shadow: var(--shadow-sm); transition: opacity .2s, border-color .2s; }
+    .catalog-card { position: relative; margin-top: 7px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); box-shadow: var(--shadow-sm); transition: opacity .2s, border-color .2s; }
     .catalog-card.catalog-busy { border-color: var(--accent-border); }
-    .catalog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+    .catalog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
     .catalog-heading strong, .catalog-heading span { display: block; }
-    .catalog-heading strong { margin-top: 2px; color: var(--text); font-size: 15px; font-weight: 700; }
+    .catalog-heading strong { color: var(--text); font-size: 12.5px; font-weight: 700; letter-spacing: .01em; }
     .catalog-kicker { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
-    .catalog-open-button { height: 33px; display: flex; align-items: center; gap: 6px; padding: 0 11px; color: var(--accent-ink); font-size: 12px; font-weight: 700; cursor: pointer; border: 0; border-radius: 9px; background: var(--accent-grad); box-shadow: var(--shadow-sm); transition: .18s; }
+    .catalog-open-button { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 11px; color: var(--accent-ink); font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; border: 0; border-radius: 8px; background: var(--accent-grad); box-shadow: var(--shadow-sm); transition: .18s; }
     .catalog-open-button:hover { filter: brightness(1.06); transform: translateY(-1px); }
     .catalog-open-button svg { width: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .catalog-category-row { display: grid; grid-template-columns: 96px minmax(0,1fr); align-items: center; gap: 9px; margin-bottom: 7px; }
+    .catalog-category-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; margin-bottom: 7px; }
     .catalog-category-row > span, .catalog-query-row label > span { color: var(--text-2); font-size: 12px; font-weight: 650; }
-    .catalog-card select, .catalog-card input { width: 100%; height: 34px; padding: 0 10px; color: var(--text); font-size: 14px; outline: 0; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); transition: border-color .2s, background .2s; }
+    .catalog-card select, .catalog-card input { width: 100%; height: 32px; padding: 0 9px; color: var(--text); font-size: 13px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); transition: border-color .2s, background .2s; }
     .catalog-card select:focus, .catalog-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .catalog-card select option { color: var(--text); background: var(--surface-2); }
     .catalog-card input::placeholder { color: var(--text-3); }
@@ -2452,11 +2505,6 @@
     .catalog-query-actions button:first-child { color: var(--accent-strong); border-color: var(--accent-border); background: var(--accent-soft); }
     .catalog-query-actions button:hover:not(:disabled) { color: var(--text); border-color: var(--accent-border); transform: translateY(-1px); }
     .catalog-query-actions button:disabled, .catalog-open-button:disabled { cursor: not-allowed; opacity: .38; }
-    .catalog-progress { margin-top: 9px; padding: 8px 10px; color: var(--text-2); font-size: 12.5px; line-height: 1.4; border-left: 3px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
-    .catalog-progress[hidden] { display: none; }
-    .catalog-progress[data-tone="success"] { color: var(--text); border-left-color: var(--good); background: var(--good-soft); }
-    .catalog-progress[data-tone="warning"] { color: var(--text); border-left-color: var(--warn); background: var(--warn-soft); }
-    .catalog-progress[data-tone="error"] { color: var(--text); border-left-color: var(--bad); background: var(--bad-soft); }
     .log-button { position: relative; }
     .log-alert { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); border: 2px solid var(--panel-bg); opacity: 0; transform: scale(.4); transition: .18s ease; }
     .log-button.has-alert .log-alert { opacity: 1; transform: scale(1); }
@@ -2467,26 +2515,26 @@
     .catalog-log-copy { height: 30px; padding: 0 10px; color: var(--accent-strong); font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); }
     .catalog-log { max-height: 60vh; margin: 4px 0 0; padding: 11px 12px; overflow: auto; color: var(--code-text); font: 11.5px/1.6 Consolas, "SFMono-Regular", monospace; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--border); border-radius: 10px; background: var(--code-bg); scrollbar-width: thin; }
 
-    .search-box { height: 40px; display: flex; align-items: center; gap: 9px; margin: 11px 0 6px; padding: 0 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-3); transition: border-color .2s, background .2s; }
+    .search-box { height: 36px; display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-3); transition: border-color .2s, background .2s; }
     .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .search-box svg { width: 17px; flex: 0 0 auto; fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-linecap: round; }
     .search-box input { min-width: 0; flex: 1; color: var(--text); font-size: 13.5px; outline: 0; border: 0; background: transparent; }
     .search-box input::placeholder { color: var(--text-3); }
     kbd { padding: 4px 7px; color: var(--text-2); font-family: inherit; font-size: 11px; white-space: nowrap; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
-    .modules-scroll { min-height: 0; flex: 1; overflow: auto; padding: 2px 3px 14px 0; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+    .modules-scroll { min-height: 0; flex: 1; overflow: auto; padding: 2px 3px 10px 0; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
     .modules-scroll::-webkit-scrollbar { width: 6px; }
     .modules-scroll::-webkit-scrollbar-thumb { border-radius: 9px; background: var(--border-strong); }
-    .module-group { margin-top: 10px; }
+    .module-group { margin-top: 8px; }
     .module-group:first-child { margin-top: 2px; }
     .module-group[hidden], .module-button[hidden] { display: none !important; }
-    .group-heading { display: flex; align-items: center; gap: 7px; margin: 0 3px 6px; color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .group-heading { display: flex; align-items: center; gap: 7px; margin: 0 3px 5px; color: var(--text-2); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     .group-accent { width: 6px; height: 6px; border-radius: 50%; }
     .group-count { margin-left: auto; color: var(--text-3); font-size: 10px; font-weight: 600; }
-    .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-    .module-button { min-width: 0; min-height: 44px; display: grid; grid-template-columns: 28px minmax(0,1fr) 12px; align-items: center; gap: 9px; padding: 7px 9px; color: var(--text); text-align: left; cursor: pointer; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); transition: transform .18s ease, color .18s, border-color .18s, background .18s; }
+    .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+    .module-button { min-width: 0; min-height: 38px; display: grid; grid-template-columns: 24px minmax(0,1fr) 12px; align-items: center; gap: 8px; padding: 5px 8px; color: var(--text); text-align: left; cursor: pointer; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); transition: transform .18s ease, color .18s, border-color .18s, background .18s; }
     .module-button:hover { border-color: var(--accent-border); background: var(--surface-hover); transform: translateY(-1px); }
     .module-button:active { transform: scale(.985); }
-    .module-icon { width: 28px; height: 28px; display: grid; place-items: center; font-size: 10px; font-weight: 800; letter-spacing: .03em; border: 1px solid currentColor; border-radius: 8px; }
+    .module-icon { width: 24px; height: 24px; display: grid; place-items: center; font-size: 9.5px; font-weight: 800; letter-spacing: .03em; border: 1px solid currentColor; border-radius: 7px; }
     .accent-cyan { color: var(--accent); background-color: var(--accent-soft); }
     .accent-violet { color: #7c5cff; background-color: rgba(124,92,255,.1); }
     .accent-amber { color: #b9741a; background-color: rgba(200,130,20,.12); }
@@ -2495,17 +2543,25 @@
     .group-accent.accent-cyan { background: currentColor; color: var(--accent); box-shadow: 0 0 8px currentColor; }
     .group-accent.accent-violet { background: currentColor; box-shadow: 0 0 8px currentColor; }
     .group-accent.accent-amber { background: currentColor; box-shadow: 0 0 8px currentColor; }
-    .module-name { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .module-name { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
     .module-button > svg { width: 12px; fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s, stroke .18s; }
     .module-button:hover > svg { stroke: var(--accent); transform: translateX(2px); }
-    .empty-state { height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-3); text-align: center; }
+    .empty-state { height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-3); text-align: center; }
     .empty-state[hidden] { display: none; }
     .empty-state svg { width: 28px; margin-bottom: 9px; fill: none; stroke: var(--text-3); stroke-width: 1.5; }
     .empty-state strong { color: var(--text-2); font-size: 12.5px; }
     .empty-state span { margin-top: 4px; font-size: 11px; }
-    .panel-footer { min-height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; color: var(--text-3); font-size: 10.5px; border-top: 1px solid var(--border); background: var(--footer-bg); }
-    .panel-footer span:first-child { display: flex; align-items: center; gap: 6px; }
-    .panel-footer i { width: 5px; height: 5px; border-radius: 50%; background: var(--good); box-shadow: 0 0 7px var(--good); }
+    .panel-footer { min-height: 26px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; color: var(--text-3); font-size: 10px; border-top: 1px solid var(--border); background: var(--footer-bg); }
+    .footer-status { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .footer-status i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--text-3); }
+    .footer-status b { overflow: hidden; font-size: 10.5px; font-weight: 650; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+    .footer-status[data-tone="success"] i { background: var(--good); box-shadow: 0 0 7px var(--good); }
+    .footer-status[data-tone="success"] b { color: var(--good); }
+    .footer-status[data-tone="warning"] i { background: var(--warn); box-shadow: 0 0 7px var(--warn); }
+    .footer-status[data-tone="warning"] b { color: var(--warn); }
+    .footer-status[data-tone="error"] i { background: var(--bad); box-shadow: 0 0 7px var(--bad); }
+    .footer-status[data-tone="error"] b { color: var(--bad); }
+    .footer-meta { flex: 0 0 auto; white-space: nowrap; }
 
     .settings-overlay { position: absolute; z-index: 10; inset: 0; display: flex; align-items: flex-end; padding: 10px; visibility: hidden; opacity: 0; background: var(--scrim); backdrop-filter: blur(7px); transition: .2s ease; }
     .settings-open { visibility: visible; opacity: 1; }

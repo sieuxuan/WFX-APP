@@ -8,19 +8,34 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $extensionRoot ".."))
 $sourceRoot = Join-Path $extensionRoot "src"
 $distRoot = Join-Path $extensionRoot "dist"
 $packageRoot = Join-Path $distRoot "WFX-Smart-Chrome-Extension"
-$zipPath = Join-Path $distRoot "WFX-Smart-Chrome-Extension-v1.9.1.zip"
 $userscriptPath = Join-Path $projectRoot "wfx-tampermonkey.user.js"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+if (-not (Test-Path -LiteralPath $userscriptPath -PathType Leaf)) {
+    throw "Missing userscript source: $userscriptPath"
+}
+
+# Read as UTF-8 explicitly. Windows PowerShell 5.1's Get-Content defaults to the
+# system ANSI codepage, which corrupts the Vietnamese (UTF-8, no BOM) text into
+# mojibake ("mở" -> "má»Ÿ"). ReadAllText with UTF8 is correct on both PS 5.1 and 7.
+$manifest = [System.IO.File]::ReadAllText((Join-Path $sourceRoot "manifest.json"), $utf8NoBom) | ConvertFrom-Json
+$userscript = [System.IO.File]::ReadAllText($userscriptPath, $utf8NoBom)
+$versionMatch = [regex]::Match($userscript, '(?m)^// @version\s+([0-9.]+)\s*$')
+if (-not $versionMatch.Success) {
+    throw "Cannot read @version from userscript."
+}
+$userscriptVersion = $versionMatch.Groups[1].Value
+if ($manifest.version -ne $userscriptVersion) {
+    throw "Version mismatch: manifest=$($manifest.version), userscript=$userscriptVersion"
+}
+
+$zipPath = Join-Path $distRoot "WFX-Smart-Chrome-Extension-v$userscriptVersion.zip"
 
 foreach ($target in @($distRoot, $packageRoot, $zipPath)) {
     $fullTarget = [System.IO.Path]::GetFullPath($target)
     if (-not $fullTarget.StartsWith($extensionRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Unsafe build target outside extension root: $fullTarget"
     }
-}
-
-if (-not (Test-Path -LiteralPath $userscriptPath -PathType Leaf)) {
-    throw "Missing userscript source: $userscriptPath"
 }
 
 if (Test-Path -LiteralPath $packageRoot) {
@@ -30,17 +45,6 @@ if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
 New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-
-$manifest = Get-Content -Raw -LiteralPath (Join-Path $sourceRoot "manifest.json") | ConvertFrom-Json
-$userscript = Get-Content -Raw -LiteralPath $userscriptPath
-$versionMatch = [regex]::Match($userscript, '(?m)^// @version\s+([0-9.]+)\s*$')
-if (-not $versionMatch.Success) {
-    throw "Cannot read @version from userscript."
-}
-$userscriptVersion = $versionMatch.Groups[1].Value
-if ($manifest.version -ne $userscriptVersion) {
-    throw "Version mismatch: manifest=$($manifest.version), userscript=$userscriptVersion"
-}
 
 $core = [regex]::Replace(
     $userscript,

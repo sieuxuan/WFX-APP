@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WFX Smart Automation",
   "description": "WFX Catalog automation, quick search, hotkey and login panel without Tampermonkey.",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "minimum_chrome_version": "111",
   "permissions": [
     "storage"
@@ -19,6 +19,10 @@
   },
   "commands": {
     "toggle-panel": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
+      },
       "description": "Mở hoặc đóng WFX Smart panel"
     }
   },
@@ -32,6 +36,7 @@
       ],
       "run_at": "document_start",
       "all_frames": false,
+      "match_about_blank": true,
       "world": "ISOLATED"
     },
     {
@@ -43,6 +48,7 @@
       ],
       "run_at": "document_idle",
       "all_frames": false,
+      "match_about_blank": true,
       "world": "MAIN"
     }
   ]
