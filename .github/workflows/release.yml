@@ -65,7 +65,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} là bản vá giao diện và launcher dành cho người dùng WFX.
+            WFX Smart ${{ env.VERSION }} là bản nâng cấp UI/UX và luồng làm việc dành cho người dùng WFX.
 
             Cách cài:
             1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
@@ -73,6 +73,10 @@ jobs:
             3. Mở **WFX-Panel.exe**.
 
             Điểm chính:
+            - Giao diện hiện đại hơn, Settings tách rõ Tài khoản và Ứng dụng.
+            - Tự hỏi lại thông tin khi thiếu tài khoản hoặc đăng nhập không thành công.
+            - Chuyển nhanh Division WOVEN / KNIT / PSSG và highlight đúng Division hiện tại.
+            - Panel và icon thu gọn nhớ vị trí kéo, tiếp tục đi cùng browser automation.
             - Mở Chrome automation và dùng lại phiên đăng nhập WFX.
             - Catalog hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.
             - Trình cập nhật một nút, tự cài và mở lại ứng dụng.

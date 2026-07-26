@@ -33,6 +33,8 @@ SESSION_OK = frozenset(
         "MULTIPLE_RESULTS",
         "NO_RESULTS",
         "CODE_OPENED",
+        "DIVISION_CHANGED",
+        "DIVISION_ALREADY_ACTIVE",
     }
 )
 SESSION_LOST = frozenset(
@@ -58,6 +60,9 @@ NON_REPORTABLE_FAILURES = frozenset(
         "MODULE_UNKNOWN",
         "ADMIN_ACCESS_DENIED",
         "PASSWORD_REQUIRED",
+        "USER_ID_REQUIRED",
+        "DIVISION_UNKNOWN",
+        "DIVISION_OPTION_NOT_FOUND",
         "HOTKEY_INVALID",
         "JOB_NOT_FOUND",
         "JOB_NOT_RETRYABLE",
@@ -84,6 +89,9 @@ class PanelAPI:
         self._current_run_id: str | None = None
         self._admin_access: bool | None = None
         self._admin_module_ids: set[str] = set()
+        self._current_division: str | None = None
+        self._division_label: str | None = None
+        self._division_name: str | None = None
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -137,6 +145,13 @@ class PanelAPI:
             "admin_mode": bool(preferences["admin_mode"] and allowed),
         }
 
+    def _division_state(self) -> dict:
+        return {
+            "current_division": self._current_division,
+            "division_label": self._division_label,
+            "division_name": self._division_name,
+        }
+
     def _refresh_admin_access(self) -> dict:
         if not hasattr(self._login, "check_module_access"):
             self._admin_access = False
@@ -175,6 +190,9 @@ class PanelAPI:
             "app_version": APP_VERSION,
             "app_version_label": DISPLAY_VERSION,
             "user_id": account["user_id"],
+            "has_credentials": bool(
+                account["user_id"].strip() and account["password"].strip()
+            ),
             "theme": preferences["theme"],
             "close_after_module": preferences["close_after_module"],
             "hotkey": preferences["hotkey"],
@@ -189,6 +207,7 @@ class PanelAPI:
             "pending_reports": telemetry.outbox_count(self._base_dir),
             "update_channel": "stable",
             "module_groups": module_controllers.manifest_groups(),
+            "divisions": list(constants.DIVISIONS.values()),
             "jobs": job_history.list_jobs(self._base_dir, 20),
             "logs": list(self._logs),
             **self.get_status(),
@@ -203,6 +222,7 @@ class PanelAPI:
         return {
             **browser_state,
             **self._session_status(),
+            **self._division_state(),
         }
 
     def _session_status(self) -> dict:
@@ -223,6 +243,14 @@ class PanelAPI:
                 self._last_login_at = time.strftime("%H:%M:%S")
         elif code in SESSION_LOST:
             self._session_active = False
+            self._current_division = None
+            self._division_label = None
+            self._division_name = None
+
+        if result.get("current_division") is not None:
+            self._current_division = str(result["current_division"])
+            self._division_label = str(result.get("division_label") or "")
+            self._division_name = str(result.get("division_name") or "")
 
         if self._result_sink is not None:
             try:
@@ -319,7 +347,11 @@ class PanelAPI:
                 daemon=True,
             ).start()
         self._observe(method_name, result, elapsed)
-        return result
+        return {
+            **result,
+            **self._session_status(),
+            **self._division_state(),
+        }
 
     # -- automation --------------------------------------------------------
     def login(self) -> dict:
@@ -395,6 +427,23 @@ class PanelAPI:
 
         return self._run(
             "open_module", action, {"module_id": module_id}
+        )
+
+    def switch_division(self, division_key: str) -> dict:
+        def action() -> dict:
+            if not hasattr(self._login, "switch_division"):
+                return {
+                    "ok": False,
+                    "code": "DIVISION_CHANGE_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ đổi Division.",
+                }
+            result = self._login.switch_division(division_key, self._log)
+            return self._with_admin_access(result)
+
+        return self._run(
+            "switch_division",
+            action,
+            {"division_key": str(division_key or "").casefold()},
         )
 
     def prepare_catalog(self, category_name: str) -> dict:
@@ -476,7 +525,14 @@ class PanelAPI:
         # chỉ trả user_id) nên luôn trống khi sheet mở lại. Nếu người dùng chỉ
         # sửa User ID hoặc bấm CTA mà không gõ lại mật khẩu, KHÔNG được ghi đè
         # mật khẩu đã lưu bằng chuỗi rỗng — giữ nguyên mật khẩu cũ.
+        user_id = str(user_id or "").strip()
         password = password or ""
+        if not user_id:
+            return {
+                "ok": False,
+                "code": "USER_ID_REQUIRED",
+                "message": "Vui lòng nhập User ID trước khi kết nối.",
+            }
         if not password.strip():
             existing_password = self._account().get("password", "")
             if not existing_password.strip():
@@ -488,7 +544,13 @@ class PanelAPI:
             password = existing_password
         self._prefs.save_account(user_id, password, base_dir=self._base_dir)
         self._log("[SETTINGS] Đã lưu tài khoản")
-        return {"ok": True, "code": "ACCOUNT_SAVED", "message": "Đã lưu tài khoản", "user_id": user_id}
+        return {
+            "ok": True,
+            "code": "ACCOUNT_SAVED",
+            "message": "Đã lưu tài khoản.",
+            "user_id": user_id,
+            "has_credentials": True,
+        }
 
     def set_theme(self, theme: str) -> dict:
         saved = self._prefs.save_prefs(base_dir=self._base_dir, theme=theme)

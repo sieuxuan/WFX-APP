@@ -188,6 +188,50 @@ def test_dock_targets_only_automation_browser_pid(monkeypatch):
     ]
 
 
+def test_full_panel_keeps_manual_drag_position_and_saves_offset(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    browser_rect = (100, 50, 1500, 900)
+    user_rect = (460, 150, 900, 770)
+    app._visible = True
+    app._panel_offset = None
+    app._last_panel_browser_rect = browser_rect
+    app._last_panel_window_rect = (1048, 122, 1488, 742)
+    moved = []
+    saved = []
+
+    class FakeWindow:
+        def move(self, x, y):
+            moved.append((x, y))
+
+    class FakeLogin:
+        @staticmethod
+        def automation_browser_pid():
+            return 922200
+
+    app.window = FakeWindow()
+    app.api._login = FakeLogin()
+    monkeypatch.setattr(
+        module,
+        "_window_rect_for_process",
+        lambda pid: browser_rect if pid == 922200 else user_rect,
+    )
+    monkeypatch.setattr(
+        module, "_set_process_window_bounds", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        module.prefs,
+        "save_prefs",
+        lambda **kwargs: saved.append(kwargs) or {},
+    )
+
+    assert app._dock_to_browser() is True
+    assert moved == []
+    assert app._panel_offset == (360, 100)
+    assert saved == [{"panel_offset_x": 360, "panel_offset_y": 100}]
+
+
 def test_compact_launcher_docks_inside_browser_bottom_right(monkeypatch):
     import wfx_panel.panel_app as module
 
@@ -447,6 +491,7 @@ def test_collapse_and_expand_resize_the_same_window(monkeypatch):
         "_bring_process_window_to_front",
         lambda **_kwargs: True,
     )
+    monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
 
     collapsed = app.collapse_to_browser_icon()
     assert collapsed["code"] == "PANEL_COMPACT"

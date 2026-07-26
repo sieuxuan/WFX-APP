@@ -40,6 +40,9 @@
   let adminAccess = false;
   let adminMode = false;
   let adminModuleIds = new Set();
+  let sessionActive = null;
+  let currentDivision = null;
+  let hasCredentials = false;
 
   function allModules() {
     return visibleModuleGroups().flatMap((group) =>
@@ -78,6 +81,11 @@
       if (element.closest(".settings-overlay")) return;
       element.disabled = value;
     });
+    if (!value) {
+      $$(".division-button").forEach((button) => {
+        button.disabled = sessionActive !== true;
+      });
+    }
   }
   window.wfxSetBusy = setBusy;
 
@@ -110,9 +118,47 @@
   window.wfxSetChromeStatus = (alive) => setBrowserStatus(alive);
   window.wfxSetBrowserStatus = setBrowserStatus;
 
+  function setDivisionState(key, label, name) {
+    currentDivision = key || null;
+    $$(".division-button").forEach((button) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(Boolean(currentDivision) && button.dataset.division === currentDivision)
+      );
+    });
+    const current = $(".division-current");
+    if (current) {
+      current.textContent = label
+        ? `${label}${name ? ` · ${name}` : ""}`
+        : (sessionActive ? "Chưa nhận diện được Division" : "Đăng nhập để nhận diện");
+      current.title = name || "";
+    }
+  }
+  window.wfxSetDivisionState = setDivisionState;
+
   function setSessionStatus(active) {
+    sessionActive = active == null ? null : Boolean(active);
     const node = $(".health-session");
     if (node) node.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
+    const divisionLive = $(".division-live");
+    if (divisionLive) divisionLive.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
+    $$(".division-button").forEach((button) => {
+      button.disabled = active !== true;
+    });
+    const accountIcon = $(".account-status-icon");
+    const accountLabel = $(".account-status-label");
+    if (accountIcon) accountIcon.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
+    if (accountLabel) {
+      accountLabel.textContent = active == null
+        ? "Chưa kiểm tra"
+        : (active ? "Đã đăng nhập" : "Chưa đăng nhập");
+    }
+    const ready = $(".workspace-ready");
+    if (ready) {
+      ready.dataset.state = active === true ? "ok" : "setup";
+      ready.textContent = active === true ? "ONLINE" : "SETUP";
+    }
+    if (active !== true) setDivisionState(null, null, null);
   }
   window.wfxSetSessionStatus = setSessionStatus;
 
@@ -154,6 +200,56 @@
 
   function setAccount(userId) { $(".user-input").value = userId || ""; }
   window.wfxSetAccount = setAccount;
+
+  function selectSettingsTab(name) {
+    const selected = name === "app" ? "app" : "account";
+    $$(".settings-tab").forEach((button) =>
+      button.setAttribute("aria-pressed", String(button.dataset.settingsTab === selected)));
+    $$("[data-settings-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.settingsPanel !== selected;
+    });
+  }
+
+  function openSettings(tabName = "account") {
+    selectSettingsTab(tabName);
+    const overlay = settingsOverlay();
+    overlay.classList.add("settings-open");
+    overlay.setAttribute("aria-hidden", "false");
+  }
+
+  function closeSettings() {
+    const overlay = settingsOverlay();
+    overlay.classList.remove("settings-open");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function showCredentialPrompt(code, message) {
+    const prompt = $(".auth-prompt");
+    const invalid = ["LOGIN_FAILED", "LOGIN_TIMEOUT"].includes(code);
+    prompt.hidden = false;
+    prompt.dataset.tone = invalid ? "error" : "warning";
+    $(".auth-prompt-title").textContent = invalid
+      ? "Đăng nhập chưa thành công"
+      : "Cần thông tin đăng nhập";
+    $(".auth-prompt-message").textContent = message || (
+      invalid
+        ? "Kiểm tra User ID và nhập lại mật khẩu WFX."
+        : "Nhập User ID và Password để WFX Smart bắt đầu làm việc."
+    );
+    $(".password-input").value = "";
+    settingsOverlay().classList.add("credentials-required");
+    openSettings("account");
+    window.setTimeout(() => {
+      const target = $(".user-input").value.trim() ? $(".password-input") : $(".user-input");
+      target.focus();
+    }, 0);
+  }
+  window.wfxRequireCredentials = showCredentialPrompt;
+
+  function clearCredentialPrompt() {
+    $(".auth-prompt").hidden = true;
+    settingsOverlay().classList.remove("credentials-required");
+  }
 
   function setStyleStatus(style) {
     const node = $(".style-status");
@@ -240,6 +336,16 @@
     if (result.session_active !== undefined) {
       setSessionStatus(result.session_active, result.last_login_at);
     }
+    if (result.current_division !== undefined) {
+      setDivisionState(
+        result.current_division,
+        result.division_label,
+        result.division_name
+      );
+    }
+    if (result.has_credentials !== undefined) {
+      hasCredentials = result.has_credentials === true;
+    }
     if (result.style_status) setStyleStatus(result.style_status);
     else if (["NO_RESULTS", "MULTIPLE_RESULTS"].includes(result.code)) setStyleStatus(null);
     if (result.admin_access !== undefined) {
@@ -251,6 +357,12 @@
     }
     if (result.jobs) renderJobs(result.jobs);
     if (result.run_id) refreshJobs();
+    if (["MISSING_CREDENTIALS", "PASSWORD_REQUIRED", "USER_ID_REQUIRED",
+         "LOGIN_FAILED", "LOGIN_TIMEOUT", "NOT_LOGGED_IN"].includes(result.code)) {
+      showCredentialPrompt(result.code, result.message);
+    } else if (["LOGGED_IN", "SESSION_REUSED", "SESSION_ACTIVE"].includes(result.code)) {
+      clearCredentialPrompt();
+    }
   }
   window.wfxHandleBackendResult = handleResult;
 
@@ -424,7 +536,7 @@
       compactHoldTimer = window.setTimeout(() => {
         compactHoldTriggered = true;
         api()?.begin_compact_drag?.();
-      }, 260);
+      }, 180);
     });
     compactLauncher.addEventListener("mouseup", () => {
       if (compactHoldTimer !== null) window.clearTimeout(compactHoldTimer);
@@ -452,12 +564,20 @@
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && $(".module-overlay").classList.contains("module-open")) closeModuleModal();
       if (event.key === "Escape" && feedbackOverlay().classList.contains("feedback-open")) feedbackOverlay().classList.remove("feedback-open");
-      if (event.key === "Escape" && settingsOverlay().classList.contains("settings-open")) settingsOverlay().classList.remove("settings-open");
+      if (event.key === "Escape" && settingsOverlay().classList.contains("settings-open")) closeSettings();
       if (event.key === "Escape" && $(".log-overlay").classList.contains("log-open")) $(".log-overlay").classList.remove("log-open");
     });
 
-    $(".settings-button").addEventListener("click", () => settingsOverlay().classList.add("settings-open"));
-    $(".settings-close-button").addEventListener("click", () => settingsOverlay().classList.remove("settings-open"));
+    $(".settings-button").addEventListener("click", () => openSettings("account"));
+    $(".settings-close-button").addEventListener("click", closeSettings);
+    settingsOverlay().addEventListener("mousedown", (event) => {
+      if (
+        event.target === event.currentTarget
+        && !settingsOverlay().classList.contains("credentials-required")
+      ) closeSettings();
+    });
+    $$(".settings-tab").forEach((button) =>
+      button.addEventListener("click", () => selectSettingsTab(button.dataset.settingsTab)));
     $(".feedback-button").addEventListener("click", () => {
       feedbackOverlay().classList.add("feedback-open");
       $(".feedback-status").textContent = "";
@@ -506,13 +626,52 @@
       input.type = show ? "text" : "password";
       $(".toggle-password").textContent = show ? "Ẩn" : "Hiện";
     });
-    $(".save-button").addEventListener("click", async () => {
-      const saved = await call("save_account", $(".user-input").value.trim(), $(".password-input").value);
-      if (saved && saved.ok) {
-        settingsOverlay().classList.remove("settings-open");
-        call("login");
+    $(".save-button").addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      const formStatus = $(".account-form-status");
+      button.disabled = true;
+      formStatus.dataset.tone = "neutral";
+      formStatus.textContent = "Đang lưu an toàn trên máy...";
+      const saved = await callQuiet(
+        "save_account",
+        $(".user-input").value.trim(),
+        $(".password-input").value
+      );
+      if (!saved || !saved.ok) {
+        if (saved) handleResult(saved);
+        formStatus.dataset.tone = "error";
+        formStatus.textContent = saved?.message || "Chưa thể lưu tài khoản.";
+        button.disabled = false;
+        return;
       }
+      handleResult(saved);
+      formStatus.textContent = "Đang kiểm tra đăng nhập WFX...";
+      const loggedIn = await callQuiet("login");
+      if (loggedIn) handleResult(loggedIn);
+      if (loggedIn && loggedIn.ok) {
+        formStatus.dataset.tone = "success";
+        formStatus.textContent = "Đã đăng nhập thành công.";
+        $(".password-input").value = "";
+        window.setTimeout(closeSettings, 450);
+      } else {
+        formStatus.dataset.tone = "error";
+        formStatus.textContent = loggedIn?.message || "Đăng nhập chưa thành công.";
+      }
+      button.disabled = false;
     });
+    $$(".division-button").forEach((button) =>
+      button.addEventListener("click", async () => {
+        const key = button.dataset.division;
+        if (!key || key === currentDivision) return;
+        button.classList.add("is-switching");
+        const result = await call("switch_division", key);
+        button.classList.remove("is-switching");
+        if (result && result.ok) setDivisionState(
+          result.current_division,
+          result.division_label,
+          result.division_name
+        );
+      }));
     $(".close-module-input").addEventListener("change", (event) => {
       closeAfterModule = event.target.checked;
       api()?.set_close_after_module?.(closeAfterModule);
@@ -646,12 +805,14 @@
     if (!state) return;
     if (state.app_version_label) {
       $(".app-version").textContent = `Phiên bản ${state.app_version_label}`;
+      $(".settings-version-badge").textContent = `v${state.app_version_label}`;
     }
     if (Array.isArray(state.module_groups) && state.module_groups.length) {
       MODULE_GROUPS = state.module_groups;
       buildModules();
     }
     setAccount(state.user_id);
+    hasCredentials = state.has_credentials === true;
     applyTheme(state.theme);
     closeAfterModule = state.close_after_module !== false;
     $(".close-module-input").checked = closeAfterModule;
@@ -672,8 +833,22 @@
     );
     setBrowserStatus(state.chrome_alive, state.browser_available, state.browser_name);
     setSessionStatus(state.session_active, state.last_login_at);
+    setDivisionState(
+      state.current_division,
+      state.division_label,
+      state.division_name
+    );
     renderJobs(state.jobs || []);
     (state.logs || []).forEach(pushLog);
+    if (!hasCredentials) {
+      window.setTimeout(
+        () => showCredentialPrompt(
+          "MISSING_CREDENTIALS",
+          "Đây là lần đầu sử dụng hoặc chưa có tài khoản đã lưu. Nhập thông tin WFX để tiếp tục."
+        ),
+        0
+      );
+    }
   };
 
   function init() {

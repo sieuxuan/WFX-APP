@@ -106,17 +106,45 @@ def test_settings_has_new_toggles_and_enabled_hotkey_button():
     assert "disabled" not in hotkey_tag
 
 
-def test_settings_save_action_is_at_the_top_and_defaults_are_safe():
+def test_settings_account_flow_and_defaults_are_safe():
     html = (UI / "index.html").read_text(encoding="utf-8")
     save_index = html.index('class="save-button settings-save-button"')
     account_index = html.index('class="form-grid"')
-    assert save_index < account_index
+    # CTA nằm sau hai field để luồng đọc/nhập tự nhiên từ trên xuống.
+    assert save_index > account_index
     start_hidden_tag = html[html.index('class="start-hidden-input"') :]
     start_hidden_tag = start_hidden_tag[: start_hidden_tag.index(">")]
     admin_tag = html[html.index('class="admin-mode-input"') :]
     admin_tag = admin_tag[: admin_tag.index(">")]
     assert "checked" not in start_hidden_tag
     assert "checked" not in admin_tag
+
+
+def test_division_switcher_precedes_operation_and_has_three_choices():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    division_index = html.index('class="division-card"')
+    operation_index = html.index('class="module-list"')
+    assert division_index < operation_index
+    for key, label in [
+        ("woven", "WOVEN"),
+        ("knit", "KNIT"),
+        ("pssg", "PSSG"),
+    ]:
+        assert f'data-division="{key}"' in html
+        assert f"<span>{label}</span>" in html
+
+
+def test_settings_are_split_into_account_and_app_tabs_with_auth_prompt():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    for hook in [
+        'data-settings-tab="account"',
+        'data-settings-tab="app"',
+        'data-settings-panel="account"',
+        'data-settings-panel="app"',
+        'class="auth-prompt"',
+        'class="account-form-status"',
+    ]:
+        assert hook in html
 
 
 def test_catalog_has_conditional_chrome_button_and_style_status():

@@ -1,4 +1,4 @@
-## WFX Smart 1.0.3 (Python, thay extension)
+## WFX Smart 1.0.4 (Python, thay extension)
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -24,6 +24,13 @@ Chạy dev:
   bằng tài khoản đã lưu.
 - Settings có `Luôn trên cùng` và `Bám theo browser automation`. Chế độ bám
   lấy PID đang listen đúng cổng CDP, nên không đi theo cửa sổ Chrome cá nhân.
+- Panel và icon thu gọn đều có thể kéo tới vị trí thuận tiện; vị trí tương đối
+  với browser automation được nhớ lại và không bị vòng lặp bám cửa sổ kéo ngược.
+- Ba nút Division `WOVEN`, `KNIT`, `PSSG` nằm trước Operation. App đọc
+  `#CompanyName` của WFX để highlight Division thật và chỉ báo thành công sau
+  khi WFX xác nhận đã chuyển.
+- Khi chưa có tài khoản hoặc WFX từ chối đăng nhập, tab Tài khoản tự mở để
+  người dùng nhập lại; Settings được chia thành Tài khoản và Ứng dụng.
 - App tự kiểm tra GitHub Release Stable mỗi 4 giờ. Khi có bản mới, người dùng
   chỉ cần bấm `Cập nhật ngay`; app tải gói đã xác minh SHA-256, đóng, cài và
   tự mở lại. Nếu cài lỗi, app tự trở về bản trước. Settings vẫn được giữ nguyên.
@@ -36,7 +43,7 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Panel-v1.0.3-win64.zip` kèm file checksum `.sha256`.
+Gói phát hành: `WFX-Panel-v1.0.4-win64.zip` kèm file checksum `.sha256`.
 
 - Windows 11 có sẵn WebView2 trong phần lớn bản cài.
 - Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài

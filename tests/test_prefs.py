@@ -83,6 +83,8 @@ def test_new_pref_defaults(tmp_path):
     assert loaded["last_update_notice"] == ""
     assert loaded["compact_offset_x"] is None
     assert loaded["compact_offset_y"] is None
+    assert loaded["panel_offset_x"] is None
+    assert loaded["panel_offset_y"] is None
 
 
 def test_admin_mode_round_trip(tmp_path):
@@ -99,6 +101,17 @@ def test_compact_icon_position_round_trip(tmp_path):
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["compact_offset_x"] == 640
     assert loaded["compact_offset_y"] == 420
+
+
+def test_panel_position_round_trip(tmp_path):
+    prefs.save_prefs(
+        base_dir=tmp_path,
+        panel_offset_x=360,
+        panel_offset_y=96,
+    )
+    loaded = prefs.load_prefs(base_dir=tmp_path)
+    assert loaded["panel_offset_x"] == 360
+    assert loaded["panel_offset_y"] == 96
 
 
 def test_save_account_preserves_hidden_webhook_setting(tmp_path):

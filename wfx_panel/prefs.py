@@ -149,12 +149,14 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         stored_hotkey = hotkey_spec.DEFAULT
     else:
         stored_hotkey = hotkey_spec.normalize(stored_hotkey)
-    compact_offset_x = data.get("compact_offset_x")
-    compact_offset_y = data.get("compact_offset_y")
-    if isinstance(compact_offset_x, bool) or not isinstance(compact_offset_x, int):
-        compact_offset_x = None
-    if isinstance(compact_offset_y, bool) or not isinstance(compact_offset_y, int):
-        compact_offset_y = None
+    def optional_int(key: str) -> int | None:
+        value = data.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+    compact_offset_x = optional_int("compact_offset_x")
+    compact_offset_y = optional_int("compact_offset_y")
+    panel_offset_x = optional_int("panel_offset_x")
+    panel_offset_y = optional_int("panel_offset_y")
     return {
         "theme": "dark" if data.get("theme") == "dark" else "light",
         "close_after_module": data.get("close_after_module", True) is not False,
@@ -174,6 +176,8 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "last_update_notice": str(data.get("last_update_notice") or ""),
         "compact_offset_x": compact_offset_x,
         "compact_offset_y": compact_offset_y,
+        "panel_offset_x": panel_offset_x,
+        "panel_offset_y": panel_offset_y,
     }
 
 
@@ -194,6 +198,8 @@ def save_prefs(
     last_update_notice: str | None = None,
     compact_offset_x: int | None = None,
     compact_offset_y: int | None = None,
+    panel_offset_x: int | None = None,
+    panel_offset_y: int | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     current = load_prefs(base_dir)
@@ -226,6 +232,10 @@ def save_prefs(
         current["compact_offset_x"] = int(compact_offset_x)
     if compact_offset_y is not None:
         current["compact_offset_y"] = int(compact_offset_y)
+    if panel_offset_x is not None:
+        current["panel_offset_x"] = int(panel_offset_x)
+    if panel_offset_y is not None:
+        current["panel_offset_y"] = int(panel_offset_y)
     # Nhận tham số cũ để không phá caller, nhưng nhãn luôn được dẫn xuất từ
     # hotkey thật và không được ghi riêng xuống prefs.json.
     _ = hotkey_label
