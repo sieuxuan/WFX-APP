@@ -1,79 +1,90 @@
-"""Updater Git có khóa commit, stable channel và rollback.
+"""Cập nhật WFX Smart từ GitHub Release chính thức.
 
-Không dùng GitHub Release và tuyệt đối không push. App fetch remote, chốt SHA
-được phép cài, rồi helper độc lập chờ app thoát, fast-forward/build/restart.
-Settings nằm ở %LOCALAPPDATA%/WFX-Panel nên không bị thay bởi checkout/build.
+Ứng dụng chỉ dùng bản phát hành Stable, tải gói Windows kèm checksum SHA-256,
+đóng app, thay file và tự mở lại. Thiết lập người dùng nằm ngoài thư mục cài
+đặt nên không bị ảnh hưởng.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import shutil
+import re
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
-REMOTE = "origin"
-STABLE_BRANCH = os.getenv("WFX_UPDATE_STABLE_BRANCH", "main")
-GIT_TIMEOUT_SECONDS = 60
+from wfx_panel.version import APP_VERSION
+
+REPOSITORY = "sieuxuan/WFX-APP"
+LATEST_RELEASE_API = (
+    f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+)
+REQUEST_TIMEOUT_SECONDS = 20
+ASSET_PATTERN = re.compile(
+    r"^WFX-Panel-v(?P<version>\d+\.\d+\.\d+)-win64\.zip$",
+    re.IGNORECASE,
+)
 
 
-def _git(root: Path, *args: str, timeout: int = GIT_TIMEOUT_SECONDS) -> str:
-    completed = subprocess.run(
-        ["git", "-C", str(root), *args],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-        check=False,
-        creationflags=(
-            subprocess.CREATE_NO_WINDOW
-            if os.name == "nt" and hasattr(subprocess, "CREATE_NO_WINDOW")
-            else 0
-        ),
+def _version_tuple(value: str) -> tuple[int, int, int]:
+    match = re.fullmatch(r"v?(\d+)\.(\d+)(?:\.(\d+))?", str(value).strip())
+    if not match:
+        raise ValueError("Phiên bản không hợp lệ.")
+    return tuple(int(part or 0) for part in match.groups())
+
+
+def _load_latest_release() -> dict[str, Any]:
+    request = Request(
+        LATEST_RELEASE_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"WFX-Smart/{APP_VERSION}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
     )
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip().splitlines()
-        raise RuntimeError(detail[0] if detail else "Lệnh Git thất bại.")
-    return completed.stdout.strip()
+    with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Phản hồi bản phát hành không hợp lệ.")
+    return payload
 
 
-def _git_optional(root: Path, *args: str) -> str:
-    try:
-        return _git(root, *args)
-    except RuntimeError:
-        return ""
+def _safe_release_url(value: str) -> str:
+    url = str(value or "").strip()
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in {"github.com", "objects.githubusercontent.com"}
+    ):
+        raise ValueError("Đường dẫn tải bản cập nhật không hợp lệ.")
+    return url
 
 
-def find_repo_root(start: Path | None = None) -> Path | None:
-    candidates = []
-    if start is not None:
-        candidates.append(Path(start).resolve())
-    candidates.extend(
-        [
-            Path.cwd().resolve(),
-            Path(sys.executable).resolve().parent,
-            Path(__file__).resolve().parent,
-        ]
-    )
-    seen: set[Path] = set()
-    for candidate in candidates:
-        for folder in (candidate, *candidate.parents):
-            if folder in seen:
-                continue
-            seen.add(folder)
-            if (folder / ".git").exists():
-                return folder
-    return None
+def _release_assets(release: dict[str, Any]) -> tuple[str, str, str]:
+    tag = str(release.get("tag_name") or "").strip()
+    version = tag.removeprefix("v")
+    _version_tuple(version)
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise ValueError("Bản phát hành chưa có gói cài đặt.")
 
-
-def _target_branch(channel: str, current_branch: str) -> str:
-    return current_branch if channel == "current" else STABLE_BRANCH
+    package_name = f"WFX-Panel-v{version}-win64.zip"
+    checksum_name = package_name + ".sha256"
+    by_name = {
+        str(asset.get("name") or ""): str(
+            asset.get("browser_download_url") or ""
+        )
+        for asset in assets
+        if isinstance(asset, dict)
+    }
+    package_url = _safe_release_url(by_name.get(package_name, ""))
+    checksum_url = _safe_release_url(by_name.get(checksum_name, ""))
+    return version, package_url, checksum_url
 
 
 def check_for_updates(
@@ -81,106 +92,30 @@ def check_for_updates(
     *,
     channel: str = "stable",
 ) -> dict[str, Any]:
-    root = find_repo_root(root)
-    channel = "current" if channel == "current" else "stable"
-    if root is None or shutil.which("git") is None:
-        return {
-            "ok": False,
-            "code": "GIT_NOT_AVAILABLE",
-            "message": "Không tìm thấy Git repository để cập nhật.",
-            "can_update": False,
-            "channel": channel,
-        }
+    """Kiểm tra GitHub Release Stable mới nhất.
+
+    ``root`` và ``channel`` được giữ để tương thích bridge cũ; updater phát
+    hành không còn phụ thuộc Git repository trên máy người dùng.
+    """
+    _ = root, channel
     try:
-        current_branch = _git(root, "branch", "--show-current")
-        if not current_branch:
-            return {
-                "ok": False,
-                "code": "GIT_DETACHED_HEAD",
-                "message": "Repository đang ở detached HEAD; không thể tự cập nhật.",
-                "can_update": False,
-                "channel": channel,
-            }
-        target_branch = _target_branch(channel, current_branch)
-        dirty = bool(_git(root, "status", "--porcelain"))
-        previous_sha = _git(root, "rev-parse", "HEAD")
-        _git(root, "fetch", "--quiet", REMOTE, target_branch)
-        remote_ref = f"refs/remotes/{REMOTE}/{target_branch}"
-        expected_sha = _git(root, "rev-parse", remote_ref)
-        _git(root, "cat-file", "-e", f"{expected_sha}^{{commit}}")
-
-        require_signed = os.getenv("WFX_REQUIRE_SIGNED_UPDATES") == "1"
-        signature_verified = False
-        if require_signed:
-            _git(root, "verify-commit", expected_sha)
-            signature_verified = True
-
-        configured_remote = os.getenv("WFX_UPDATE_REMOTE_URL", "").strip()
-        remote_url = _git(root, "remote", "get-url", REMOTE)
-        if configured_remote and remote_url.casefold() != configured_remote.casefold():
-            return {
-                "ok": False,
-                "code": "UPDATE_REMOTE_MISMATCH",
-                "message": "Remote Git không khớp nguồn cập nhật đã cấu hình.",
-                "can_update": False,
-                "channel": channel,
-            }
-
-        local_target_sha = _git_optional(
-            root, "rev-parse", f"refs/heads/{target_branch}"
-        )
-        already_target = (
-            current_branch == target_branch and previous_sha == expected_sha
-        )
-        behind = 0
-        if local_target_sha:
-            behind = int(
-                _git(
-                    root,
-                    "rev-list",
-                    "--count",
-                    f"{local_target_sha}..{expected_sha}",
-                )
-                or 0
-            )
-        elif not already_target:
-            behind = 1
-
+        release = _load_latest_release()
+        version, package_url, checksum_url = _release_assets(release)
         common = {
-            "channel": channel,
-            "branch": target_branch,
-            "target_branch": target_branch,
-            "previous_branch": current_branch,
-            "previous_sha": previous_sha,
-            "expected_sha": expected_sha,
-            "version": expected_sha[:10],
-            "signature_verified": signature_verified,
-            "remote_url": remote_url,
-            "dirty": dirty,
-            "repo_root": str(root),
-            "behind": behind,
+            "channel": "stable",
+            "version": version,
+            "tag": str(release.get("tag_name") or f"v{version}"),
+            "notice_id": str(release.get("id") or version),
+            "release_url": str(release.get("html_url") or ""),
+            "package_url": package_url,
+            "checksum_url": checksum_url,
         }
-        if already_target:
+        if _version_tuple(version) <= _version_tuple(APP_VERSION):
             return {
                 **common,
                 "ok": True,
                 "code": "UP_TO_DATE",
-                "message": (
-                    f"Đang dùng bản Stable mới nhất ({expected_sha[:10]})."
-                    if channel == "stable"
-                    else f"Nhánh hiện tại đã mới nhất ({expected_sha[:10]})."
-                ),
-                "can_update": False,
-            }
-        if dirty:
-            return {
-                **common,
-                "ok": False,
-                "code": "WORKTREE_DIRTY",
-                "message": (
-                    "Có bản cập nhật nhưng repository đang có thay đổi chưa "
-                    "commit; app sẽ không ghi đè."
-                ),
+                "message": "Bạn đang dùng phiên bản mới nhất.",
                 "can_update": False,
             }
         return {
@@ -188,19 +123,22 @@ def check_for_updates(
             "ok": True,
             "code": "UPDATE_AVAILABLE",
             "message": (
-                f"Có bản Stable mới {expected_sha[:10]}."
-                if channel == "stable"
-                else f"Có bản mới {expected_sha[:10]} trên {target_branch}."
+                f"Phiên bản {version} đã sẵn sàng. "
+                "Bấm “Cập nhật ngay”; ứng dụng sẽ tự mở lại sau khi hoàn tất."
             ),
             "can_update": True,
         }
-    except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
         return {
             "ok": False,
-            "code": "GIT_CHECK_FAILED",
-            "message": f"Không kiểm tra được bản mới: {error}",
+            "code": "UPDATE_CHECK_FAILED",
+            "message": (
+                "Chưa thể kiểm tra bản cập nhật. "
+                "Ứng dụng sẽ tự thử lại sau."
+            ),
             "can_update": False,
-            "channel": channel,
+            "channel": "stable",
+            "version": APP_VERSION,
         }
 
 
@@ -235,109 +173,88 @@ def schedule_update(
     current_pid: int | None = None,
     executable: Path | None = None,
 ) -> Path:
-    """Tạo helper cập nhật; caller thoát app sau khi helper khởi chạy."""
+    """Tạo helper độc lập để thay bản app sau khi process hiện tại thoát."""
     if not state.get("can_update"):
-        raise ValueError("Không có bản cập nhật hợp lệ để cài.")
+        raise ValueError("Không có bản cập nhật để cài.")
 
-    root = Path(str(state["repo_root"])).resolve()
-    if not (root / ".git").exists():
-        raise ValueError("Repository cập nhật không hợp lệ.")
-    target_branch = str(state["target_branch"])
-    previous_branch = str(state["previous_branch"])
-    previous_sha = str(state["previous_sha"])
-    expected_sha = str(state["expected_sha"])
-    for sha in (previous_sha, expected_sha):
-        if len(sha) != 40 or any(ch not in "0123456789abcdefABCDEF" for ch in sha):
-            raise ValueError("Commit hash cập nhật không hợp lệ.")
-
-    build_script = root / "build-panel.ps1"
-    target_exe = (
-        Path(executable).resolve()
-        if executable is not None
-        else root / "dist" / "WFX-Panel" / "WFX-Panel.exe"
-    )
-    if not build_script.is_file():
-        raise FileNotFoundError("Không tìm thấy build-panel.ps1.")
-
+    version = str(state.get("version") or "").strip()
+    _version_tuple(version)
+    package_url = _safe_release_url(str(state.get("package_url") or ""))
+    checksum_url = _safe_release_url(str(state.get("checksum_url") or ""))
+    target_exe = Path(executable or os.sys.executable).resolve()
+    install_dir = target_exe.parent
     pid = int(current_pid or os.getpid())
+
     data_dir = _data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     log_path = data_dir / "update.log"
     result_path = data_dir / "update-result.json"
     helper = Path(tempfile.gettempdir()) / f"wfx-panel-update-{pid}.ps1"
     content = f"""$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $updateLog = {_ps_quote(log_path)}
 $resultPath = {_ps_quote(result_path)}
-$root = {_ps_quote(root)}
-$targetBranch = {_ps_quote(target_branch)}
-$previousBranch = {_ps_quote(previous_branch)}
-$previousSha = {_ps_quote(previous_sha)}
-$expectedSha = {_ps_quote(expected_sha)}
+$packageUrl = {_ps_quote(package_url)}
+$checksumUrl = {_ps_quote(checksum_url)}
+$version = {_ps_quote(version)}
 $targetExe = {_ps_quote(target_exe)}
-$buildScript = {_ps_quote(build_script)}
+$installDir = {_ps_quote(install_dir)}
+$workDir = Join-Path $env:TEMP 'wfx-panel-update-{pid}'
+$zipPath = Join-Path $workDir 'WFX-Panel.zip'
+$checksumPath = Join-Path $workDir 'WFX-Panel.zip.sha256'
+$expandedDir = Join-Path $workDir 'expanded'
+$backupDir = "$installDir.backup-{pid}"
 function Write-UpdateResult([bool]$ok, [string]$code, [string]$message) {{
-  @{{ok=$ok; code=$code; message=$message; version=$expectedSha.Substring(0,10)}} |
+  @{{ok=$ok; code=$code; message=$message; version=$version}} |
     ConvertTo-Json | Set-Content -LiteralPath $resultPath -Encoding UTF8
 }}
 try {{
   Wait-Process -Id {pid} -ErrorAction SilentlyContinue
-  Set-Location -LiteralPath $root
-  $currentBranch = (& git branch --show-current).Trim()
-  $currentSha = (& git rev-parse HEAD).Trim()
-  if ($currentBranch -ne $previousBranch -or $currentSha -ne $previousSha) {{
-    throw 'Repository changed after update approval.'
+  Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Path $expandedDir -Force | Out-Null
+  Invoke-WebRequest -Uri $packageUrl -OutFile $zipPath -UseBasicParsing
+  Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumPath -UseBasicParsing
+  $expectedHash = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\\s+')[0]
+  if ($expectedHash -notmatch '^[A-Fa-f0-9]{{64}}$') {{
+    throw 'Invalid checksum file.'
   }}
-  if ((& git status --porcelain)) {{
-    throw 'Working tree is no longer clean.'
+  $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+  if ($actualHash -ne $expectedHash) {{
+    throw 'Downloaded package checksum mismatch.'
   }}
-  & git fetch --quiet {REMOTE} $targetBranch *>> $updateLog
-  if ($LASTEXITCODE -ne 0) {{ throw 'Git fetch failed.' }}
-  $actualSha = (& git rev-parse "refs/remotes/{REMOTE}/$targetBranch").Trim()
-  if ($LASTEXITCODE -ne 0) {{ throw 'Cannot resolve remote commit.' }}
-  if ($actualSha -ne $expectedSha) {{
-    throw 'Remote commit changed; update cancelled. Check again in the app.'
-  }}
-  & git cat-file -e "$expectedSha^{{commit}}"
-  if ($LASTEXITCODE -ne 0) {{ throw 'Approved commit object is missing.' }}
-  & git show-ref --verify --quiet "refs/heads/$targetBranch"
-  if ($LASTEXITCODE -eq 0) {{
-    & git switch $targetBranch *>> $updateLog
-    if ($LASTEXITCODE -ne 0) {{ throw 'Cannot switch update branch.' }}
-  }} else {{
-    & git switch -c $targetBranch --track "{REMOTE}/$targetBranch" *>> $updateLog
-    if ($LASTEXITCODE -ne 0) {{ throw 'Cannot create update branch.' }}
-  }}
-  & git pull --ff-only {REMOTE} $targetBranch *>> $updateLog
-  if ($LASTEXITCODE -ne 0) {{ throw 'Fast-forward pull failed.' }}
-  if ((& git rev-parse HEAD).Trim() -ne $expectedSha) {{
-    throw 'Installed commit does not match approved hash.'
-  }}
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $buildScript *>> $updateLog
-  if ($LASTEXITCODE -ne 0) {{ throw 'New version build failed.' }}
+  Expand-Archive -LiteralPath $zipPath -DestinationPath $expandedDir -Force
+  $newExe = Get-ChildItem -LiteralPath $expandedDir -Filter 'WFX-Panel.exe' -Recurse |
+    Select-Object -First 1
+  if (-not $newExe) {{ throw 'WFX-Panel.exe is missing from the update package.' }}
+  $newRoot = $newExe.Directory.FullName
+  Copy-Item -LiteralPath $installDir -Destination $backupDir -Recurse -Force
+  Remove-Item -LiteralPath $installDir -Recurse -Force
+  New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+  Copy-Item -Path (Join-Path $newRoot '*') -Destination $installDir -Recurse -Force
   if (-not (Test-Path -LiteralPath $targetExe)) {{
-    throw 'Build finished without WFX-Panel.exe.'
+    throw 'Updated application could not be installed.'
   }}
-  Write-UpdateResult $true 'UPDATE_INSTALLED' "Đã cập nhật lên $($expectedSha.Substring(0,10)). Thiết lập cũ được giữ nguyên."
+  Write-UpdateResult $true 'UPDATE_INSTALLED' "Đã cập nhật lên phiên bản $version. Cài đặt cũ vẫn được giữ nguyên."
   Start-Process -FilePath $targetExe
+  Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
 }} catch {{
   $_ | Out-String | Add-Content -LiteralPath $updateLog
   try {{
-    Set-Location -LiteralPath $root
-    & git switch $previousBranch *>> $updateLog
-    if ($LASTEXITCODE -ne 0) {{ throw 'Cannot restore previous branch.' }}
-    & git reset --hard $previousSha *>> $updateLog
-    if ($LASTEXITCODE -ne 0) {{ throw 'Cannot restore previous commit.' }}
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $buildScript *>> $updateLog
-    if ($LASTEXITCODE -ne 0) {{ throw 'Previous version rebuild failed.' }}
-    Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật lỗi; app đã rollback về bản trước. Xem update.log để biết chi tiết.'
+    if (Test-Path -LiteralPath $backupDir) {{
+      Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+      Move-Item -LiteralPath $backupDir -Destination $installDir -Force
+    }}
+    Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật chưa thành công. Ứng dụng đã trở lại phiên bản trước và cài đặt của bạn vẫn được giữ nguyên.'
   }} catch {{
     $_ | Out-String | Add-Content -LiteralPath $updateLog
-    Write-UpdateResult $false 'UPDATE_ROLLBACK_FAILED' 'Cập nhật và rollback đều lỗi. Xem update.log.'
+    Write-UpdateResult $false 'UPDATE_ROLLBACK_FAILED' 'Không thể hoàn tất cập nhật. Vui lòng tải lại WFX Smart từ trang phát hành.'
   }}
   if (Test-Path -LiteralPath $targetExe) {{
     Start-Process -FilePath $targetExe
   }}
 }} finally {{
+  Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 }}
 """

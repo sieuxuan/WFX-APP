@@ -265,15 +265,16 @@ def test_initial_state_exposes_new_fields(tmp_path):
         assert field in state, field
 
 
-def test_git_update_methods_delegate_and_schedule(tmp_path, monkeypatch):
+def test_release_update_methods_delegate_and_schedule(tmp_path, monkeypatch):
     api, _ = make_api(tmp_path)
     state = {
         "ok": True,
         "code": "UPDATE_AVAILABLE",
         "message": "Có bản mới.",
         "can_update": True,
-        "branch": "main",
-        "repo_root": str(tmp_path),
+        "version": "1.1.0",
+        "package_url": "https://github.com/example/update.zip",
+        "checksum_url": "https://github.com/example/update.zip.sha256",
     }
     monkeypatch.setattr(
         "wfx_panel.panel_api.updater.check_for_updates",
@@ -284,7 +285,8 @@ def test_git_update_methods_delegate_and_schedule(tmp_path, monkeypatch):
     assert api.check_for_updates()["can_update"] is True
     result = api.install_update()
     assert result["code"] == "UPDATE_SCHEDULED"
-    assert applied and applied[0]["branch"] == "main"
+    assert applied and applied[0]["version"] == "1.1.0"
+    assert "tự mở lại" in result["message"]
 
 
 def test_panel_update_channel_is_always_stable(tmp_path, monkeypatch):

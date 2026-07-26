@@ -542,10 +542,7 @@ class PanelApp:
             executable = (
                 Path(sys.executable)
                 if getattr(sys, "frozen", False)
-                else Path(state["repo_root"])
-                / "dist"
-                / "WFX-Panel"
-                / "WFX-Panel.exe"
+                else Path.cwd() / "dist" / "WFX-Panel" / "WFX-Panel.exe"
             )
             updater.schedule_update(
                 state,
@@ -602,14 +599,20 @@ class PanelApp:
     def _check_update_once(self) -> None:
         state = self.api.check_for_updates()
         self._push_update_state(state)
-        sha = str(state.get("expected_sha") or "")
-        if state.get("can_update") and sha != self._last_update_notice:
-            self._last_update_notice = sha
-            prefs.save_prefs(last_update_notice=sha)
+        notice_id = str(
+            state.get("notice_id") or state.get("tag") or state.get("version") or ""
+        )
+        if (
+            state.get("can_update")
+            and notice_id
+            and notice_id != self._last_update_notice
+        ):
+            self._last_update_notice = notice_id
+            prefs.save_prefs(last_update_notice=notice_id)
             if self.tray is not None and self._toast_enabled:
                 try:
                     self.tray.notify(
-                        "Có bản WFX Smart mới. Mở panel và bấm Cập nhật.",
+                        "Có phiên bản WFX Smart mới. Mở ứng dụng và bấm “Cập nhật ngay”.",
                         "WFX Smart",
                     )
                 except Exception:

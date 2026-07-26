@@ -297,7 +297,7 @@ def test_runtime_on_top_setting_updates_pywebview_window():
     assert app._always_on_top is False
 
 
-def test_update_notification_is_automatic_but_only_once_per_commit(monkeypatch):
+def test_update_notification_is_automatic_but_only_once_per_release(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
@@ -316,7 +316,8 @@ def test_update_notification_is_automatic_but_only_once_per_commit(monkeypatch):
         "ok": True,
         "code": "UPDATE_AVAILABLE",
         "can_update": True,
-        "expected_sha": "b" * 40,
+        "notice_id": "release-110",
+        "version": "1.1.0",
     }
     monkeypatch.setattr(
         module.prefs,
@@ -327,4 +328,5 @@ def test_update_notification_is_automatic_but_only_once_per_commit(monkeypatch):
     app._check_update_once()
     app._check_update_once()
     assert len(notices) == 1
-    assert saved == [{"last_update_notice": "b" * 40}]
+    assert "Cập nhật ngay" in notices[0][0]
+    assert saved == [{"last_update_notice": "release-110"}]

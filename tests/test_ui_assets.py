@@ -124,6 +124,9 @@ def test_update_is_only_exposed_as_automatic_outside_banner():
     assert 'class="update-check-button"' not in html
     assert 'class="update-apply-button"' not in html
     assert 'class="update-channel-input"' not in html
+    assert "Có phiên bản mới" in html
+    assert "Cập nhật ngay" in html
+    assert "Phiên bản 1.0" in html
 
 
 def test_workspace_status_and_last_login_are_removed():
