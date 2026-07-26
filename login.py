@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import URLError
@@ -47,27 +48,79 @@ def _result(
     return {"ok": ok, "code": code, "message": message, **data}
 
 
-def _find_chrome() -> Path:
+def _style_status_suffix(style: dict[str, Any] | None) -> str:
+    """Chuỗi ngắn để đưa Season/CostSheet lên status của panel."""
+    style = style or {}
+    season = str(style.get("season") or "—").strip()
+    cost_status = str(style.get("internal_costsheet_status") or "—").strip()
+    return f" Season: {season} · CostSheet: {cost_status}."
+
+
+@dataclass(frozen=True)
+class BrowserExecutable:
+    name: str
+    path: Path
+
+
+def detect_browser() -> BrowserExecutable | None:
+    """Tìm Chromium browser có hỗ trợ CDP trên Windows 10/11.
+
+    Ưu tiên đường dẫn do người dùng cấu hình, sau đó Chrome Stable và các
+    channel Chrome/Edge/Brave/Chromium thường gặp.
+    """
     configured_path = os.getenv("WFX_CHROME_PATH")
-    candidates = [
-        configured_path,
-        shutil.which("chrome"),
-        shutil.which("chrome.exe"),
-        str(Path(os.getenv("PROGRAMFILES", "")) / "Google/Chrome/Application/chrome.exe"),
-        str(
-            Path(os.getenv("PROGRAMFILES(X86)", ""))
-            / "Google/Chrome/Application/chrome.exe"
-        ),
-        str(
-            Path(os.getenv("LOCALAPPDATA", ""))
-            / "Google/Chrome/Application/chrome.exe"
-        ),
+    roots = [
+        Path(value)
+        for value in (
+            os.getenv("PROGRAMFILES"),
+            os.getenv("PROGRAMFILES(X86"),
+            os.getenv("LOCALAPPDATA"),
+        )
+        if value
     ]
-    for candidate in candidates:
-        if candidate and Path(candidate).is_file():
-            return Path(candidate)
+    candidates: list[tuple[str, str | Path | None]] = [
+        ("Trình duyệt đã cấu hình", configured_path),
+        ("Google Chrome", shutil.which("chrome") or shutil.which("chrome.exe")),
+    ]
+    relative_paths = [
+        ("Google Chrome", "Google/Chrome/Application/chrome.exe"),
+        ("Google Chrome Beta", "Google/Chrome Beta/Application/chrome.exe"),
+        ("Google Chrome Dev", "Google/Chrome Dev/Application/chrome.exe"),
+        ("Google Chrome Canary", "Google/Chrome SxS/Application/chrome.exe"),
+        ("Microsoft Edge", "Microsoft/Edge/Application/msedge.exe"),
+        ("Microsoft Edge Beta", "Microsoft/Edge Beta/Application/msedge.exe"),
+        ("Microsoft Edge Dev", "Microsoft/Edge Dev/Application/msedge.exe"),
+        ("Microsoft Edge Canary", "Microsoft/Edge SxS/Application/msedge.exe"),
+        ("Brave", "BraveSoftware/Brave-Browser/Application/brave.exe"),
+        ("Chromium", "Chromium/Application/chrome.exe"),
+    ]
+    candidates.extend(
+        (name, root / relative)
+        for name, relative in relative_paths
+        for root in roots
+    )
+    seen: set[str] = set()
+    for name, candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        key = str(path).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        if path.is_file():
+            return BrowserExecutable(name=name, path=path)
+    return None
+
+
+def _find_chrome() -> Path:
+    """Alias tương thích ngược cho caller/test cũ."""
+    browser = detect_browser()
+    if browser is not None:
+        return browser.path
     raise FileNotFoundError(
-        "Không tìm thấy Google Chrome. Hãy đặt WFX_CHROME_PATH tới chrome.exe."
+        "Không tìm thấy Chrome, Edge, Brave hoặc Chromium. "
+        "Hãy cài một trình duyệt Chromium hoặc đặt WFX_CHROME_PATH tới file .exe."
     )
 
 
@@ -80,15 +133,56 @@ def _chrome_is_ready() -> bool:
         return False
 
 
+def _disable_password_manager(profile_dir: Path) -> None:
+    """Tắt Password Manager chỉ trong profile automation của WFX.
+
+    Không thay đổi profile Chrome/Edge cá nhân. Chromium đọc các preference
+    này trước khi tạo cửa sổ đầu tiên, vì vậy popup Save/Remember password
+    không xuất hiện sau thao tác login tự động.
+    """
+    preferences_path = profile_dir / "Default" / "Preferences"
+    preferences_path.parent.mkdir(parents=True, exist_ok=True)
+    preferences: dict[str, Any] = {}
+    if preferences_path.is_file():
+        try:
+            loaded = json.loads(preferences_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                preferences = loaded
+        except (OSError, json.JSONDecodeError):
+            preferences = {}
+
+    profile = preferences.setdefault("profile", {})
+    if not isinstance(profile, dict):
+        profile = {}
+        preferences["profile"] = profile
+    profile["password_manager_enabled"] = False
+    preferences["credentials_enable_service"] = False
+    preferences["password_manager_leak_detection"] = False
+
+    temporary = preferences_path.with_name(preferences_path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(preferences, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    temporary.replace(preferences_path)
+
+
 def _start_persistent_chrome(log: Callable[[str], None]) -> None:
     """Mở Chrome độc lập để Chrome không đóng khi app hoặc Playwright kết thúc."""
     if _chrome_is_ready():
         return
 
-    chrome_path = _find_chrome()
+    browser = detect_browser()
+    if browser is None:
+        raise FileNotFoundError(
+            "Không tìm thấy trình duyệt Chromium tương thích. "
+            "Cài Chrome/Edge/Brave/Chromium hoặc đặt WFX_CHROME_PATH."
+        )
+    chrome_path = browser.path
     local_app_data = Path(os.getenv("LOCALAPPDATA", str(Path.home())))
     profile_dir = local_app_data / "WFX-Automation" / "ChromeProfile"
     profile_dir.mkdir(parents=True, exist_ok=True)
+    _disable_password_manager(profile_dir)
 
     creation_flags = 0
     if os.name == "nt":
@@ -101,6 +195,8 @@ def _start_persistent_chrome(log: Callable[[str], None]) -> None:
             f"--user-data-dir={profile_dir}",
             "--no-first-run",
             "--no-default-browser-check",
+            "--disable-save-password-bubble",
+            "--disable-features=PasswordManagerOnboarding,PasswordManagerEnableAccountStorage,PasswordLeakDetection",
             "--start-maximized",
             URL,
         ],
@@ -109,7 +205,10 @@ def _start_persistent_chrome(log: Callable[[str], None]) -> None:
         stderr=subprocess.DEVNULL,
         creationflags=creation_flags,
     )
-    _write_log(log, f"Đang mở Chrome với profile automation: {profile_dir}")
+    _write_log(
+        log,
+        f"Đang mở {browser.name} với profile automation riêng.",
+    )
 
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
@@ -117,6 +216,53 @@ def _start_persistent_chrome(log: Callable[[str], None]) -> None:
             return
         time.sleep(0.25)
     raise TimeoutError(f"Chrome không mở cổng điều khiển {CDP_URL} sau 15 giây.")
+
+
+def start_chrome(log: Callable[[str], None] = print) -> dict[str, Any]:
+    """Mở/focus Chrome automation mà không tự đăng nhập hay đổi trang WFX."""
+    try:
+        was_ready = _chrome_is_ready()
+        browser = detect_browser()
+        if not was_ready and browser is None:
+            return _result(
+                False,
+                "BROWSER_NOT_FOUND",
+                "Không tìm thấy Chrome, Edge, Brave hoặc Chromium. "
+                "Cài một trình duyệt tương thích hoặc cấu hình WFX_CHROME_PATH.",
+                chrome_alive=False,
+                browser_available=False,
+            )
+        _start_persistent_chrome(log)
+        return _result(
+            True,
+            "CHROME_ALREADY_OPEN" if was_ready else "CHROME_OPENED",
+            (
+                "Trình duyệt automation đã sẵn sàng."
+                if was_ready
+                else f"{browser.name} automation đã sẵn sàng."
+            ),
+            chrome_alive=True,
+            browser_available=True,
+            browser_name=browser.name if browser else "Chromium",
+        )
+    except Exception as exc:
+        message = f"Không mở được Chrome: {type(exc).__name__}: {exc}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "CHROME_OPEN_FAILED",
+            message,
+            chrome_alive=False,
+        )
+
+
+def browser_status() -> dict[str, Any]:
+    browser = detect_browser()
+    return {
+        "chrome_alive": _chrome_is_ready(),
+        "browser_available": browser is not None,
+        "browser_name": browser.name if browser else None,
+    }
 
 
 def _connect_to_chrome(playwright: Playwright) -> tuple[Browser, Page]:
@@ -178,8 +324,9 @@ def login(
     password_input.fill(password)
     _click(page.locator("#btlLogin[value='Log In']"))
 
-    # Một menu chính xuất hiện đồng nghĩa trang home đã load sau khi login.
-    page.locator('xpath=//*[@id="0090_0250"]/a').wait_for(state="attached")
+    # Catalog là menu phổ thông. Không dùng một menu Admin làm điều kiện login:
+    # tài khoản thường có thể đăng nhập hợp lệ nhưng không có System Coding.
+    page.locator(f"xpath={CATALOG_XPATH}").wait_for(state="attached")
 
 
 def _session_is_active(page: Page) -> bool:
@@ -206,6 +353,122 @@ def check_session(log: Callable[[str], None] = print) -> dict[str, Any]:
     finally:
         if playwright is not None:
             playwright.stop()
+
+
+def check_module_access(
+    module_specs: list[dict[str, str]],
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Đọc menu WFX thực tế để xác định module nào tài khoản được cấp quyền.
+
+    Chỉ kiểm tra anchor menu đang tồn tại trong trang home, không click và
+    không làm thay đổi màn hình đang làm việc.
+    """
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+            accessible_module_ids=[],
+        )
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Chưa có phiên WFX đăng nhập.",
+                accessible_module_ids=[],
+            )
+        accessible: list[str] = []
+        for spec in module_specs:
+            module_id = str(spec.get("id") or "")
+            xpath = str(spec.get("xpath") or "")
+            if not module_id or not xpath:
+                continue
+            try:
+                if page.locator(f"xpath={xpath}").count() > 0:
+                    accessible.append(module_id)
+            except PlaywrightError:
+                continue
+        _write_log(
+            log,
+            f"[ACCESS] Đã xác minh {len(accessible)}/{len(module_specs)} module Admin.",
+        )
+        return _result(
+            True,
+            "MODULE_ACCESS_CHECKED",
+            "Đã xác minh quyền module WFX.",
+            accessible_module_ids=accessible,
+        )
+    except Exception as exc:
+        return _result(
+            False,
+            "MODULE_ACCESS_CHECK_FAILED",
+            f"{type(exc).__name__}: {exc}",
+            accessible_module_ids=[],
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def capture_failure_screenshot(
+    path: str | Path,
+    log: Callable[[str], None] = print,
+) -> bool:
+    """Chụp tab WFX hiện tại sau lỗi; không đọc cookie/storage."""
+    if not _chrome_is_ready():
+        return False
+    playwright: Playwright | None = None
+    try:
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        page.screenshot(path=str(destination), full_page=False)
+        _write_log(log, "[DIAGNOSTIC] Đã lưu ảnh lỗi cục bộ.")
+        return destination.is_file()
+    except Exception as error:
+        _write_log(
+            log,
+            f"[DIAGNOSTIC] Không chụp được ảnh lỗi: {type(error).__name__}",
+        )
+        return False
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def automation_browser_pid() -> int | None:
+    """PID đang listen CDP, dùng để panel bám đúng browser automation."""
+    if os.name != "nt" or CDP_HOST not in {"127.0.0.1", "localhost", "::1"}:
+        return None
+    try:
+        completed = subprocess.run(
+            ["netstat", "-ano", "-p", "tcp"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        for line in completed.stdout.splitlines():
+            columns = line.split()
+            if len(columns) < 5 or columns[-2].upper() != "LISTENING":
+                continue
+            local_address = columns[1].strip("[]")
+            if local_address.rsplit(":", 1)[-1] == str(CDP_PORT):
+                pid = int(columns[-1])
+                return pid if pid > 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def run(
@@ -472,74 +735,182 @@ def _filter_grid_and_maybe_open(
     search_input.wait_for(state="visible", timeout=5_000)
     _write_log(log, f"[{label.upper()}] Đang lọc gần đúng: {query}")
     search_input.fill(query, timeout=3_000)
+    if search_input.input_value(timeout=1_000) != query:
+        return _result(
+            False,
+            "FILTER_VALUE_NOT_CONFIRMED",
+            f"WFX chưa xác nhận giá trị {label}.",
+        )
     grid.wait_for_timeout(1_000)
 
-    value_cells = grid.locator(f'[role="gridcell"][col-id="{value_column}"]')
-    code_buttons = grid.locator(
-        '[role="gridcell"][col-id="lnkArticleCode"] input[type="button"]'
-    )
-    deadline = time.monotonic() + 20
-    codes: list[str] = []
-    values: list[str] = []
+    root = grid.locator(".ag-root-wrapper").first
+    read_rows_js = """(root, args) => {
+        const shown = element => {
+            if (!element || !element.isConnected) return false;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                Number(style.opacity || 1) !== 0 &&
+                rect.width > 0 && rect.height > 0;
+        };
+        const loading = [
+            '.ag-overlay-loading-wrapper', '.ag-loading', '.ag-row-loading'
+        ].some(selector => [...root.querySelectorAll(selector)].some(shown));
+        const noRows = [
+            '.ag-overlay-no-rows-wrapper', '.ag-overlay-no-rows-center'
+        ].some(selector => [...root.querySelectorAll(selector)].some(shown));
+        const rows = [...root.querySelectorAll(
+            '.ag-center-cols-container .ag-row[row-index], ' +
+            '.ag-center-cols-container [role="row"][row-index]'
+        )].filter(row => {
+            if (!shown(row) || row.classList.contains('ag-row-loading') ||
+                row.classList.contains('ag-row-ghost') ||
+                row.getAttribute('aria-hidden') === 'true') return false;
+            const viewport = row.closest(
+                '.ag-center-cols-viewport, .ag-body-viewport'
+            );
+            if (!viewport) return true;
+            const r = row.getBoundingClientRect();
+            const v = viewport.getBoundingClientRect();
+            return r.bottom > v.top + 0.5 && r.top < v.bottom - 0.5;
+        }).map(row => {
+            const rowIndex = row.getAttribute('row-index') || '';
+            const rowParts = [...root.querySelectorAll(
+                `.ag-row[row-index="${rowIndex}"], ` +
+                `[role="row"][row-index="${rowIndex}"]`
+            )];
+            const find = selector => {
+                for (const part of rowParts) {
+                    const match = part.querySelector(selector);
+                    if (match) return match;
+                }
+                return null;
+            };
+            const text = colId => (
+                find(`[role="gridcell"][col-id="${colId}"]`)?.textContent || ''
+            ).replace(/\\s+/g, ' ').trim();
+            const code = (
+                find(
+                    '[role="gridcell"][col-id="lnkArticleCode"] ' +
+                    'input[type="button"]'
+                )?.value || ''
+            ).trim();
+            return {
+                code,
+                value: args.valueColumn === 'lnkArticleCode'
+                    ? code : text(args.valueColumn),
+                season: text('lblSeason'),
+                internalCostSheetStatus: text('lblInternalCostSheetStatus')
+            };
+        });
+        return {loading, noRows, rows};
+    }"""
+
+    deadline = time.monotonic() + 25
+    rows: list[dict[str, str]] = []
+    stable_key: tuple[Any, ...] | None = None
+    stable_since = 0.0
     while time.monotonic() < deadline:
-        values = []
-        for index in range(value_cells.count()):
-            cell = value_cells.nth(index)
-            try:
-                if not cell.is_visible():
-                    continue
-                if value_column == "lnkArticleCode":
-                    item = cell.locator('input[type="button"]')
-                    value = item.input_value(timeout=500).strip() if item.count() else ""
-                else:
-                    value = cell.inner_text(timeout=500).strip()
-                if value:
-                    values.append(value)
-            except PlaywrightError:
-                continue
-
-        codes = []
-        for index in range(code_buttons.count()):
-            button = code_buttons.nth(index)
-            try:
-                if button.is_visible():
-                    value = button.input_value(timeout=500).strip()
-                    if value:
-                        codes.append(value)
-            except PlaywrightError:
-                continue
-
-        filter_applied = bool(values) and all(
+        state = root.evaluate(
+            read_rows_js,
+            {"valueColumn": value_column},
+        )
+        rows = state["rows"]
+        values = [row["value"] for row in rows if row["value"]]
+        applied = bool(values) and all(
             query.casefold() in value.casefold() for value in values
         )
-        if filter_applied:
-            break
-        grid.wait_for_timeout(300)
+        key = (
+            state["loading"],
+            state["noRows"],
+            tuple(
+                (
+                    row["code"].casefold(),
+                    row["season"],
+                    row["internalCostSheetStatus"],
+                )
+                for row in rows
+            ),
+        )
+        ready = not state["loading"] and (applied or state["noRows"])
+        if ready and key == stable_key:
+            # AG Grid có thể chớp no-rows trong lúc debounce dù loading overlay
+            # không hiện. Giữ no-rows lâu hơn trước khi kết luận 0 kết quả.
+            required_stable = 1.8 if state["noRows"] else 0.6
+            if time.monotonic() - stable_since >= required_stable:
+                break
+        else:
+            stable_key = key
+            stable_since = time.monotonic()
+        grid.wait_for_timeout(200)
+    else:
+        return _result(
+            False,
+            "FILTER_RESULTS_NOT_READY",
+            f"Kết quả lọc {label} chưa ổn định.",
+        )
 
-    _write_log(log, f"[{label.upper()}] Giá trị khớp: {values if values else 'không có'}")
-    _write_log(log, f"[{label.upper()}] Code kết quả: {codes if codes else 'không có'}")
-    if not codes:
+    unique: dict[str, dict[str, str]] = {}
+    for row in rows:
+        code = row["code"].strip()
+        if not code:
+            continue
+        key = code.casefold()
+        current = unique.setdefault(
+            key,
+            {
+                "code": code,
+                "season": "",
+                "internal_costsheet_status": "",
+            },
+        )
+        current["season"] = current["season"] or row["season"].strip()
+        current["internal_costsheet_status"] = (
+            current["internal_costsheet_status"]
+            or row["internalCostSheetStatus"].strip()
+        )
+
+    styles = list(unique.values())[:20]
+    codes = [style["code"] for style in styles]
+    values = [row["value"] for row in rows if row["value"]]
+    _write_log(
+        log,
+        f"[{label.upper()}] unique Code={len(codes)}; "
+        f"renderedRows={len(rows)}; codes={codes}",
+    )
+    if not styles:
         return _result(
             False,
             "NO_RESULTS",
             f"Không tìm thấy kết quả cho {label}: {query}.",
             codes=[],
+            styles=[],
         )
-    if len(codes) >= 2:
+    if len(styles) >= 2:
         return _result(
             True,
             "MULTIPLE_RESULTS",
-            f"Có {len(codes)} kết quả; giữ danh sách để bạn tự chọn.",
+            f"Có {len(styles)} Code; giữ danh sách để bạn tự chọn.",
             codes=codes,
             matches=values,
+            styles=styles,
         )
 
-    target_code = codes[0]
+    style_status = styles[0]
+    target_code = style_status["code"]
+    code_buttons = grid.locator(
+        '[role="gridcell"][col-id="lnkArticleCode"] input[type="button"]'
+    )
     clicked = False
     for index in range(code_buttons.count()):
         item = code_buttons.nth(index)
         try:
-            if item.is_visible() and item.input_value(timeout=500).strip() == target_code:
+            if (
+                item.is_visible()
+                and item.input_value(timeout=500).strip().casefold()
+                == target_code.casefold()
+            ):
                 _write_log(log, f"[{label.upper()}] Một kết quả, đang mở {target_code}...")
                 item.click(timeout=5_000)
                 clicked = True
@@ -551,10 +922,15 @@ def _filter_grid_and_maybe_open(
     return _result(
         True,
         "RESULT_OPENED",
-        f"Đã tìm và mở style {target_code}.",
+        f"Đã tìm và mở style {target_code}."
+        f"{_style_status_suffix(style_status)}",
         article_code=target_code,
         codes=codes,
         matches=values,
+        styles=styles,
+        style_status=style_status,
+        season=style_status["season"],
+        internal_costsheet_status=style_status["internal_costsheet_status"],
     )
 
 
@@ -699,6 +1075,7 @@ def quick_find_catalog(
             result["destination"] = destination
             result["message"] = (
                 f"Đã mở style {result['article_code']} → {destination_label}."
+                f"{_style_status_suffix(result.get('style_status'))}"
             )
         result["session_active"] = True
         result["category"] = category_name

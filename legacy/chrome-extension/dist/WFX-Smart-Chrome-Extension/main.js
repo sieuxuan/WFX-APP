@@ -6,6 +6,8 @@
   window.__wfxSmartChromeExtensionLoaded = true;
 
   const MESSAGE_SOURCE = "wfx-smart-chrome-extension";
+  const PAGE_ORIGIN = window.location.origin;
+  const POST_TARGET_ORIGIN = PAGE_ORIGIN === "null" ? "*" : PAGE_ORIGIN;
   let started = false;
   let applyStorageUpdate = () => {};
   let handleExtensionCommand = () => {};
@@ -15,7 +17,7 @@
       source: MESSAGE_SOURCE,
       type,
       ...payload,
-    }, window.location.origin);
+    }, POST_TARGET_ORIGIN);
   };
 
   const start = (bridgeToken, initialValues) => {
@@ -216,6 +218,35 @@
 //   cho content_scripts để Chrome inject cả vào cửa sổ about:blank (trước đó chỉ có tab đầu có UI).
 // - Bỏ chữ "QUICK AUTOMATION"; nút "Mở Catalog" chuyển xuống cạnh dropdown Category.
 // - Trạng thái phiên WFX (Đã đăng nhập / Sẵn sàng login...) hiển thị luôn ở footer, cạnh dòng active.
+//
+// CHANGELOG 1.10.0 (auto-login khi vào WFX + sửa redirect ngược sau login + log toàn hệ thống):
+// - Tự chạy login ngay khi trang WFX load nếu storage đã có User ID và Password; không phụ thuộc
+//   việc mở panel. Company ID cố định là `psh`, không còn hiện trong Settings.
+// - Không điều hướng ngược về wfx_Home.aspx khi bước Log In vừa postback nhưng menu chính chưa kịp
+//   render. Luồng resume chờ trạng thái xác định tới 30 giây và giữ pending login qua navigation,
+//   tránh tình trạng vừa login xong lại tự quay về login rồi báo thất bại.
+// - Hai ô User ID/Password nằm cạnh nhau; bỏ block "Sẵn sàng login / account / Kết nối".
+// - Nhật ký dùng chung cho login, module, Catalog, panel/settings/hotkey; lưu qua navigation và
+//   mọi event có version, runId, elapsedMs, frame, URL đã làm sạch và document generation.
+//
+// CHANGELOG 1.11.0 (hotkey fallback mọi frame + popup Costing + tái sử dụng Catalog + log dễ đọc):
+// - bridge.js bắt trực tiếp Ctrl+Shift+X trong mọi frame WFX và gửi về background; debounce theo
+//   tab chống double-toggle với chrome.commands. Popup about:/data:/blob: do WFX tạo được inject
+//   theo origin qua match_origin_as_fallback; bridge handshake hỗ trợ cả opaque origin `null`.
+// - Search ưu tiên tái sử dụng workspace Category/Grid hiện tại. Nếu Apparel đã chọn nhưng chưa có
+//   Grid thì chỉ mở Master; nếu Grid Apparel đã sẵn sàng thì đi thẳng tới filter, không click lại
+//   Catalog và không reload frame left.
+// - Thông báo không có kết quả kèm Category, ví dụ `Không tìm thấy Code Apparel: 5526.`
+// - Overlay log hiển thị status tiếng Việt ngắn gọn; nút sao chép vẫn giữ log kỹ thuật đầy đủ.
+//
+// CHANGELOG 1.12.0 (self-heal extension trên popup/page WFX không có topsection):
+// - `topsection` chỉ là shell menu của trang WFX chính; Article/Costing có thể là content-only page
+//   nên không có top bar. Extension không dùng topsection làm điều kiện khởi tạo.
+// - Background theo dõi mọi tab/popup WFX tải xong và chủ động inject bridge + main nếu static
+//   content script bị bỏ lỡ. Khi hotkey gửi message thất bại, background cũng tự inject rồi retry.
+// - bridge.js có idempotency guard để static injection và self-heal không tạo listener trùng.
+// - Popup content-only được nhận diện session qua opener/Article/Grid thay vì bị hiểu nhầm là trang
+//   chưa login; extension không tự điều hướng popup Costing về màn đăng nhập sau khi inject.
 
 (function () {
   "use strict";
@@ -225,7 +256,7 @@
   const PAGE_WINDOW = typeof unsafeWindow !== "undefined" && unsafeWindow ? unsafeWindow : window;
 
   const HOME_URL = "https://prosports.worldfashionexchange.com/wfx_Home.aspx";
-  const SCRIPT_VERSION = "1.9.2";
+  const SCRIPT_VERSION = "1.12.0";
   const ROOT_ID = "wfx-smart-automation-root";
   const PENDING_TTL_MS = 2 * 60 * 1000;
 
@@ -236,6 +267,7 @@
     pendingLogin: "wfx-smart-pending-login-v1",
     pendingAction: "wfx-smart-pending-action-v1",
     catalog: "wfx-smart-catalog-v1",
+    logs: "wfx-smart-system-logs-v1",
   });
 
   const CATEGORIES = Object.freeze({
@@ -307,6 +339,7 @@
   let hotkeyCapture = false;
   let loginInFlight = false;
   let automationInFlight = false;
+  let resumeLoginInFlight = false;
   let statusTimer = 0;
   let automationLogs = [];
   // Khi có message tiến trình Catalog, footer hiển thị message đó thay cho trạng thái đăng nhập
@@ -354,7 +387,6 @@
   function getPreferences() {
     const value = readValue(STORAGE.preferences, {});
     return {
-      autoLoginOnOpen: value?.autoLoginOnOpen !== false,
       closeAfterModule: value?.closeAfterModule !== false,
       theme: value?.theme === "dark" ? "dark" : "light",
     };
@@ -382,8 +414,10 @@
     applyTheme(value);
     const prefs = getPreferences();
     writeValue(STORAGE.preferences, {
-      autoLoginOnOpen: prefs.autoLoginOnOpen,
       closeAfterModule: prefs.closeAfterModule,
+      theme: value,
+    });
+    logRun(createRunContext("settings"), "THEME_CHANGED", `Đã đổi giao diện sang ${value}.`, {
       theme: value,
     });
   }
@@ -452,12 +486,43 @@
     return null;
   }
 
+  function hasAuthenticatedWfxSurface() {
+    const roots = [];
+    const visited = new Set();
+    let candidate = PAGE_WINDOW;
+    for (let depth = 0; candidate && depth < 5; depth += 1) {
+      if (visited.has(candidate)) break;
+      visited.add(candidate);
+      roots.push(candidate);
+      try {
+        candidate = candidate.opener && !candidate.opener.closed ? candidate.opener : null;
+      } catch (_error) {
+        candidate = null;
+      }
+    }
+    for (const rootWindow of roots) {
+      for (const context of getAccessibleContexts(rootWindow)) {
+        try {
+          if (
+            context.document.getElementById("0003_6200") ||
+            context.document.getElementById("0090_0250") ||
+            context.document.querySelector(
+              ".topsection, a[onclick*='LogOff'], #CostSheet, #BOMMaster, .ag-root-wrapper, #ddlCategory",
+            ) ||
+            context.name === "ArticleTop"
+          ) {
+            return true;
+          }
+        } catch (_error) {
+          // Popup/frame vừa chuyển document; vòng refresh sau sẽ nhận lại.
+        }
+      }
+    }
+    return false;
+  }
+
   function getAuthState() {
-    if (
-      findModuleAnchor("0003_6200") ||
-      findModuleAnchor("0090_0250") ||
-      document.querySelector("a[id*='0003_6200']")
-    ) {
+    if (hasAuthenticatedWfxSurface()) {
       return "authenticated";
     }
     if (findVisible("#txtPassword")) return "password";
@@ -469,18 +534,18 @@
     const account = getAccount();
     const state = getAuthState();
     if (state === "authenticated") {
-      return { state, label: "Đã đăng nhập", detail: account.userId || "WFX session", tone: "success" };
+      return { state, label: "Đã đăng nhập", detail: "WFX session", tone: "success" };
     }
     if (!account.userId || !account.password) {
       return { state, label: "Chưa cấu hình", detail: "Thêm tài khoản để tự đăng nhập", tone: "warning" };
     }
     if (state === "user" || state === "password") {
-      return { state, label: "Sẵn sàng login", detail: account.userId, tone: "warning" };
+      return { state, label: "Chưa đăng nhập", detail: "Đang chờ auto-login", tone: "warning" };
     }
-    return { state, label: "Chưa xác định", detail: account.userId, tone: "neutral" };
+    return { state, label: "Đang kiểm tra phiên", detail: "WFX session", tone: "neutral" };
   }
 
-  function setNativeValue(input, value) {
+  function setNativeValue(input, value, { dispatchChange = true } = {}) {
     // input có thể thuộc frame khác (left panel Catalog, popup Article...), nên phải lấy
     // HTMLInputElement/Event đúng "thế giới" (window) sở hữu nó, không dùng constructor của
     // world cô lập Chrome Extension — nếu không instanceof sẽ sai và Event dispatch có thể bị bỏ qua.
@@ -492,7 +557,13 @@
     else input.value = value;
     const EventCtor = view.Event || PAGE_WINDOW.Event;
     input.dispatchEvent(new EventCtor("input", { bubbles: true }));
-    input.dispatchEvent(new EventCtor("change", { bubbles: true }));
+    if (dispatchChange) input.dispatchEvent(new EventCtor("change", { bubbles: true }));
+  }
+
+  function fillLoginInput(input, value) {
+    bestEffort(() => input.focus({ preventScroll: true }), "focus login input");
+    bestEffort(() => input.select?.(), "select login input");
+    setNativeValue(input, value, { dispatchChange: false });
   }
 
   function bestEffort(action, label) {
@@ -579,6 +650,25 @@
       }
     };
     visit(startWindow);
+    // Article/Costing thường là content-only popup không có topsection/menu. Khi panel chạy trong
+    // popup, nối thêm chuỗi opener cùng origin để các thao tác Catalog/module vẫn dùng được shell
+    // và frame của cửa sổ WFX cha.
+    if (startWindow === PAGE_WINDOW) {
+      let opener;
+      try {
+        opener = startWindow.opener && !startWindow.opener.closed ? startWindow.opener : null;
+      } catch (_error) {
+        opener = null;
+      }
+      for (let depth = 0; opener && depth < 5; depth += 1) {
+        visit(opener);
+        try {
+          opener = opener.opener && !opener.opener.closed ? opener.opener : null;
+        } catch (_error) {
+          opener = null;
+        }
+      }
+    }
     return contexts;
   }
 
@@ -634,13 +724,99 @@
     }
   }
 
+  const FRIENDLY_LOG_MESSAGES = Object.freeze({
+    SYSTEM_READY: "Extension đã sẵn sàng",
+    EXTENSION_CONTEXT_LOST: "Extension vừa cập nhật — cần tải lại trang",
+    LOGIN_START: "Bắt đầu đăng nhập",
+    LOGIN_STATE: "Đang kiểm tra trang đăng nhập",
+    LOGIN_FILL_ACCOUNT: "Đã điền User ID và Company",
+    LOGIN_NEXT: "Đang chuyển sang bước mật khẩu",
+    LOGIN_FILL_PASSWORD: "Đã điền Password",
+    LOGIN_SUBMIT: "Đang xác thực tài khoản",
+    LOGIN_WAIT: "Đang chờ WFX tải phiên đăng nhập",
+    LOGIN_TRANSITION: "Đã chuyển sang bước đăng nhập tiếp theo",
+    LOGIN_SUCCESS: "Đăng nhập thành công",
+    LOGIN_ERROR: "Đăng nhập gặp lỗi",
+    LOGIN_FAILED: "Đăng nhập chưa thành công",
+    MODULE_START: "Bắt đầu mở module",
+    MODULE_WAIT_LOGIN: "Đang chờ đăng nhập trước khi mở module",
+    MODULE_OPENED: "Đã mở module",
+    MODULE_ERROR: "Không mở được module",
+    START: "Bắt đầu xử lý Catalog",
+    CATALOG: "Đang mở Catalog",
+    CATALOG_REUSED: "Đang dùng lại Catalog hiện có",
+    CATEGORY_REUSED: "Category hiện tại đã đúng",
+    LEFT_READY: "Danh sách Category đã sẵn sàng",
+    CATEGORY_CONFIRMED: "Category đã sẵn sàng",
+    MASTER_FRAME: "Đã nhận màn hình Master",
+    MASTER_CLICK: "Đang mở Master",
+    MASTER_RETRY: "Master đang tải — thử lại",
+    MASTER_OPENED: "Master đã mở",
+    GRID_SETTLED: "Dữ liệu Catalog đã sẵn sàng",
+    GRID_TIMEOUT: "Dữ liệu Catalog tải quá lâu",
+    FILTER_CLICK: "Đang bật ô lọc",
+    FILTER_VISIBLE: "Ô lọc đã sẵn sàng",
+    FILTER_FILLED: "Đã nhập nội dung tìm kiếm",
+    FILTER_RESULTS: "Đã nhận kết quả tìm kiếm",
+    ARTICLE_CLICK: "Đang mở Article",
+    SETTINGS_OPENED: "Đã mở thiết lập",
+    SETTINGS_SAVED: "Đã lưu thiết lập",
+    HOTKEY_SAVED: "Đã lưu hotkey",
+    THEME_CHANGED: "Đã đổi giao diện",
+    PANEL_OPENED: "Đã mở panel",
+    PANEL_CLOSED: "Đã đóng panel",
+  });
+
+  function friendlyLogLine(line) {
+    const match = String(line || "").match(
+      /^\[([^\]]+)\] \[([^\]]+)\] (.*?)(?: \| (\{.*\}))?$/,
+    );
+    if (!match) return String(line || "");
+    const [, timestamp, stage, rawMessage, rawDetails] = match;
+    let details = {};
+    try {
+      details = rawDetails ? JSON.parse(rawDetails) : {};
+    } catch (_error) {
+      details = {};
+    }
+    const isError = /(?:ERROR|FAILED|TIMEOUT)/.test(stage);
+    const isSuccess = /(?:SUCCESS|OPENED|SETTLED|VISIBLE|CONFIRMED|SAVED|READY)$/.test(stage);
+    const isWaiting = /(?:WAIT|RETRY|START|CLICK|SUBMIT|FILL|NEXT|TRANSITION)/.test(stage);
+    const icon = isError ? "✕" : isSuccess ? "✓" : isWaiting ? "…" : "•";
+    const group = stage.startsWith("LOGIN")
+      ? "Đăng nhập"
+      : stage.startsWith("MODULE")
+        ? "Module"
+        : /^(START|CATALOG|CATEGORY|LEFT|MASTER|GRID|FILTER|ARTICLE|ERROR)/.test(stage)
+          ? "Catalog"
+          : "Hệ thống";
+    let message = FRIENDLY_LOG_MESSAGES[stage] || rawMessage;
+    if (stage.startsWith("MODULE") || ["CATALOG_REUSED", "CATEGORY_REUSED", "ERROR"].includes(stage)) {
+      message = rawMessage;
+    }
+    if (stage === "FILTER_RESULTS") {
+      const count = Number(details.uniqueCount || 0);
+      message = count > 0 ? `Tìm thấy ${count} Code` : "Không có kết quả phù hợp";
+    }
+    const elapsed = Number.isFinite(Number(details.elapsedMs))
+      ? ` · ${(Number(details.elapsedMs) / 1000).toFixed(1)}s`
+      : "";
+    return `${timestamp}  ${icon} ${group}: ${message}${elapsed}`;
+  }
+
+  function showInFriendlyLog(line) {
+    const stage = String(line || "").match(/^\[[^\]]+\] \[([^\]]+)\]/)?.[1] || "";
+    return !["PANEL_OPENED", "PANEL_CLOSED", "SETTINGS_OPENED", "THEME_CHANGED"].includes(stage);
+  }
+
   function renderAutomationLog() {
     if (!ui?.catalogLog) return;
-    ui.catalogLog.textContent = automationLogs.join("\n");
+    ui.catalogLog.textContent = automationLogs.filter(showInFriendlyLog).slice(-120).map(friendlyLogLine).join("\n")
+      || "Chưa có nhật ký hệ thống.";
     ui.catalogLog.scrollTop = ui.catalogLog.scrollHeight;
     // Log giờ nằm trong overlay riêng mở từ top nav. Khi có ERROR mà overlay đang đóng, đánh dấu
     // chấm cảnh báo trên nút log để người dùng biết cần mở xem — không tự bung overlay gây khó chịu.
-    const hasError = automationLogs.some((line) => /\[ERROR\]/.test(line));
+    const hasError = automationLogs.some((line) => /\[(?:[A-Z_]*(?:ERROR|FAILED|TIMEOUT)[A-Z_]*)\]/.test(line));
     if (ui.logButton) {
       const logOpen = ui.logOverlay?.classList.contains("log-open");
       ui.logButton.classList.toggle("has-alert", hasError && !logOpen);
@@ -649,17 +825,39 @@
 
   function clearAutomationLog() {
     automationLogs = [];
+    writeValue(STORAGE.logs, automationLogs);
     renderAutomationLog();
+  }
+
+  function sanitizeLogDetails(value, key = "") {
+    if (/^(password|cookie|sessionid|loginid|userid|remoteip|token|auth|access_token)$/i.test(key)) {
+      return "REDACTED";
+    }
+    if (typeof value === "string") {
+      return /url|href/i.test(key) ? sanitizeUrlForLog(value) : value;
+    }
+    if (Array.isArray(value)) return value.map((item) => sanitizeLogDetails(item));
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([childKey, childValue]) => [
+          childKey,
+          sanitizeLogDetails(childValue, childKey),
+        ]),
+      );
+    }
+    return value;
   }
 
   function logAutomation(stage, message, details = null) {
     const timestamp = new Date().toLocaleTimeString("vi-VN", { hour12: false });
-    const suffix = serializeLogDetails(details);
+    const safeDetails = sanitizeLogDetails(details);
+    const suffix = serializeLogDetails(safeDetails);
     const line = `[${timestamp}] [${stage}] ${message}${suffix ? ` | ${suffix}` : ""}`;
     automationLogs.push(line);
-    if (automationLogs.length > 220) automationLogs.splice(0, automationLogs.length - 220);
+    if (automationLogs.length > 300) automationLogs.splice(0, automationLogs.length - 300);
+    writeValue(STORAGE.logs, automationLogs);
     renderAutomationLog();
-    console.debug(`[WFX Smart][${stage}] ${message}`, details ?? "");
+    console.debug(`[WFX Smart][${stage}] ${message}`, safeDetails ?? "");
   }
 
   function snapshotCatalogContexts() {
@@ -686,10 +884,10 @@
   }
 
   async function copyAutomationLog() {
-    const text = automationLogs.join("\n") || "Chưa có log Catalog.";
+    const text = automationLogs.join("\n") || "Chưa có nhật ký hệ thống.";
     try {
       await navigator.clipboard.writeText(text);
-      showToast("Đã sao chép log Catalog.", "success");
+      showToast("Đã sao chép nhật ký hệ thống.", "success");
     } catch (_error) {
       const helper = document.createElement("textarea");
       helper.value = text;
@@ -699,7 +897,7 @@
       helper.select();
       const copied = document.execCommand("copy");
       helper.remove();
-      showToast(copied ? "Đã sao chép log Catalog." : "Không sao chép được log.", copied ? "success" : "error");
+      showToast(copied ? "Đã sao chép nhật ký hệ thống." : "Không sao chép được log.", copied ? "success" : "error");
     }
   }
 
@@ -828,13 +1026,17 @@
   }
 
   function startPendingLogin(source) {
+    const runCtx = createRunContext("login");
     const pending = {
       source: source || "panel",
       attempts: 0,
-      startedAt: Date.now(),
+      startedAt: runCtx.startedAt,
+      runId: runCtx.runId,
+      lastStep: "start",
       expiresAt: Date.now() + PENDING_TTL_MS,
     };
     writeValue(STORAGE.pendingLogin, pending);
+    logRun(runCtx, "LOGIN_START", "Bắt đầu luồng đăng nhập.", { source: pending.source });
     return pending;
   }
 
@@ -858,6 +1060,38 @@
     return next;
   }
 
+  function loginRunContext(pending) {
+    return {
+      runId: pending?.runId || createRunContext("login").runId,
+      startedAt: Number(pending?.startedAt || Date.now()),
+      mode: "login",
+    };
+  }
+
+  async function waitForKnownAuthState(timeoutMs = 30000) {
+    const current = getAuthState();
+    if (current !== "unknown") return current;
+    try {
+      return await waitFor(() => {
+        const state = getAuthState();
+        return state === "unknown" ? null : state;
+      }, timeoutMs, 250);
+    } catch (_error) {
+      return "unknown";
+    }
+  }
+
+  async function waitForAuthTransition(previousState, timeoutMs = 30000) {
+    try {
+      return await waitFor(() => {
+        const state = getAuthState();
+        return state !== "unknown" && state !== previousState ? state : null;
+      }, timeoutMs, 250);
+    } catch (_error) {
+      return getAuthState();
+    }
+  }
+
   function showToast(message, tone = "info", timeout = 3300) {
     if (!ui) return;
     const item = document.createElement("div");
@@ -874,7 +1108,7 @@
 
   function setBusy(isBusy, text = "Đang xử lý...") {
     loginInFlight = isBusy;
-    if (!ui) return;
+    if (!ui?.loginButton) return;
     ui.loginButton.disabled = isBusy;
     ui.loginButton.classList.toggle("is-loading", isBusy);
     ui.loginButton.querySelector("span").textContent = isBusy ? text : "Kết nối / Login";
@@ -884,28 +1118,41 @@
     if (loginInFlight) return false;
     const account = getAccount();
     if (!account.userId || !account.password) {
-      openPanel({ skipAutoLogin: true });
-      openSettings();
-      showToast("Hãy lưu User ID và Password trước.", "warning", 4500);
+      if (!["page-load", "resume"].includes(source)) {
+        openPanel({ skipAutoLogin: true });
+        openSettings();
+        showToast("Hãy lưu User ID và Password trước.", "warning", 4500);
+      }
       return false;
     }
 
     let pending = reset ? startPendingLogin(source) : getPending(STORAGE.pendingLogin);
     if (!pending) pending = startPendingLogin(source);
-    if (Number(pending.attempts || 0) >= 3) {
+    const runCtx = loginRunContext(pending);
+    if (Number(pending.attempts || 0) >= 6) {
+      logRun(runCtx, "LOGIN_FAILED", "Đã vượt số lần submit login an toàn.", {
+        errorCode: "LOGIN_ATTEMPTS_EXCEEDED",
+        lastStep: pending.lastStep,
+        attempts: pending.attempts,
+      });
       deleteValue(STORAGE.pendingLogin);
       setBusy(false);
-      openPanel({ skipAutoLogin: true });
       showToast("Đăng nhập chưa thành công. Hãy kiểm tra lại tài khoản.", "error", 5200);
       return false;
     }
 
     setBusy(true, "Đang đăng nhập...");
     const state = getAuthState();
+    logRun(runCtx, "LOGIN_STATE", "Đã nhận diện trạng thái trang.", {
+      state,
+      lastStep: pending.lastStep,
+      attempts: pending.attempts,
+    });
     if (state === "authenticated") {
       deleteValue(STORAGE.pendingLogin);
       setBusy(false);
       refreshStatus();
+      logRun(runCtx, "LOGIN_SUCCESS", "Menu WFX đã xuất hiện; xác nhận đăng nhập thành công.");
       await processPendingAction();
       return true;
     }
@@ -918,16 +1165,38 @@
         showToast("Không tìm thấy nút Log In trên trang.", "error");
         return false;
       }
-      bumpPendingLogin(pending, "password");
-      setNativeValue(passwordInput, account.password);
+      pending = bumpPendingLogin(pending, "password");
+      fillLoginInput(passwordInput, account.password);
+      if (passwordInput.value !== account.password) {
+        setBusy(false);
+        logRun(runCtx, "LOGIN_ERROR", "Không xác nhận được giá trị Password sau khi điền.", {
+          errorCode: "LOGIN_VALUE_NOT_CONFIRMED",
+          selector: "#txtPassword",
+        });
+        showToast("WFX không nhận giá trị Password.", "error", 5200);
+        return false;
+      }
+      logRun(runCtx, "LOGIN_FILL_PASSWORD", "Đã điền và xác nhận Password.", {
+        selector: "#txtPassword",
+        action: "fill",
+      });
       showToast("Đang xác thực tài khoản...", "info");
       window.setTimeout(() => {
         if (!clickElement(loginButton, "Log In button")) {
           setBusy(false);
+          logRun(runCtx, "LOGIN_ERROR", "Không click được nút Log In.", {
+            errorCode: "LOGIN_BUTTON_NOT_CLICKED",
+            selector: "#btlLogin[value='Log In']",
+          });
           showToast("Không click được nút Log In. Xem console để biết chi tiết.", "error", 6000);
           return;
         }
-        void watchLoginProgress(state);
+        logRun(runCtx, "LOGIN_SUBMIT", "Đã click Log In; đang chờ menu WFX.", {
+          selector: "#btlLogin[value='Log In']",
+          action: "click",
+          attempt: pending.attempts,
+        });
+        void watchLoginProgress(state, runCtx);
       }, 180);
       return true;
     }
@@ -941,22 +1210,59 @@
         showToast("Không tìm thấy nút Next trên trang.", "error");
         return false;
       }
-      bumpPendingLogin(pending, "user");
-      setNativeValue(userInput, account.userId);
-      if (companyInput) setNativeValue(companyInput, account.companyId);
+      pending = bumpPendingLogin(pending, "user");
+      fillLoginInput(userInput, account.userId);
+      if (companyInput) fillLoginInput(companyInput, "psh");
+      if (userInput.value !== account.userId || (companyInput && companyInput.value.toLocaleLowerCase("en") !== "psh")) {
+        setBusy(false);
+        logRun(runCtx, "LOGIN_ERROR", "Không xác nhận được User ID hoặc Company ID sau khi điền.", {
+          errorCode: "LOGIN_VALUE_NOT_CONFIRMED",
+          selectors: ["#txtUserID", "#txtCompany"],
+        });
+        showToast("WFX không nhận User ID hoặc Company ID.", "error", 5200);
+        return false;
+      }
+      logRun(runCtx, "LOGIN_FILL_ACCOUNT", "Đã điền và xác nhận User ID + Company ID.", {
+        selectors: ["#txtUserID", "#txtCompany"],
+        action: "fill",
+        companyId: "psh",
+      });
       showToast("Đã điền User ID, đang chuyển bước...", "info");
       window.setTimeout(() => {
         if (!clickElement(nextButton, "Next button")) {
           setBusy(false);
+          logRun(runCtx, "LOGIN_ERROR", "Không click được nút Next.", {
+            errorCode: "LOGIN_BUTTON_NOT_CLICKED",
+            selector: "#btlLogin[value='Next']",
+          });
           showToast("Không click được nút Next. Xem console để biết chi tiết.", "error", 6000);
           return;
         }
-        void watchLoginProgress(state);
+        logRun(runCtx, "LOGIN_NEXT", "Đã click Next; đang chờ bước Password.", {
+          selector: "#btlLogin[value='Next']",
+          action: "click",
+          attempt: pending.attempts,
+        });
+        void watchLoginProgress(state, runCtx);
       }, 180);
       return true;
     }
 
-    bumpPendingLogin(pending, "navigate");
+    const currentPath = String(PAGE_WINDOW.location?.pathname || "").toLocaleLowerCase("en");
+    const applicationPageIsLoading = currentPath.includes("/wfx/default.aspx");
+    if (["user", "password", "navigate"].includes(pending.lastStep) || applicationPageIsLoading) {
+      setBusy(false);
+      logRun(runCtx, "LOGIN_WAIT", "Trang WFX đang chuyển/tải session; không điều hướng ngược về trang login.", {
+        lastStep: pending.lastStep,
+        applicationPageIsLoading,
+      });
+      return false;
+    }
+    pending = bumpPendingLogin(pending, "navigate");
+    logRun(runCtx, "LOGIN_NAVIGATE", "Chưa thấy form/session; mở trang đăng nhập WFX.", {
+      action: "navigate",
+      target: HOME_URL,
+    });
     showToast("Đang mở trang đăng nhập WFX...", "info");
     window.location.assign(HOME_URL);
     return true;
@@ -966,24 +1272,31 @@
   // Nếu click không có tác dụng gì (site chặn thao tác tự động, DOM thay đổi bất ngờ...), trạng thái
   // đăng nhập sẽ đứng yên mãi mãi và nút Login sẽ kẹt ở "Đang đăng nhập..." vô thời hạn vì không có
   // gì reset loginInFlight. Watchdog này phát hiện việc "đứng yên" và tự hủy + báo lỗi rõ ràng.
-  async function watchLoginProgress(previousState) {
-    try {
-      await waitFor(() => (getAuthState() !== previousState ? true : null), 9000, 250);
-      console.debug(`[WFX Smart] Trạng thái đăng nhập đã chuyển từ "${previousState}".`);
-      // Nếu WFX chuyển bước mà KHÔNG reload trang (postback dạng AJAX), module-level
-      // loginInFlight sẽ không tự reset qua việc script bị tiêm lại — chủ động dọn ở đây.
-      setBusy(false);
-      refreshStatus();
-      if (getAuthState() === "authenticated") {
-        deleteValue(STORAGE.pendingLogin);
-        showToast("Đăng nhập WFX thành công.", "success");
-        await processPendingAction();
-      }
-    } catch (_error) {
-      console.warn(`[WFX Smart] Trạng thái vẫn là "${previousState}" sau 9s — WFX có thể không nhận cú click tự động.`);
-      setBusy(false);
-      showToast("WFX không phản hồi sau khi bấm nút. Hãy thử lại hoặc bấm thủ công.", "error", 6200);
+  async function watchLoginProgress(previousState, runCtx) {
+    const nextState = await waitForAuthTransition(previousState, 30000);
+    setBusy(false);
+    refreshStatus();
+    if (nextState === "authenticated") {
+      deleteValue(STORAGE.pendingLogin);
+      logRun(runCtx, "LOGIN_SUCCESS", "Menu WFX đã xuất hiện sau submit.");
+      showToast("Đăng nhập WFX thành công.", "success");
+      await processPendingAction();
+      return;
     }
+    if (nextState !== "unknown" && nextState !== previousState) {
+      logRun(runCtx, "LOGIN_TRANSITION", "WFX đã chuyển sang bước đăng nhập kế tiếp.", {
+        previousState,
+        nextState,
+      });
+      await continueLogin({ reset: false, source: "resume" });
+      return;
+    }
+    logRun(runCtx, "LOGIN_ERROR", "WFX không chuyển sang trạng thái login kế tiếp trước deadline.", {
+      errorCode: "LOGIN_STATE_NOT_READY",
+      previousState,
+      currentState: nextState,
+    });
+    showToast("WFX chưa xác nhận đăng nhập. Mở nhật ký hệ thống để kiểm tra.", "error", 6200);
   }
 
   async function waitForModuleAnchor(moduleId, timeoutMs = 6500) {
@@ -998,12 +1311,19 @@
 
   async function openModule(module) {
     if (!module || automationInFlight) return;
+    const runCtx = createRunContext("module");
+    logRun(runCtx, "MODULE_START", `Bắt đầu mở module ${module.name}.`, {
+      moduleId: module.id,
+    });
     if (getAuthState() !== "authenticated") {
       writeValue(STORAGE.pendingAction, {
         type: "module",
         moduleId: module.id,
         moduleName: module.name,
         expiresAt: Date.now() + PENDING_TTL_MS,
+      });
+      logRun(runCtx, "MODULE_WAIT_LOGIN", `Chưa có session; giữ yêu cầu mở ${module.name}.`, {
+        moduleId: module.id,
       });
       showToast(`Sẽ mở ${module.name} sau khi đăng nhập.`, "info");
       await continueLogin({ reset: true, source: "module" });
@@ -1014,6 +1334,10 @@
     try {
       const anchor = await waitForModuleAnchor(module.id);
       if (!anchor) {
+        logRun(runCtx, "MODULE_ERROR", `Không tìm thấy menu ${module.name}.`, {
+          errorCode: "MODULE_MENU_NOT_FOUND",
+          moduleId: module.id,
+        });
         showToast(`Không tìm thấy menu ${module.name}. Hãy về trang WFX Home rồi thử lại.`, "error", 5200);
         return;
       }
@@ -1021,12 +1345,21 @@
       setCatalogProgress(`Đã gửi lệnh mở ${module.name}.`, "success");
       const clicked = clickElement(anchor, module.name);
       if (!clicked) throw new Error("CLICK_FAILED");
+      logRun(runCtx, "MODULE_OPENED", `Đã click module ${module.name}.`, {
+        moduleId: module.id,
+        action: "click",
+        element: describeElement(anchor),
+      });
       showToast(`Đã click ${module.name}.`, "success");
       if (getPreferences().closeAfterModule) {
         window.setTimeout(closePanel, 280);
       }
     } catch (error) {
       console.error("[WFX Smart] Module error:", error);
+      logRun(runCtx, "MODULE_ERROR", `Không mở được ${module.name}.`, {
+        errorCode: error?.message || "MODULE_OPEN_FAILED",
+        moduleId: module.id,
+      });
       showToast(`Không mở được ${module.name}.`, "error", 5000);
     } finally {
       window.setTimeout(() => setAutomationBusy(false), 450);
@@ -1049,6 +1382,13 @@
       if (context.document.querySelector(".ag-root-wrapper")) return context;
     }
     return null;
+  }
+
+  function findCatalogLeftForCategory(categoryValue) {
+    return getCatalogLeftContexts().find((context) => {
+      const selector = context.document.querySelector("#ddlCategory");
+      return String(selector?.value || "") === String(categoryValue || "");
+    }) || null;
   }
 
   // Một document (frame left hay Catalog Grid) chỉ được coi là "mới" khi nó khác chính object
@@ -1091,17 +1431,26 @@
     return context.document !== snapshot.document;
   }
 
-  function createRunContext(request) {
+  function createRunContext(request = {}) {
     const runId = typeof PAGE_WINDOW.crypto?.randomUUID === "function"
       ? PAGE_WINDOW.crypto.randomUUID()
       : `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    return { runId, startedAt: Date.now(), mode: request.mode };
+    const mode = typeof request === "string" ? request : request.mode;
+    return { runId, startedAt: Date.now(), mode: mode || "system" };
   }
 
   function logRun(runCtx, stage, message, details = null) {
+    const context = getAccessibleContexts().find((item) => item.window === PAGE_WINDOW)
+      || getAccessibleContexts()[0]
+      || { name: "", url: PAGE_WINDOW.location?.href || "", document };
     logAutomation(stage, message, {
+      version: SCRIPT_VERSION,
       runId: runCtx.runId,
       elapsedMs: Date.now() - runCtx.startedAt,
+      mode: runCtx.mode,
+      frame: context.name || "(top)",
+      url: sanitizeUrlForLog(context.url),
+      generation: markDocumentGeneration(context.document),
       ...(details || {}),
     });
   }
@@ -1553,7 +1902,7 @@
     }
   }
 
-  async function filterCatalogGrid(runCtx, gridContext, filterKind, query) {
+  async function filterCatalogGrid(runCtx, gridContext, filterKind, query, categoryName) {
     const definition = FILTER_DEFINITIONS[filterKind];
     if (!definition) throw new Error("INVALID_FILTER");
     const label = definition.label;
@@ -1564,8 +1913,9 @@
     const results = await waitFilterResultsSettled(runCtx, gridRoot, filterKind, query);
 
     if (!results.codes.length) {
-      setCatalogProgress(`Không tìm thấy ${label}: ${query}.`, "error");
-      showToast(`Không tìm thấy kết quả cho ${label}: ${query}.`, "warning", 5000);
+      const contextualLabel = `${label} ${categoryName || ""}`.trim();
+      setCatalogProgress(`Không tìm thấy ${contextualLabel}: ${query}.`, "error");
+      showToast(`Không tìm thấy ${contextualLabel}: ${query}.`, "warning", 5000);
       return { outcome: "none", ...results };
     }
 
@@ -1630,6 +1980,62 @@
     showToast(`Đã mở ${targetDefinition.label}.`, "success");
   }
 
+  async function prepareCatalogWorkspace(runCtx, request) {
+    const matchingLeft = findCatalogLeftForCategory(request.categoryValue);
+    const currentGrid = findCatalogGridCandidate();
+
+    if (matchingLeft && currentGrid) {
+      const currentRoot = getGridRootElement(currentGrid);
+      if (currentRoot) {
+        setCatalogProgress(`Đang dùng lại Catalog ${request.categoryName} hiện có...`);
+        logRun(runCtx, "CATALOG_REUSED", `Tái sử dụng Catalog ${request.categoryName} và Grid hiện tại.`, {
+          categoryValue: request.categoryValue,
+          gridUrl: sanitizeUrlForLog(currentGrid.url),
+          gridGeneration: markDocumentGeneration(currentGrid.document),
+        });
+        try {
+          await waitGridSettled(runCtx, currentRoot, 8000);
+          return await ensureFloatingFilterVisible(runCtx, currentGrid);
+        } catch (_error) {
+          logRun(runCtx, "MASTER_RETRY", "Grid hiện tại chưa ổn định; chỉ mở lại Master, không reload Catalog.", {
+            category: request.categoryName,
+          });
+        }
+      }
+    }
+
+    if (matchingLeft) {
+      setCatalogProgress(`Category ${request.categoryName} đã đúng, đang mở Master...`);
+      logRun(runCtx, "CATEGORY_REUSED", `Category ${request.categoryName} đã có sẵn; bỏ qua click Catalog.`, {
+        categoryValue: request.categoryValue,
+        leftGeneration: markDocumentGeneration(matchingLeft.document),
+      });
+      const existingGridSnapshot = snapshotGridDocument();
+      const gridContext = await clickCatalogMaster(runCtx, existingGridSnapshot);
+      const gridRoot = getGridRootElement(gridContext);
+      if (!gridRoot) throw new Error("CATALOG_GRID_NOT_FOUND");
+      await waitGridSettled(runCtx, gridRoot);
+      return await ensureFloatingFilterVisible(runCtx, gridContext);
+    }
+
+    // Chưa có đúng Category trong frame left: chạy state machine đầy đủ từ menu Catalog.
+    const leftSnapshot = snapshotLeftDocument();
+    const gridSnapshot = snapshotGridDocument();
+    const catalogAnchor = await waitForModuleAnchor("0003_6200", 8000);
+    if (!catalogAnchor) throw new Error("CATALOG_MENU_NOT_FOUND");
+    setCatalogProgress("Đang mở Catalog...");
+    logRun(runCtx, "CATALOG", "Click menu Catalog.", describeElement(catalogAnchor));
+    if (!clickElement(catalogAnchor, "Catalog menu")) throw new Error("CATALOG_CLICK_FAILED");
+
+    const leftContext = await resolveNewLeftFrame(runCtx, leftSnapshot);
+    await selectCatalogCategory(runCtx, leftContext, request.categoryName, request.categoryValue);
+    const gridContext = await clickCatalogMaster(runCtx, gridSnapshot);
+    const gridRoot = getGridRootElement(gridContext);
+    if (!gridRoot) throw new Error("CATALOG_GRID_NOT_FOUND");
+    await waitGridSettled(runCtx, gridRoot);
+    return await ensureFloatingFilterVisible(runCtx, gridContext);
+  }
+
   async function runCatalogRequest(request) {
     if (automationInFlight) return;
     if (getAuthState() !== "authenticated") {
@@ -1640,7 +2046,6 @@
     }
 
     deleteValue(STORAGE.pendingAction);
-    clearAutomationLog();
     const runCtx = createRunContext(request);
     logRun(runCtx, "START", "Bắt đầu Catalog automation.", {
       version: SCRIPT_VERSION,
@@ -1651,24 +2056,7 @@
     });
     setAutomationBusy(true, "Đang mở Catalog...");
     try {
-      // Snapshot document left/grid TRƯỚC khi click Catalog — đây là mốc để xác nhận "mới" ở
-      // mọi bước sau, giống old_left/old_grid trong tham chiếu Python.
-      const leftSnapshot = snapshotLeftDocument();
-      const gridSnapshot = snapshotGridDocument();
-
-      const catalogAnchor = await waitForModuleAnchor("0003_6200", 8000);
-      if (!catalogAnchor) throw new Error("CATALOG_MENU_NOT_FOUND");
-      setCatalogProgress("Đang mở Catalog...");
-      logRun(runCtx, "CATALOG", "Click menu Catalog.", describeElement(catalogAnchor));
-      if (!clickElement(catalogAnchor, "Catalog menu")) throw new Error("CATALOG_CLICK_FAILED");
-
-      const leftContext = await resolveNewLeftFrame(runCtx, leftSnapshot);
-      await selectCatalogCategory(runCtx, leftContext, request.categoryName, request.categoryValue);
-      const gridContext = await clickCatalogMaster(runCtx, gridSnapshot);
-      const gridRoot = getGridRootElement(gridContext);
-      if (!gridRoot) throw new Error("CATALOG_GRID_NOT_FOUND");
-      await waitGridSettled(runCtx, gridRoot);
-      const filterContext = await ensureFloatingFilterVisible(runCtx, gridContext);
+      const filterContext = await prepareCatalogWorkspace(runCtx, request);
 
       if (request.mode === "prepare") {
         setCatalogProgress(`Catalog ${request.categoryName} đã sẵn sàng để lọc.`, "success");
@@ -1676,7 +2064,13 @@
         return;
       }
 
-      const result = await filterCatalogGrid(runCtx, filterContext, request.filterKind, request.query);
+      const result = await filterCatalogGrid(
+        runCtx,
+        filterContext,
+        request.filterKind,
+        request.query,
+        request.categoryName,
+      );
       if (result.outcome === "detached") {
         setCatalogProgress("Row đổi trước thời điểm click. Hãy thử lại.", "error");
         showToast("Kết quả vừa đổi trước khi click. Hãy thử lại.", "warning", 5000);
@@ -1838,6 +2232,10 @@
     });
     hotkeyCapture = false;
     updateHotkeyLabels();
+    const runCtx = createRunContext("settings");
+    logRun(runCtx, "HOTKEY_SAVED", `Đã lưu hotkey ${formatHotkey()}.`, {
+      hotkey: formatHotkey(),
+    });
     showToast(`Đã đặt hotkey: ${formatHotkey()}`, "success");
   }
 
@@ -1900,11 +2298,9 @@
       return;
     }
 
-    // Bản Chrome Extension: hotkey do chrome.commands (suggested_key Ctrl+Shift+X) xử lý ở cấp trình
-    // duyệt nên bắt được cả khi focus nằm trong iframe WFX. Nếu ở đây cũng tự toggle thì khi focus ở
-    // top frame sẽ bị double-toggle (mở rồi đóng ngay). Chrome Extension không có command API nên vẫn
-    // dùng nhánh dưới. (Đường Chrome command đi qua handleExtensionCommand -> CustomEvent, không qua
-    // handleKeydown này.)
+    // Bản Chrome Extension: bridge.js bắt Ctrl+Shift+X trong mọi frame và chrome.commands là đường
+    // dự phòng cấp trình duyệt. background.js debounce hai đường này theo tab. Core MAIN world không
+    // tự toggle ở đây để tránh phát sinh một đường thứ ba. Chrome Extension vẫn dùng nhánh dưới.
     if (PAGE_WINDOW.__wfxSmartChromeExtensionLoaded) return;
 
     if (eventMatchesHotkey(event)) {
@@ -1917,14 +2313,15 @@
   function refreshStatus() {
     if (!ui) return;
     const details = authDetails();
-    ui.statusCard.dataset.tone = details.tone;
-    ui.statusTitle.textContent = details.label;
-    ui.statusDetail.textContent = details.detail;
+    if (ui.statusCard) ui.statusCard.dataset.tone = details.tone;
+    if (ui.statusTitle) ui.statusTitle.textContent = details.label;
+    if (ui.statusDetail) ui.statusDetail.textContent = details.detail;
     if (!catalogFooterActive) {
       ui.footerStatus.dataset.tone = details.tone;
       ui.footerStatusText.textContent = loginInFlight ? "Đang đăng nhập..." : details.label;
     }
-    ui.accountChip.textContent = getAccount().userId || "Chưa có account";
+    if (ui.accountChip) ui.accountChip.textContent = getAccount().userId || "Chưa có account";
+    if (!ui.loginButton) return;
     ui.loginButton.querySelector("span").textContent = loginInFlight ? "Đang đăng nhập..." : "Kết nối / Login";
     // Đã đăng nhập rồi thì không cần hiện nút Kết nối/Login nữa (chỉ hiện khi chưa đăng nhập
     // hoặc đang trong lúc đăng nhập để người dùng thấy tiến trình).
@@ -1959,13 +2356,10 @@
     window.setTimeout(() => ui.searchInput.focus(), 180);
 
     const account = getAccount();
-    if (!account.userId || !account.password) {
-      openSettings();
-      return;
-    }
-    if (!skipAutoLogin && getPreferences().autoLoginOnOpen && getAuthState() !== "authenticated") {
-      void continueLogin({ reset: true, source: "panel" });
-    }
+    if (!account.userId || !account.password) openSettings();
+    logRun(createRunContext("panel"), "PANEL_OPENED", "Đã mở panel WFX Smart.", {
+      action: "open",
+    });
   }
 
   function closePanel() {
@@ -1977,6 +2371,9 @@
     hotkeyCapture = false;
     updateHotkeyLabels();
     window.clearInterval(statusTimer);
+    logRun(createRunContext("panel"), "PANEL_CLOSED", "Đã đóng panel WFX Smart.", {
+      action: "close",
+    });
   }
 
   function togglePanel() {
@@ -1991,8 +2388,6 @@
     const preferences = getPreferences();
     ui.userInput.value = account.userId;
     ui.passwordInput.value = account.password;
-    ui.companyInput.value = account.companyId;
-    ui.autoLoginInput.checked = preferences.autoLoginOnOpen;
     ui.closeAfterModuleInput.checked = preferences.closeAfterModule;
     applyTheme(preferences.theme);
     ui.passwordInput.type = "password";
@@ -2000,6 +2395,9 @@
     updateHotkeyLabels();
     ui.settingsOverlay.classList.add("settings-open");
     window.setTimeout(() => (account.userId ? ui.passwordInput : ui.userInput).focus(), 100);
+    logRun(createRunContext("settings"), "SETTINGS_OPENED", "Đã mở phần thiết lập.", {
+      action: "open",
+    });
   }
 
   function closeSettings() {
@@ -2030,14 +2428,12 @@
   function saveSettings() {
     const userId = ui.userInput.value.trim();
     const password = ui.passwordInput.value;
-    const companyId = ui.companyInput.value.trim() || "psh";
     if (!userId || !password) {
       showToast("User ID và Password không được để trống.", "warning");
       return;
     }
-    const accountSaved = writeValue(STORAGE.account, { userId, password, companyId });
+    const accountSaved = writeValue(STORAGE.account, { userId, password, companyId: "psh" });
     const preferencesSaved = writeValue(STORAGE.preferences, {
-      autoLoginOnOpen: ui.autoLoginInput.checked,
       closeAfterModule: ui.closeAfterModuleInput.checked,
       theme: getSelectedTheme(),
     });
@@ -2047,8 +2443,13 @@
     }
     closeSettings();
     refreshStatus();
+    const runCtx = createRunContext("settings");
+    logRun(runCtx, "SETTINGS_SAVED", "Đã lưu User ID/Password và bật auto-login khi vào WFX.", {
+      companyId: "psh",
+      autoLogin: true,
+    });
     showToast("Đã lưu thiết lập.", "success");
-    if (ui.autoLoginInput.checked && getAuthState() !== "authenticated") {
+    if (getAuthState() !== "authenticated") {
       void continueLogin({ reset: true, source: "settings" });
     }
   }
@@ -2100,7 +2501,7 @@
             <div><strong>WFX Smart</strong><span>Automation workspace</span></div>
           </div>
           <div class="header-actions">
-            <button class="icon-button log-button" type="button" aria-label="Nhật ký Catalog" title="Nhật ký Catalog">
+            <button class="icon-button log-button" type="button" aria-label="Trạng thái hoạt động" title="Trạng thái hoạt động">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h11M8 12h11M8 17h7"/><path d="M4 7h.01M4 12h.01M4 17h.01"/></svg>
               <span class="log-alert" aria-hidden="true"></span>
             </button>
@@ -2170,25 +2571,11 @@
           <div class="settings-sheet">
             <div class="sheet-handle"></div>
             <div class="sheet-heading"><div><strong>Thiết lập thông minh</strong><span>Lưu riêng trong Chrome Extension trên máy này</span></div><button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
-            <div class="settings-status">
-              <div class="status-card" data-tone="neutral">
-                <span class="status-orbit"><span></span></span>
-                <div><strong class="status-title">Đang kiểm tra...</strong><span class="status-detail">WFX session</span></div>
-              </div>
-              <span class="account-chip">Chưa có account</span>
-              <button class="primary-button login-button" type="button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-                <span>Kết nối / Login</span>
-                <i></i>
-              </button>
-            </div>
             <div class="form-grid">
               <label><span>User ID</span><input class="user-input" type="text" autocomplete="username" placeholder="WFX User ID" /></label>
-              <label><span>Company ID</span><input class="company-input" type="text" autocomplete="organization" value="psh" /></label>
               <label class="password-field"><span>Password</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="WFX Password" /><button class="toggle-password" type="button">Hiện</button></div></label>
             </div>
             <div class="setting-row hotkey-row"><div><strong>Hotkey mở panel</strong><span>Nhấn nút rồi nhập tổ hợp mới</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
-            <label class="setting-row toggle-row"><div><strong>Tự login khi mở panel</strong><span>Chạy trên chính tab WFX hiện tại</span></div><input class="auto-login-input" type="checkbox" checked /><i></i></label>
             <label class="setting-row toggle-row"><div><strong>Đóng panel sau khi mở module</strong><span>Giữ màn hình làm việc gọn hơn</span></div><input class="close-module-input" type="checkbox" checked /><i></i></label>
             <div class="setting-row appearance-row"><div><strong>Giao diện</strong><span>Chọn nền sáng hoặc tối</span></div>
               <div class="segmented" role="group" aria-label="Giao diện">
@@ -2201,17 +2588,17 @@
           </div>
         </div>
 
-        <div class="settings-overlay log-overlay" aria-label="Nhật ký Catalog">
+        <div class="settings-overlay log-overlay" aria-label="Nhật ký hệ thống">
           <div class="settings-sheet log-sheet">
             <div class="sheet-handle"></div>
             <div class="sheet-heading">
-              <div><strong>Nhật ký Catalog</strong><span>Chi tiết từng bước của lần chạy gần nhất</span></div>
+              <div><strong>Trạng thái hoạt động</strong><span>Hiển thị ngắn gọn; sao chép để lấy log kỹ thuật</span></div>
               <div class="log-heading-actions">
-                <button class="catalog-log-copy" type="button">Sao chép log</button>
+                <button class="catalog-log-copy" type="button">Sao chép log kỹ thuật</button>
                 <button class="icon-button log-close-button" type="button" aria-label="Đóng nhật ký"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
               </div>
             </div>
-            <pre class="catalog-log">Chưa có log Catalog.</pre>
+            <pre class="catalog-log">Chưa có nhật ký hệ thống.</pre>
           </div>
         </div>
       </aside>
@@ -2251,11 +2638,9 @@
       settingsOverlay: shadow.querySelector(".settings-overlay"),
       settingsCloseButton: shadow.querySelector(".settings-close-button"),
       userInput: shadow.querySelector(".user-input"),
-      companyInput: shadow.querySelector(".company-input"),
       passwordInput: shadow.querySelector(".password-input"),
       togglePasswordButton: shadow.querySelector(".toggle-password"),
       hotkeyButton: shadow.querySelector(".hotkey-button"),
-      autoLoginInput: shadow.querySelector(".auto-login-input"),
       closeAfterModuleInput: shadow.querySelector(".close-module-input"),
       appearanceButtons: [...shadow.querySelectorAll("[data-theme-choice]")],
       saveButton: shadow.querySelector(".save-button"),
@@ -2271,7 +2656,7 @@
     ui.logOverlay.addEventListener("click", (event) => {
       if (event.target === ui.logOverlay) closeLog();
     });
-    ui.loginButton.addEventListener("click", () => void continueLogin({ reset: true, source: "login-button" }));
+    ui.loginButton?.addEventListener("click", () => void continueLogin({ reset: true, source: "login-button" }));
     ui.catalogCategory.addEventListener("change", saveCatalogForm);
     ui.catalogCode.addEventListener("input", saveCatalogForm);
     ui.catalogBuyerReference.addEventListener("input", saveCatalogForm);
@@ -2362,22 +2747,33 @@
   }
 
   async function resumePendingWork() {
-    const pending = getPending(STORAGE.pendingLogin);
-    if (!pending) {
-      if (getAuthState() === "authenticated") await processPendingAction();
-      return;
-    }
-    window.setTimeout(async () => {
-      if (getAuthState() === "authenticated") {
-        deleteValue(STORAGE.pendingLogin);
+    if (resumeLoginInFlight) return;
+    resumeLoginInFlight = true;
+    try {
+      const account = getAccount();
+      const pending = getPending(STORAGE.pendingLogin);
+      const state = await waitForKnownAuthState(30000);
+      if (state === "authenticated") {
+        if (pending) {
+          const runCtx = loginRunContext(pending);
+          deleteValue(STORAGE.pendingLogin);
+          logRun(runCtx, "LOGIN_SUCCESS", "Session WFX đã sẵn sàng sau khi trang load.");
+          showToast("Đăng nhập WFX thành công.", "success");
+        }
         setBusy(false);
         refreshStatus();
-        showToast("Đăng nhập WFX thành công.", "success");
         await processPendingAction();
-      } else {
-        await continueLogin({ reset: false, source: pending.source });
+        return;
       }
-    }, 350);
+      if (!account.userId || !account.password) return;
+      if (pending) {
+        await continueLogin({ reset: false, source: "resume" });
+        return;
+      }
+      await continueLogin({ reset: true, source: "page-load" });
+    } finally {
+      resumeLoginInFlight = false;
+    }
   }
 
   const STYLES = String.raw`
@@ -2513,7 +2909,7 @@
     .log-overlay.log-open .settings-sheet { transform: translateY(0); }
     .log-heading-actions { display: flex; align-items: center; gap: 8px; }
     .catalog-log-copy { height: 30px; padding: 0 10px; color: var(--accent-strong); font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); }
-    .catalog-log { max-height: 60vh; margin: 4px 0 0; padding: 11px 12px; overflow: auto; color: var(--code-text); font: 11.5px/1.6 Consolas, "SFMono-Regular", monospace; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--border); border-radius: 10px; background: var(--code-bg); scrollbar-width: thin; }
+    .catalog-log { max-height: 60vh; margin: 4px 0 0; padding: 11px 12px; overflow: auto; color: var(--text-2); font: 12px/1.75 system-ui, -apple-system, "Segoe UI", sans-serif; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); scrollbar-width: thin; }
 
     .search-box { height: 36px; display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-3); transition: border-color .2s, background .2s; }
     .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -2572,12 +2968,12 @@
     .sheet-heading strong, .sheet-heading span { display: block; }
     .sheet-heading strong { color: var(--text); font-size: 15px; font-weight: 700; }
     .sheet-heading span { margin-top: 3px; color: var(--text-3); font-size: 11px; }
-    .form-grid { display: grid; grid-template-columns: 1.45fr .75fr; gap: 9px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
     .form-grid label { min-width: 0; }
     .form-grid label > span { display: block; margin: 0 0 5px 2px; color: var(--text-2); font-size: 11px; font-weight: 650; }
     .form-grid input { width: 100%; height: 38px; padding: 0 10px; color: var(--text); font-size: 13px; outline: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); transition: border-color .2s; }
     .form-grid input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-    .password-field { grid-column: 1 / -1; }
+    .password-field { grid-column: auto; }
     .password-field > div { position: relative; }
     .password-field input { padding-right: 54px; }
     .toggle-password { position: absolute; right: 5px; top: 5px; height: 28px; padding: 0 8px; color: var(--accent-strong); font-size: 11px; font-weight: 600; cursor: pointer; border: 0; border-radius: 7px; background: var(--accent-soft); }
@@ -2633,16 +3029,27 @@
     }
   `;
 
+  const savedSystemLogs = readValue(STORAGE.logs, []);
+  automationLogs = Array.isArray(savedSystemLogs)
+    ? savedSystemLogs.filter((line) => typeof line === "string").slice(-300)
+    : [];
   installPopupTracker();
   createUI();
   registerMenuCommands();
+  logRun(createRunContext("system"), "SYSTEM_READY", "WFX Smart đã khởi tạo trên trang.", {
+    autoLogin: Boolean(getAccount().userId && getAccount().password),
+    hotkey: formatHotkey(),
+  });
   document.addEventListener("keydown", handleKeydown, true);
-  // Chrome Extension bridge dùng chrome.commands để không bị listener bàn phím của WFX chặn.
+  // Chrome Extension bridge dùng keydown mọi frame + chrome.commands để WFX không nuốt hotkey.
   document.addEventListener("wfx-smart-extension-toggle-panel", togglePanel);
   // Chỉ Chrome Extension dispatch event này (khi bridge.js phát hiện "Extension context
   // invalidated" sau khi extension được reload/cập nhật trong lúc tab vẫn mở — không có cách nào
   // tự phục hồi). Chrome Extension không bao giờ dispatch nên listener này vô hại/không chạy ở đó.
   document.addEventListener("wfx-smart-extension-context-lost", () => {
+    logRun(createRunContext("system"), "EXTENSION_CONTEXT_LOST", "Extension context đã mất sau khi reload/cập nhật.", {
+      errorCode: "EXTENSION_CONTEXT_INVALIDATED",
+    });
     showToast("Extension WFX Smart vừa được cập nhật. Hãy tải lại (F5) trang để tiếp tục dùng.", "warning", 8000);
   });
   window.addEventListener("pageshow", () => {
@@ -2657,7 +3064,7 @@
   window.addEventListener("message", (event) => {
     if (
       event.source !== window ||
-      event.origin !== window.location.origin ||
+      (PAGE_ORIGIN !== "null" && event.origin !== PAGE_ORIGIN) ||
       event.data?.source !== MESSAGE_SOURCE
     ) {
       return;

@@ -14,7 +14,7 @@ Extension chỉ chạy trên:
 
 `https://prosports.worldfashionexchange.com/*`
 
-Thiết lập tài khoản, hotkey và Catalog được lưu trong `chrome.storage.local`, tách biệt hoàn toàn với Tampermonkey.
+Thiết lập tài khoản, hotkey, Catalog và nhật ký hệ thống được lưu trong `chrome.storage.local`, tách biệt hoàn toàn với Tampermonkey. Khi đã có đủ User ID/Password, extension tự login ngay lúc vào WFX; Company ID luôn là `psh`.
 
 ## Build lại
 
@@ -27,4 +27,4 @@ powershell -ExecutionPolicy Bypass -File .\chrome-extension\build-extension.ps1
 Build tạo:
 
 - `chrome-extension/dist/WFX-Smart-Chrome-Extension/`
-- `chrome-extension/dist/WFX-Smart-Chrome-Extension-v1.8.1.zip`
+- `chrome-extension/dist/WFX-Smart-Chrome-Extension-v1.12.0.zip`

@@ -63,6 +63,8 @@ $adapterPrefix = @'
   window.__wfxSmartChromeExtensionLoaded = true;
 
   const MESSAGE_SOURCE = "wfx-smart-chrome-extension";
+  const PAGE_ORIGIN = window.location.origin;
+  const POST_TARGET_ORIGIN = PAGE_ORIGIN === "null" ? "*" : PAGE_ORIGIN;
   let started = false;
   let applyStorageUpdate = () => {};
   let handleExtensionCommand = () => {};
@@ -72,7 +74,7 @@ $adapterPrefix = @'
       source: MESSAGE_SOURCE,
       type,
       ...payload,
-    }, window.location.origin);
+    }, POST_TARGET_ORIGIN);
   };
 
   const start = (bridgeToken, initialValues) => {
@@ -121,7 +123,7 @@ $adapterSuffix = @'
   window.addEventListener("message", (event) => {
     if (
       event.source !== window ||
-      event.origin !== window.location.origin ||
+      (PAGE_ORIGIN !== "null" && event.origin !== PAGE_ORIGIN) ||
       event.data?.source !== MESSAGE_SOURCE
     ) {
       return;
