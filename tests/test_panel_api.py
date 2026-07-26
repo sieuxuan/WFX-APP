@@ -91,3 +91,26 @@ def test_save_account_persists(tmp_path):
     api, _ = make_api(tmp_path)
     api.save_account("carol", "s3cret")
     assert prefs.load_account(base_dir=tmp_path)["user_id"] == "carol"
+
+
+def test_save_account_blank_password_keeps_existing(tmp_path):
+    # Password input trên UI không bao giờ được điền lại khi mở Settings, nên
+    # nếu người dùng chỉ đổi User ID rồi lưu, password gửi lên sẽ luôn rỗng.
+    # Không được ghi đè mật khẩu đã lưu bằng chuỗi rỗng.
+    api, _ = make_api(tmp_path)
+    api.save_account("dave", "s3cret")
+    result = api.save_account("dave2", "")
+    assert result["ok"] is True
+    assert result["code"] == "ACCOUNT_SAVED"
+    loaded = prefs.load_account(base_dir=tmp_path)
+    assert loaded == {"user_id": "dave2", "password": "s3cret"}
+
+
+def test_save_account_blank_password_and_no_stored_password_fails(tmp_path):
+    api, _ = make_api(tmp_path)
+    result = api.save_account("erin", "   ")
+    assert result["ok"] is False
+    assert result["code"] == "PASSWORD_REQUIRED"
+    assert "mật khẩu" in result["message"].lower()
+    # Không được ghi bất cứ thứ gì xuống .env khi từ chối lưu.
+    assert prefs.load_account(base_dir=tmp_path) == {"user_id": "", "password": ""}

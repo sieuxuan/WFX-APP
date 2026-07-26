@@ -27,6 +27,10 @@
   const $ = (sel) => document.querySelector(sel);
   const api = () => (window.pywebview && window.pywebview.api) || null;
   let busy = false;
+  // Theo dõi pref "Đóng panel sau khi mở module" ở state module — được nạp từ
+  // wfxBootstrap và cập nhật khi người dùng đổi checkbox — để openModule() có
+  // thể quyết định gọi hide_panel() sau khi mở module thành công.
+  let closeAfterModule = true;
 
   function buildModules() {
     $(".module-list").innerHTML = MODULE_GROUPS.map((group) => `
@@ -102,6 +106,24 @@
     }
   }
 
+  async function openModule(moduleId) {
+    const bridge = api();
+    if (!bridge || typeof bridge.open_module !== "function") {
+      setStatus("error", "Bridge chưa sẵn sàng"); return;
+    }
+    setBusy(true);
+    setStatus("neutral", "Đang xử lý...");
+    try {
+      const result = await bridge.open_module(moduleId);
+      handleResult(result);
+      if (result && result.ok && closeAfterModule) api()?.hide_panel?.();
+    } catch (error) {
+      setStatus("error", String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const catalogActions = {
     "prepare": () => call("prepare_catalog", $(".catalog-category").value),
     "code-find": () => call("find_code", $(".catalog-category").value, $(".catalog-code").value.trim(), null),
@@ -129,11 +151,19 @@
   }
 
   function bind() {
+    // panel-header mang class pywebview-drag-region để pywebview (easy_drag=False)
+    // cho phép kéo cửa sổ frameless bằng mousedown trên header (xem
+    // webview/js/customize.js: querySelectorAll('.pywebview-drag-region')).
+    // mousedown bubble từ nút bên trong header lên tới chính header sẽ bị
+    // hiểu nhầm thành thao tác kéo cửa sổ — chặn bubble tại header-actions để
+    // log/settings/close vẫn click được bình thường.
+    $(".header-actions")?.addEventListener("mousedown", (e) => e.stopPropagation());
+
     document.querySelectorAll("[data-catalog-action]").forEach((btn) =>
       btn.addEventListener("click", () => catalogActions[btn.dataset.catalogAction]?.()));
     $(".module-list").addEventListener("click", (event) => {
       const btn = event.target.closest(".module-button");
-      if (btn) call("open_module", btn.dataset.moduleId);
+      if (btn) openModule(btn.dataset.moduleId);
     });
     $(".catalog-code").addEventListener("keydown", (e) => { if (e.key === "Enter") catalogActions["code-find"](); });
     $(".catalog-buyer-reference").addEventListener("keydown", (e) => { if (e.key === "Enter") catalogActions["buyer-find"](); });
@@ -156,7 +186,10 @@
       $(".settings-overlay:not(.log-overlay)").classList.remove("open");
       call("login");
     });
-    $(".close-module-input").addEventListener("change", (e) => api()?.set_close_after_module?.(e.target.checked));
+    $(".close-module-input").addEventListener("change", (e) => {
+      closeAfterModule = e.target.checked;
+      api()?.set_close_after_module?.(closeAfterModule);
+    });
     document.querySelectorAll(".seg-button").forEach((btn) =>
       btn.addEventListener("click", () => { applyTheme(btn.dataset.themeChoice); api()?.set_theme?.(btn.dataset.themeChoice); }));
     $(".catalog-log-copy").addEventListener("click", async () => {
@@ -169,7 +202,8 @@
     if (!state) return;
     setAccount(state.user_id);
     applyTheme(state.theme);
-    $(".close-module-input").checked = state.close_after_module !== false;
+    closeAfterModule = state.close_after_module !== false;
+    $(".close-module-input").checked = closeAfterModule;
     if (state.hotkey_label) { $(".hotkey-label").textContent = state.hotkey_label; $(".hotkey-button").textContent = state.hotkey_label; }
     (state.logs || []).forEach(pushLog);
   };

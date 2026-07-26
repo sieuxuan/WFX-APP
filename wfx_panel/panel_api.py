@@ -12,7 +12,7 @@ class PanelAPI:
             import login as login_module  # imported lazily so tests can inject a fake
         self._login = login_module
         self._prefs = prefs_module or prefs_default
-        self._base_dir = base_dir or self._prefs.APP_DIR
+        self._base_dir = base_dir or self._prefs.DATA_DIR
         self._logs: list[str] = []
         self._sink: Callable[[str], None] | None = None
 
@@ -89,6 +89,20 @@ class PanelAPI:
 
     # -- settings ----------------------------------------------------------
     def save_account(self, user_id: str, password: str) -> dict:
+        # Password field trên UI không bao giờ được điền lại (get_initial_state
+        # chỉ trả user_id) nên luôn trống khi sheet mở lại. Nếu người dùng chỉ
+        # sửa User ID hoặc bấm CTA mà không gõ lại mật khẩu, KHÔNG được ghi đè
+        # mật khẩu đã lưu bằng chuỗi rỗng — giữ nguyên mật khẩu cũ.
+        password = password or ""
+        if not password.strip():
+            existing_password = self._account().get("password", "")
+            if not existing_password.strip():
+                return {
+                    "ok": False,
+                    "code": "PASSWORD_REQUIRED",
+                    "message": "Vui lòng nhập mật khẩu trước khi lưu.",
+                }
+            password = existing_password
         self._prefs.save_account(user_id, password, base_dir=self._base_dir)
         self._log("[SETTINGS] Đã lưu tài khoản")
         return {"ok": True, "code": "ACCOUNT_SAVED", "message": "Đã lưu tài khoản", "user_id": user_id}
