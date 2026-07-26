@@ -18,6 +18,7 @@ from wfx_panel import (
     updater,
 )
 from wfx_panel import prefs as prefs_default
+from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 
 SESSION_OK = frozenset(
     {
@@ -171,6 +172,8 @@ class PanelAPI:
         account = self._account()
         preferences = self._prefs.load_prefs(base_dir=self._base_dir)
         return {
+            "app_version": APP_VERSION,
+            "app_version_label": DISPLAY_VERSION,
             "user_id": account["user_id"],
             "theme": preferences["theme"],
             "close_after_module": preferences["close_after_module"],
@@ -302,7 +305,7 @@ class PanelAPI:
                 self._base_dir,
                 {
                     "event_type": "automation_error",
-                    "app_version": os.getenv("WFX_APP_VERSION", "development"),
+                    "app_version": APP_VERSION,
                     "method": method_name,
                     "code": code,
                     "run_id": run_id,
@@ -679,7 +682,7 @@ class PanelAPI:
             "event_type": "user_feedback",
             "kind": kind,
             "message": message,
-            "app_version": os.getenv("WFX_APP_VERSION", "development"),
+            "app_version": APP_VERSION,
         }
         if include_diagnostics:
             recent = job_history.list_jobs(self._base_dir, 5)
@@ -755,7 +758,7 @@ class PanelAPI:
             "ok": True,
             "code": "UPDATE_SCHEDULED",
             "message": (
-                "Đang cập nhật từ Git. App sẽ đóng, build và tự mở lại."
+                "Đang cài bản mới. Ứng dụng sẽ đóng và tự mở lại khi hoàn tất."
             ),
             "can_update": False,
         }

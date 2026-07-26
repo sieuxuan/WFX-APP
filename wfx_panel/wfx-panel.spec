@@ -24,5 +24,5 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="WFX-Panel",
-          console=False, icon="assets/wfx.ico")
+          console=False, icon="assets/wfx.ico", version="version_info.txt")
 coll = COLLECT(exe, a.binaries, a.datas, name="WFX-Panel")

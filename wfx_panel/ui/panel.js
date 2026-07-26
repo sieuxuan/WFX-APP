@@ -173,8 +173,12 @@
     if (!state) return;
     const banner = $(".update-banner");
     banner.hidden = state.can_update !== true;
-    $(".update-banner-message").textContent = state.message || "";
-    if (state.can_update) $(".update-banner-button").textContent = `Cập nhật ${state.version || ""}`.trim();
+    if (state.can_update) {
+      $(".update-banner-message").textContent = state.version
+        ? `Phiên bản ${state.version} đã sẵn sàng. Ứng dụng sẽ tự mở lại sau khi cập nhật.`
+        : "Bản mới đã sẵn sàng. Ứng dụng sẽ tự mở lại sau khi cập nhật.";
+      $(".update-banner-button").textContent = "Cập nhật ngay";
+    }
   }
   window.wfxSetUpdateState = setUpdateState;
 
@@ -340,7 +344,7 @@
     }
     if (!result || result.code !== "UPDATE_SCHEDULED") {
       button.disabled = false;
-      button.textContent = "Cập nhật";
+      button.textContent = "Cập nhật ngay";
     }
   }
 
@@ -584,6 +588,9 @@
 
   window.wfxBootstrap = (state) => {
     if (!state) return;
+    if (state.app_version_label) {
+      $(".app-version").textContent = `Phiên bản ${state.app_version_label}`;
+    }
     if (Array.isArray(state.module_groups) && state.module_groups.length) {
       MODULE_GROUPS = state.module_groups;
       buildModules();
