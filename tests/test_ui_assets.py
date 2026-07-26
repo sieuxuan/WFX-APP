@@ -27,3 +27,12 @@ def test_index_html_has_contract_hooks():
     ]:
         assert hook in html, hook
     assert "launcher" not in html
+
+
+def test_header_has_drag_region_class_for_frameless_window():
+    # Finding D: window.easy_drag=False + pywebview's own '.pywebview-drag-region'
+    # convention (webview/js/customize.js) is the only thing that lets users move
+    # a frameless always-on-top window; style.css alone (-webkit-app-region) is
+    # not honored by WebView2/pywebview's drag implementation.
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'class="panel-header pywebview-drag-region"' in html

@@ -12,8 +12,31 @@ from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 
 HOTKEY = "ctrl+shift+x"
-ICON_PATH = prefs.APP_DIR / "wfx_panel" / "assets" / "wfx.ico"
-UI_INDEX = prefs.APP_DIR / "wfx_panel" / "ui" / "index.html"
+ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
+UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
+
+WINDOW_WIDTH = 440
+WINDOW_HEIGHT = 620
+WINDOW_MARGIN = 24
+
+
+def _top_right_position() -> tuple[int, int]:
+    """Toạ độ mở panel gần góc trên-phải màn hình chính.
+
+    pywebview không nhận x/y sẽ tự canh giữa cửa sổ, sai với thiết kế (panel
+    phải neo góc trên-phải). webview.screens chỉ khả dụng SAU khi GUI backend
+    đã khởi tạo nên phải gọi hàm này bên trong run()/create_window(), không
+    phải ở module scope; bọc try/except vì backend hoặc thuộc tính có thể
+    thiếu tuỳ môi trường — không được để lỗi ở đây làm sập khởi động app.
+    """
+    try:
+        screen = webview.screens[0]
+        screen_width = int(screen.width)
+    except Exception:
+        screen_width = 1920
+    x = max(WINDOW_MARGIN, screen_width - WINDOW_WIDTH - WINDOW_MARGIN)
+    y = WINDOW_MARGIN
+    return x, y
 
 
 class PanelApp:
@@ -148,12 +171,15 @@ class PanelApp:
         self.api.hide_panel = self.hide_panel   # type: ignore[attr-defined]
         self.api.show_panel = self.show_panel   # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
+        x, y = _top_right_position()
         self.window = webview.create_window(
             "WFX Smart",
             url=str(UI_INDEX),
             js_api=self.api,
-            width=440,
-            height=620,
+            width=WINDOW_WIDTH,
+            height=WINDOW_HEIGHT,
+            x=x,
+            y=y,
             frameless=True,
             easy_drag=False,
             on_top=True,
