@@ -61,13 +61,14 @@ def test_index_html_has_contract_hooks():
         'class="catalog-code"',
         'class="catalog-buyer-reference"',
         'class="user-input"',
-        'class="save-button"',
+        'class="save-button settings-save-button"',
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'src="panel.js"',
     ]:
         assert hook in html, hook
     assert 'class="compact-launcher"' in html
+    assert "compact-drag-handle" not in html
 
 
 def test_header_has_drag_region_class_for_frameless_window():
@@ -105,6 +106,19 @@ def test_settings_has_new_toggles_and_enabled_hotkey_button():
     assert "disabled" not in hotkey_tag
 
 
+def test_settings_save_action_is_at_the_top_and_defaults_are_safe():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    save_index = html.index('class="save-button settings-save-button"')
+    account_index = html.index('class="form-grid"')
+    assert save_index < account_index
+    start_hidden_tag = html[html.index('class="start-hidden-input"') :]
+    start_hidden_tag = start_hidden_tag[: start_hidden_tag.index(">")]
+    admin_tag = html[html.index('class="admin-mode-input"') :]
+    admin_tag = admin_tag[: admin_tag.index(">")]
+    assert "checked" not in start_hidden_tag
+    assert "checked" not in admin_tag
+
+
 def test_catalog_has_conditional_chrome_button_and_style_status():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
@@ -124,8 +138,8 @@ def test_update_is_only_exposed_as_automatic_outside_banner():
     assert 'class="update-check-button"' not in html
     assert 'class="update-apply-button"' not in html
     assert 'class="update-channel-input"' not in html
-    assert "Có phiên bản mới" in html
-    assert "Cập nhật ngay" in html
+    assert "Có bản cập nhật mới" in html
+    assert "Cập nhật phần mềm mới" in html
     assert "Phiên bản 1.0" in html
 
 

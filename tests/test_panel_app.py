@@ -188,7 +188,7 @@ def test_dock_targets_only_automation_browser_pid(monkeypatch):
     ]
 
 
-def test_compact_launcher_docks_inside_browser_top_left(monkeypatch):
+def test_compact_launcher_docks_inside_browser_bottom_right(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
@@ -213,7 +213,12 @@ def test_compact_launcher_docks_inside_browser_top_left(monkeypatch):
         lambda pid: (
             (100, 50, 1500, 900)
             if pid == 922200
-            else (100, 50, 156, 106)
+            else (
+                100,
+                50,
+                100 + module.COMPACT_SIZE,
+                50 + module.COMPACT_SIZE,
+            )
         ),
     )
     monkeypatch.setattr(
@@ -222,10 +227,181 @@ def test_compact_launcher_docks_inside_browser_top_left(monkeypatch):
     assert app._dock_to_browser() is True
     assert moved == [
         (
-            100 + module.BROWSER_DOCK_GAP,
-            50 + module.COMPACT_BROWSER_TOP,
+            1500 - module.COMPACT_SIZE - module.BROWSER_DOCK_GAP,
+            900 - module.COMPACT_SIZE - module.BROWSER_DOCK_GAP,
         )
     ]
+
+
+def test_compact_launcher_keeps_user_drag_position_while_browser_is_still(
+    monkeypatch,
+):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    browser_rect = (100, 50, 1500, 900)
+    app._last_compact_browser_rect = browser_rect
+    app._compact = True
+    app._visible = True
+    moved = []
+
+    class FakeWindow:
+        def move(self, x, y):
+            moved.append((x, y))
+
+    class FakeLogin:
+        @staticmethod
+        def automation_browser_pid():
+            return 922200
+
+    app.window = FakeWindow()
+    app.api._login = FakeLogin()
+    monkeypatch.setattr(
+        module,
+        "_window_rect_for_process",
+        lambda pid: browser_rect if pid == 922200 else (820, 700, 868, 748),
+    )
+    monkeypatch.setattr(
+        module, "_set_process_window_bounds", lambda *_args: False
+    )
+
+    assert app._dock_to_browser() is True
+    assert moved == []
+
+
+def test_compact_launcher_restores_saved_browser_relative_position(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app._compact_offset = (520, 610)
+    app._compact = True
+    app._visible = True
+    moved = []
+
+    class FakeWindow:
+        def move(self, x, y):
+            moved.append((x, y))
+
+    class FakeLogin:
+        @staticmethod
+        def automation_browser_pid():
+            return 922200
+
+    app.window = FakeWindow()
+    app.api._login = FakeLogin()
+    monkeypatch.setattr(
+        module,
+        "_window_rect_for_process",
+        lambda pid: (
+            (100, 50, 1500, 900)
+            if pid == 922200
+            else (200, 200, 248, 248)
+        ),
+    )
+    monkeypatch.setattr(
+        module, "_set_process_window_bounds", lambda *_args: False
+    )
+
+    assert app._dock_to_browser() is True
+    assert moved == [(620, 660)]
+
+
+def test_hold_to_drag_starts_native_mouse_tracking_thread(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app._compact = True
+    started = []
+
+    class FakeLogin:
+        @staticmethod
+        def automation_browser_pid():
+            return 922200
+
+    class FakeThread:
+        def __init__(self, *, target, args, daemon):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+
+        def is_alive(self):
+            return False
+
+        def start(self):
+            started.append((self.target, self.args, self.daemon))
+
+    app.api._login = FakeLogin()
+    monkeypatch.setattr(module, "_native_left_button_down", lambda: True)
+    monkeypatch.setattr(module, "_native_cursor_position", lambda: (800, 700))
+    monkeypatch.setattr(
+        module,
+        "_window_rect_for_process",
+        lambda pid: (
+            (100, 50, 1500, 900)
+            if pid == 922200
+            else (720, 690, 768, 738)
+        ),
+    )
+    monkeypatch.setattr(module.threading, "Thread", FakeThread)
+
+    result = app.begin_compact_drag()
+    assert result["code"] == "PANEL_DRAG_STARTED"
+    assert started == [
+        (
+            app._compact_drag_loop,
+            ((800, 700), (720, 690, 768, 738), 922200),
+            True,
+        )
+    ]
+
+
+def test_native_drag_loop_moves_until_release_and_saves_position(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app._compact = True
+    mouse_states = iter([True, False])
+    own_rect = [720, 690, 768, 738]
+    moved = []
+    saved = []
+
+    monkeypatch.setattr(
+        module, "_native_left_button_down", lambda: next(mouse_states)
+    )
+    monkeypatch.setattr(
+        module, "_native_cursor_position", lambda: (850, 740)
+    )
+
+    def rect_for(pid):
+        if pid == 922200:
+            return (100, 50, 1500, 900)
+        return tuple(own_rect)
+
+    def move_window(_pid, x, y, *_size):
+        width = own_rect[2] - own_rect[0]
+        height = own_rect[3] - own_rect[1]
+        own_rect[:] = [x, y, x + width, y + height]
+        moved.append((x, y))
+        return True
+
+    monkeypatch.setattr(module, "_window_rect_for_process", rect_for)
+    monkeypatch.setattr(module, "_set_process_window_bounds", move_window)
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        module.prefs,
+        "save_prefs",
+        lambda **kwargs: saved.append(kwargs) or {},
+    )
+
+    app._compact_drag_loop(
+        (800, 700),
+        (720, 690, 768, 738),
+        922200,
+    )
+
+    assert moved == [(770, 730)]
+    assert app._compact_offset == (670, 680)
+    assert saved == [{"compact_offset_x": 670, "compact_offset_y": 680}]
 
 
 def test_collapse_and_expand_resize_the_same_window(monkeypatch):

@@ -149,6 +149,12 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         stored_hotkey = hotkey_spec.DEFAULT
     else:
         stored_hotkey = hotkey_spec.normalize(stored_hotkey)
+    compact_offset_x = data.get("compact_offset_x")
+    compact_offset_y = data.get("compact_offset_y")
+    if isinstance(compact_offset_x, bool) or not isinstance(compact_offset_x, int):
+        compact_offset_x = None
+    if isinstance(compact_offset_y, bool) or not isinstance(compact_offset_y, int):
+        compact_offset_y = None
     return {
         "theme": "dark" if data.get("theme") == "dark" else "light",
         "close_after_module": data.get("close_after_module", True) is not False,
@@ -158,7 +164,7 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "start_hidden": data.get("start_hidden", False) is True,
         "toast_enabled": data.get("toast_enabled", True) is not False,
         "always_on_top": data.get("always_on_top", True) is not False,
-        "stick_to_browser": data.get("stick_to_browser", False) is True,
+        "stick_to_browser": data.get("stick_to_browser", True) is True,
         "admin_mode": data.get("admin_mode", False) is True,
         "update_channel": (
             "current"
@@ -166,6 +172,8 @@ def load_prefs(base_dir: Path | None = None) -> dict:
             else "stable"
         ),
         "last_update_notice": str(data.get("last_update_notice") or ""),
+        "compact_offset_x": compact_offset_x,
+        "compact_offset_y": compact_offset_y,
     }
 
 
@@ -184,6 +192,8 @@ def save_prefs(
     admin_mode: bool | None = None,
     update_channel: str | None = None,
     last_update_notice: str | None = None,
+    compact_offset_x: int | None = None,
+    compact_offset_y: int | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     current = load_prefs(base_dir)
@@ -212,6 +222,10 @@ def save_prefs(
         )
     if last_update_notice is not None:
         current["last_update_notice"] = str(last_update_notice)
+    if compact_offset_x is not None:
+        current["compact_offset_x"] = int(compact_offset_x)
+    if compact_offset_y is not None:
+        current["compact_offset_y"] = int(compact_offset_y)
     # Nhận tham số cũ để không phá caller, nhưng nhãn luôn được dẫn xuất từ
     # hotkey thật và không được ghi riêng xuống prefs.json.
     _ = hotkey_label

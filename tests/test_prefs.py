@@ -77,15 +77,28 @@ def test_new_pref_defaults(tmp_path):
     assert loaded["start_hidden"] is False
     assert loaded["toast_enabled"] is True
     assert loaded["always_on_top"] is True
-    assert loaded["stick_to_browser"] is False
+    assert loaded["stick_to_browser"] is True
     assert loaded["admin_mode"] is False
     assert loaded["update_channel"] == "stable"
     assert loaded["last_update_notice"] == ""
+    assert loaded["compact_offset_x"] is None
+    assert loaded["compact_offset_y"] is None
 
 
 def test_admin_mode_round_trip(tmp_path):
     prefs.save_prefs(base_dir=tmp_path, admin_mode=True)
     assert prefs.load_prefs(base_dir=tmp_path)["admin_mode"] is True
+
+
+def test_compact_icon_position_round_trip(tmp_path):
+    prefs.save_prefs(
+        base_dir=tmp_path,
+        compact_offset_x=640,
+        compact_offset_y=420,
+    )
+    loaded = prefs.load_prefs(base_dir=tmp_path)
+    assert loaded["compact_offset_x"] == 640
+    assert loaded["compact_offset_y"] == 420
 
 
 def test_save_account_preserves_hidden_webhook_setting(tmp_path):
