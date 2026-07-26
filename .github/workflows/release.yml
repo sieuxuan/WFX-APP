@@ -70,23 +70,28 @@ jobs:
             Write-Host "Release $env:TAG đã tồn tại."
             exit 0
           }
-          @"
-          WFX Smart 1.0 là bản desktop chính thức dành cho người dùng WFX.
-
-          Cách cài:
-          1. Tải file **$env:ZIP_NAME** bên dưới.
-          2. Giải nén toàn bộ thư mục.
-          3. Mở **WFX-Panel.exe**.
-
-          Điểm chính:
-          - Mở Chrome automation và dùng lại phiên đăng nhập WFX.
-          - Catalog hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.
-          - Panel có thể bám theo Chrome và thu thành icon nhỏ.
-          - Tự thông báo khi có phiên bản mới; chỉ cần bấm **Cập nhật ngay**.
-          - Settings cũ được giữ nguyên sau khi cập nhật.
-
-          File `.sha256` dùng để kiểm tra gói tải về không bị thay đổi.
-          "@ | Set-Content -LiteralPath release-notes.md -Encoding UTF8
+          $notes = @(
+            'WFX Smart 1.0 là bản desktop chính thức dành cho người dùng WFX.'
+            ''
+            'Cách cài:'
+            "1. Tải file **$env:ZIP_NAME** bên dưới."
+            '2. Giải nén toàn bộ thư mục.'
+            '3. Mở **WFX-Panel.exe**.'
+            ''
+            'Điểm chính:'
+            '- Mở Chrome automation và dùng lại phiên đăng nhập WFX.'
+            '- Catalog hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.'
+            '- Panel có thể bám theo Chrome và thu thành icon nhỏ.'
+            '- Tự thông báo khi có phiên bản mới; chỉ cần bấm **Cập nhật ngay**.'
+            '- Settings cũ được giữ nguyên sau khi cập nhật.'
+            ''
+            'File .sha256 dùng để kiểm tra gói tải về không bị thay đổi.'
+          ) -join "`n"
+          [System.IO.File]::WriteAllText(
+            (Join-Path $PWD 'release-notes.md'),
+            $notes,
+            [System.Text.UTF8Encoding]::new($false)
+          )
           gh release create $env:TAG `
             $env:ZIP_NAME `
             "$env:ZIP_NAME.sha256" `
