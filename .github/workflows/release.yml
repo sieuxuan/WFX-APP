@@ -1,0 +1,96 @@
+name: Publish WFX Smart Stable Release
+
+on:
+  push:
+    branches:
+      - feat/wfx-floating-panel
+    paths:
+      - .github/workflows/release.yml
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows release
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build Windows app
+        shell: powershell
+        run: |
+          python wfx_panel/assets/generate_icon.py
+          python -m PyInstaller --noconfirm --clean wfx_panel/wfx-panel.spec
+
+      - name: Package and checksum
+        id: package
+        shell: powershell
+        run: |
+          $version = python -c "from wfx_panel.version import APP_VERSION; print(APP_VERSION)"
+          $tag = "v$version"
+          $zipName = "WFX-Panel-v$version-win64.zip"
+          $zipPath = Join-Path $PWD $zipName
+          Compress-Archive -Path "dist/WFX-Panel/*" -DestinationPath $zipPath -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText(
+            "$zipPath.sha256",
+            "$hash  $zipName`n",
+            [System.Text.UTF8Encoding]::new($false)
+          )
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "TAG=$tag" >> $env:GITHUB_ENV
+          "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Publish GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (gh release view $env:TAG --repo $env:GITHUB_REPOSITORY 2>$null) {
+            Write-Host "Release $env:TAG đã tồn tại."
+            exit 0
+          }
+          @"
+          WFX Smart 1.0 là bản desktop chính thức dành cho người dùng WFX.
+
+          Cách cài:
+          1. Tải file **$env:ZIP_NAME** bên dưới.
+          2. Giải nén toàn bộ thư mục.
+          3. Mở **WFX-Panel.exe**.
+
+          Điểm chính:
+          - Mở Chrome automation và dùng lại phiên đăng nhập WFX.
+          - Catalog hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.
+          - Panel có thể bám theo Chrome và thu thành icon nhỏ.
+          - Tự thông báo khi có phiên bản mới; chỉ cần bấm **Cập nhật ngay**.
+          - Settings cũ được giữ nguyên sau khi cập nhật.
+
+          File `.sha256` dùng để kiểm tra gói tải về không bị thay đổi.
+          "@ | Set-Content -LiteralPath release-notes.md -Encoding UTF8
+          gh release create $env:TAG `
+            $env:ZIP_NAME `
+            "$env:ZIP_NAME.sha256" `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "WFX Smart 1.0" `
+            --notes-file release-notes.md `
+            --verify-tag `
+            --latest
