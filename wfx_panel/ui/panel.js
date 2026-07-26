@@ -25,6 +25,9 @@
   ];
 
   const $ = (sel) => document.querySelector(sel);
+  // Hai overlay dùng chung class .settings-overlay; cái thứ hai còn có
+  // .log-overlay. Đây là sheet Thiết lập (cái không phải log).
+  const settingsOverlay = () => $(".settings-overlay:not(.log-overlay)");
   const api = () => (window.pywebview && window.pywebview.api) || null;
   let busy = false;
   // Theo dõi pref "Đóng panel sau khi mở module" ở state module — được nạp từ
@@ -67,7 +70,7 @@
     const current = pre.textContent === "Chưa có nhật ký hệ thống." ? "" : pre.textContent;
     pre.textContent = (current ? current + "\n" : "") + line;
     pre.scrollTop = pre.scrollHeight;
-    if (/(?:ERROR|FAILED|TIMEOUT)/i.test(line) && !$(".log-overlay").classList.contains("open")) {
+    if (/(?:ERROR|FAILED|TIMEOUT)/i.test(line) && !$(".log-overlay").classList.contains("log-open")) {
       $(".log-button").classList.add("has-alert");
     }
   }
@@ -169,10 +172,13 @@
     $(".catalog-buyer-reference").addEventListener("keydown", (e) => { if (e.key === "Enter") catalogActions["buyer-find"](); });
     $(".search-box input").addEventListener("input", (e) => filterModules(e.target.value));
 
-    $(".settings-button").addEventListener("click", () => $(".settings-overlay:not(.log-overlay)").classList.add("open"));
-    $(".settings-close-button").addEventListener("click", () => $(".settings-overlay:not(.log-overlay)").classList.remove("open"));
-    $(".log-button").addEventListener("click", () => { $(".log-overlay").classList.add("open"); $(".log-button").classList.remove("has-alert"); });
-    $(".log-close-button").addEventListener("click", () => $(".log-overlay").classList.remove("open"));
+    // Tên class phải khớp CSS trích từ extension: Settings bật bằng
+    // `settings-open`, Log bật bằng `log-open`. Dùng "open" trần thì không rule
+    // nào khớp và overlay ở nguyên visibility:hidden.
+    $(".settings-button").addEventListener("click", () => settingsOverlay().classList.add("settings-open"));
+    $(".settings-close-button").addEventListener("click", () => settingsOverlay().classList.remove("settings-open"));
+    $(".log-button").addEventListener("click", () => { $(".log-overlay").classList.add("log-open"); $(".log-button").classList.remove("has-alert"); });
+    $(".log-close-button").addEventListener("click", () => $(".log-overlay").classList.remove("log-open"));
     $(".close-button").addEventListener("click", () => api()?.hide_panel?.());
 
     $(".toggle-password").addEventListener("click", () => {
@@ -183,7 +189,7 @@
     });
     $(".save-button").addEventListener("click", async () => {
       await call("save_account", $(".user-input").value.trim(), $(".password-input").value);
-      $(".settings-overlay:not(.log-overlay)").classList.remove("open");
+      settingsOverlay().classList.remove("settings-open");
       call("login");
     });
     $(".close-module-input").addEventListener("change", (e) => {

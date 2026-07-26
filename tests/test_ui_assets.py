@@ -31,6 +31,26 @@ def test_desktop_override_forces_panel_visible():
         assert css.index(declaration) < hidden_default, declaration
 
 
+def test_overlay_toggle_classes_match_the_css():
+    """panel.js phải bật overlay bằng ĐÚNG tên class mà style.css định nghĩa.
+
+    CSS trích từ extension bật Settings bằng `.settings-open` và Log bằng
+    `.log-open`; `.settings-overlay` mặc định là `visibility:hidden; opacity:0`.
+    Nếu JS thêm một class khác (vd `open` trần) thì không rule nào khớp và cả
+    hai overlay KHÔNG BAO GIỜ mở được — đã xảy ra thật, người dùng không vào
+    được Settings.
+    """
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    js = (UI / "panel.js").read_text(encoding="utf-8")
+    assert ".settings-open" in css
+    assert ".log-open" in css
+    assert '"settings-open"' in js
+    assert '"log-open"' in js
+    assert 'classList.add("open")' not in js
+    assert 'classList.remove("open")' not in js
+    assert 'classList.contains("open")' not in js
+
+
 def test_index_html_has_contract_hooks():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
