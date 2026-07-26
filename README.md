@@ -1,4 +1,4 @@
-## WFX Smart 1.0.2 (Python, thay extension)
+## WFX Smart 1.0.3 (Python, thay extension)
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -36,7 +36,7 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Panel-v1.0.2-win64.zip` kèm file checksum `.sha256`.
+Gói phát hành: `WFX-Panel-v1.0.3-win64.zip` kèm file checksum `.sha256`.
 
 - Windows 11 có sẵn WebView2 trong phần lớn bản cài.
 - Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài

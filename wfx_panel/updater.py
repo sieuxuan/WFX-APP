@@ -172,8 +172,9 @@ def schedule_update(
     *,
     current_pid: int | None = None,
     executable: Path | None = None,
+    executable_args: list[str] | None = None,
 ) -> Path:
-    """Tạo helper độc lập để thay bản app sau khi process hiện tại thoát."""
+    """Tạo helper GUI độc lập để thay bản app và hiển thị tiến trình trực quan."""
     if not state.get("can_update"):
         raise ValueError("Không có bản cập nhật để cài.")
 
@@ -190,8 +191,20 @@ def schedule_update(
     log_path = data_dir / "update.log"
     result_path = data_dir / "update-result.json"
     helper = Path(tempfile.gettempdir()) / f"wfx-panel-update-{pid}.ps1"
+
+    exe_args_list = [str(arg) for arg in (executable_args or [])]
+    exe_args_ps = (
+        ",".join(_ps_quote(arg) for arg in exe_args_list)
+        if exe_args_list
+        else ""
+    )
+
     content = f"""$ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
 $updateLog = {_ps_quote(log_path)}
 $resultPath = {_ps_quote(result_path)}
 $packageUrl = {_ps_quote(package_url)}
@@ -199,73 +212,192 @@ $checksumUrl = {_ps_quote(checksum_url)}
 $version = {_ps_quote(version)}
 $targetExe = {_ps_quote(target_exe)}
 $installDir = {_ps_quote(install_dir)}
+$exeArgs = @({exe_args_ps})
 $workDir = Join-Path $env:TEMP 'wfx-panel-update-{pid}'
 $zipPath = Join-Path $workDir 'WFX-Panel.zip'
 $checksumPath = Join-Path $workDir 'WFX-Panel.zip.sha256'
 $expandedDir = Join-Path $workDir 'expanded'
 $backupDir = "$installDir.backup-{pid}"
+
 function Write-UpdateResult([bool]$ok, [string]$code, [string]$message) {{
   @{{ok=$ok; code=$code; message=$message; version=$version}} |
     ConvertTo-Json | Set-Content -LiteralPath $resultPath -Encoding UTF8
 }}
-try {{
-  Wait-Process -Id {pid} -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
-  New-Item -ItemType Directory -Path $expandedDir -Force | Out-Null
-  Invoke-WebRequest -Uri $packageUrl -OutFile $zipPath -UseBasicParsing
-  Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumPath -UseBasicParsing
-  $expectedHash = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\\s+')[0]
-  if ($expectedHash -notmatch '^[A-Fa-f0-9]{{64}}$') {{
-    throw 'Invalid checksum file.'
-  }}
-  $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
-  if ($actualHash -ne $expectedHash) {{
-    throw 'Downloaded package checksum mismatch.'
-  }}
-  Expand-Archive -LiteralPath $zipPath -DestinationPath $expandedDir -Force
-  $newExe = Get-ChildItem -LiteralPath $expandedDir -Filter 'WFX-Panel.exe' -Recurse |
-    Select-Object -First 1
-  if (-not $newExe) {{ throw 'WFX-Panel.exe is missing from the update package.' }}
-  $newRoot = $newExe.Directory.FullName
-  Copy-Item -LiteralPath $installDir -Destination $backupDir -Recurse -Force
-  Remove-Item -LiteralPath $installDir -Recurse -Force
-  New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-  Copy-Item -Path (Join-Path $newRoot '*') -Destination $installDir -Recurse -Force
-  if (-not (Test-Path -LiteralPath $targetExe)) {{
-    throw 'Updated application could not be installed.'
-  }}
-  Write-UpdateResult $true 'UPDATE_INSTALLED' "Đã cập nhật lên phiên bản $version. Cài đặt cũ vẫn được giữ nguyên."
-  Start-Process -FilePath $targetExe
-  Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
-}} catch {{
-  $_ | Out-String | Add-Content -LiteralPath $updateLog
-  try {{
-    if (Test-Path -LiteralPath $backupDir) {{
-      Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
-      Move-Item -LiteralPath $backupDir -Destination $installDir -Force
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "WFX Smart - Cập nhật phiên bản $version"
+$form.Size = New-Object System.Drawing.Size(480, 240)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.TopMost = $true
+$form.BackColor = [System.Drawing.Color]::FromArgb(24, 28, 36)
+$form.ForeColor = [System.Drawing.Color]::White
+
+$lblHeader = New-Object System.Windows.Forms.Label
+$lblHeader.Location = New-Object System.Drawing.Point(24, 20)
+$lblHeader.Size = New-Object System.Drawing.Size(420, 28)
+$lblHeader.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$lblHeader.Text = "Đang cập nhật WFX Smart v$version"
+$lblHeader.ForeColor = [System.Drawing.Color]::White
+$form.Controls.Add($lblHeader)
+
+$lblStatus = New-Object System.Windows.Forms.Label
+$lblStatus.Location = New-Object System.Drawing.Point(24, 55)
+$lblStatus.Size = New-Object System.Drawing.Size(420, 42)
+$lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+$lblStatus.Text = "Đang khởi tạo tiến trình cập nhật..."
+$lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 195, 215)
+$form.Controls.Add($lblStatus)
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Location = New-Object System.Drawing.Point(24, 105)
+$progressBar.Size = New-Object System.Drawing.Size(420, 22)
+$progressBar.Style = "Marquee"
+$progressBar.MarqueeAnimationSpeed = 30
+$form.Controls.Add($progressBar)
+
+$btnClose = New-Object System.Windows.Forms.Button
+$btnClose.Location = New-Object System.Drawing.Point(344, 145)
+$btnClose.Size = New-Object System.Drawing.Size(100, 32)
+$btnClose.Text = "Đóng"
+$btnClose.FlatStyle = "Flat"
+$btnClose.BackColor = [System.Drawing.Color]::FromArgb(45, 55, 72)
+$btnClose.ForeColor = [System.Drawing.Color]::White
+$btnClose.Visible = $false
+$btnClose.Add_Click({{ $form.Close() }})
+$form.Controls.Add($btnClose)
+
+function Update-UI([string]$text, [int]$percent = -1, [string]$tone = 'info') {{
+  $form.Invoke([action]{{
+    $lblStatus.Text = $text
+    if ($tone -eq 'error') {{
+      $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110)
+    }} elseif ($tone -eq 'success') {{
+      $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(100, 220, 140)
     }}
-    Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật chưa thành công. Ứng dụng đã trở lại phiên bản trước và cài đặt của bạn vẫn được giữ nguyên.'
-  }} catch {{
-    $_ | Out-String | Add-Content -LiteralPath $updateLog
-    Write-UpdateResult $false 'UPDATE_ROLLBACK_FAILED' 'Không thể hoàn tất cập nhật. Vui lòng tải lại WFX Smart từ trang phát hành.'
-  }}
-  if (Test-Path -LiteralPath $targetExe) {{
-    Start-Process -FilePath $targetExe
-  }}
-}} finally {{
-  Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+    if ($percent -ge 0) {{
+      $progressBar.Style = "Blocks"
+      $progressBar.Value = [math]::Min(100, [math]::Max(0, $percent))
+    }}
+  }})
 }}
+
+function Safe-Remove([string]$path) {{
+  for ($i = 0; $i -lt 15; $i++) {{
+    try {{
+      if (Test-Path -LiteralPath $path) {{
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+      }}
+      return
+    }} catch {{
+      Start-Sleep -Milliseconds 500
+    }}
+  }}
+  if (Test-Path -LiteralPath $path) {{
+    Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+  }}
+}}
+
+function Perform-Update {{
+  try {{
+    Update-UI "Đang chờ ứng dụng chính đóng..." 5
+    Wait-Process -Id {pid} -Timeout 15 -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+
+    Safe-Remove $workDir
+    Safe-Remove $backupDir
+    New-Item -ItemType Directory -Path $expandedDir -Force | Out-Null
+
+    Update-UI "Đang tải gói cập nhật WFX Smart v$version..." 20
+    $webClient = New-Object System.Net.WebClient
+    $webClient.Headers.Add("User-Agent", "WFX-Smart-Updater")
+    $webClient.DownloadFile($packageUrl, $zipPath)
+    $webClient.DownloadFile($checksumUrl, $checksumPath)
+
+    Update-UI "Đang kiểm tra mã checksum SHA-256..." 50
+    $expectedHash = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\\s+')[0]
+    if ($expectedHash -notmatch '^[A-Fa-f0-9]{{64}}$') {{
+      throw 'Tệp checksum SHA-256 không hợp lệ.'
+    }}
+    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    if ($actualHash.ToLowerInvariant() -ne $expectedHash.ToLowerInvariant()) {{
+      throw 'Mã SHA-256 của gói tải về không trùng khớp.'
+    }}
+
+    Update-UI "Đang giải nén gói cập nhật..." 70
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $expandedDir -Force
+    $newExe = Get-ChildItem -LiteralPath $expandedDir -Filter 'WFX-Panel.exe' -Recurse | Select-Object -First 1
+    if (-not $newExe) {{
+      throw 'Không tìm thấy WFX-Panel.exe trong gói cài đặt.'
+    }}
+    $newRoot = $newExe.Directory.FullName
+
+    Update-UI "Đang cài đặt phiên bản mới..." 85
+    Copy-Item -LiteralPath $installDir -Destination $backupDir -Recurse -Force
+    Safe-Remove $installDir
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    Copy-Item -Path (Join-Path $newRoot '*') -Destination $installDir -Recurse -Force
+
+    if (-not (Test-Path -LiteralPath $targetExe)) {{
+      throw 'Tệp ứng dụng sau cập nhật không tồn tại.'
+    }}
+
+    Write-UpdateResult $true 'UPDATE_INSTALLED' "Đã cập nhật thành công lên phiên bản $version."
+    Update-UI "Cập nhật thành công! Đang tự động mở lại WFX Smart..." 100 'success'
+    Start-Sleep -Seconds 1.5
+
+    if ($exeArgs.Count -gt 0) {{
+      Start-Process -FilePath $targetExe -ArgumentList $exeArgs -WorkingDirectory $installDir
+    }} else {{
+      Start-Process -FilePath $targetExe -WorkingDirectory $installDir
+    }}
+
+    Safe-Remove $backupDir
+    $form.Invoke([action]{{ $form.Close() }})
+  }} catch {{
+    $err = $_.Exception.Message
+    $_ | Out-String | Add-Content -LiteralPath $updateLog
+    Update-UI "Cập nhật thất bại: $err`nĐang khôi phục phiên bản cũ..." 50 'error'
+    try {{
+      if (Test-Path -LiteralPath $backupDir) {{
+        Safe-Remove $installDir
+        Move-Item -LiteralPath $backupDir -Destination $installDir -Force
+      }}
+      Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật thất bại. Đã khôi phục phiên bản trước.'
+    }} catch {{
+      $_ | Out-String | Add-Content -LiteralPath $updateLog
+      Write-UpdateResult $false 'UPDATE_ROLLBACK_FAILED' 'Không thể hoàn tất cập nhật. Vui lòng tải lại ứng dụng.'
+    }}
+
+    Update-UI "Lỗi: $err`nĐã khôi phục phiên bản trước. Vui lòng thử lại." 0 'error'
+    if (Test-Path -LiteralPath $targetExe) {{
+      if ($exeArgs.Count -gt 0) {{
+        Start-Process -FilePath $targetExe -ArgumentList $exeArgs -WorkingDirectory $installDir
+      }} else {{
+        Start-Process -FilePath $targetExe -WorkingDirectory $installDir
+      }}
+    }}
+    $form.Invoke([action]{{
+      $btnClose.Visible = $true
+      $progressBar.Visible = $false
+    }})
+  }} finally {{
+    Safe-Remove $workDir
+  }}
+}}
+
+$form.Add_Shown({{
+  [System.Threading.Tasks.Task]::Run([action]{{ Perform-Update }})
+}})
+
+$form.ShowDialog() | Out-Null
 """
     helper.write_text(content, encoding="utf-8-sig")
     creation_flags = 0
     if os.name == "nt":
-        creation_flags = (
-            subprocess.CREATE_NEW_PROCESS_GROUP
-            | subprocess.DETACHED_PROCESS
-            | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        )
+        creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen(
         [
             "powershell",
@@ -281,3 +413,4 @@ try {{
         creationflags=creation_flags,
     )
     return helper
+
