@@ -12,7 +12,14 @@ class FakeLogin:
     def run(self, user_id, password, company_id="psh", log=print):
         self.calls.append(("run", user_id, password, company_id))
         log("[SESSION] fake login")
-        return {"ok": True, "code": "LOGGED_IN", "message": "ok"}
+        return {
+            "ok": True,
+            "code": "LOGGED_IN",
+            "message": "ok",
+            "current_division": "woven",
+            "division_label": "WOVEN",
+            "division_name": "PRO SPORTS - WOVEN HANOI",
+        }
 
     def check_session(self, log=print):
         self.calls.append(("check_session",))
@@ -30,6 +37,17 @@ class FakeLogin:
     def open_module(self, module_name, xpath, log=print):
         self.calls.append(("open_module", module_name, xpath))
         return {"ok": True, "code": "MODULE_OPENED", "message": module_name}
+
+    def switch_division(self, division_key, log=print):
+        self.calls.append(("switch_division", division_key))
+        return {
+            "ok": True,
+            "code": "DIVISION_CHANGED",
+            "message": "changed",
+            "current_division": division_key,
+            "division_label": division_key.upper(),
+            "division_name": division_key,
+        }
 
     def set_catalog_category(self, category_name, category_value, log=print):
         self.calls.append(("set_catalog_category", category_name, category_value))
@@ -105,6 +123,27 @@ def test_get_initial_state(tmp_path):
     assert state["user_id"] == "bob"
     assert state["theme"] == "dark"
     assert state["hotkey_label"] == "Ctrl + Shift + X"
+    assert state["has_credentials"] is True
+    assert [item["key"] for item in state["divisions"]] == [
+        "woven",
+        "knit",
+        "pssg",
+    ]
+
+
+def test_initial_state_requires_credentials_when_account_is_empty(tmp_path):
+    api, _ = make_api(tmp_path)
+    assert api.get_initial_state()["has_credentials"] is False
+
+
+def test_switch_division_delegates_and_tracks_highlight_state(tmp_path):
+    api, fake = make_api(tmp_path)
+    api._session_active = True
+    result = api.switch_division("knit")
+    assert result["code"] == "DIVISION_CHANGED"
+    assert result["current_division"] == "knit"
+    assert ("switch_division", "knit") in fake.calls
+    assert api.get_status()["current_division"] == "knit"
 
 
 def test_save_account_persists(tmp_path):
@@ -133,6 +172,14 @@ def test_save_account_blank_password_and_no_stored_password_fails(tmp_path):
     assert result["code"] == "PASSWORD_REQUIRED"
     assert "mật khẩu" in result["message"].lower()
     # Không được ghi bất cứ thứ gì xuống .env khi từ chối lưu.
+    assert prefs.load_account(base_dir=tmp_path) == {"user_id": "", "password": ""}
+
+
+def test_save_account_requires_user_id(tmp_path):
+    api, _ = make_api(tmp_path)
+    result = api.save_account("  ", "secret")
+    assert result["ok"] is False
+    assert result["code"] == "USER_ID_REQUIRED"
     assert prefs.load_account(base_dir=tmp_path) == {"user_id": "", "password": ""}
 
 

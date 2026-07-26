@@ -9,6 +9,30 @@ CATEGORIES = {
     "Trims": "05",
 }
 
+DIVISIONS = {
+    "woven": {
+        "key": "woven",
+        "label": "WOVEN",
+        "name": "PRO SPORTS - WOVEN HANOI",
+        "member_company_code": "77400",
+        "folder_id": "7740001",
+    },
+    "knit": {
+        "key": "knit",
+        "label": "KNIT",
+        "name": "PRO SPORTS - KNIT HANOI",
+        "member_company_code": "77400",
+        "folder_id": "7740002",
+    },
+    "pssg": {
+        "key": "pssg",
+        "label": "PSSG",
+        "name": "Pro Sports - Singapore",
+        "member_company_code": "78307",
+        "folder_id": "774001040",
+    },
+}
+
 MODULE_GROUPS = [
     {
         "name": "Operation",

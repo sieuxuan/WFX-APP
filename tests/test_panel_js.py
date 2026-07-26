@@ -108,7 +108,7 @@ def test_compact_browser_launcher_is_wired():
     assert "begin_compact_drag" in JS
     assert "compactHoldTimer" in JS
     assert "compactHoldTriggered" in JS
-    assert "260" in JS
+    assert "180" in JS
 
 
 def test_old_webview_clipboard_has_a_fallback():
@@ -116,7 +116,29 @@ def test_old_webview_clipboard_has_a_fallback():
 
 
 def test_account_sheet_stays_open_when_save_fails():
-    assert "if (saved && saved.ok)" in JS
+    assert "if (!saved || !saved.ok)" in JS
+    assert "return;" in JS
+    assert "window.setTimeout(closeSettings, 450)" in JS
+
+
+def test_credentials_are_requested_again_when_missing_or_rejected():
+    assert "showCredentialPrompt" in JS
+    for code in [
+        "MISSING_CREDENTIALS",
+        "PASSWORD_REQUIRED",
+        "USER_ID_REQUIRED",
+        "LOGIN_FAILED",
+        "LOGIN_TIMEOUT",
+        "NOT_LOGGED_IN",
+    ]:
+        assert f'"{code}"' in JS
+    assert '$(".password-input").value = ""' in JS
+
+
+def test_division_switcher_is_wired_and_highlighted_from_backend_state():
+    assert 'call("switch_division", key)' in JS
+    assert "window.wfxSetDivisionState" in JS
+    assert 'button.setAttribute(\n        "aria-pressed"' in JS
 
 
 def test_admin_modules_are_permission_gated_in_ui():

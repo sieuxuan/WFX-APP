@@ -284,6 +284,8 @@ class PanelApp:
         self._compact = False
         self._full_window_size: tuple[int, int] | None = None
         self._last_compact_browser_rect: tuple[int, int, int, int] | None = None
+        self._last_panel_browser_rect: tuple[int, int, int, int] | None = None
+        self._last_panel_window_rect: tuple[int, int, int, int] | None = None
         self._compact_drag_thread: threading.Thread | None = None
         self._compact_offset = (
             (
@@ -292,6 +294,15 @@ class PanelApp:
             )
             if preferences["compact_offset_x"] is not None
             and preferences["compact_offset_y"] is not None
+            else None
+        )
+        self._panel_offset = (
+            (
+                preferences["panel_offset_x"],
+                preferences["panel_offset_y"],
+            )
+            if preferences["panel_offset_x"] is not None
+            and preferences["panel_offset_y"] is not None
             else None
         )
         self._quitting = False
@@ -471,10 +482,28 @@ class PanelApp:
                     current_rect[2] - current_rect[0],
                     current_rect[3] - current_rect[1],
                 )
+                pid_getter = getattr(
+                    self.api._login, "automation_browser_pid", None
+                )
+                browser_pid = pid_getter() if callable(pid_getter) else None
+                browser_rect = _window_rect_for_process(browser_pid)
+                if browser_rect is not None:
+                    offset = (
+                        current_rect[0] - browser_rect[0],
+                        current_rect[1] - browser_rect[1],
+                    )
+                    if offset != self._panel_offset:
+                        self._panel_offset = offset
+                        prefs.save_prefs(
+                            panel_offset_x=offset[0],
+                            panel_offset_y=offset[1],
+                        )
             self._set_compact_ui(True)
             self._compact = True
             self._visible = True
             self._last_compact_browser_rect = None
+            self._last_panel_browser_rect = None
+            self._last_panel_window_rect = None
             resized = bool(
                 current_rect
                 and _set_process_window_bounds(
@@ -540,6 +569,8 @@ class PanelApp:
             self._last_compact_browser_rect = None
             self._set_compact_ui(False)
             if self._stick_to_browser:
+                self._last_panel_browser_rect = None
+                self._last_panel_window_rect = None
                 self._dock_to_browser()
             _bring_process_window_to_front(on_top=self._always_on_top)
             return {
@@ -612,6 +643,8 @@ class PanelApp:
     def _apply_stick_to_browser(self, enabled: bool) -> None:
         self._stick_to_browser = bool(enabled)
         if self._stick_to_browser:
+            self._last_panel_browser_rect = None
+            self._last_panel_window_rect = None
             self._dock_to_browser()
         elif self._compact:
             self.expand_from_browser_icon()
@@ -676,11 +709,39 @@ class PanelApp:
             )
             self._last_compact_browser_rect = browser_rect
         else:
+            previous_browser = self._last_panel_browser_rect
+            if (
+                previous_browser == browser_rect
+                and own_rect is not None
+                and self._last_panel_window_rect is not None
+            ):
+                # Header pywebview cho phép kéo cửa sổ native. Khi browser
+                # đứng yên, giữ nguyên vị trí mới thay vì vòng follow kéo panel
+                # ngược về góc phải sau 0.6 giây.
+                if own_rect != self._last_panel_window_rect:
+                    offset = (own_rect[0] - left, own_rect[1] - top)
+                    if offset != self._panel_offset:
+                        self._panel_offset = offset
+                        prefs.save_prefs(
+                            panel_offset_x=offset[0],
+                            panel_offset_y=offset[1],
+                        )
+                    self._last_panel_window_rect = own_rect
+                return True
+            if previous_browser is not None and own_rect is not None:
+                x = own_rect[0] + left - previous_browser[0]
+                preferred_y = own_rect[1] + top - previous_browser[1]
+            elif self._panel_offset is not None:
+                x = left + self._panel_offset[0]
+                preferred_y = top + self._panel_offset[1]
+            else:
+                x = right - width - BROWSER_DOCK_GAP
+                preferred_y = top + BROWSER_DOCK_TOP
             x = max(
                 left + BROWSER_DOCK_GAP,
-                right - width - BROWSER_DOCK_GAP,
+                min(x, right - width - BROWSER_DOCK_GAP),
             )
-            preferred_y = top + BROWSER_DOCK_TOP
+            self._last_panel_browser_rect = browser_rect
         y = max(
             top + BROWSER_DOCK_GAP,
             min(preferred_y, bottom - height - BROWSER_DOCK_GAP),
@@ -689,8 +750,22 @@ class PanelApp:
             if _set_process_window_bounds(
                 os.getpid(), int(x), int(y)
             ):
+                if not self._compact:
+                    self._last_panel_window_rect = (
+                        int(x),
+                        int(y),
+                        int(x + width),
+                        int(y + height),
+                    )
                 return True
             self.window.move(int(x), int(y))
+            if not self._compact:
+                self._last_panel_window_rect = (
+                    int(x),
+                    int(y),
+                    int(x + width),
+                    int(y + height),
+                )
             return True
         except Exception:
             return False
@@ -724,7 +799,10 @@ class PanelApp:
             return f"Không lên lịch được cập nhật: {error}"
 
     def _on_result(self, method: str, result: dict, elapsed: float) -> None:
-        state = self.api._session_status()
+        state = {
+            **self.api._session_status(),
+            **self.api._division_state(),
+        }
         if self.window is not None:
             import json
 

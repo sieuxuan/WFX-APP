@@ -101,3 +101,22 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
         and "PasswordManagerOnboarding" in arg
         for arg in command
     )
+
+
+def test_division_is_detected_from_company_name_title():
+    woven = login._division_for_text(
+        "PRO SPORTS (H.K) LTD (PRO SPORTS - WOVEN HANOI)"
+    )
+    knit = login._division_for_text(
+        "PRO SPORTS (H.K) LTD (PRO SPORTS - KNIT HANOI)"
+    )
+    pssg = login._division_for_text(
+        "PRO SPORTS (H.K) LTD (Pro Sports - Singapore)"
+    )
+    assert woven and woven["current_division"] == "woven"
+    assert knit and knit["current_division"] == "knit"
+    assert pssg and pssg["current_division"] == "pssg"
+
+
+def test_unknown_company_name_does_not_fake_a_division():
+    assert login._division_for_text("PRO SPORTS (H.K) LTD") is None
