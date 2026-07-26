@@ -707,10 +707,16 @@ class PanelApp:
                 if getattr(sys, "frozen", False)
                 else Path.cwd() / "dist" / "WFX-Panel" / "WFX-Panel.exe"
             )
+            executable_args = None
+            if not getattr(sys, "frozen", False) and not executable.is_file():
+                executable = Path(sys.executable)
+                executable_args = ["-m", "wfx_panel.panel_app"]
+
             updater.schedule_update(
                 state,
                 current_pid=os.getpid(),
                 executable=executable,
+                executable_args=executable_args,
             )
             threading.Timer(1.0, self.quit).start()
             return None

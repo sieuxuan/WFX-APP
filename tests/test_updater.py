@@ -103,7 +103,7 @@ def test_schedule_update_downloads_verifies_and_rolls_back(
     )
     content = helper.read_text(encoding="utf-8-sig")
 
-    assert "Invoke-WebRequest" in content
+    assert "DownloadFile" in content
     assert "Get-FileHash" in content
     assert "Expand-Archive" in content
     assert "UPDATE_INSTALLED" in content
