@@ -1,9 +1,15 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: transparent; }
 body { overflow: hidden; }
+/* Trong extension, .panel là lớp trượt ra đè lên trang WFX: nó ẩn sẵn
+   (opacity/visibility/pointer-events) và chỉ hiện khi JS thêm .panel-open lúc
+   người dùng bấm nút launcher. Bản desktop bỏ hẳn launcher — cửa sổ CHÍNH LÀ
+   panel — nên phải ép hiện vĩnh viễn, nếu không cửa sổ chỉ còn background_color
+   và trông như bị đen hoàn toàn. */
 .panel { position: static !important; inset: auto !important; transform: none !important;
          width: 100vw !important; height: 100vh !important; max-width: 100vw !important;
-         max-height: 100vh !important; border-radius: 0 !important; }
+         max-height: 100vh !important; border-radius: 0 !important;
+         opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; }
 .panel-header { -webkit-app-region: drag; }
 .panel-header button, .header-actions { -webkit-app-region: no-drag; }
 .pywebview-drag-region { -webkit-app-region: drag; }

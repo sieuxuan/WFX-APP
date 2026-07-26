@@ -10,6 +10,27 @@ def test_style_css_exists_and_scoped_to_root():
     assert ":host" not in css  # đã đổi hết sang :root
 
 
+def test_desktop_override_forces_panel_visible():
+    """Panel của extension ẩn mặc định (`.panel { opacity:0; visibility:hidden;
+    pointer-events:none }`) và chỉ hiện khi JS thêm `.panel-open` lúc bấm nút
+    launcher. Bản desktop bỏ launcher, không bao giờ thêm class đó — nếu khối
+    override không vô hiệu hoá ba thuộc tính này thì cửa sổ chỉ hiển thị
+    background_color, tức UI đen hoàn toàn. Đây là hồi quy đã xảy ra thật.
+    """
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    hidden_default = css.index("visibility: hidden")
+    for declaration in (
+        "opacity: 1 !important",
+        "visibility: visible !important",
+        "pointer-events: auto !important",
+    ):
+        assert declaration in css, declaration
+        # Override phải nằm TRƯỚC rule ẩn của extension thì mới thắng nhờ
+        # !important; nếu bị đặt sau, thứ tự cascade vẫn đúng nhưng ta muốn
+        # giữ nguyên vị trí khối override đầu file.
+        assert css.index(declaration) < hidden_default, declaration
+
+
 def test_index_html_has_contract_hooks():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
