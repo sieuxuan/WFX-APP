@@ -61,44 +61,28 @@ jobs:
           "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
 
       - name: Publish GitHub Release
-        shell: powershell
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.ZIP_NAME }}.sha256
+          tag_name: ${{ env.TAG }}
+          name: WFX Smart ${{ env.VERSION }}
+          body: |
+            WFX Smart ${{ env.VERSION }} là bản vá giao diện và launcher dành cho người dùng WFX.
+
+            Cách cài:
+            1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
+            2. Giải nén toàn bộ thư mục.
+            3. Mở **WFX-Panel.exe**.
+
+            Điểm chính:
+            - Mở Chrome automation và dùng lại phiên đăng nhập WFX.
+            - Catalog hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.
+            - Trình cập nhật một nút, tự cài và mở lại ứng dụng.
+            - Settings cũ được giữ nguyên sau khi cập nhật.
+
+            File .sha256 dùng để kiểm tra gói tải về không bị thay đổi.
+          make_latest: true
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $env:TAG đã tồn tại."
-            exit 0
-          }
-          $notes = @(
-            "WFX Smart $env:VERSION là bản vá giao diện và launcher dành cho người dùng WFX."
-            ''
-            'Cách cài:'
-            "1. Tải file **$env:ZIP_NAME** bên dưới."
-            '2. Giải nén toàn bộ thư mục.'
-            '3. Mở **WFX-Panel.exe**.'
-            ''
-            'Điểm chính:'
-            '- Mở Chrome automation và dùng lại phiên đăng nhập WFX.'
-            '- Catalog hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.'
-            '- Giữ chuột trên icon nhỏ để kéo bằng theo dõi chuột native của Windows.'
-            '- Ghi nhớ vị trí icon tương đối với browser sau khi đóng/mở lại.'
-            '- Settings gọn hơn; nút lưu ở đầu trang, Start Hidden và Admin Mode mặc định tắt.'
-            '- Trình cập nhật một nút, tự cài và mở lại ứng dụng.'
-            '- Settings cũ được giữ nguyên sau khi cập nhật.'
-            ''
-            'File .sha256 dùng để kiểm tra gói tải về không bị thay đổi.'
-          ) -join "`n"
-          [System.IO.File]::WriteAllText(
-            (Join-Path $PWD 'release-notes.md'),
-            $notes,
-            [System.Text.UTF8Encoding]::new($false)
-          )
-          gh release create $env:TAG `
-            $env:ZIP_NAME `
-            "$env:ZIP_NAME.sha256" `
-            --repo $env:GITHUB_REPOSITORY `
-            --title "WFX Smart $env:VERSION" `
-            --notes-file release-notes.md `
-            --verify-tag `
-            --latest
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
