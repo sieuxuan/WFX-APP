@@ -1,3 +1,7 @@
 .env
 __pycache__/
 *.pyc
+
+# PyInstaller build output (wfx_panel/wfx-panel.spec itself IS source, keep it)
+/build/
+/dist/
