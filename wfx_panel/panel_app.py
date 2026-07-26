@@ -10,6 +10,7 @@ from PIL import Image
 from wfx_panel import prefs
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
+from wfx_panel.single_instance import SingleInstance
 
 HOTKEY = "ctrl+shift+x"
 ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
@@ -52,6 +53,8 @@ class PanelApp:
         # đã load xong.
         self._hotkey_error: str | None = None
         self._hotkey_ready = threading.Event()
+        # Khoá một-instance; main() gán vào để quit() trả cổng lại cho lần mở sau.
+        self.lock: SingleInstance | None = None
 
     # -- window bridge -----------------------------------------------------
     def _push_log(self, line: str) -> None:
@@ -95,6 +98,21 @@ class PanelApp:
             self.hide_panel()
         else:
             self.show_panel()
+
+    def activate(self):
+        """Đưa panel ra trước, kể cả khi state nội bộ đang cho là đã hiện.
+
+        Gọi khi người dùng mở app lần thứ hai (SingleInstance báo sang). Không
+        dùng show_panel() vì hàm đó bỏ qua khi `_visible` đang True — mà đúng
+        tình huống này người dùng bấm lại chính vì không thấy cửa sổ đâu.
+        """
+        if self.window is None:
+            return
+        try:
+            self.window.show()
+        except Exception:
+            pass
+        self._visible = True
 
     def _on_closing(self):
         # window.destroy() (gọi từ quit(), tức tray "Thoát") cũng đi qua sự
@@ -159,6 +177,8 @@ class PanelApp:
             keyboard.remove_hotkey(HOTKEY)
         except (KeyError, ValueError):
             pass
+        if self.lock is not None:
+            self.lock.close()
         if self.tray:
             self.tray.stop()
         if self.window:
@@ -204,7 +224,17 @@ class PanelApp:
 
 
 def main():
-    PanelApp().run()
+    app = PanelApp()
+    lock = SingleInstance(app.activate)
+    if not lock.acquire():
+        if lock.signal_existing():
+            # Đã có instance đang chạy: bật panel của nó lên rồi thoát im lặng.
+            return
+        # Cổng bị một chương trình khác giữ (không trả đúng handshake). Không
+        # được chặn người dùng mở app vì lý do không liên quan — chạy tiếp,
+        # chấp nhận mất khả năng chặn trùng trong phiên này.
+    app.lock = lock
+    app.run()
 
 
 if __name__ == "__main__":
