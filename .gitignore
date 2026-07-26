@@ -1,6 +1,7 @@
 .env*
 !.env.example
 prefs.json
+jobs.json
 __pycache__/
 *.pyc
 

@@ -55,3 +55,19 @@ MODULE_BY_ID = {
     for group in MODULE_GROUPS
     for module in group["modules"]
 }
+
+ADMIN_MODULE_IDS = frozenset(
+    module["id"]
+    for group in MODULE_GROUPS
+    if group["name"] == "Admin"
+    for module in group["modules"]
+)
+
+ADMIN_MODULE_SPECS = [
+    {
+        "id": module_id,
+        "name": MODULE_BY_ID[module_id]["name"],
+        "xpath": MODULE_BY_ID[module_id]["xpath"],
+    }
+    for module_id in ADMIN_MODULE_IDS
+]

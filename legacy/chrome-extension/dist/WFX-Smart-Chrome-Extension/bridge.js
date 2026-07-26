@@ -1,7 +1,12 @@
 "use strict";
 
 (() => {
+  if (globalThis.__wfxSmartChromeBridgeLoaded) return;
+  globalThis.__wfxSmartChromeBridgeLoaded = true;
+
   const MESSAGE_SOURCE = "wfx-smart-chrome-extension";
+  const PAGE_ORIGIN = window.location.origin;
+  const POST_TARGET_ORIGIN = PAGE_ORIGIN === "null" ? "*" : PAGE_ORIGIN;
   const bridgeToken = crypto.randomUUID();
   let mainReady = false;
   let initialValues = null;
@@ -14,7 +19,7 @@
       source: MESSAGE_SOURCE,
       type,
       ...payload,
-    }, window.location.origin);
+    }, POST_TARGET_ORIGIN);
   };
 
   // Khi extension được reload/cập nhật trong khi tab WFX vẫn đang mở, content script cũ mất
@@ -68,16 +73,37 @@
     });
   };
 
-  // Hotkey Ctrl+Shift+X do chrome.commands (manifest suggested_key) xử lý ở cấp trình duyệt: nó
-  // bắt được cả khi focus đang nằm TRONG iframe của WFX — thứ mà listener keydown in-page (chỉ chạy
-  // ở top frame) không làm được. Command -> background.js -> chrome.runtime.sendMessage
-  // "wfx-smart-toggle-panel" -> requestPanelToggle() (xem onMessage bên dưới). Không còn bắt keydown
-  // ở đây nữa để tránh double-toggle (Chrome command + keydown cùng bắn khi focus ở top frame).
+  // Fallback trực tiếp cho Ctrl+Shift+X. Manifest inject bridge.js vào mọi frame, nên tổ hợp vẫn
+  // hoạt động khi focus nằm trong iframe WFX hoặc khi Chrome không bind được suggested_key vì
+  // xung đột. background.js debounce theo tab để tránh double-toggle nếu chrome.commands cũng bắn.
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.repeat ||
+      event.code !== "KeyX" ||
+      !event.ctrlKey ||
+      !event.shiftKey ||
+      event.altKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!isExtensionContextValid()) {
+      notifyContextLost();
+      return;
+    }
+    try {
+      chrome.runtime.sendMessage({ type: "wfx-smart-local-hotkey" });
+    } catch (_error) {
+      notifyContextLost();
+    }
+  }, true);
 
   window.addEventListener("message", (event) => {
     if (
       event.source !== window ||
-      event.origin !== window.location.origin ||
+      (PAGE_ORIGIN !== "null" && event.origin !== PAGE_ORIGIN) ||
       event.data?.source !== MESSAGE_SOURCE
     ) {
       return;

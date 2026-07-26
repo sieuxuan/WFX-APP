@@ -5,14 +5,54 @@ Chạy dev:
     python -m playwright install chromium
     python -m wfx_panel.panel_app
 
-- Hotkey toàn cục Ctrl+Shift+X: ẩn/hiện panel (kể cả khi focus ở Chrome).
+- Hotkey toàn cục mặc định Ctrl+Shift+X, có thể đổi trong Settings: ẩn/hiện
+  panel kể cả khi focus ở Chrome.
 - Nút đóng hoặc hotkey thu panel về system tray; tray có "Hiện panel" / "Thoát".
 - Tài khoản lưu ở `.env`; theme/tuỳ chọn ở `prefs.json`.
-- App cũ `app.py` (tkinter) vẫn giữ làm dự phòng.
+- Mọi automation có `runId`, lịch sử cục bộ, thời gian chạy, ảnh lỗi và nút
+  chạy lại. Không lưu User ID/password vào lịch sử.
+- Khi tìm đúng một style Apparel, panel hiển thị thêm Season và Internal
+  CostSheet Status đọc trực tiếp từ Catalog Grid.
+- Click module chỉ mở modal trong app trước; Catalog có workflow riêng trong
+  modal. Các module chưa có workflow riêng sẽ mở thẳng WFX; controller riêng
+  vẫn được giữ để mở rộng sau.
+- Nếu chưa có browser automation, app có thể mở Chrome Stable/Beta/Dev/Canary,
+  Edge, Brave hoặc Chromium. Có thể đặt `WFX_CHROME_PATH` khi browser nằm ở
+  đường dẫn riêng. Nếu không có browser tương thích, UI hướng dẫn cài/cấu hình
+  thay vì crash.
+- Nút mở browser sẽ mở đúng Chromium browser automation rồi đăng nhập WFX ngay
+  bằng tài khoản đã lưu.
+- Settings có `Luôn trên cùng` và `Bám theo browser automation`. Chế độ bám
+  lấy PID đang listen đúng cổng CDP, nên không đi theo cửa sổ Chrome cá nhân.
+- App tự kiểm tra bản mới theo kênh Stable (mặc định: `origin/main`) mỗi 4 giờ,
+  hiện banner + tray notification. Một click sẽ khóa commit SHA, đóng app,
+  fast-forward, build, mở lại; build lỗi sẽ rollback và build lại bản cũ.
+  Không dùng GitHub Release, không push và không ghi đè worktree bẩn.
+- `app.py`, `start_app.bat` và executable đều mở cùng UI pywebview; UI Tkinter
+  cũ đã được loại bỏ.
 
 ## Đóng gói exe
 
     powershell -ExecutionPolicy Bypass -File build-panel.ps1
 
-Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir). Cần WebView2 Runtime (mặc định có trên
-Windows 11). Không bundle Chromium — automation dùng Chrome hệ thống qua CDP như `login.py`.
+Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
+
+- Windows 11 có sẵn WebView2 trong phần lớn bản cài.
+- Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài
+  runtime này; nếu UI không mở, cài/cập nhật WebView2 Runtime.
+- Automation không bundle Chromium; nó dùng một Chromium browser hệ thống qua
+  CDP như `login.py`.
+- Settings của bản đóng gói nằm tại `%LOCALAPPDATA%\WFX-Panel`, tách khỏi
+  `dist`, nên build/update/rollback không xóa tài khoản hoặc tùy chọn cũ.
+
+Test tích hợp WFX thật bằng tài khoản trong `.env`:
+
+    $env:WFX_LIVE_TEST = "1"
+    python -m pytest tests/test_wfx_live.py -v
+
+Test không in credential hoặc Code ra output.
+
+## Chrome Extension (cũ)
+
+Đã chuyển sang `legacy/chrome-extension/` và đóng băng — xem `legacy/README.md`.
+App desktop `wfx_panel/` là bản thay thế.
