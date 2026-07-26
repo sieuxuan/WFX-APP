@@ -8,8 +8,10 @@
 </head>
 <body>
   <aside class="panel" aria-label="WFX Smart Automation">
-    <button class="compact-launcher" type="button" aria-label="Mở WFX Smart" title="Mở WFX Smart">
-      <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5.2 6.7 14 2.4l8.8 4.3v10.6L14 25.6l-8.8-8.3V6.7Z"/><path class="compact-mark" d="m8.6 9.2 2.6 9.2 2.8-6.2 2.8 6.2 2.6-9.2"/></svg>
+    <button class="compact-launcher" type="button" aria-label="Mở WFX Smart" title="Bấm để mở • giữ để di chuyển">
+      <span class="compact-icon-shell" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path class="compact-orbit" d="M16 3.5 27.5 10v12L16 28.5 4.5 22V10L16 3.5Z"/><path class="compact-mark" d="m9.2 11.2 2.7 10 4.1-7.1 4.1 7.1 2.7-10"/></svg>
+      </span>
       <span class="compact-badge"></span>
     </button>
     <header class="panel-header pywebview-drag-region">
@@ -38,9 +40,13 @@
 
     <div class="panel-body">
       <section class="update-banner" hidden aria-live="polite">
-        <div class="banner-icon">↥</div>
-        <div><strong>Có phiên bản mới</strong><span class="update-banner-message">Cập nhật để dùng các cải tiến mới nhất.</span></div>
-        <button class="update-banner-button" type="button">Cập nhật ngay</button>
+        <div class="banner-icon" aria-hidden="true">↑</div>
+        <div class="update-banner-copy">
+          <strong class="update-banner-title">Có bản cập nhật mới</strong>
+          <span class="update-banner-message">Một lần bấm để tải, cài đặt và tự mở lại ứng dụng.</span>
+          <span class="update-banner-steps" aria-hidden="true">Tải bản mới <b>›</b> Cài đặt <b>›</b> Tự mở lại</span>
+        </div>
+        <button class="update-banner-button" type="button">Cập nhật phần mềm mới</button>
       </section>
 
       <section class="browser-banner" hidden aria-live="polite">
@@ -102,7 +108,7 @@
             </label>
             <button class="catalog-open-button" type="button" data-catalog-action="prepare">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6l2 2h8v12H4V5Z"/><path d="m9 14 2 2 4-5"/></svg>
-              Chuẩn bị Catalog
+              Mở Catalog
             </button>
           </div>
           <div class="catalog-query-row">
@@ -142,6 +148,7 @@
       <div class="settings-sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-heading"><div><strong>Thiết lập thông minh</strong><span>Lưu riêng trên máy này</span></div><button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <button class="save-button settings-save-button" type="button">Lưu thiết lập &amp; kết nối</button>
         <div class="form-grid">
           <label><span>User ID</span><input class="user-input" type="text" autocomplete="username" placeholder="WFX User ID" /></label>
           <label class="password-field"><span>Password</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="WFX Password" /><button class="toggle-password" type="button">Hiện</button></div></label>
@@ -151,7 +158,7 @@
         <label class="setting-row toggle-row"><div><strong>Khởi động cùng Windows</strong><span>Tự chạy khi bạn đăng nhập máy</span></div><input class="autostart-input" type="checkbox" /><i></i></label>
         <label class="setting-row toggle-row"><div><strong>Mở ẩn trong tray</strong><span>Không hiện panel khi khởi động</span></div><input class="start-hidden-input" type="checkbox" /><i></i></label>
         <label class="setting-row toggle-row"><div><strong>Luôn trên cùng</strong><span>Giữ panel phía trên các cửa sổ khác</span></div><input class="always-on-top-input" type="checkbox" checked /><i></i></label>
-        <label class="setting-row toggle-row"><div><strong>Bám theo browser automation</strong><span>Chỉ theo cửa sổ đang mở cổng CDP của WFX</span></div><input class="stick-browser-input" type="checkbox" /><i></i></label>
+        <label class="setting-row toggle-row"><div><strong>Bám theo browser automation</strong><span>Chỉ theo cửa sổ đang mở cổng CDP của WFX</span></div><input class="stick-browser-input" type="checkbox" checked /><i></i></label>
         <label class="setting-row toggle-row admin-mode-row" hidden><div><strong>Admin Mode</strong><span>Chỉ hiện module Admin mà tài khoản WFX được cấp quyền</span></div><input class="admin-mode-input" type="checkbox" /><i></i></label>
         <label class="setting-row toggle-row"><div><strong>Thông báo khi xong việc</strong><span>Hiện bong bóng khi panel đang ẩn</span></div><input class="toast-input" type="checkbox" checked /><i></i></label>
         <div class="setting-row appearance-row"><div><strong>Giao diện</strong><span>Chọn nền sáng hoặc tối</span></div>
@@ -160,7 +167,6 @@
             <button class="seg-button" type="button" data-theme-choice="dark" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.3 6.3 0 0 0 9.5 9.5Z"/></svg>Tối</button>
           </div>
         </div>
-        <button class="save-button" type="button">Lưu thiết lập &amp; kết nối</button>
       </div>
     </div>
 

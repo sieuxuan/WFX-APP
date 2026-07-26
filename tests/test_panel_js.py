@@ -97,7 +97,7 @@ def test_auto_update_banner_uses_one_click_installer():
     assert "wfxSetUpdateState" in JS
     assert '".update-banner-button"' in JS
     assert "installUpdate(event.currentTarget)" in JS
-    assert '"Cập nhật ngay"' in JS
+    assert '"Cập nhật phần mềm mới"' in JS
     assert "commit" not in JS.lower()
 
 
@@ -105,6 +105,10 @@ def test_compact_browser_launcher_is_wired():
     assert "window.wfxSetCompactMode" in JS
     assert '".compact-launcher"' in JS
     assert "expand_from_browser_icon" in JS
+    assert "begin_compact_drag" in JS
+    assert "compactHoldTimer" in JS
+    assert "compactHoldTriggered" in JS
+    assert "260" in JS
 
 
 def test_old_webview_clipboard_has_a_fallback():

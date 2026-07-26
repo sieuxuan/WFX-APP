@@ -3,7 +3,7 @@ name: Publish WFX Smart Stable Release
 on:
   push:
     branches:
-      - feat/wfx-floating-panel
+      - main
     paths:
       - .github/workflows/release.yml
     tags:
@@ -71,7 +71,7 @@ jobs:
             exit 0
           }
           $notes = @(
-            'WFX Smart 1.0 là bản desktop chính thức dành cho người dùng WFX.'
+            "WFX Smart $env:VERSION là bản vá giao diện và launcher dành cho người dùng WFX."
             ''
             'Cách cài:'
             "1. Tải file **$env:ZIP_NAME** bên dưới."
@@ -81,8 +81,10 @@ jobs:
             'Điểm chính:'
             '- Mở Chrome automation và dùng lại phiên đăng nhập WFX.'
             '- Catalog hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.'
-            '- Panel có thể bám theo Chrome và thu thành icon nhỏ.'
-            '- Tự thông báo khi có phiên bản mới; chỉ cần bấm **Cập nhật ngay**.'
+            '- Giữ chuột trên icon nhỏ để kéo bằng theo dõi chuột native của Windows.'
+            '- Ghi nhớ vị trí icon tương đối với browser sau khi đóng/mở lại.'
+            '- Settings gọn hơn; nút lưu ở đầu trang, Start Hidden và Admin Mode mặc định tắt.'
+            '- Trình cập nhật một nút, tự cài và mở lại ứng dụng.'
             '- Settings cũ được giữ nguyên sau khi cập nhật.'
             ''
             'File .sha256 dùng để kiểm tra gói tải về không bị thay đổi.'
@@ -96,7 +98,7 @@ jobs:
             $env:ZIP_NAME `
             "$env:ZIP_NAME.sha256" `
             --repo $env:GITHUB_REPOSITORY `
-            --title "WFX Smart 1.0" `
+            --title "WFX Smart $env:VERSION" `
             --notes-file release-notes.md `
             --verify-tag `
             --latest

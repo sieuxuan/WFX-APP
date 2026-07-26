@@ -172,12 +172,37 @@
   function setUpdateState(state) {
     if (!state) return;
     const banner = $(".update-banner");
-    banner.hidden = state.can_update !== true;
-    if (state.can_update) {
+    const button = $(".update-banner-button");
+    const title = $(".update-banner-title");
+    const scheduled = state.code === "UPDATE_SCHEDULED";
+    const failed = state.ok === false && (
+      ["UPDATE_SCHEDULE_FAILED", "UPDATE_APPLIER_MISSING"].includes(state.code)
+      || banner.classList.contains("update-installing")
+    );
+    banner.hidden = state.can_update !== true && !scheduled && !failed;
+    banner.classList.toggle("update-installing", scheduled);
+    banner.classList.toggle("update-failed", failed);
+    if (scheduled) {
+      title.textContent = "Đang cập nhật WFX Smart";
+      $(".update-banner-message").textContent =
+        "Ứng dụng sẽ đóng trong giây lát và tự mở lại ngay khi cài đặt xong.";
+      button.disabled = true;
+      button.textContent = "Đang cài đặt…";
+    } else if (failed) {
+      title.textContent = "Chưa thể cập nhật";
+      $(".update-banner-message").textContent =
+        state.message || "Vui lòng kiểm tra kết nối và thử lại.";
+      button.disabled = false;
+      button.textContent = "Thử cập nhật lại";
+    } else if (state.can_update) {
+      title.textContent = state.version
+        ? `Bản cập nhật ${state.version} đã sẵn sàng`
+        : "Có bản cập nhật mới";
       $(".update-banner-message").textContent = state.version
-        ? `Phiên bản ${state.version} đã sẵn sàng. Ứng dụng sẽ tự mở lại sau khi cập nhật.`
-        : "Bản mới đã sẵn sàng. Ứng dụng sẽ tự mở lại sau khi cập nhật.";
-      $(".update-banner-button").textContent = "Cập nhật ngay";
+        ? "Chỉ cần bấm một lần. WFX Smart sẽ tự tải, cài đặt rồi mở lại."
+        : "Một lần bấm để tải, cài đặt và tự mở lại ứng dụng.";
+      button.disabled = false;
+      button.textContent = "Cập nhật phần mềm mới";
     }
   }
   window.wfxSetUpdateState = setUpdateState;
@@ -336,15 +361,20 @@
 
   async function installUpdate(button) {
     button.disabled = true;
-    button.textContent = "Đang cập nhật...";
+    button.textContent = "Đang chuẩn bị…";
+    $(".update-banner").classList.add("update-installing");
+    $(".update-banner-title").textContent = "Đang chuẩn bị cập nhật";
+    $(".update-banner-message").textContent =
+      "Đang kiểm tra gói cài đặt an toàn. Vui lòng không đóng ứng dụng.";
     const result = await callQuiet("install_update");
     if (result) {
       setUpdateState(result);
       setStatus(result.ok ? "success" : "error", result.message || "");
     }
     if (!result || result.code !== "UPDATE_SCHEDULED") {
+      $(".update-banner").classList.remove("update-installing");
       button.disabled = false;
-      button.textContent = "Cập nhật ngay";
+      button.textContent = "Thử cập nhật lại";
     }
   }
 
@@ -385,7 +415,33 @@
       }
     });
     $(".module-close-button").addEventListener("click", closeModuleModal);
-    $(".compact-launcher").addEventListener("click", () => api()?.expand_from_browser_icon?.());
+    const compactLauncher = $(".compact-launcher");
+    let compactHoldTimer = null;
+    let compactHoldTriggered = false;
+    compactLauncher.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      compactHoldTriggered = false;
+      compactHoldTimer = window.setTimeout(() => {
+        compactHoldTriggered = true;
+        api()?.begin_compact_drag?.();
+      }, 260);
+    });
+    compactLauncher.addEventListener("mouseup", () => {
+      if (compactHoldTimer !== null) window.clearTimeout(compactHoldTimer);
+      compactHoldTimer = null;
+      if (compactHoldTriggered) {
+        window.setTimeout(() => { compactHoldTriggered = false; }, 350);
+      }
+    });
+    compactLauncher.addEventListener("click", (event) => {
+      if (compactHoldTriggered) {
+        event.preventDefault();
+        event.stopPropagation();
+        compactHoldTriggered = false;
+        return;
+      }
+      api()?.expand_from_browser_icon?.();
+    });
     $(".module-overlay").addEventListener("mousedown", (event) => {
       if (event.target === event.currentTarget) closeModuleModal();
     });

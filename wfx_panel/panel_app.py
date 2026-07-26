@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
 import keyboard
@@ -29,8 +30,7 @@ WINDOW_HEIGHT = 620
 WINDOW_MARGIN = 24
 BROWSER_DOCK_GAP = 12
 BROWSER_DOCK_TOP = 72
-COMPACT_SIZE = 56
-COMPACT_BROWSER_TOP = 96
+COMPACT_SIZE = 48
 
 
 def _bring_process_window_to_front(
@@ -219,6 +219,37 @@ def _set_process_window_bounds(
         return False
 
 
+def _native_cursor_position() -> tuple[int, int] | None:
+    """Toạ độ con trỏ theo physical screen coordinates của Win32."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        class Point(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        point = Point()
+        if not user32.GetCursorPos(ctypes.byref(point)):
+            return None
+        return int(point.x), int(point.y)
+    except Exception:
+        return None
+
+
+def _native_left_button_down() -> bool:
+    """Đọc trực tiếp trạng thái chuột trái, không phụ thuộc WebView events."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
+    except Exception:
+        return False
+
+
 def _top_right_position() -> tuple[int, int]:
     """Toạ độ mở panel gần góc trên-phải màn hình chính.
 
@@ -252,6 +283,17 @@ class PanelApp:
         self._visible = not self._start_hidden
         self._compact = False
         self._full_window_size: tuple[int, int] | None = None
+        self._last_compact_browser_rect: tuple[int, int, int, int] | None = None
+        self._compact_drag_thread: threading.Thread | None = None
+        self._compact_offset = (
+            (
+                preferences["compact_offset_x"],
+                preferences["compact_offset_y"],
+            )
+            if preferences["compact_offset_x"] is not None
+            and preferences["compact_offset_y"] is not None
+            else None
+        )
         self._quitting = False
         self._chrome_alive: bool | None = None
         self._last_update_notice = preferences["last_update_notice"]
@@ -317,6 +359,96 @@ class PanelApp:
         except Exception:
             pass
 
+    def begin_compact_drag(self) -> dict:
+        if not self._compact:
+            return {
+                "ok": False,
+                "code": "PANEL_NOT_COMPACT",
+                "message": "Panel chưa ở chế độ icon.",
+            }
+        if (
+            self._compact_drag_thread is not None
+            and self._compact_drag_thread.is_alive()
+        ):
+            return {
+                "ok": True,
+                "code": "PANEL_DRAG_STARTED",
+                "message": "Đang di chuyển icon WFX.",
+            }
+        pid_getter = getattr(
+            self.api._login, "automation_browser_pid", None
+        )
+        browser_pid = pid_getter() if callable(pid_getter) else None
+        cursor = _native_cursor_position()
+        own_rect = _window_rect_for_process(os.getpid())
+        browser_rect = _window_rect_for_process(browser_pid)
+        started = bool(
+            _native_left_button_down()
+            and cursor is not None
+            and own_rect is not None
+            and browser_rect is not None
+        )
+        if started:
+            self._compact_drag_thread = threading.Thread(
+                target=self._compact_drag_loop,
+                args=(cursor, own_rect, browser_pid),
+                daemon=True,
+            )
+            self._compact_drag_thread.start()
+        return {
+            "ok": started,
+            "code": "PANEL_DRAG_STARTED" if started else "PANEL_DRAG_FAILED",
+            "message": (
+                "Đang di chuyển icon WFX."
+                if started
+                else "Không thể di chuyển icon WFX."
+            ),
+        }
+
+    def _compact_drag_loop(
+        self,
+        origin_cursor: tuple[int, int],
+        origin_rect: tuple[int, int, int, int],
+        browser_pid: int | None,
+    ) -> None:
+        """Theo con trỏ toàn hệ thống đến lúc nhả chuột rồi lưu vị trí."""
+        width = max(1, origin_rect[2] - origin_rect[0])
+        height = max(1, origin_rect[3] - origin_rect[1])
+        while self._compact and _native_left_button_down():
+            cursor = _native_cursor_position()
+            browser_rect = _window_rect_for_process(browser_pid)
+            if cursor is None or browser_rect is None:
+                break
+            left, top, right, bottom = browser_rect
+            target_x = origin_rect[0] + cursor[0] - origin_cursor[0]
+            target_y = origin_rect[1] + cursor[1] - origin_cursor[1]
+            target_x = max(
+                left + BROWSER_DOCK_GAP,
+                min(target_x, right - width - BROWSER_DOCK_GAP),
+            )
+            target_y = max(
+                top + BROWSER_DOCK_GAP,
+                min(target_y, bottom - height - BROWSER_DOCK_GAP),
+            )
+            _set_process_window_bounds(
+                os.getpid(), int(target_x), int(target_y)
+            )
+            time.sleep(0.012)
+
+        browser_rect = _window_rect_for_process(browser_pid)
+        own_rect = _window_rect_for_process(os.getpid())
+        if browser_rect is None or own_rect is None:
+            return
+        self._last_compact_browser_rect = browser_rect
+        self._compact_offset = (
+            own_rect[0] - browser_rect[0],
+            own_rect[1] - browser_rect[1],
+        )
+        prefs.save_prefs(
+            compact_offset_x=self._compact_offset[0],
+            compact_offset_y=self._compact_offset[1],
+        )
+
     def collapse_to_browser_icon(self) -> dict:
         """Thu panel thành launcher nổi trong đúng cửa sổ browser automation."""
         if not self._stick_to_browser:
@@ -342,6 +474,7 @@ class PanelApp:
             self._set_compact_ui(True)
             self._compact = True
             self._visible = True
+            self._last_compact_browser_rect = None
             resized = bool(
                 current_rect
                 and _set_process_window_bounds(
@@ -365,7 +498,7 @@ class PanelApp:
             return {
                 "ok": True,
                 "code": "PANEL_COMPACT",
-                "message": "Panel đang bám ở góc trái browser automation.",
+                "message": "Nút WFX đang bám ở góc dưới bên phải browser automation.",
             }
         except Exception as error:
             self._compact = False
@@ -404,6 +537,7 @@ class PanelApp:
                 self.window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
             self.window.on_top = self._always_on_top
             self._compact = False
+            self._last_compact_browser_rect = None
             self._set_compact_ui(False)
             if self._stick_to_browser:
                 self._dock_to_browser()
@@ -498,20 +632,49 @@ class PanelApp:
             return False
         own_rect = _window_rect_for_process(os.getpid())
         width = (
-            own_rect[2] - own_rect[0]
-            if own_rect is not None
-            else (COMPACT_SIZE if self._compact else WINDOW_WIDTH)
+            COMPACT_SIZE
+            if self._compact
+            else (
+                own_rect[2] - own_rect[0]
+                if own_rect is not None
+                else WINDOW_WIDTH
+            )
         )
         height = (
-            own_rect[3] - own_rect[1]
-            if own_rect is not None
-            else (COMPACT_SIZE if self._compact else WINDOW_HEIGHT)
+            COMPACT_SIZE
+            if self._compact
+            else (
+                own_rect[3] - own_rect[1]
+                if own_rect is not None
+                else WINDOW_HEIGHT
+            )
         )
         if not self._compact and own_rect is not None:
             self._full_window_size = (width, height)
         if self._compact:
-            x = left + BROWSER_DOCK_GAP
-            preferred_y = top + COMPACT_BROWSER_TOP
+            previous_browser = self._last_compact_browser_rect
+            if previous_browser is not None and own_rect is not None:
+                if previous_browser == browser_rect:
+                    # Browser đứng yên: không kéo launcher khỏi vị trí người
+                    # dùng vừa drag. Khi browser di chuyển, mang launcher đi
+                    # theo cùng độ lệch và giữ nó trong vùng browser.
+                    return True
+                delta_x = left - previous_browser[0]
+                delta_y = top - previous_browser[1]
+                x = own_rect[0] + delta_x
+                preferred_y = own_rect[1] + delta_y
+            else:
+                if self._compact_offset is not None:
+                    x = left + self._compact_offset[0]
+                    preferred_y = top + self._compact_offset[1]
+                else:
+                    x = right - width - BROWSER_DOCK_GAP
+                    preferred_y = bottom - height - BROWSER_DOCK_GAP
+            x = max(
+                left + BROWSER_DOCK_GAP,
+                min(x, right - width - BROWSER_DOCK_GAP),
+            )
+            self._last_compact_browser_rect = browser_rect
         else:
             x = max(
                 left + BROWSER_DOCK_GAP,
@@ -750,6 +913,7 @@ class PanelApp:
         self.api.dismiss_panel = self.dismiss_panel  # type: ignore[attr-defined]
         self.api.collapse_to_browser_icon = self.collapse_to_browser_icon  # type: ignore[attr-defined]
         self.api.expand_from_browser_icon = self.expand_from_browser_icon  # type: ignore[attr-defined]
+        self.api.begin_compact_drag = self.begin_compact_drag  # type: ignore[attr-defined]
         self.api.show_panel = self.show_panel   # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
