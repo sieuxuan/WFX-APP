@@ -22,6 +22,13 @@ class PanelApp:
         self.window = None
         self.tray = None
         self._visible = True
+        self._quitting = False
+        # Đăng ký hotkey chạy song song lúc trang đang tải (background(), xem
+        # run()); lúc đó window.wfxSetStatus có thể chưa tồn tại nên không thể
+        # báo lỗi ngay. Ghi lại đây rồi báo từ _startup(), lúc trang chắc chắn
+        # đã load xong.
+        self._hotkey_error: str | None = None
+        self._hotkey_ready = threading.Event()
 
     # -- window bridge -----------------------------------------------------
     def _push_log(self, line: str) -> None:
@@ -33,14 +40,31 @@ class PanelApp:
         except Exception:
             pass
 
+    def _set_status(self, tone: str, message: str) -> None:
+        if self.window is None:
+            return
+        from wfx_panel.log_bridge import js_string
+        try:
+            self.window.evaluate_js(
+                f"window.wfxSetStatus({js_string(tone)}, {js_string(message)})"
+            )
+        except Exception:
+            pass
+
     def hide_panel(self):
         if self.window and self._visible:
-            self.window.hide()
+            try:
+                self.window.hide()
+            except Exception:
+                pass
             self._visible = False
 
     def show_panel(self):
         if self.window and not self._visible:
-            self.window.show()
+            try:
+                self.window.show()
+            except Exception:
+                pass
             self._visible = True
 
     def toggle(self):
@@ -48,6 +72,17 @@ class PanelApp:
             self.hide_panel()
         else:
             self.show_panel()
+
+    def _on_closing(self):
+        # window.destroy() (gọi từ quit(), tức tray "Thoát") cũng đi qua sự
+        # kiện này trên Windows — chỉ chặn khi đây là lần đóng ngoài ý muốn
+        # (Alt+F4, nút X hệ thống nếu có), thu về tray như nút đóng trong
+        # panel. Trả về False để pywebview huỷ hành động đóng gốc; bỏ qua
+        # (không trả False) khi đang thoát thật để "Thoát" vẫn hoạt động.
+        if self._quitting:
+            return None
+        self.hide_panel()
+        return False
 
     # -- lifecycle ---------------------------------------------------------
     def on_loaded(self):
@@ -57,7 +92,6 @@ class PanelApp:
     def _startup(self):
         try:
             state = self.api.get_initial_state()
-            from wfx_panel.log_bridge import js_string
             import json
             self.window.evaluate_js(f"window.wfxBootstrap({json.dumps(state, ensure_ascii=False)})")
             account = prefs.load_account()
@@ -67,11 +101,25 @@ class PanelApp:
             else:
                 result = self.api.check_session()
             tone = "success" if result.get("ok") else "warning"
-            self.window.evaluate_js(
-                f"window.wfxSetStatus({js_string(tone)}, {js_string(result.get('message',''))})"
-            )
+            self._set_status(tone, result.get("message", ""))
         except Exception as error:  # startup không được làm sập app
+            message = f"Lỗi khởi động: {error}"
             self._push_log(f"[ERROR] Startup lỗi: {error}")
+            # Footer mặc định là "Đang kiểm tra..." và log overlay đóng theo
+            # mặc định — nếu không cập nhật footer ở đây, người dùng sẽ thấy
+            # trạng thái treo vĩnh viễn mà không biết vì sao.
+            self._set_status("error", message)
+
+        # Hotkey có thể đã đăng ký xong hoặc chưa tại thời điểm này (background()
+        # chạy song song). Đợi tối đa 5s rồi báo lỗi hotkey (nếu có) — đây là lần
+        # đầu tiên ta chắc chắn window.wfxSetStatus đã tồn tại.
+        if self._hotkey_ready.wait(timeout=5) and self._hotkey_error:
+            hotkey_message = (
+                f"Không đăng ký được phím tắt {HOTKEY.upper()}: {self._hotkey_error}. "
+                "Hãy đóng và mở lại ứng dụng; có thể cần chạy với quyền Administrator."
+            )
+            self._push_log(f"[ERROR] {hotkey_message}")
+            self._set_status("error", hotkey_message)
 
     def _build_tray(self):
         image = Image.open(ICON_PATH)
@@ -83,6 +131,7 @@ class PanelApp:
         self.tray.run()  # blocking → chạy trong thread riêng
 
     def quit(self):
+        self._quitting = True
         try:
             keyboard.remove_hotkey(HOTKEY)
         except (KeyError, ValueError):
@@ -111,12 +160,18 @@ class PanelApp:
             background_color="#0b1020",
         )
         self.window.events.loaded += self.on_loaded
+        self.window.events.closing += self._on_closing
 
         def background():
+            # Chạy song song lúc trang đang tải; window.wfxSetStatus/wfxPushLog
+            # có thể chưa tồn tại nên không gọi evaluate_js ở đây — chỉ ghi lỗi
+            # vào state, _startup() sẽ báo lại khi trang chắc chắn đã sẵn sàng.
             try:
                 keyboard.add_hotkey(HOTKEY, self.toggle)
             except Exception as error:
-                self._push_log(f"[ERROR] Không đăng ký được hotkey: {error}")
+                self._hotkey_error = str(error)
+            finally:
+                self._hotkey_ready.set()
             self._build_tray()
 
         webview.start(background, private_mode=False)
