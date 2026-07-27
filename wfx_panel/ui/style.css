@@ -259,6 +259,23 @@ body.compact-mode .compact-launcher .compact-mark {
     .style-status > span { padding: 3px 6px; border-radius: 6px; background: var(--surface-3); }
     .style-status b { color: var(--text-2); font-weight: 750; }
     .style-status-code { color: var(--accent-strong); font-weight: 800; }
+    .segmented.catalog-kind { display: flex; width: 100%; margin-top: 8px; }
+    .catalog-kind .catalog-kind-button { flex: 1; min-width: 0; }
+    .catalog-results { margin-top: 8px; }
+    .catalog-results[hidden] { display: none !important; }
+    .catalog-results-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 0 2px 5px; color: var(--text-2); font-size: 11px; font-weight: 650; }
+    .catalog-results-count { color: var(--text-3); font-size: 10px; font-weight: 600; }
+    .catalog-results-list { display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow: auto; scrollbar-width: thin; }
+    .catalog-result-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; text-align: left; cursor: pointer; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); transition: border-color .16s, transform .16s, background .16s; }
+    .catalog-result-row:hover:not(:disabled) { border-color: var(--accent-border); background: var(--surface-3); transform: translateY(-1px); }
+    .catalog-result-row:disabled { cursor: not-allowed; opacity: .5; }
+    .catalog-result-code { flex: 0 0 auto; color: var(--accent-strong); font-size: 12px; font-weight: 800; }
+    .catalog-result-meta { min-width: 0; margin-left: auto; display: flex; gap: 8px; color: var(--text-3); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .catalog-result-meta b { color: var(--text-2); font-weight: 700; }
+    .catalog-results-empty { padding: 14px 8px; color: var(--text-3); font-size: 10.5px; line-height: 1.4; text-align: center; }
+    button.is-loading { position: relative; color: transparent !important; opacity: 1 !important; pointer-events: none; }
+    button.is-loading::after { content: ""; position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid var(--accent-border); border-top-color: var(--accent-strong); border-radius: 50%; animation: wfx-btn-spin .7s linear infinite; }
+    @keyframes wfx-btn-spin { to { transform: rotate(360deg); } }
     .log-button { position: relative; }
     .log-alert { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); border: 2px solid var(--panel-bg); opacity: 0; transform: scale(.4); transition: .18s ease; }
     .log-button.has-alert .log-alert { opacity: 1; transform: scale(1); }

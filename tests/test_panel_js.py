@@ -11,17 +11,12 @@ def test_exposes_python_callable_globals():
 
 
 def test_wires_all_catalog_actions():
-    for action in [
-        "refresh-folders",
-        "browse",
-        "code-find",
-        "code-costsheet",
-        "code-bom",
-        "buyer-find",
-        "buyer-costsheet",
-        "buyer-bom",
-    ]:
+    # Khu tìm Catalog gộp về: 1 ô + segmented Style Code | Buyer Reference,
+    # rồi Tìm (primary) · Costing · BOM.
+    for action in ["refresh-folders", "browse", "find", "costsheet", "bom"]:
         assert f'"{action}"' in JS
+    assert "catalogKind" in JS
+    assert "catalog-kind-button" in JS
     assert '"catalog_action"' in JS
     assert '"browse_catalog"' in JS
     assert '"scan_catalog_folders"' in JS
@@ -163,16 +158,41 @@ def test_special_module_workflows_are_wired():
 
 
 def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
-    assert 'runCatalogAction(\n      "code", $(".catalog-code").value, "costsheet"' in JS
-    assert 'runCatalogAction(\n      "code", $(".catalog-code").value, "bom"' in JS
-    assert '"buyer_reference", $(".catalog-buyer-reference").value, "costsheet"' in JS
-    assert '"buyer_reference", $(".catalog-buyer-reference").value, "bom"' in JS
+    assert 'runCatalogAction(catalogKind, $(".catalog-query").value)' in JS
+    assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "costsheet"' in JS
+    assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "bom"' in JS
     assert '"catalog_action"' in JS
     assert '"browse_catalog"' in JS
     assert "scanCatalogFolders(false)" in JS
     assert "set_catalog_default_folder" in JS
     assert "clearCatalogResult" in JS
     assert "catalogPreparedCategory" not in JS
+
+
+def test_multiple_results_are_selectable_in_panel():
+    # Feature: nhiều Code hiện danh sách chọn ngay trong panel; chọn 1 Code mở
+    # đúng style đó mà không phải nhìn grid trên WFX.
+    assert "renderCatalogResults" in JS
+    assert '"MULTIPLE_RESULTS"' in JS
+    assert "openCatalogResultCode" in JS
+    assert "data-result-code" in JS
+
+
+def test_action_buttons_show_inline_spinner():
+    assert "withButtonLoading" in JS
+    assert 'classList.add("is-loading")' in JS
+
+
+def test_system_theme_choice_is_wired():
+    assert "resolveTheme" in JS
+    assert '"(prefers-color-scheme: dark)"' in JS
+    assert '[data-theme-choice]' in JS
+
+
+def test_tablists_use_selected_state_and_arrow_keys():
+    assert "bindTablistKeys" in JS
+    assert 'aria-selected' in JS
+    assert '"ArrowRight"' in JS
 
 
 def test_catalog_folder_picker_groups_and_searches_large_trees():
