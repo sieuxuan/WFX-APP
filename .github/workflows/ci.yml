@@ -24,10 +24,14 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        # checkout v5 chạy Node 24; pin full SHA để action immutable.
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        # setup-python v6 chạy Node 24; pin full SHA.
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
