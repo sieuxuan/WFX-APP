@@ -236,6 +236,12 @@ def test_save_account_preserves_hidden_webhook_setting(tmp_path):
     assert "hooks.example.test/private" in content
 
 
+def test_theme_accepts_system_and_rejects_garbage(tmp_path):
+    assert prefs.save_prefs(base_dir=tmp_path, theme="system")["theme"] == "system"
+    assert prefs.load_prefs(base_dir=tmp_path)["theme"] == "system"
+    assert prefs.save_prefs(base_dir=tmp_path, theme="neon")["theme"] == "light"
+
+
 def test_hotkey_round_trip_and_label_is_derived(tmp_path):
     prefs.save_prefs(base_dir=tmp_path, hotkey="alt+shift+k")
     loaded = prefs.load_prefs(base_dir=tmp_path)

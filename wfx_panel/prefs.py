@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from wfx_panel import hotkey as hotkey_spec
+from wfx_panel import secret
 
 # RESOURCE_DIR: nơi chứa asset chỉ-đọc được đóng gói cùng ứng dụng (ui/, assets/).
 # Khi build bằng PyInstaller (frozen), __file__ nằm trong dist/WFX-Panel/_internal/,
@@ -240,6 +241,21 @@ def save_catalog_folder_cache(
     return normalised
 
 
+# Các key account do prefs quản lý; mọi dòng .env khác (webhook, key tuỳ biến)
+# phải được giữ nguyên khi save_account ghi lại file.
+_ACCOUNT_ENV_KEYS = frozenset(
+    {"WFX_USER_ID", "WFX_PASSWORD", "WFX_PASSWORD_ENC"}
+)
+
+
+def _parse_env_value(value: str) -> str:
+    value = value.strip()
+    try:
+        return json.loads(value) if value.startswith('"') else value
+    except json.JSONDecodeError:
+        return value.strip('"')
+
+
 def load_account(base_dir: Path | None = None) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     path = _env_path(base_dir)
@@ -250,41 +266,62 @@ def load_account(base_dir: Path | None = None) -> dict:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            value = value.strip()
-            try:
-                values[key.strip()] = json.loads(value) if value.startswith('"') else value
-            except json.JSONDecodeError:
-                values[key.strip()] = value.strip('"')
+            values[key.strip()] = _parse_env_value(value)
+    encrypted = values.get("WFX_PASSWORD_ENC", "")
+    if encrypted:
+        # Không giải được (DPAPI vắng mặt, đổi máy/user, blob hỏng) => coi như
+        # chưa có mật khẩu để buộc người dùng nhập lại, không lộ token.
+        decrypted = secret.unprotect(encrypted)
+        password = decrypted if decrypted is not None else ""
+    else:
+        # Tương thích ngược: bản cũ và file migrate còn WFX_PASSWORD plaintext.
+        password = values.get("WFX_PASSWORD", "")
     return {
         "user_id": values.get("WFX_USER_ID", ""),
-        "password": values.get("WFX_PASSWORD", ""),
+        "password": password,
     }
 
 
 def save_account(user_id: str, password: str, base_dir: Path | None = None) -> None:
     base_dir = DATA_DIR if base_dir is None else base_dir
     path = _env_path(base_dir)
-    webhook_line = ""
+    preserved: list[str] = []
     if path.is_file():
         try:
-            webhook_line = next(
-                (
-                    line
-                    for line in path.read_text(encoding="utf-8").splitlines()
-                    if line.strip().startswith("WFX_ERROR_WEBHOOK_URL=")
-                ),
-                "",
-            )
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                stripped = raw.strip()
+                key = (
+                    stripped.split("=", 1)[0].strip()
+                    if "=" in stripped and not stripped.startswith("#")
+                    else ""
+                )
+                if key in _ACCOUNT_ENV_KEYS:
+                    continue
+                preserved.append(raw)
         except OSError:
-            webhook_line = ""
-    content = (
-        f"WFX_USER_ID={json.dumps(user_id, ensure_ascii=False)}\n"
-        f"WFX_PASSWORD={json.dumps(password, ensure_ascii=False)}\n"
-        f"{webhook_line + chr(10) if webhook_line else ''}"
-    )
+            preserved = []
+
+    protected = secret.protect(password)
+    if protected is not None:
+        password_line = (
+            f"WFX_PASSWORD_ENC={json.dumps(protected, ensure_ascii=False)}"
+        )
+    else:
+        # Fallback (không phải Windows / DPAPI lỗi): giữ hành vi cũ để app vẫn chạy.
+        password_line = (
+            f"WFX_PASSWORD={json.dumps(password, ensure_ascii=False)}"
+        )
+    lines = [
+        f"WFX_USER_ID={json.dumps(user_id, ensure_ascii=False)}",
+        password_line,
+        *[line for line in preserved if line.strip()],
+    ]
+    content = "\n".join(lines) + "\n"
     temp = path.with_name(path.name + ".tmp")
     temp.write_text(content, encoding="utf-8")
     temp.replace(path)
+    # Runtime (session.run) đọc mật khẩu plaintext qua env trong tiến trình; chỉ
+    # bản trên đĩa được mã hoá.
     os.environ["WFX_USER_ID"] = user_id
     os.environ["WFX_PASSWORD"] = password
 
@@ -311,8 +348,9 @@ def load_prefs(base_dir: Path | None = None) -> dict:
     compact_offset_y = optional_int("compact_offset_y")
     panel_offset_x = optional_int("panel_offset_x")
     panel_offset_y = optional_int("panel_offset_y")
+    theme = data.get("theme")
     return {
-        "theme": "dark" if data.get("theme") == "dark" else "light",
+        "theme": theme if theme in {"light", "dark", "system"} else "light",
         "close_after_module": data.get("close_after_module", True) is not False,
         "hotkey": stored_hotkey,
         "hotkey_label": hotkey_spec.format_label(stored_hotkey),
@@ -364,7 +402,7 @@ def save_prefs(
     base_dir = DATA_DIR if base_dir is None else base_dir
     current = load_prefs(base_dir)
     if theme is not None:
-        current["theme"] = "dark" if theme == "dark" else "light"
+        current["theme"] = theme if theme in {"light", "dark", "system"} else "light"
     if close_after_module is not None:
         current["close_after_module"] = bool(close_after_module)
     if hotkey is not None:
