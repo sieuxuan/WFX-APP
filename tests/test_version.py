@@ -6,13 +6,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_public_version_is_1_0_6():
-    assert APP_VERSION == "1.0.6"
-    assert DISPLAY_VERSION == "1.0.6"
-    assert RELEASE_TAG == "v1.0.6"
+    assert APP_VERSION == "1.0.7"
+    assert DISPLAY_VERSION == "1.0.7"
+    assert RELEASE_TAG == "v1.0.7"
 
 
 def test_windows_build_embeds_release_version():
     spec = (ROOT / "wfx_panel" / "wfx-panel.spec").read_text(encoding="utf-8")
     info = (ROOT / "wfx_panel" / "version_info.txt").read_text(encoding="utf-8")
     assert 'version="version_info.txt"' in spec
-    assert "ProductVersion', '1.0.6" in info
+    assert "ProductVersion', '1.0.7" in info

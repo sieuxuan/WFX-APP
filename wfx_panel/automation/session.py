@@ -5,6 +5,8 @@ Tách nguyên văn từ login.py — không đổi logic.
 
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlparse
+
 from wfx_panel.automation._common import (
     CATALOG_XPATH,
     COMPANY_ID,
@@ -30,6 +32,10 @@ from wfx_panel.automation.browser import (
     _connect_to_chrome,
     _start_persistent_chrome,
 )
+
+DIVISION_CONFIRM_TIMEOUT_SECONDS = 8
+DIVISION_RETRY_AFTER_SECONDS = 2.5
+DIVISION_ROUTE_SETTLE_SECONDS = 0.75
 
 
 def login(
@@ -71,6 +77,55 @@ def _division_for_text(value: str | None) -> dict[str, str] | None:
                 "division_label": str(division["label"]),
                 "division_name": str(division["name"]),
             }
+    return None
+
+
+def _division_for_base_setting_url(value: str | None) -> dict[str, str] | None:
+    """Nhận diện Division từ route Base Setting bằng query exact.
+
+    WFX điều hướng riêng frame ``body`` khi đổi Division. Trong một số lần tải
+    chậm, route đã đổi và server đã nhận lựa chọn nhưng ``#CompanyName`` trên
+    frame cha chưa refresh, khiến flow cũ chờ đủ 25 giây rồi báo lỗi giả.
+    """
+    try:
+        parsed = urlparse(str(value or ""))
+        if not parsed.path.casefold().endswith("/wfx_basesetting.aspx"):
+            return None
+        query = {
+            key.casefold(): values[-1]
+            for key, values in parse_qs(parsed.query).items()
+            if values
+        }
+        if query.get("changebasesetting") != "1":
+            return None
+        member = query.get("membercompanycode")
+        folder = query.get("folderid")
+        for division in DIVISIONS.values():
+            if (
+                member == str(division["member_company_code"])
+                and folder == str(division["folder_id"])
+            ):
+                return {
+                    "current_division": str(division["key"]),
+                    "division_label": str(division["label"]),
+                    "division_name": str(division["name"]),
+                }
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _division_route_state_for_page(page: Page) -> dict[str, str] | None:
+    """Đọc route Base Setting hiện tại từ frame ``body`` của WFX."""
+    for frame in page.frames:
+        try:
+            if str(frame.name or "").casefold() != "body":
+                continue
+            matched = _division_for_base_setting_url(frame.url)
+            if matched:
+                return matched
+        except PlaywrightError:
+            continue
     return None
 
 
@@ -221,7 +276,11 @@ def switch_division(
 
         _write_log(log, f"[DIVISION] Đang chuyển sang {target['label']}...")
         actionable.evaluate("element => element.click()")
-        deadline = time.monotonic() + 25
+        started_wait = time.monotonic()
+        deadline = started_wait + DIVISION_CONFIRM_TIMEOUT_SECONDS
+        retry_at = started_wait + DIVISION_RETRY_AFTER_SECONDS
+        route_observed_at: float | None = None
+        retried = False
         while time.monotonic() < deadline:
             state = _division_state_for_page(page)
             if state.get("current_division") == key:
@@ -232,6 +291,31 @@ def switch_division(
                     f"Đã chuyển sang Division {target['label']}.",
                     **state,
                 )
+            now = time.monotonic()
+            route_state = _division_route_state_for_page(page)
+            if route_state and route_state.get("current_division") == key:
+                if route_observed_at is None:
+                    route_observed_at = now
+                elif now - route_observed_at >= DIVISION_ROUTE_SETTLE_SECONDS:
+                    _write_log(
+                        log,
+                        f"[DIVISION] Đã xác nhận {target['label']} qua Base Setting.",
+                    )
+                    return _result(
+                        True,
+                        "DIVISION_CHANGED",
+                        f"Đã chuyển sang Division {target['label']}.",
+                        **route_state,
+                    )
+            else:
+                route_observed_at = None
+                if not retried and now >= retry_at:
+                    _write_log(
+                        log,
+                        f"[DIVISION] WFX phản hồi chậm, thử lại {target['label']}...",
+                    )
+                    actionable.evaluate("element => element.click()")
+                    retried = True
             page.wait_for_timeout(250)
         return _result(
             False,

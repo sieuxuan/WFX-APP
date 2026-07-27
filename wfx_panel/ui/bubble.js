@@ -14,6 +14,7 @@
   }
 
   bubble.addEventListener("mousedown", (event) => {
+    api()?.note_bubble_interaction?.();
     if (event.button !== 0) return;
     dragging = false;
     // Giữ ~180ms để bắt đầu kéo; nhả sớm hơn coi như "click mở panel".
@@ -50,6 +51,7 @@
     clearHold();
     dragging = false;
     document.body.classList.remove("is-dragging");
+    api()?.note_bubble_interaction?.();
     api()?.bubble_context_menu?.();
   });
 

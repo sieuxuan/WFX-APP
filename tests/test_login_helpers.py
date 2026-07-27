@@ -1,7 +1,8 @@
 import json
+from types import SimpleNamespace
 
 import login
-from wfx_panel.automation import browser
+from wfx_panel.automation import browser, catalog, session
 
 
 def test_style_status_suffix_includes_both_grid_fields():
@@ -124,3 +125,138 @@ def test_division_is_detected_from_company_name_title():
 
 def test_unknown_company_name_does_not_fake_a_division():
     assert login._division_for_text("PRO SPORTS (H.K) LTD") is None
+
+
+def test_division_is_detected_from_exact_base_setting_route():
+    detected = session._division_for_base_setting_url(
+        "https://prosports.worldfashionexchange.com/wfx/"
+        "wfx_BaseSetting.aspx?ChangeBaseSetting=1"
+        "&MemberCompanyCode=77400&folderID=7740002"
+        "&blnShowNewMenu=true"
+    )
+
+    assert detected and detected["current_division"] == "knit"
+
+
+def test_division_route_does_not_accept_partial_folder_id():
+    detected = session._division_for_base_setting_url(
+        "https://prosports.worldfashionexchange.com/wfx/"
+        "wfx_BaseSetting.aspx?ChangeBaseSetting=1"
+        "&MemberCompanyCode=77400&folderID=77400020"
+    )
+
+    assert detected is None
+
+
+def test_division_confirmation_timeout_is_bounded_and_retries_early():
+    assert session.DIVISION_CONFIRM_TIMEOUT_SECONDS <= 8
+    assert (
+        0
+        < session.DIVISION_RETRY_AFTER_SECONDS
+        < session.DIVISION_CONFIRM_TIMEOUT_SECONDS
+    )
+
+
+def test_catalog_destination_uses_existing_article_popup(monkeypatch):
+    calls = []
+
+    class PlaywrightRuntime:
+        def stop(self):
+            calls.append(("stop",))
+
+    class PlaywrightStarter:
+        def start(self):
+            return PlaywrightRuntime()
+
+    context = object()
+    browser_instance = SimpleNamespace(contexts=[context])
+    page = object()
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda _playwright: (browser_instance, page),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+    monkeypatch.setattr(
+        catalog,
+        "_open_article_destination",
+        lambda actual_context, destination, previous, _log, timeout_seconds: (
+            calls.append(
+                (
+                    "destination",
+                    actual_context,
+                    destination,
+                    previous,
+                    timeout_seconds,
+                )
+            )
+            or "BOM"
+        ),
+    )
+
+    result = catalog.open_catalog_destination("ABC123", "bom")
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert calls == [
+        ("destination", context, "bom", [], 8),
+        ("stop",),
+    ]
+
+
+def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch):
+    calls = []
+
+    class PlaywrightRuntime:
+        def stop(self):
+            calls.append(("stop",))
+
+    class PlaywrightStarter:
+        def start(self):
+            return PlaywrightRuntime()
+
+    page = object()
+    grid = object()
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda _playwright: (object(), page),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+    monkeypatch.setattr(
+        catalog,
+        "_show_catalog_floating_filter",
+        lambda actual_page, _log: (
+            calls.append(("existing-grid", actual_page)) or grid
+        ),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_filter_grid_and_maybe_open",
+        lambda actual_grid, kind, query, _log: (
+            calls.append(("filter", actual_grid, kind, query))
+            or {
+                "ok": True,
+                "code": "RESULT_OPENED",
+                "article_code": "ABC123",
+            }
+        ),
+    )
+
+    result = catalog.find_in_open_catalog(
+        "Apparel",
+        "code",
+        "ABC123",
+    )
+
+    assert result["code"] == "RESULT_OPENED"
+    assert calls == [
+        ("existing-grid", page),
+        ("filter", grid, "code", "ABC123"),
+        ("stop",),
+    ]

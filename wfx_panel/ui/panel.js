@@ -66,8 +66,11 @@
   let currentDivision = null;
   let hasCredentials = false;
   let toastEnabled = true;
+  let catalogPreparedCategory = null;
+  let lastCatalogResult = null;
   const MODULE_RUN_METHODS = new Set([
     "open_module", "prepare_catalog", "find_code", "find_buyer_reference",
+    "open_catalog_destination",
     "open_sale_asn_new", "open_supplier_category", "find_supplier", "find_buyer",
   ]);
 
@@ -112,6 +115,7 @@
       $$(".division-button").forEach((button) => {
         button.disabled = sessionActive !== true;
       });
+      syncCatalogStepButtons();
     }
   }
   window.wfxSetBusy = setBusy;
@@ -308,6 +312,41 @@
   }
   window.wfxSetStyleStatus = setStyleStatus;
 
+  function clearCatalogResult() {
+    lastCatalogResult = null;
+    setStyleStatus(null);
+    syncCatalogStepButtons();
+  }
+
+  function clearCatalogPreparation() {
+    catalogPreparedCategory = null;
+    clearCatalogResult();
+  }
+
+  function syncCatalogStepButtons() {
+    const category = $(".catalog-category")?.value || "";
+    const prepared = catalogPreparedCategory === category;
+    $$(".catalog-find-button").forEach((button) => {
+      button.disabled = busy || !prepared;
+    });
+    const destinationReady = prepared
+      && Boolean(lastCatalogResult?.articleCode)
+      && lastCatalogResult.category === "Apparel";
+    $$(".catalog-destination-actions button").forEach((button) => {
+      button.disabled = busy || !destinationReady;
+    });
+  }
+
+  function rememberCatalogResult(result) {
+    lastCatalogResult = {
+      articleCode: String(result.article_code || ""),
+      category: String(result.category || $(".catalog-category").value),
+      filterKind: String(result.filter_kind || ""),
+      query: String(result.query || "").trim(),
+    };
+    syncCatalogStepButtons();
+  }
+
   function setUpdateState(state) {
     if (!state) return;
     const banner = $(".update-banner");
@@ -390,7 +429,24 @@
       hasCredentials = result.has_credentials === true;
     }
     if (result.style_status) setStyleStatus(result.style_status);
-    else if (["NO_RESULTS", "MULTIPLE_RESULTS"].includes(result.code)) setStyleStatus(null);
+    if (result.code === "RESULT_OPENED" && result.article_code) {
+      rememberCatalogResult(result);
+    } else if (result.code === "CATEGORY_SELECTED") {
+      catalogPreparedCategory = String(
+        result.category || $(".catalog-category").value
+      );
+      clearCatalogResult();
+    } else if ([
+      "NO_RESULTS", "MULTIPLE_RESULTS", "CATALOG_RESULT_REQUIRED",
+      "CATALOG_RESULT_CHANGED", "CATALOG_RESULT_EXPIRED",
+    ].includes(result.code)) {
+      clearCatalogResult();
+    }
+    if ([
+      "CATALOG_PREPARE_REQUIRED", "CATALOG_SEARCH_CONTEXT_LOST",
+    ].includes(result.code)) {
+      clearCatalogPreparation();
+    }
     if (result.admin_access !== undefined) {
       setAdminAccess(
         result.admin_access,
@@ -513,14 +569,52 @@
     "buyer-find": () => runSelectedModuleAction("find_buyer", $(".buyer-query").value.trim()),
   };
 
+  async function runCatalogSearch(method, query) {
+    if (catalogPreparedCategory !== $(".catalog-category").value) {
+      setStatus("error", "Hãy bấm Mở Catalog trước khi tìm.");
+      return null;
+    }
+    clearCatalogResult();
+    return call(method, $(".catalog-category").value, query.trim(), null);
+  }
+
+  async function openCatalogDestination(destination) {
+    if (!lastCatalogResult) {
+      setStatus("error", "Hãy bấm Tìm và mở một style trước.");
+      return null;
+    }
+    const currentQuery = lastCatalogResult.filterKind === "code"
+      ? $(".catalog-code").value.trim()
+      : $(".catalog-buyer-reference").value.trim();
+    if (
+      lastCatalogResult.category !== $(".catalog-category").value
+      || lastCatalogResult.query.toLowerCase() !== currentQuery.toLowerCase()
+    ) {
+      clearCatalogResult();
+      setStatus("error", "Nội dung tìm đã thay đổi. Hãy bấm Tìm lại.");
+      return null;
+    }
+    return call(
+      "open_catalog_destination",
+      destination,
+      lastCatalogResult.articleCode,
+    );
+  }
+
   const catalogActions = {
-    "prepare": () => call("prepare_catalog", $(".catalog-category").value),
-    "code-find": () => call("find_code", $(".catalog-category").value, $(".catalog-code").value.trim(), null),
-    "code-costsheet": () => call("find_code", $(".catalog-category").value, $(".catalog-code").value.trim(), "costsheet"),
-    "code-bom": () => call("find_code", $(".catalog-category").value, $(".catalog-code").value.trim(), "bom"),
-    "buyer-find": () => call("find_buyer_reference", $(".catalog-category").value, $(".catalog-buyer-reference").value.trim(), null),
-    "buyer-costsheet": () => call("find_buyer_reference", $(".catalog-category").value, $(".catalog-buyer-reference").value.trim(), "costsheet"),
-    "buyer-bom": () => call("find_buyer_reference", $(".catalog-category").value, $(".catalog-buyer-reference").value.trim(), "bom"),
+    "prepare": () => {
+      clearCatalogPreparation();
+      return call("prepare_catalog", $(".catalog-category").value);
+    },
+    "code-find": () => runCatalogSearch(
+      "find_code", $(".catalog-code").value
+    ),
+    "buyer-find": () => runCatalogSearch(
+      "find_buyer_reference",
+      $(".catalog-buyer-reference").value,
+    ),
+    "open-costsheet": () => openCatalogDestination("costsheet"),
+    "open-bom": () => openCatalogDestination("bom"),
   };
 
   function filterModules(query) {
@@ -618,6 +712,9 @@
     $(".generic-module-open").addEventListener("click", openModule);
     $(".catalog-code").addEventListener("keydown", (event) => { if (event.key === "Enter") catalogActions["code-find"](); });
     $(".catalog-buyer-reference").addEventListener("keydown", (event) => { if (event.key === "Enter") catalogActions["buyer-find"](); });
+    $(".catalog-category").addEventListener("change", clearCatalogPreparation);
+    $(".catalog-code").addEventListener("input", clearCatalogResult);
+    $(".catalog-buyer-reference").addEventListener("input", clearCatalogResult);
     $(".search-box input").addEventListener("input", (event) => filterModules(event.target.value));
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && $(".module-overlay").classList.contains("module-open")) closeModuleModal();
@@ -636,6 +733,10 @@
     });
     $$(".settings-tab").forEach((button) =>
       button.addEventListener("click", () => selectSettingsTab(button.dataset.settingsTab)));
+    $(".manual-button").addEventListener("click", async () => {
+      const result = await callQuiet("open_wfx_manual");
+      if (result) handleResult(result);
+    });
     $(".feedback-button").addEventListener("click", () => {
       feedbackOverlay().classList.add("feedback-open");
       $(".feedback-status").textContent = "";

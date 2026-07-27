@@ -386,6 +386,7 @@ def _open_article_destination(
     destination: str,
     previous_states: list[tuple[Page, str, str]],
     log: Callable[[str], None],
+    timeout_seconds: float = 40,
 ) -> str:
     targets = {
         "costsheet": ("Costsheet", "#CostSheet"),
@@ -395,7 +396,7 @@ def _open_article_destination(
         raise ValueError(f"Article destination không hỗ trợ: {destination}")
     label, selector = targets[destination]
     started = time.monotonic()
-    deadline = started + 40
+    deadline = started + timeout_seconds
     _write_log(log, f"[ARTICLE] Đang chờ ArticleTop để mở {label}...")
     slow_notice_written = False
 
@@ -435,6 +436,136 @@ def _open_article_destination(
             slow_notice_written = True
         time.sleep(0.25)
     raise PlaywrightTimeoutError(f"Không tìm thấy nút {label} trong ArticleTop.")
+
+
+def open_catalog_destination(
+    article_code: str,
+    destination: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Mở Costsheet/BOM từ popup style đang có, không chạy lại Catalog/search."""
+    article_code = str(article_code or "").strip()
+    if not article_code:
+        return _result(
+            False,
+            "CATALOG_RESULT_REQUIRED",
+            "Hãy tìm và mở một Style Code trước.",
+        )
+    if destination not in {"costsheet", "bom"}:
+        return _result(
+            False,
+            "ARTICLE_DESTINATION_UNKNOWN",
+            f"Đích Article không hỗ trợ: {destination}",
+        )
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+        )
+
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
+            )
+        label = _open_article_destination(
+            browser.contexts[0],
+            destination,
+            [],
+            log,
+            timeout_seconds=8,
+        )
+        return _result(
+            True,
+            "CATALOG_DESTINATION_OPENED",
+            f"Đã mở style {article_code} → {label}.",
+            article_code=article_code,
+            destination=destination,
+        )
+    except PlaywrightTimeoutError:
+        return _result(
+            False,
+            "CATALOG_RESULT_EXPIRED",
+            "Style đang chọn không còn mở. Hãy bấm Tìm lại rồi chọn Costing/BOM.",
+            article_code=article_code,
+            destination=destination,
+        )
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "CATALOG_DESTINATION_FAILED",
+            message,
+            article_code=article_code,
+            destination=destination,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def find_in_open_catalog(
+    category_name: str,
+    filter_kind: str,
+    query: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Lọc grid Catalog đã chuẩn bị; không mở lại menu/category/master."""
+    query = str(query or "").strip()
+    if not query:
+        return _result(False, "QUERY_REQUIRED", "Vui lòng nhập nội dung cần tìm.")
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+        )
+
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
+            )
+        _write_log(log, "[CATALOG] Dùng grid Master đang mở, không tải lại Catalog.")
+        grid = _show_catalog_floating_filter(page, log)
+        result = _filter_grid_and_maybe_open(
+            grid,
+            filter_kind,
+            query,
+            log,
+        )
+        result["session_active"] = True
+        result["category"] = category_name
+        result["filter_kind"] = filter_kind
+        result["query"] = query
+        return result
+    except PlaywrightTimeoutError:
+        return _result(
+            False,
+            "CATALOG_SEARCH_CONTEXT_LOST",
+            "Catalog không còn ở bước Master. Hãy bấm Mở Catalog lại.",
+        )
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATALOG_SEARCH_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
 
 
 def quick_find_catalog(
@@ -526,6 +657,8 @@ def quick_find_catalog(
             )
         result["session_active"] = True
         result["category"] = category_name
+        result["filter_kind"] = filter_kind
+        result["query"] = query
         return result
     except PlaywrightTimeoutError as exc:
         message = f"Quick Search timeout: {str(exc).splitlines()[0]}"

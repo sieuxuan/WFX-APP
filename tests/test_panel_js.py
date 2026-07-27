@@ -11,9 +11,17 @@ def test_exposes_python_callable_globals():
 
 
 def test_wires_all_catalog_actions():
-    for action in ["prepare", "code-find", "code-costsheet", "code-bom",
-                   "buyer-find", "buyer-costsheet", "buyer-bom"]:
+    for action in [
+        "prepare",
+        "code-find",
+        "buyer-find",
+        "open-costsheet",
+        "open-bom",
+    ]:
         assert f'"{action}"' in JS
+    assert '"open_catalog_destination"' in JS
+    assert '"code-costsheet"' not in JS
+    assert '"buyer-bom"' not in JS
 
 
 def test_module_groups_present():
@@ -39,7 +47,13 @@ def test_close_after_module_pref_is_consulted_after_open_module():
 def test_completed_module_actions_use_external_notifications():
     assert "window.wfxShowToast" not in JS
     assert "MODULE_RUN_METHODS" in JS
-    for method in ["open_module", "prepare_catalog", "find_code", "find_buyer_reference"]:
+    for method in [
+        "open_module",
+        "prepare_catalog",
+        "find_code",
+        "find_buyer_reference",
+        "open_catalog_destination",
+    ]:
         assert f'"{method}"' in JS
     assert "await api()?.focus_automation_browser?.()" in JS
     assert "showToast(" not in JS
@@ -143,6 +157,18 @@ def test_special_module_workflows_are_wired():
         assert f'"{action}"' in JS
 
 
+def test_catalog_destination_does_not_repeat_search_flow():
+    assert 'openCatalogDestination("costsheet")' in JS
+    assert 'openCatalogDestination("bom")' in JS
+    assert 'call(\n      "open_catalog_destination"' in JS
+    assert 'call("find_code", $(".catalog-category").value' not in JS
+    assert 'call("find_buyer_reference", $(".catalog-category").value' not in JS
+    assert "clearCatalogResult" in JS
+    assert "catalogPreparedCategory" in JS
+    assert "CATALOG_SEARCH_CONTEXT_LOST" in JS
+    assert "syncCatalogStepButtons" in JS
+
+
 def test_job_history_retry_and_screenshot_are_wired():
     for method in [
         "get_job_history",
@@ -172,8 +198,14 @@ def test_bubble_launcher_is_wired():
     # Bubble là trang riêng: bấm → mở panel, giữ → kéo, chuột phải → menu.
     assert "toggle_panel" in BUBBLE_JS
     assert "begin_bubble_drag" in BUBBLE_JS
+    assert "note_bubble_interaction" in BUBBLE_JS
     assert "bubble_context_menu" in BUBBLE_JS
     assert "180" in BUBBLE_JS  # ngưỡng giữ để bắt đầu kéo
+
+
+def test_wfx_manual_button_is_wired_to_native_browser():
+    assert '".manual-button"' in JS
+    assert '"open_wfx_manual"' in JS
 
 
 def test_old_webview_clipboard_has_a_fallback():

@@ -283,6 +283,62 @@ def _work_area_for_hwnd(
         return None
 
 
+def _work_area_for_point(
+    x: int,
+    y: int,
+) -> tuple[int, int, int, int] | None:
+    """Work area của màn hình chứa điểm physical ``(x, y)``.
+
+    Dùng khi kéo bubble để màn hình đích thay đổi ngay lúc con trỏ đi qua ranh
+    giới monitor. ``MONITOR_DEFAULTTONEAREST`` cũng xử lý được khoảng trống
+    giữa các màn hình trong một layout không thẳng hàng.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+
+        class Point(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        class Rect(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        class MonitorInfo(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("rcMonitor", Rect),
+                ("rcWork", Rect),
+                ("dwFlags", wintypes.DWORD),
+            ]
+
+        monitor_from_point = user32.MonitorFromPoint
+        monitor_from_point.argtypes = [Point, wintypes.DWORD]
+        monitor_from_point.restype = wintypes.HANDLE
+        monitor = monitor_from_point(
+            Point(int(x), int(y)), 2
+        )  # MONITOR_DEFAULTTONEAREST
+        if not monitor:
+            return None
+
+        info = MonitorInfo()
+        info.cbSize = ctypes.sizeof(MonitorInfo)
+        if not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+            return None
+        work = info.rcWork
+        return (work.left, work.top, work.right, work.bottom)
+    except Exception:
+        return None
+
+
 def _work_area_for_window_title(
     title: str,
 ) -> tuple[int, int, int, int] | None:
@@ -510,6 +566,19 @@ def _foreground_process_id() -> int | None:
         return None
 
 
+def _foreground_window_hwnd() -> int | None:
+    """HWND foreground hiện tại, dùng để phân biệt bubble với menu tray."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        return int(hwnd) if hwnd else None
+    except Exception:
+        return None
+
+
 def _native_compact_context_choice(
     always_on_top: bool,
     title: str = MAIN_WINDOW_TITLE,
@@ -554,11 +623,13 @@ def _native_compact_context_choice(
         if not menu:
             return None
         try:
-            user32.AppendMenuW(menu, 0, 1, "Ẩn xuống khay hệ thống")
             label = (
                 "Bỏ luôn trên cùng" if always_on_top else "Bật luôn trên cùng"
             )
-            user32.AppendMenuW(menu, 0, 2, label)
+            user32.AppendMenuW(menu, 0, 1, label)
+            user32.AppendMenuW(menu, 0x0800, 0, "")  # MF_SEPARATOR
+            user32.AppendMenuW(menu, 0, 2, "Ẩn xuống khay hệ thống")
+            user32.AppendMenuW(menu, 0, 3, "Thoát WFX Smart")
             hwnd = wintypes.HWND(found[0])
             user32.SetForegroundWindow(hwnd)
             selected = user32.TrackPopupMenu(
@@ -571,7 +642,11 @@ def _native_compact_context_choice(
                 None,
             )
             user32.PostMessageW(hwnd, 0, 0, 0)  # WM_NULL đóng menu sạch trên Win32
-            return {1: "hide", 2: "toggle_on_top"}.get(int(selected))
+            return {
+                1: "toggle_on_top",
+                2: "hide",
+                3: "exit",
+            }.get(int(selected))
         finally:
             user32.DestroyMenu(menu)
     except Exception:
