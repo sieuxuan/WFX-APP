@@ -473,6 +473,32 @@ def test_parallel_automation_is_rejected_instead_of_queuing(tmp_path):
     assert completed[0]["code"] == "MODULE_OPENED"
 
 
+def test_rejected_prepare_catalog_keeps_active_catalog_context(tmp_path):
+    # Bug hồi quy: prepare_catalog/browse_catalog/scan_catalog_folders từng reset
+    # prepared_category TRƯỚC khi giành run lock. Một lần bấm bị từ chối
+    # ACTION_IN_PROGRESS vẫn xoá mất Catalog mà workflow đang chạy đã chuẩn bị,
+    # khiến find_code sau đó báo CATALOG_PREPARE_REQUIRED oan.
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+    api.prepare_catalog("Apparel")
+    assert api._catalog.prepared_category == "Apparel"
+
+    # Giữ lock như thể một workflow khác đang chạy.
+    assert api._run_lock.acquire(blocking=False)
+    try:
+        rejected = api.prepare_catalog("Apparel")
+        rejected_browse = api.browse_catalog("Apparel")
+        rejected_scan = api.scan_catalog_folders("Apparel", True)
+    finally:
+        api._run_lock.release()
+
+    assert rejected["code"] == "ACTION_IN_PROGRESS"
+    assert rejected_browse["code"] == "ACTION_IN_PROGRESS"
+    assert rejected_scan["code"] == "ACTION_IN_PROGRESS"
+    # Context của workflow đang chạy phải còn nguyên vẹn.
+    assert api._catalog.prepared_category == "Apparel"
+
+
 def test_sale_asn_new_uses_new_menu_xpath(tmp_path):
     api, fake = make_api(tmp_path)
     result = api.open_sale_asn_new()

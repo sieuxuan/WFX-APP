@@ -19,6 +19,8 @@ a = Analysis(
     ],
     hiddenimports=[
         "login",
+        "wfx_panel.catalog_controller",
+        "wfx_panel.secret",
         "wfx_panel.automation",
         "wfx_panel.automation.browser",
         "wfx_panel.automation.session",
