@@ -183,6 +183,39 @@ def test_action_buttons_show_inline_spinner():
     assert 'classList.add("is-loading")' in JS
 
 
+def test_job_history_uses_friendly_labels():
+    assert "JOB_METHOD_LABELS" in JS
+    assert "jobMethodLabel(job.method)" in JS
+
+
+def test_clear_history_requires_confirmation():
+    assert "Bấm lần nữa để xóa" in JS
+    assert 'button.dataset.confirm' in JS
+
+
+def test_account_form_submits_on_enter():
+    assert '[".user-input", ".password-input"]' in JS
+    assert '$(".save-button").click()' in JS
+
+
+def test_overlays_trap_focus_and_restore_it():
+    assert "trapOverlayFocus" in JS
+    assert "activeOverlay" in JS
+    assert "overlayReturnFocus" in JS
+    assert 'addEventListener("keydown", trapOverlayFocus, true)' in JS
+
+
+def test_autohide_keeps_panel_when_input_pending():
+    assert "hasPendingUserInput" in JS
+    assert "if (busy) return;" in JS
+
+
+def test_listboxes_support_arrow_key_navigation():
+    assert "bindListboxKeys" in JS
+    assert 'bindListboxKeys($(".catalog-results-list"))' in JS
+    assert 'bindListboxKeys($(".catalog-folder-list"))' in JS
+
+
 def test_system_theme_choice_is_wired():
     assert "resolveTheme" in JS
     assert '"(prefers-color-scheme: dark)"' in JS

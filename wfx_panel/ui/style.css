@@ -746,6 +746,7 @@ body.compact-mode .compact-launcher .compact-mark {
       border-radius: 7px;
       background: var(--accent-soft);
     }
+    .clear-history-button.is-danger { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
     .job-empty { padding: 28px 10px; color: var(--text-3); font-size: 11px; text-align: center; }
     .log-toolbar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
 
