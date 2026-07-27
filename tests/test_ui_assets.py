@@ -75,15 +75,18 @@ def test_index_html_has_contract_hooks():
         'src="panel.js"',
     ]:
         assert hook in html, hook
-    assert 'class="compact-launcher"' in html
-    assert "compact-drag-handle" not in html
+    # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
+    assert 'class="compact-launcher"' not in html
 
 
-def test_compact_launcher_advertises_right_click_options():
-    html = (UI / "index.html").read_text(encoding="utf-8")
-    launcher = html[html.index('class="compact-launcher"') :]
-    launcher = launcher[: launcher.index(">")]
-    assert "chuột phải" in launcher
+def test_bubble_page_advertises_interactions():
+    html = (UI / "bubble.html").read_text(encoding="utf-8")
+    assert 'class="bubble"' in html
+    assert 'src="bubble.js"' in html
+    button = html[html.index('class="bubble"') :]
+    button = button[: button.index(">")]
+    assert "chuột phải" in button  # menu tùy chọn
+    assert "kéo" in button  # giữ để kéo
 
 
 def test_header_has_drag_region_class_for_frameless_window():

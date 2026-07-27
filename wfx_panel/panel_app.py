@@ -16,37 +16,40 @@ from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
 from wfx_panel.win32_window import (
+    BUBBLE_WINDOW_TITLE,
     MAIN_WINDOW_TITLE,
     NOTIFICATION_HEIGHT,
     NOTIFICATION_TITLE,
     NOTIFICATION_WIDTH,
     _bring_process_window_to_front,
     _clamp_to_work_area,
+    _find_window_hwnd,
     _foreground_process_id,
+    _move_hwnd,
     _native_compact_context_choice,
     _native_cursor_position,
     _native_left_button_down,
     _native_notification_visibility,
     _set_process_window_bounds,
-    _snap_to_nearest_edge,
-    _window_rect_for_process,
+    _window_rect_by_title,
     _work_area_for_process_window,
 )
 
 HOTKEY = hotkey.DEFAULT
 STATUS_POLL_SECONDS = 5
-COMPACT_ACTIVATION_POLL_SECONDS = 0.25
 UPDATE_INITIAL_DELAY_SECONDS = 1
 UPDATE_POLL_SECONDS = 4 * 60 * 60
 ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 NOTIFICATION_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
+BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
 
 WINDOW_WIDTH = 440
 WINDOW_HEIGHT = 620
 WINDOW_MARGIN = 24
-COMPACT_SIZE = 48
-WINDOW_TRANSITION_SECONDS = 0.14
+# Bubble = icon nổi thường trực (chat-head); panel bung ra cạnh nó.
+BUBBLE_SIZE = 54
+BUBBLE_PANEL_GAP = 10
 # NOTIFICATION_TITLE/WIDTH/HEIGHT sống ở win32_window (lớp native cần chúng);
 # import lại phía trên để _notification_position và create_window dùng chung.
 NOTIFICATION_MARGIN = 10
@@ -115,20 +118,13 @@ def _notification_position() -> tuple[int, int]:
         except Exception:
             pass
 
-    panel = _window_rect_for_process(os.getpid())
-    if panel is not None:
-        panel_width = panel[2] - panel[0]
-        panel_height = panel[3] - panel[1]
-        if panel_width <= COMPACT_SIZE + 12 and panel_height <= COMPACT_SIZE + 12:
-            x = panel[0] + (panel_width - NOTIFICATION_WIDTH) // 2
-            y = panel[1] - NOTIFICATION_HEIGHT - 8
-        else:
-            x = panel[2] - NOTIFICATION_WIDTH
-            above = panel[1] - NOTIFICATION_HEIGHT - 8
-            # Panel mặc định nằm sát đầu màn hình. Khi không đủ
-            # chỗ ở ngoài, toast nổi trên phần đầu panel thay vì
-            # trôi xuống góc màn hình.
-            y = above if above >= top + NOTIFICATION_MARGIN else panel[1] + 8
+    # Neo toast quanh bubble (luôn hiển thị): ưu tiên nổi phía trên bubble,
+    # canh phải mép bubble; nếu không đủ chỗ phía trên thì nổi ngay dưới.
+    bubble = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
+    if bubble is not None:
+        x = bubble[2] - NOTIFICATION_WIDTH
+        above = bubble[1] - NOTIFICATION_HEIGHT - 8
+        y = above if above >= top + NOTIFICATION_MARGIN else bubble[3] + 8
     else:
         x = right - NOTIFICATION_WIDTH - NOTIFICATION_MARGIN
         y = bottom - NOTIFICATION_HEIGHT - NOTIFICATION_MARGIN
@@ -147,6 +143,22 @@ class _NotificationBridge:
         return {"ok": True}
 
 
+class _BubbleBridge:
+    """Cầu nối JS cho cửa sổ bubble (icon nổi thường trực)."""
+
+    def __init__(self, app: PanelApp):
+        self._app = app
+
+    def toggle_panel(self) -> dict:
+        return self._app.toggle_panel()
+
+    def begin_bubble_drag(self) -> dict:
+        return self._app.begin_bubble_drag()
+
+    def bubble_context_menu(self) -> dict:
+        return self._app.bubble_context_menu()
+
+
 class PanelApp:
     def __init__(self):
         self.api = PanelAPI()
@@ -161,27 +173,20 @@ class PanelApp:
         ]
         self._always_on_top = preferences["always_on_top"]
         self._start_hidden = preferences["start_hidden"]
-        self._visible = not self._start_hidden
-        self._compact = False
-        self._full_window_size: tuple[int, int] | None = None
-        # Vị trí đã lưu của icon thu gọn và của panel (physical Win32 coords).
-        # None nghĩa là chưa từng đặt tay; khi dùng luôn clamp lại vào work area
-        # của màn hình hiện tại phòng khi cấu hình màn hình đã đổi.
-        self._compact_offset: tuple[int, int] | None = (
+        self.bubble_window = None
+        # Bubble (icon) là trạng thái nghỉ thường trực; panel mặc định ẩn và
+        # chỉ bung ra khi bấm bubble, tự ẩn khi click ra ngoài.
+        self._panel_visible = False
+        self._bubble_hidden = self._start_hidden
+        # Vị trí thường trực của bubble (physical Win32 coords) — tái dùng pref
+        # compact_offset_*. None = chưa đặt tay → mặc định góc trên-phải.
+        self._bubble_offset: tuple[int, int] | None = (
             (preferences["compact_offset_x"], preferences["compact_offset_y"])
             if preferences["compact_offset_x"] is not None
             and preferences["compact_offset_y"] is not None
             else None
         )
-        self._panel_offset: tuple[int, int] | None = (
-            (preferences["panel_offset_x"], preferences["panel_offset_y"])
-            if preferences["panel_offset_x"] is not None
-            and preferences["panel_offset_y"] is not None
-            else None
-        )
-        self._compact_drag_thread: threading.Thread | None = None
-        self._expanding_compact = False
-        self._compact_focus_armed = False
+        self._bubble_drag_thread: threading.Thread | None = None
         self._notification_ready = threading.Event()
         self._notification_lock = threading.Lock()
         self._notification_generation = 0
@@ -233,57 +238,116 @@ class PanelApp:
             pass
 
     def hide_panel(self):
-        if self.window and self._visible:
-            self._prepare_window_transition()
+        if self.window is not None and self._panel_visible:
             try:
                 self.window.hide()
             except Exception:
                 pass
-            self._visible = False
+        self._panel_visible = False
 
-    def _set_compact_ui(self, enabled: bool) -> None:
+    def show_panel(self) -> dict:
+        """Bung panel cạnh bubble (bubble vẫn hiện)."""
         if self.window is None:
-            return
-        try:
-            self.window.evaluate_js(
-                f"window.wfxSetCompactMode({'true' if enabled else 'false'})"
-            )
-        except Exception:
-            pass
-
-    def begin_compact_drag(self) -> dict:
-        if not self._compact:
             return {
                 "ok": False,
-                "code": "PANEL_NOT_COMPACT",
-                "message": "Panel chưa ở chế độ icon.",
+                "code": "PANEL_NOT_READY",
+                "message": "Panel chưa sẵn sàng.",
             }
-        if (
-            self._compact_drag_thread is not None
-            and self._compact_drag_thread.is_alive()
-        ):
+        try:
+            self._position_panel_beside_bubble()
+            if not self._panel_visible:
+                try:
+                    self.window.show()
+                except Exception:
+                    pass
+                self._panel_visible = True
+            try:
+                self.window.on_top = self._always_on_top
+            except Exception:
+                pass
+            _bring_process_window_to_front(on_top=self._always_on_top)
+            self._focus_module_search()
             return {
                 "ok": True,
-                "code": "PANEL_DRAG_STARTED",
-                "message": "Đang di chuyển icon WFX.",
+                "code": "PANEL_OPENED",
+                "message": "Đã mở WFX Smart.",
             }
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "PANEL_OPEN_FAILED",
+                "message": f"Không mở được panel: {error}",
+            }
+
+    def toggle_panel(self) -> dict:
+        """Bấm bubble: đang mở thì thu, đang ẩn thì bung."""
+        if self._panel_visible:
+            self.hide_panel()
+            return {"ok": True, "code": "PANEL_HIDDEN", "message": "Đã thu panel."}
+        return self.show_panel()
+
+    def _position_panel_beside_bubble(self) -> None:
+        """Đặt panel ngay cạnh bubble, luôn clamp trọn trong màn hình."""
+        area = _work_area_for_process_window(os.getpid())
+        bubble = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
+        width, height = WINDOW_WIDTH, WINDOW_HEIGHT
+        if bubble is not None:
+            mid = (area[0] + area[2]) // 2 if area is not None else None
+            if mid is not None and bubble[0] > mid:
+                x = bubble[0] - width - BUBBLE_PANEL_GAP  # bubble bên phải → panel trái
+            else:
+                x = bubble[2] + BUBBLE_PANEL_GAP  # bubble bên trái → panel phải
+            y = bubble[1]
+        else:
+            x, y = _top_right_position()
+        x, y = _clamp_to_work_area(x, y, width, height, area)
+        if not _set_process_window_bounds(os.getpid(), x, y, width, height):
+            try:
+                self.window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+                self.window.move(x, y)
+            except Exception:
+                pass
+
+    def request_panel_hide(self) -> dict:
+        """Panel mất focus (click ra ngoài) → tự thu; giữ lại nếu focus vẫn
+        trong app (bấm chính bubble/toast) hoặc panel đã ẩn."""
+        if not self._panel_visible:
+            return {"ok": True, "code": "PANEL_ALREADY_HIDDEN"}
+        foreground = _foreground_process_id()
+        if foreground is not None and foreground == os.getpid():
+            return {"ok": True, "code": "PANEL_FOCUS_KEPT"}
+        self.hide_panel()
+        return {"ok": True, "code": "PANEL_HIDDEN_ON_BLUR"}
+
+    def begin_bubble_drag(self) -> dict:
+        """Bắt đầu kéo bubble — cache HWND MỘT lần để vòng kéo không enum lại."""
+        if (
+            self._bubble_drag_thread is not None
+            and self._bubble_drag_thread.is_alive()
+        ):
+            return {"ok": True, "code": "BUBBLE_DRAG_STARTED"}
+        hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
         cursor = _native_cursor_position()
-        own_rect = _window_rect_for_process(os.getpid())
+        rect = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
         started = bool(
             _native_left_button_down()
+            and hwnd is not None
             and cursor is not None
-            and own_rect is not None
+            and rect is not None
         )
         if started:
-            self._compact_drag_thread = threading.Thread(
-                target=self._compact_drag_loop,
-                args=(cursor, own_rect),
+            # Kéo bubble thì thu panel cho gọn.
+            if self._panel_visible:
+                self.hide_panel()
+            self._bubble_drag_thread = threading.Thread(
+                target=self._bubble_drag_loop,
+                args=(hwnd, cursor, rect),
                 daemon=True,
             )
-            self._compact_drag_thread.start()
+            self._bubble_drag_thread.start()
         return {
             "ok": started,
-            "code": "PANEL_DRAG_STARTED" if started else "PANEL_DRAG_FAILED",
+            "code": "BUBBLE_DRAG_STARTED" if started else "BUBBLE_DRAG_FAILED",
             "message": (
                 "Đang di chuyển icon WFX."
                 if started
@@ -291,22 +355,19 @@ class PanelApp:
             ),
         }
 
-    def _compact_drag_loop(
+    def _bubble_drag_loop(
         self,
+        hwnd: int,
         origin_cursor: tuple[int, int],
         origin_rect: tuple[int, int, int, int],
     ) -> None:
-        """Theo con trỏ toàn hệ thống; không phụ thuộc Chrome.
-
-        Mỗi bước đều clamp vào work area nên icon không bao giờ lọt khỏi màn
-        hình. Khi thả chuột thì dính vào mép gần nhất (kiểu bong bóng chat) và
-        lưu vị trí để lần thu gọn sau icon quay về đúng chỗ đã đặt.
-        """
+        """Theo con trỏ, dời thẳng HWND đã cache (SetWindowPos rẻ, không enum
+        → hết lag). Cho đặt ở đâu cũng được, chỉ clamp để không lọt khỏi màn."""
         width = origin_rect[2] - origin_rect[0]
         height = origin_rect[3] - origin_rect[1]
         area = _work_area_for_process_window(os.getpid())
         last: tuple[int, int] | None = None
-        while self._compact and _native_left_button_down():
+        while _native_left_button_down():
             cursor = _native_cursor_position()
             if cursor is None:
                 break
@@ -315,183 +376,54 @@ class PanelApp:
             target_x, target_y = _clamp_to_work_area(
                 target_x, target_y, width, height, area
             )
-            _set_process_window_bounds(os.getpid(), target_x, target_y)
+            _move_hwnd(hwnd, target_x, target_y)
             last = (target_x, target_y)
-            time.sleep(0.012)
+            time.sleep(0.008)
         if last is None:
             return
-        snap_x, snap_y = _snap_to_nearest_edge(
-            last[0], last[1], width, height, area
+        self._bubble_offset = last
+        prefs.save_prefs(compact_offset_x=last[0], compact_offset_y=last[1])
+
+    def bubble_context_menu(self) -> dict:
+        """Menu chuột phải trên bubble: ẩn vào tray / bật-tắt luôn trên cùng."""
+        choice = _native_compact_context_choice(
+            self._always_on_top, BUBBLE_WINDOW_TITLE
         )
-        _set_process_window_bounds(os.getpid(), snap_x, snap_y)
-        self._compact_offset = (snap_x, snap_y)
-        prefs.save_prefs(compact_offset_x=snap_x, compact_offset_y=snap_y)
-
-    def collapse_to_browser_icon(self) -> dict:
-        """Thu panel thành launcher nổi tại vị trí hiện tại."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "PANEL_NOT_READY",
-                "message": "Panel chưa sẵn sàng.",
-            }
-        try:
-            current_rect = _window_rect_for_process(os.getpid())
-            area = _work_area_for_process_window(os.getpid())
-            if current_rect is not None:
-                self._full_window_size = (
-                    current_rect[2] - current_rect[0],
-                    current_rect[3] - current_rect[1],
-                )
-                # Nhớ vị trí panel để lần mở lại đặt về đúng chỗ.
-                self._panel_offset = (current_rect[0], current_rect[1])
-                prefs.save_prefs(
-                    panel_offset_x=current_rect[0],
-                    panel_offset_y=current_rect[1],
-                )
-            # Icon xuất hiện ngay góc trên-phải của panel (nơi mắt đang nhìn),
-            # hoặc quay về đúng chỗ đã parked lần trước; luôn clamp gọn trong
-            # màn hình để hết cảnh icon "nhảy" ra mép/khuất.
-            if self._compact_offset is not None:
-                icon_x, icon_y = self._compact_offset
-            elif current_rect is not None:
-                icon_x = current_rect[2] - COMPACT_SIZE
-                icon_y = current_rect[1]
-            else:
-                icon_x, icon_y = WINDOW_MARGIN, WINDOW_MARGIN
-            icon_x, icon_y = _clamp_to_work_area(
-                icon_x, icon_y, COMPACT_SIZE, COMPACT_SIZE, area
-            )
-            self._prepare_window_transition()
-            self._set_compact_ui(True)
-            self._compact = True
-            self._compact_focus_armed = False
-            self._visible = True
-            resized = bool(
-                _set_process_window_bounds(
-                    os.getpid(),
-                    icon_x,
-                    icon_y,
-                    COMPACT_SIZE,
-                    COMPACT_SIZE,
-                )
-            )
-            if not resized:
-                self.window.resize(COMPACT_SIZE, COMPACT_SIZE)
-                self.window.move(icon_x, icon_y)
-            self._compact_offset = (icon_x, icon_y)
-            self.window.on_top = self._always_on_top
-            self._finish_window_transition()
+        if choice == "hide":
+            self.hide_to_tray()
             return {
                 "ok": True,
-                "code": "PANEL_COMPACT",
-                "message": "Đã thu WFX Smart thành icon.",
+                "code": "HIDDEN_TO_TRAY",
+                "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
             }
-        except Exception as error:
-            self._compact = False
-            self._compact_focus_armed = False
-            self._set_compact_ui(False)
-            self._finish_window_transition()
-            return {
-                "ok": False,
-                "code": "PANEL_COMPACT_FAILED",
-                "message": f"Không thu gọn được panel: {error}",
-            }
+        if choice == "toggle_on_top":
+            return self.api.set_always_on_top(not self._always_on_top)
+        return {
+            "ok": True,
+            "code": "MENU_DISMISSED",
+            "message": "Đã đóng menu.",
+        }
 
-    def expand_from_browser_icon(self) -> dict:
-        """Bung launcher về panel đầy đủ tại vị trí hiện tại."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "PANEL_NOT_READY",
-                "message": "Panel chưa sẵn sàng.",
-            }
-        if self._expanding_compact:
-            return {
-                "ok": True,
-                "code": "PANEL_EXPANDING",
-                "message": "Panel đang mở rộng.",
-            }
-        self._expanding_compact = True
-        try:
-            self._prepare_window_transition(wait=self._visible)
-            if not self._visible:
-                self.window.show()
-                self._visible = True
-            current_rect = _window_rect_for_process(os.getpid())
-            area = _work_area_for_process_window(os.getpid())
-            width, height = self._full_window_size or (
-                WINDOW_WIDTH,
-                WINDOW_HEIGHT,
-            )
-            # Neo panel tại vị trí icon rồi CLAMP trọn trong màn hình. Đây là
-            # chỗ trước đây bung panel từ đúng góc icon nên tràn ra ngoài —
-            # clamp tự đẩy panel sang trái/lên trên để luôn thấy đủ.
-            anchor = current_rect or (
-                self._panel_offset[0] if self._panel_offset else 0,
-                self._panel_offset[1] if self._panel_offset else 0,
-                0,
-                0,
-            )
-            target_x, target_y = _clamp_to_work_area(
-                anchor[0], anchor[1], width, height, area
-            )
-            restored = bool(
-                current_rect
-                and _set_process_window_bounds(
-                    os.getpid(),
-                    target_x,
-                    target_y,
-                    width,
-                    height,
-                )
-            )
-            if not restored:
-                self.window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
-                self.window.move(target_x, target_y)
-            self._panel_offset = (target_x, target_y)
-            prefs.save_prefs(
-                panel_offset_x=target_x, panel_offset_y=target_y
-            )
-            self.window.on_top = self._always_on_top
-            self._compact = False
-            self._compact_focus_armed = False
-            self._set_compact_ui(False)
-            _bring_process_window_to_front(on_top=self._always_on_top)
-            self._focus_module_search()
-            self._finish_window_transition()
-            return {
-                "ok": True,
-                "code": "PANEL_EXPANDED",
-                "message": "Đã mở WFX Smart.",
-            }
-        except Exception as error:
-            self._finish_window_transition()
-            return {
-                "ok": False,
-                "code": "PANEL_EXPAND_FAILED",
-                "message": f"Không mở rộng được panel: {error}",
-            }
-        finally:
-            self._expanding_compact = False
-
-    def dismiss_panel(self):
-        return self.collapse_to_browser_icon()
-
-    def show_panel(self):
-        if self._compact:
-            self.expand_from_browser_icon()
-            return
-        if self.window and not self._visible:
-            self._prepare_window_transition(wait=False)
+    def hide_to_tray(self) -> None:
+        """Giấu cả panel lẫn bubble; chỉ còn icon khay hệ thống."""
+        self.hide_panel()
+        if self.bubble_window is not None:
             try:
-                self.window.show()
+                self.bubble_window.hide()
             except Exception:
                 pass
-            self._visible = True
-            self._finish_window_transition()
-        _bring_process_window_to_front(on_top=self._always_on_top)
-        self._focus_module_search()
+        self._bubble_hidden = True
+
+    def show_from_tray(self) -> None:
+        """Bật lại bubble (và mở panel) từ khay hệ thống."""
+        if self.bubble_window is not None:
+            try:
+                self.bubble_window.show()
+                self.bubble_window.on_top = self._always_on_top
+            except Exception:
+                pass
+        self._bubble_hidden = False
+        self.show_panel()
 
     def _focus_module_search(self) -> None:
         if self.window is None:
@@ -503,54 +435,12 @@ class PanelApp:
         except Exception:
             pass
 
-    def _prepare_window_transition(self, *, wait: bool = True) -> None:
-        if self.window is None:
-            return
-        try:
-            self.window.evaluate_js("window.wfxPrepareWindowTransition?.()")
-            if wait:
-                time.sleep(WINDOW_TRANSITION_SECONDS)
-        except Exception:
-            pass
-
-    def _finish_window_transition(self) -> None:
-        if self.window is None:
-            return
-        try:
-            self.window.evaluate_js("window.wfxFinishWindowTransition?.()")
-        except Exception:
-            pass
-
-    def show_compact_context_menu(self) -> dict:
-        if not self._compact:
-            return {
-                "ok": False,
-                "code": "PANEL_NOT_COMPACT",
-                "message": "Panel chưa ở chế độ icon.",
-            }
-        choice = _native_compact_context_choice(self._always_on_top)
-        if choice == "hide":
-            self.hide_panel()
-            return {
-                "ok": True,
-                "code": "PANEL_HIDDEN",
-                "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
-            }
-        if choice == "toggle_on_top":
-            return self.api.set_always_on_top(not self._always_on_top)
-        return {
-            "ok": True,
-            "code": "COMPACT_MENU_DISMISSED",
-            "message": "Đã đóng menu.",
-        }
-
     def toggle(self):
-        if self._compact:
-            self.expand_from_browser_icon()
-        elif self._visible:
-            self.dismiss_panel()
+        """Hotkey: nếu đang ẩn hẳn trong tray thì bật lại, còn lại bung/thu panel."""
+        if self._bubble_hidden:
+            self.show_from_tray()
         else:
-            self.show_panel()
+            self.toggle_panel()
 
     def _apply_hotkey(self, spec: str) -> str | None:
         """Đăng ký hotkey mới; trả thông điệp lỗi nếu đăng ký thất bại."""
@@ -655,52 +545,14 @@ class PanelApp:
         timer.daemon = True
         timer.start()
 
-    def _expand_compact_from_taskbar(self) -> None:
-        if not self._compact or self._expanding_compact:
-            return
-        try:
-            self.window.restore()
-        except Exception:
-            pass
-        self.expand_from_browser_icon()
-
-    def _on_window_minimized(self) -> None:
-        if self._compact:
-            threading.Thread(
-                target=self._expand_compact_from_taskbar, daemon=True
-            ).start()
-
-    def _on_window_restored(self) -> None:
-        if self._compact:
-            threading.Thread(
-                target=self._expand_compact_from_taskbar, daemon=True
-            ).start()
-
     def _apply_always_on_top(self, enabled: bool) -> None:
         self._always_on_top = bool(enabled)
-        if self.window is not None:
-            try:
-                self.window.on_top = self._always_on_top
-            except Exception:
-                pass
-
-    def _compact_activation_loop(self) -> None:
-        """Mở icon khi người dùng kích hoạt nó từ taskbar."""
-        while not self._stop_status.wait(COMPACT_ACTIVATION_POLL_SECONDS):
-            if self._compact:
-                foreground_pid = _foreground_process_id()
-                if foreground_pid is not None and foreground_pid != os.getpid():
-                    self._compact_focus_armed = True
-                elif (
-                    foreground_pid == os.getpid()
-                    and self._compact_focus_armed
-                    and not self._expanding_compact
-                ):
-                    self._compact_focus_armed = False
-                    threading.Thread(
-                        target=self._expand_compact_from_taskbar,
-                        daemon=True,
-                    ).start()
+        for window in (self.window, self.bubble_window):
+            if window is not None:
+                try:
+                    window.on_top = self._always_on_top
+                except Exception:
+                    pass
 
     def _apply_update(self, state: dict) -> str | None:
         try:
@@ -795,34 +647,25 @@ class PanelApp:
                 return
 
     def activate(self):
-        """Đưa panel ra trước, kể cả khi state nội bộ đang cho là đã hiện.
-
-        Gọi khi người dùng mở app lần thứ hai (SingleInstance báo sang). Không
-        dùng show_panel() vì hàm đó bỏ qua khi `_visible` đang True — mà đúng
-        tình huống này người dùng bấm lại chính vì không thấy cửa sổ đâu.
-        """
-        if self.window is None:
-            return
-        if self._compact:
-            self.expand_from_browser_icon()
-            return
-        try:
-            self.window.show()
-        except Exception:
-            pass
-        _bring_process_window_to_front(on_top=self._always_on_top)
-        self._focus_module_search()
-        self._visible = True
+        """Mở lại khi người dùng bấm mở app lần hai (SingleInstance báo sang)."""
+        if self._bubble_hidden:
+            self.show_from_tray()
+        else:
+            self.show_panel()
 
     def _on_closing(self):
-        # window.destroy() (gọi từ quit(), tức tray "Thoát") cũng đi qua sự
-        # kiện này trên Windows — chỉ chặn khi đây là lần đóng ngoài ý muốn
-        # (Alt+F4, nút X hệ thống nếu có), thu về tray như nút đóng trong
-        # panel. Trả về False để pywebview huỷ hành động đóng gốc; bỏ qua
-        # (không trả False) khi đang thoát thật để "Thoát" vẫn hoạt động.
+        # Panel bị đóng (Alt+F4 / nút X) → chỉ ẩn panel, bubble vẫn còn. Khi
+        # đang thoát thật (quit → destroy) thì bỏ qua để đóng hẳn.
         if self._quitting:
             return None
-        self.dismiss_panel()
+        self.hide_panel()
+        return False
+
+    def _on_bubble_closing(self):
+        # Bubble bị đóng ngoài ý muốn → thu vào tray thay vì huỷ cửa sổ.
+        if self._quitting:
+            return None
+        self.hide_to_tray()
         return False
 
     # -- lifecycle ---------------------------------------------------------
@@ -878,13 +721,14 @@ class PanelApp:
             )
             self._push_log(f"[ERROR] {hotkey_message}")
             self._set_status("error", hotkey_message)
-        if self._visible:
-            self.activate()
+        # Trạng thái nghỉ = bubble; không tự bung panel lúc khởi động.
 
     def _build_tray(self):
         image = Image.open(ICON_PATH)
         menu = pystray.Menu(
-            pystray.MenuItem("Hiện panel", lambda: self.show_panel(), default=True),
+            pystray.MenuItem(
+                "Hiện WFX Smart", lambda: self.show_from_tray(), default=True
+            ),
             pystray.MenuItem("Thoát", lambda: self.quit()),
         )
         self.tray = pystray.Icon("wfx-panel", image, "WFX Smart Panel", menu)
@@ -901,25 +745,32 @@ class PanelApp:
             self.lock.close()
         if self.tray:
             self.tray.stop()
-        if self.notification_window:
-            try:
-                self.notification_window.destroy()
-            except Exception:
-                pass
-        if self.window:
-            self.window.destroy()
+        for window in (self.notification_window, self.bubble_window, self.window):
+            if window is not None:
+                try:
+                    window.destroy()
+                except Exception:
+                    pass
+
+    def _bubble_start_position(self) -> tuple[int, int]:
+        """Vị trí bubble lúc khởi động: chỗ đã lưu, hoặc góc trên-phải màn hình."""
+        if self._bubble_offset is not None:
+            return self._bubble_offset
+        try:
+            screen_width = int(webview.screens[0].width)
+        except Exception:
+            screen_width = 1920
+        x = max(WINDOW_MARGIN, screen_width - BUBBLE_SIZE - WINDOW_MARGIN)
+        return x, 120
 
     def run(self):
         if not ICON_PATH.exists():
             build_icon(ICON_PATH)
-        # js_api expose các method của PanelAPI + hide/show cho nút close.
+        # js_api expose các method điều khiển cửa sổ cho panel.js.
         self.api.hide_panel = self.hide_panel   # type: ignore[attr-defined]
-        self.api.dismiss_panel = self.dismiss_panel  # type: ignore[attr-defined]
-        self.api.collapse_to_browser_icon = self.collapse_to_browser_icon  # type: ignore[attr-defined]
-        self.api.expand_from_browser_icon = self.expand_from_browser_icon  # type: ignore[attr-defined]
-        self.api.begin_compact_drag = self.begin_compact_drag  # type: ignore[attr-defined]
-        self.api.show_compact_context_menu = self.show_compact_context_menu  # type: ignore[attr-defined]
         self.api.show_panel = self.show_panel   # type: ignore[attr-defined]
+        self.api.toggle_panel = self.toggle_panel  # type: ignore[attr-defined]
+        self.api.request_panel_hide = self.request_panel_hide  # type: ignore[attr-defined]
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
@@ -950,27 +801,45 @@ class PanelApp:
             return result
 
         self.api.set_focus_chrome_on_module = set_focus_chrome  # type: ignore[method-assign]
-        x, y = _top_right_position()
+        # Panel: ẩn mặc định (trạng thái nghỉ là bubble). Vị trí ban đầu góc
+        # trên-phải; khi bấm bubble sẽ được đặt lại ngay cạnh bubble.
+        panel_x, panel_y = _top_right_position()
         self.window = webview.create_window(
             MAIN_WINDOW_TITLE,
             url=str(UI_INDEX),
             js_api=self.api,
             width=WINDOW_WIDTH,
             height=WINDOW_HEIGHT,
-            min_size=(COMPACT_SIZE, COMPACT_SIZE),
-            x=x,
-            y=y,
+            x=panel_x,
+            y=panel_y,
             frameless=True,
             easy_drag=False,
             on_top=self._always_on_top,
-            hidden=self._start_hidden,
+            hidden=True,
             background_color="#0b1020",
         )
-        self._visible = not self._start_hidden
+        self._panel_visible = False
         self.window.events.loaded += self.on_loaded
         self.window.events.closing += self._on_closing
-        self.window.events.minimized += self._on_window_minimized
-        self.window.events.restored += self._on_window_restored
+
+        # Bubble: icon nổi thường trực (chat-head).
+        bubble_x, bubble_y = self._bubble_start_position()
+        self.bubble_window = webview.create_window(
+            BUBBLE_WINDOW_TITLE,
+            url=str(BUBBLE_INDEX),
+            js_api=_BubbleBridge(self),
+            width=BUBBLE_SIZE,
+            height=BUBBLE_SIZE,
+            x=bubble_x,
+            y=bubble_y,
+            resizable=False,
+            frameless=True,
+            easy_drag=False,
+            on_top=True,
+            hidden=self._start_hidden,
+            background_color="#0f9fb2",
+        )
+        self.bubble_window.events.closing += self._on_bubble_closing
 
         notification_x, notification_y = _notification_position()
         self.notification_window = webview.create_window(
@@ -1002,9 +871,6 @@ class PanelApp:
             finally:
                 self._hotkey_ready.set()
             threading.Thread(target=self._status_loop, daemon=True).start()
-            threading.Thread(
-                target=self._compact_activation_loop, daemon=True
-            ).start()
             threading.Thread(target=self._update_loop, daemon=True).start()
             self._build_tray()
 

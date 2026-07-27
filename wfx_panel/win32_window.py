@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # Tiêu đề cửa sổ pywebview — dùng để lọc đúng cửa sổ của app trong EnumWindows.
-# panel_app import lại hai hằng này để đặt title lúc create_window, đảm bảo khớp.
+# panel_app import lại các hằng này để đặt title lúc create_window, đảm bảo khớp.
 MAIN_WINDOW_TITLE = "WFX Smart"
 NOTIFICATION_TITLE = "WFX Smart Notification"
+BUBBLE_WINDOW_TITLE = "WFX Smart Bubble"
 
 # Kích thước cửa sổ toast (native SetWindowPos cần biết) + khoảng hở dính mép.
 NOTIFICATION_WIDTH = 250
@@ -41,7 +42,9 @@ def _window_priority(process_id: int, title: str) -> int | None:
         return 1
     if title == MAIN_WINDOW_TITLE:
         return 0
-    if title == NOTIFICATION_TITLE:
+    # Toast và bubble bị loại khỏi việc chọn "cửa sổ chính" (panel) khi
+    # enumerate — nếu không, các helper rect/bounds/front sẽ nhắm nhầm.
+    if title in (NOTIFICATION_TITLE, BUBBLE_WINDOW_TITLE):
         return None
     return 2
 
@@ -478,8 +481,11 @@ def _foreground_process_id() -> int | None:
         return None
 
 
-def _native_compact_context_choice(always_on_top: bool) -> str | None:
-    """Hiện menu chuột phải native cạnh con trỏ cho launcher thu gọn."""
+def _native_compact_context_choice(
+    always_on_top: bool,
+    title: str = MAIN_WINDOW_TITLE,
+) -> str | None:
+    """Hiện menu chuột phải native cạnh con trỏ cho cửa sổ ``title``."""
     if os.name != "nt":
         return None
     try:
@@ -499,7 +505,7 @@ def _native_compact_context_choice(always_on_top: bool) -> str | None:
             if (
                 pid.value == os.getpid()
                 and user32.IsWindowVisible(hwnd)
-                and _native_window_text(user32, hwnd) == MAIN_WINDOW_TITLE
+                and _native_window_text(user32, hwnd) == title
             ):
                 found.append(int(hwnd))
                 return False
@@ -541,3 +547,126 @@ def _native_compact_context_choice(always_on_top: bool) -> str | None:
             user32.DestroyMenu(menu)
     except Exception:
         return None
+
+
+def _find_window_hwnd(title: str) -> int | None:
+    """HWND cửa sổ hiển thị của process này có đúng tiêu đề ``title``.
+
+    Dùng để cache HWND của bubble MỘT lần lúc bắt đầu kéo, rồi ``_move_hwnd``
+    thẳng vào HWND đó mỗi frame — không EnumWindows lại mỗi lần (nguyên nhân lag
+    khi kéo trước đây).
+    """
+    if os.name != "nt" or not title:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        found: list[int] = []
+        callback_type = ctypes.WINFUNCTYPE(
+            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
+        )
+
+        @callback_type
+        def visit(hwnd, _lparam):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if (
+                pid.value == os.getpid()
+                and user32.IsWindowVisible(hwnd)
+                and _native_window_text(user32, hwnd) == title
+            ):
+                found.append(int(hwnd))
+                return False
+            return True
+
+        user32.EnumWindows(visit, 0)
+        return found[0] if found else None
+    except Exception:
+        return None
+
+
+def _window_rect_by_title(title: str) -> tuple[int, int, int, int] | None:
+    """Rect (left, top, right, bottom) của cửa sổ có đúng tiêu đề ``title``."""
+    hwnd = _find_window_hwnd(title)
+    if hwnd is None:
+        return None
+    try:
+        import ctypes
+
+        class Rect(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        rect = Rect()
+        if ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return (rect.left, rect.top, rect.right, rect.bottom)
+        return None
+    except Exception:
+        return None
+
+
+def _move_hwnd(hwnd: int | None, x: int, y: int) -> bool:
+    """Dời một HWND đã biết bằng SetWindowPos rẻ (NOSIZE|NOZORDER|NOACTIVATE).
+
+    Không enumerate — dùng trong vòng kéo bubble để mượt, không giật.
+    """
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        return bool(
+            ctypes.windll.user32.SetWindowPos(
+                wintypes.HWND(int(hwnd)),
+                None,
+                int(x),
+                int(y),
+                0,
+                0,
+                0x0001 | 0x0004 | 0x0010,  # NOSIZE | NOZORDER | NOACTIVATE
+            )
+        )
+    except Exception:
+        return False
+
+
+def _set_bounds_by_title(
+    title: str,
+    x: int,
+    y: int,
+    width: int | None = None,
+    height: int | None = None,
+) -> bool:
+    """Đặt vị trí/kích thước cửa sổ theo tiêu đề (dùng cho bubble lúc khởi tạo)."""
+    hwnd = _find_window_hwnd(title)
+    if hwnd is None:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        flags = 0x0004 | 0x0040 | 0x0010  # NOZORDER | SHOWWINDOW | NOACTIVATE
+        if width is None or height is None:
+            flags |= 0x0001  # NOSIZE
+            width = 0
+            height = 0
+        return bool(
+            ctypes.windll.user32.SetWindowPos(
+                wintypes.HWND(int(hwnd)),
+                None,
+                int(x),
+                int(y),
+                int(width),
+                int(height),
+                flags,
+            )
+        )
+    except Exception:
+        return False

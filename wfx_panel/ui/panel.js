@@ -205,20 +205,6 @@
   }
   window.wfxSetSessionStatus = setSessionStatus;
 
-  function setCompactMode(enabled) {
-    document.body.classList.toggle("compact-mode", enabled === true);
-    document.documentElement.classList.toggle("compact-mode", enabled === true);
-  }
-  window.wfxSetCompactMode = setCompactMode;
-
-  window.wfxPrepareWindowTransition = () => {
-    document.body.classList.add("window-transition-out");
-  };
-  window.wfxFinishWindowTransition = () => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-      document.body.classList.remove("window-transition-out");
-    }));
-  };
 
   function setAdminAccess(access, moduleIds, enabled) {
     adminAccess = access === true;
@@ -497,7 +483,7 @@
 
   function dismissAfterSuccessfulModule(result) {
     if (result && result.ok && closeAfterModule) {
-      window.setTimeout(() => api()?.dismiss_panel?.(), 120);
+      window.setTimeout(() => api()?.hide_panel?.(), 120);
     }
   }
 
@@ -619,43 +605,12 @@
     $(".module-close-button").addEventListener("click", closeModuleModal);
     $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["supplier-find"](); });
     $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["buyer-find"](); });
-    const compactLauncher = $(".compact-launcher");
-    let compactHoldTimer = null;
-    let compactHoldTriggered = false;
-    compactLauncher.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
-      compactHoldTriggered = false;
-      compactHoldTimer = window.setTimeout(() => {
-        compactHoldTriggered = true;
-        api()?.begin_compact_drag?.();
-      }, 180);
-    });
-    compactLauncher.addEventListener("mouseup", () => {
-      if (compactHoldTimer !== null) window.clearTimeout(compactHoldTimer);
-      compactHoldTimer = null;
-      if (compactHoldTriggered) {
-        window.setTimeout(() => { compactHoldTriggered = false; }, 350);
-      }
-    });
-    compactLauncher.addEventListener("click", (event) => {
-      if (compactHoldTriggered) {
-        event.preventDefault();
-        event.stopPropagation();
-        compactHoldTriggered = false;
-        return;
-      }
-      api()?.expand_from_browser_icon?.();
-    });
-    compactLauncher.addEventListener("contextmenu", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (compactHoldTimer !== null) window.clearTimeout(compactHoldTimer);
-      compactHoldTimer = null;
-      compactHoldTriggered = false;
-      const result = await api()?.show_compact_context_menu?.();
-      if (result?.always_on_top !== undefined) {
-        $(".always-on-top-input").checked = Boolean(result.always_on_top);
-      }
+    // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble.
+    // Bỏ qua khi đang chạy module (busy) để panel không biến mất giữa chừng;
+    // backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.
+    window.addEventListener("blur", () => {
+      if (busy) return;
+      window.setTimeout(() => api()?.request_panel_hide?.(), 130);
     });
     $(".module-overlay").addEventListener("mousedown", (event) => {
       if (event.target === event.currentTarget) closeModuleModal();
@@ -715,7 +670,7 @@
       refreshJobs();
     });
     $(".log-close-button").addEventListener("click", () => $(".log-overlay").classList.remove("log-open"));
-    $(".close-button").addEventListener("click", () => api()?.dismiss_panel?.());
+    $(".close-button").addEventListener("click", () => api()?.hide_panel?.());
     $(".open-chrome-button").addEventListener("click", async (event) => {
       event.currentTarget.disabled = true;
       const result = await callQuiet("open_chrome");

@@ -1,0 +1,90 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Cửa sổ bubble nhỏ; nút lấp đầy, để lại chút đệm cho glow/bóng đổ. */
+.bubble {
+  position: absolute;
+  inset: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 72% 20%, rgba(255,255,255,.42), transparent 42%),
+    linear-gradient(150deg, #17c1dc, #0f9fb2 58%, #16b89f);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.35),
+    inset 0 -6px 14px rgba(2,40,52,.28),
+    0 10px 22px rgba(6,52,66,.42),
+    0 2px 6px rgba(6,52,66,.3);
+  -webkit-app-region: no-drag;
+  animation: bubble-breathe 2.6s ease-in-out infinite;
+  transition: transform .14s cubic-bezier(.2,.8,.25,1),
+    box-shadow .18s ease, filter .18s ease;
+}
+.bubble:hover {
+  transform: scale(1.06);
+  filter: saturate(1.08) brightness(1.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.4),
+    inset 0 -6px 14px rgba(2,40,52,.3),
+    0 14px 30px rgba(6,52,66,.5),
+    0 3px 8px rgba(6,52,66,.34);
+}
+.bubble:active { cursor: grabbing; transform: scale(.96); animation: none; }
+body.is-dragging .bubble { cursor: grabbing; animation: none; transform: none; }
+
+/* Vòng glow mềm phía sau, tạo cảm giác "nổi". */
+.bubble-glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34,204,225,.5), transparent 68%);
+  filter: blur(3px);
+  opacity: .55;
+  animation: bubble-pulse 2.6s ease-in-out infinite;
+}
+
+.bubble-core {
+  position: relative;
+  width: 62%;
+  height: 62%;
+  display: grid;
+  place-items: center;
+  border-radius: 30%;
+  background: rgba(4,45,58,.2);
+  box-shadow: inset 0 1px 4px rgba(255,255,255,.18);
+}
+.bubble-core svg {
+  width: 82%;
+  height: 82%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.bubble-orbit { opacity: .74; }
+.bubble-mark { stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+
+@keyframes bubble-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+@keyframes bubble-pulse {
+  0%, 100% { opacity: .4; transform: scale(1); }
+  50% { opacity: .7; transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble, .bubble-glow { animation: none; }
+}
