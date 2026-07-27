@@ -23,7 +23,8 @@ def test_legacy_app_entrypoint_uses_the_same_panel_ui():
 def test_webview_uses_fresh_ui_cache():
     source = Path(panel_app.__file__).read_text(encoding="utf-8")
     assert "webview.start(background, private_mode=True)" in source
-    assert "min_size=(COMPACT_SIZE, COMPACT_SIZE)" in source
+    # Bubble là cửa sổ riêng, thường trực (chat-head).
+    assert "url=str(BUBBLE_INDEX)" in source
 
 
 def test_top_right_position_places_window_near_top_right(monkeypatch):
@@ -109,21 +110,35 @@ def test_apply_hotkey_returns_none_on_success(monkeypatch):
     assert registered == ["ctrl+alt+j"]
 
 
-def test_activate_brings_native_window_to_front(monkeypatch):
+def test_activate_shows_panel_and_fronts_window(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
+    app._bubble_hidden = False
     shown = []
     fronted = []
 
     class FakeWindow:
+        on_top = False
+
         def show(self):
             shown.append(True)
+
+        def resize(self, *_args):
+            pass
+
+        def move(self, *_args):
+            pass
 
         def evaluate_js(self, script):
             shown.append(script)
 
     app.window = FakeWindow()
+    monkeypatch.setattr(
+        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
+    )
+    monkeypatch.setattr(module, "_window_rect_by_title", lambda _title: None)
+    monkeypatch.setattr(module, "_set_process_window_bounds", lambda *_a: True)
     monkeypatch.setattr(
         module,
         "_bring_process_window_to_front",
@@ -131,9 +146,9 @@ def test_activate_brings_native_window_to_front(monkeypatch):
     )
     app.activate()
     assert shown[0] is True
-    assert "wfxFocusModuleSearch" in shown[1]
+    assert any("wfxFocusModuleSearch" in item for item in shown if isinstance(item, str))
     assert fronted == [True]
-    assert app._visible is True
+    assert app._panel_visible is True
 
 
 def test_panel_no_longer_has_browser_docking_behavior():
@@ -145,43 +160,35 @@ def test_panel_no_longer_has_browser_docking_behavior():
     assert not hasattr(app, "_stick_to_browser")
 
 
-def test_notification_is_anchored_above_compact_icon(monkeypatch):
+def test_notification_is_anchored_above_bubble(monkeypatch):
     import wfx_panel.panel_app as module
 
     monkeypatch.setattr(
-        module,
-        "_window_rect_for_process",
-        lambda _pid: (900, 500, 948, 548),
+        module, "_window_rect_by_title", lambda _title: (900, 500, 948, 548)
     )
     x, y = module._notification_position()
-    assert x == 900 + (module.COMPACT_SIZE - module.NOTIFICATION_WIDTH) // 2
+    # Canh phải mép bubble, nổi phía trên.
+    assert x == 948 - module.NOTIFICATION_WIDTH
     assert y == 500 - module.NOTIFICATION_HEIGHT - 8
 
 
-def test_notification_is_anchored_to_top_of_open_panel(monkeypatch):
+def test_notification_drops_below_bubble_when_no_room_above(monkeypatch):
     import wfx_panel.panel_app as module
 
+    # Bubble sát đỉnh màn hình → không đủ chỗ phía trên → nổi ngay dưới bubble.
     monkeypatch.setattr(
-        module,
-        "_window_rect_for_process",
-        lambda _pid: (700, 200, 1140, 820),
+        module, "_window_rect_by_title", lambda _title: (900, 5, 948, 53)
     )
     x, y = module._notification_position()
-    assert x == 1140 - module.NOTIFICATION_WIDTH
-    assert y == 200 - module.NOTIFICATION_HEIGHT - 8
+    assert x == 948 - module.NOTIFICATION_WIDTH
+    assert y == 53 + 8
 
 
-def test_hold_to_drag_starts_native_mouse_tracking_thread(monkeypatch):
+def test_hold_to_drag_starts_bubble_drag_thread(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    app._compact = True
     started = []
-
-    class FakeLogin:
-        @staticmethod
-        def automation_browser_pid():
-            return 922200
 
     class FakeThread:
         def __init__(self, *, target, args, daemon):
@@ -195,87 +202,62 @@ def test_hold_to_drag_starts_native_mouse_tracking_thread(monkeypatch):
         def start(self):
             started.append((self.target, self.args, self.daemon))
 
-    app.api._login = FakeLogin()
+    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 4242)
     monkeypatch.setattr(module, "_native_left_button_down", lambda: True)
     monkeypatch.setattr(module, "_native_cursor_position", lambda: (800, 700))
     monkeypatch.setattr(
-        module,
-        "_window_rect_for_process",
-        lambda pid: (
-            (100, 50, 1500, 900)
-            if pid == 922200
-            else (720, 690, 768, 738)
-        ),
+        module, "_window_rect_by_title", lambda _title: (720, 690, 768, 738)
     )
     monkeypatch.setattr(module.threading, "Thread", FakeThread)
 
-    result = app.begin_compact_drag()
-    assert result["code"] == "PANEL_DRAG_STARTED"
+    result = app.begin_bubble_drag()
+    assert result["code"] == "BUBBLE_DRAG_STARTED"
     assert started == [
         (
-            app._compact_drag_loop,
-            ((800, 700), (720, 690, 768, 738)),
+            app._bubble_drag_loop,
+            (4242, (800, 700), (720, 690, 768, 738)),
             True,
         )
     ]
 
 
-def test_native_drag_loop_clamps_then_snaps_to_nearest_edge_and_saves(monkeypatch):
+def test_bubble_drag_loop_moves_and_saves_without_snapping(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    app._compact = True
     mouse_states = iter([True, False])
-    own_rect = [720, 690, 768, 738]
     moved = []
     saved = []
 
     monkeypatch.setattr(
         module, "_native_left_button_down", lambda: next(mouse_states)
     )
+    monkeypatch.setattr(module, "_native_cursor_position", lambda: (850, 740))
     monkeypatch.setattr(
-        module, "_native_cursor_position", lambda: (850, 740)
+        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
     monkeypatch.setattr(
-        module,
-        "_work_area_for_process_window",
-        lambda _pid: (0, 0, 1920, 1080),
+        module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
     )
-
-    def move_window(_pid, x, y, *_size):
-        width = own_rect[2] - own_rect[0]
-        height = own_rect[3] - own_rect[1]
-        own_rect[:] = [x, y, x + width, y + height]
-        moved.append((x, y))
-        return True
-
-    monkeypatch.setattr(module, "_set_process_window_bounds", move_window)
     monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(
-        module.prefs,
-        "save_prefs",
-        lambda **kwargs: saved.append(kwargs) or {},
+        module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
     )
 
-    app._compact_drag_loop(
-        (800, 700),
-        (720, 690, 768, 738),
-    )
+    app._bubble_drag_loop(4242, (800, 700), (720, 690, 768, 738))
 
-    # Bước kéo giữ đúng con trỏ (770, 730); khi thả dính mép dưới gần nhất
-    # (1080 - 48 - COMPACT_EDGE_MARGIN = 1020), giữ nguyên trục x.
-    assert moved == [(770, 730), (770, 1020)]
-    assert app._compact_offset == (770, 1020)
-    assert saved == [{"compact_offset_x": 770, "compact_offset_y": 1020}]
+    # Cho đặt đâu cũng được → KHÔNG dính mép; icon nằm đúng chỗ thả (770, 730).
+    assert moved == [(770, 730)]
+    assert app._bubble_offset == (770, 730)
+    assert saved == [{"compact_offset_x": 770, "compact_offset_y": 730}]
 
 
-def test_native_drag_loop_keeps_icon_inside_screen_when_dragged_past_edge(
+def test_bubble_drag_loop_keeps_icon_inside_screen_when_dragged_past_edge(
     monkeypatch,
 ):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    app._compact = True
     mouse_states = iter([True, False])
     moved = []
 
@@ -283,29 +265,25 @@ def test_native_drag_loop_keeps_icon_inside_screen_when_dragged_past_edge(
         module, "_native_left_button_down", lambda: next(mouse_states)
     )
     # Con trỏ nhảy ra ngoài mép phải-dưới màn hình.
+    monkeypatch.setattr(module, "_native_cursor_position", lambda: (5000, 5000))
     monkeypatch.setattr(
-        module, "_native_cursor_position", lambda: (5000, 5000)
+        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
     monkeypatch.setattr(
-        module,
-        "_work_area_for_process_window",
-        lambda _pid: (0, 0, 1920, 1080),
-    )
-    monkeypatch.setattr(
-        module, "_set_process_window_bounds", lambda *_a: moved.append(_a[1:3]) or True
+        module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
     )
     monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
 
-    app._compact_drag_loop((800, 700), (720, 690, 768, 738))
+    app._bubble_drag_loop(4242, (800, 700), (720, 690, 768, 738))
 
-    # Không toạ độ nào được phép vượt work area (icon 48px).
+    # Icon 48px không được vượt work area dù kéo ra ngoài màn hình.
     for x, y in moved:
-        assert 0 <= x <= 1920 - module.COMPACT_SIZE
-        assert 0 <= y <= 1080 - module.COMPACT_SIZE
+        assert 0 <= x <= 1920 - 48
+        assert 0 <= y <= 1080 - 48
 
 
-def test_collapse_and_expand_resize_the_same_window(monkeypatch):
+def test_show_panel_shows_window_and_hide_panel_hides_it(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
@@ -326,56 +304,42 @@ def test_collapse_and_expand_resize_the_same_window(monkeypatch):
         def show(self):
             calls.append(("show",))
 
-    class FakeLogin:
-        @staticmethod
-        def automation_browser_pid():
-            return 922200
+        def hide(self):
+            calls.append(("hide",))
 
     app.window = FakeWindow()
-    app.api._login = FakeLogin()
-    app._visible = True
     monkeypatch.setattr(
-        module,
-        "_window_rect_for_process",
-        lambda _pid: (100, 50, 1500, 900),
+        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
+    monkeypatch.setattr(module, "_window_rect_by_title", lambda _title: None)
+    monkeypatch.setattr(module, "_set_process_window_bounds", lambda *_a: True)
     monkeypatch.setattr(
-        module, "_set_process_window_bounds", lambda *_args: False
+        module, "_bring_process_window_to_front", lambda **_kwargs: True
     )
-    monkeypatch.setattr(
-        module,
-        "_bring_process_window_to_front",
-        lambda **_kwargs: True,
-    )
-    monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
 
-    collapsed = app.collapse_to_browser_icon()
-    assert collapsed["code"] == "PANEL_COMPACT"
-    assert app._compact is True
-    assert ("resize", module.COMPACT_SIZE, module.COMPACT_SIZE) in calls
+    opened = app.show_panel()
+    assert opened["code"] == "PANEL_OPENED"
+    assert app._panel_visible is True
+    assert ("show",) in calls
 
-    expanded = app.expand_from_browser_icon()
-    assert expanded["code"] == "PANEL_EXPANDED"
-    assert app._compact is False
-    assert ("resize", module.WINDOW_WIDTH, module.WINDOW_HEIGHT) in calls
+    app.hide_panel()
+    assert app._panel_visible is False
+    assert ("hide",) in calls
 
 
-def test_expand_clamps_panel_fully_on_screen_from_corner_icon(monkeypatch):
+def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    app._compact = True
-    app._visible = True
-    app._full_window_size = (module.WINDOW_WIDTH, module.WINDOW_HEIGHT)
     bounds_calls = []
 
     class FakeWindow:
         on_top = False
 
-        def resize(self, width, height):
+        def resize(self, *_args):
             pass
 
-        def move(self, x, y):
+        def move(self, *_args):
             pass
 
         def evaluate_js(self, script):
@@ -385,16 +349,12 @@ def test_expand_clamps_panel_fully_on_screen_from_corner_icon(monkeypatch):
             pass
 
     app.window = FakeWindow()
-    # Icon nằm sát góc phải-dưới màn hình.
+    # Bubble sát góc phải-dưới → panel phải bung sang TRÁI và clamp vào trong.
     monkeypatch.setattr(
-        module,
-        "_window_rect_for_process",
-        lambda _pid: (1880, 1040, 1928, 1088),
+        module, "_window_rect_by_title", lambda _title: (1880, 1040, 1934, 1094)
     )
     monkeypatch.setattr(
-        module,
-        "_work_area_for_process_window",
-        lambda _pid: (0, 0, 1920, 1080),
+        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
 
     def set_bounds(_pid, x, y, width, height):
@@ -405,106 +365,58 @@ def test_expand_clamps_panel_fully_on_screen_from_corner_icon(monkeypatch):
     monkeypatch.setattr(
         module, "_bring_process_window_to_front", lambda **_kwargs: True
     )
-    monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
 
-    result = app.expand_from_browser_icon()
+    app.show_panel()
 
-    assert result["code"] == "PANEL_EXPANDED"
-    # Panel 440×620 bị đẩy vào trong: x=1920-440=1480, y=1080-620=460.
-    assert bounds_calls == [(1480, 460, module.WINDOW_WIDTH, module.WINDOW_HEIGHT)]
-    assert app._panel_offset == (1480, 460)
+    # Bubble ở nửa phải (x=1880 > 960) → panel bên trái: 1880-440-10=1430.
+    # y=1040 bị clamp xuống 1080-620=460 để thấy đủ.
+    assert bounds_calls == [(1430, 460, module.WINDOW_WIDTH, module.WINDOW_HEIGHT)]
 
 
-def test_collapse_anchors_icon_to_panel_top_right_and_clamps(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    app = module.PanelApp()
-    app._visible = True
-    app._compact_offset = None
-    bounds_calls = []
-
-    class FakeWindow:
-        on_top = False
-
-        def resize(self, width, height):
-            pass
-
-        def move(self, x, y):
-            pass
-
-        def evaluate_js(self, script):
-            pass
-
-    app.window = FakeWindow()
-    # Panel dock góc trên-phải: right = 1896 (sát mép).
-    monkeypatch.setattr(
-        module,
-        "_window_rect_for_process",
-        lambda _pid: (1456, 24, 1896, 644),
-    )
-    monkeypatch.setattr(
-        module,
-        "_work_area_for_process_window",
-        lambda _pid: (0, 0, 1920, 1080),
-    )
-
-    def set_bounds(_pid, x, y, width, height):
-        bounds_calls.append((x, y, width, height))
-        return True
-
-    monkeypatch.setattr(module, "_set_process_window_bounds", set_bounds)
-    monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
-
-    result = app.collapse_to_browser_icon()
-
-    assert result["code"] == "PANEL_COMPACT"
-    # Icon neo góc trên-phải panel: x = 1896 - 48 = 1848 (nằm gọn), y = 24.
-    assert bounds_calls == [(1848, 24, module.COMPACT_SIZE, module.COMPACT_SIZE)]
-    assert app._compact_offset == (1848, 24)
-
-
-def test_compact_context_menu_can_hide_to_tray(monkeypatch):
+def test_bubble_context_menu_can_hide_to_tray(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
     calls = []
 
     class FakeWindow:
-        def evaluate_js(self, script):
-            calls.append(("js", script))
-
         def hide(self):
-            calls.append(("hide",))
+            calls.append(("panel-hide",))
+
+    class FakeBubble:
+        def hide(self):
+            calls.append(("bubble-hide",))
 
     app.window = FakeWindow()
-    app._compact = True
-    app._visible = True
-    monkeypatch.setattr(module, "_native_compact_context_choice", lambda _value: "hide")
-    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+    app.bubble_window = FakeBubble()
+    app._panel_visible = True
+    monkeypatch.setattr(
+        module, "_native_compact_context_choice", lambda *_a: "hide"
+    )
 
-    result = app.show_compact_context_menu()
+    result = app.bubble_context_menu()
 
-    assert result["code"] == "PANEL_HIDDEN"
-    assert ("hide",) in calls
-    assert app._visible is False
+    assert result["code"] == "HIDDEN_TO_TRAY"
+    assert ("bubble-hide",) in calls
+    assert app._bubble_hidden is True
+    assert app._panel_visible is False
 
 
-def test_compact_context_menu_can_toggle_on_top(monkeypatch):
+def test_bubble_context_menu_can_toggle_on_top(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    app._compact = True
     app._always_on_top = True
     applied = []
     monkeypatch.setattr(
-        module, "_native_compact_context_choice", lambda _value: "toggle_on_top"
+        module, "_native_compact_context_choice", lambda *_a: "toggle_on_top"
     )
     app.api.set_always_on_top = lambda value: applied.append(value) or {
         "ok": True,
         "always_on_top": value,
     }
 
-    result = app.show_compact_context_menu()
+    result = app.bubble_context_menu()
 
     assert result["always_on_top"] is False
     assert applied == [False]
@@ -550,42 +462,14 @@ def test_focus_automation_browser_respects_default_on_setting(monkeypatch):
     assert focused == [(922200, None)]
 
 
-def test_taskbar_minimize_or_restore_expands_compact_panel(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    app = module.PanelApp()
-    calls = []
-
-    class FakeWindow:
-        def restore(self):
-            calls.append("restore")
-
-    class ImmediateThread:
-        def __init__(self, *, target, daemon):
-            self.target = target
-            self.daemon = daemon
-
-        def start(self):
-            self.target()
-
-    app.window = FakeWindow()
-    app._compact = True
-    app.expand_from_browser_icon = lambda: calls.append("expand") or {"ok": True}
-    monkeypatch.setattr(module.threading, "Thread", ImmediateThread)
-
-    app._on_window_minimized()
-    app._on_window_restored()
-
-    assert calls == ["restore", "expand", "restore", "expand"]
-
-
-def test_custom_notification_window_is_created_and_taskbar_events_are_bound():
+def test_bubble_and_notification_windows_are_created():
     source = Path(panel_app.__file__).read_text(encoding="utf-8")
     assert "url=str(NOTIFICATION_INDEX)" in source
+    assert "url=str(BUBBLE_INDEX)" in source
     assert "focus=False" in source
-    assert "hidden=True" in source
-    assert "self.window.events.minimized += self._on_window_minimized" in source
-    assert "self.window.events.restored += self._on_window_restored" in source
+    # Bubble bắt sự kiện đóng để thu vào tray thay vì huỷ.
+    assert "self.bubble_window.events.closing += self._on_bubble_closing" in source
+    # Panel tự thu khi mất focus qua kiểm tra foreground.
     assert "_foreground_process_id()" in source
 
 

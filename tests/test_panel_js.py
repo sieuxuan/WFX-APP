@@ -1,6 +1,8 @@
 from pathlib import Path
 
-JS = (Path(__file__).resolve().parent.parent / "wfx_panel" / "ui" / "panel.js").read_text(encoding="utf-8")
+_UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
+JS = (_UI / "panel.js").read_text(encoding="utf-8")
+BUBBLE_JS = (_UI / "bubble.js").read_text(encoding="utf-8")
 
 
 def test_exposes_python_callable_globals():
@@ -31,7 +33,7 @@ def test_close_after_module_pref_is_consulted_after_open_module():
     # browser, hoặc ẩn xuống tray nếu không bám.
     assert "closeAfterModule" in JS
     assert "result.ok && closeAfterModule" in JS
-    assert "api()?.dismiss_panel?.()" in JS
+    assert "api()?.hide_panel?.()" in JS
 
 
 def test_completed_module_actions_use_external_notifications():
@@ -159,22 +161,19 @@ def test_auto_update_banner_uses_one_click_installer():
     assert "commit" not in JS.lower()
 
 
-def test_compact_browser_launcher_is_wired():
-    assert "window.wfxSetCompactMode" in JS
-    assert '".compact-launcher"' in JS
-    assert "expand_from_browser_icon" in JS
-    assert "begin_compact_drag" in JS
-    assert "compactHoldTimer" in JS
-    assert "compactHoldTriggered" in JS
-    assert "180" in JS
+def test_panel_auto_hides_when_focus_leaves_the_app():
+    # Click ra ngoài (blur) → panel tự thu về bubble; bỏ qua khi đang bận.
+    assert 'window.addEventListener("blur"' in JS
+    assert "request_panel_hide" in JS
+    assert "if (busy) return;" in JS
 
 
-def test_compact_launcher_has_native_context_menu_and_smooth_transition_hooks():
-    assert 'compactLauncher.addEventListener("contextmenu"' in JS
-    assert "show_compact_context_menu" in JS
-    assert "window.wfxPrepareWindowTransition" in JS
-    assert "window.wfxFinishWindowTransition" in JS
-    assert 'document.documentElement.classList.toggle("compact-mode"' in JS
+def test_bubble_launcher_is_wired():
+    # Bubble là trang riêng: bấm → mở panel, giữ → kéo, chuột phải → menu.
+    assert "toggle_panel" in BUBBLE_JS
+    assert "begin_bubble_drag" in BUBBLE_JS
+    assert "bubble_context_menu" in BUBBLE_JS
+    assert "180" in BUBBLE_JS  # ngưỡng giữ để bắt đầu kéo
 
 
 def test_old_webview_clipboard_has_a_fallback():
