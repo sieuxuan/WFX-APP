@@ -1,11 +1,31 @@
-# WFX Catalog automation — nguồn chuẩn để sửa Chrome Extension
+# WFX Catalog automation — đặc tả hành vi chuẩn
+
+## Sản phẩm thật
+
+Dự án này là **desktop app pywebview** (`wfx_panel/`) tự động hoá
+WorldFashionExchange qua Playwright/CDP, đóng gói bằng PyInstaller
+(`build-panel.ps1` → `dist/WFX-Panel/`) và tự cập nhật từ GitHub Release. Đây
+KHÔNG phải Chrome extension; thư mục `chrome-extension/` không được dùng.
+`wfx-tampermonkey.user.js` chỉ là biến thể userscript tuỳ chọn, không phải sản
+phẩm chính. Khi sửa code, luôn sửa trong `wfx_panel/` (nguồn), không sửa mỗi file
+trong `dist/`.
+
+Bản đồ nhanh:
+
+- `wfx_panel/automation/` — lớp Playwright (login/session/catalog/directory/
+  modules/browser). `login.py` chỉ còn shim re-export để tương thích ngược.
+- `wfx_panel/panel_api.py` — bridge `PanelAPI` giữa UI và automation.
+- `wfx_panel/catalog_controller.py` — toàn bộ luồng Catalog (browse/prepare/find/
+  Costing/BOM + cây folder), tách khỏi `PanelAPI`.
+- `wfx_panel/panel_app.py` — pywebview + tray + hotkey toàn cục + lớp win32.
+- `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
 
 ## Mục tiêu
 
-File này là đặc tả bắt buộc cho AI sửa `wfx-tampermonkey.user.js` và build lại
-`chrome-extension`. Nguồn hành vi chuẩn là Playwright Python trong `login.py`.
-Không được coi việc “đã click”, “đã tìm thấy frame” hoặc “đã thấy input” là thành
-công nếu trạng thái thật trên UI chưa được xác nhận.
+File này là đặc tả hành vi bắt buộc cho lớp automation Catalog trong
+`wfx_panel/automation/catalog.py`. Không được coi việc “đã click”, “đã tìm thấy
+frame” hoặc “đã thấy input” là thành công nếu trạng thái thật trên UI chưa được
+xác nhận.
 
 ## Kết luận từ log 1.7.1 lúc 23:01:30
 
@@ -832,9 +852,16 @@ ARTICLE_OPEN_NOT_CONFIRMED
 ARTICLE_DESTINATION_NOT_FOUND
 ```
 
-## Hotkey Chrome Extension
+## Hotkey
 
-Hotkey mặc định là `Ctrl+Shift+X` (khác `Ctrl+Alt+X` cũ — tổ hợp `Ctrl+Alt` bị Chrome
+**Desktop app (chính):** hotkey toàn cục mặc định `Ctrl+Shift+X` do
+`wfx_panel/hotkey.py` + thư viện `keyboard` bắt ở cấp hệ điều hành, nên nhận được
+kể cả khi focus nằm trong iframe của WFX trên Chrome. Đổi được trong Settings. Giới
+hạn: nếu cửa sổ đang focus chạy quyền Administrator cao hơn app thì global hook có
+thể không nhận phím — khi đó dùng launcher/tray để mở panel.
+
+**Biến thể extension/userscript (tuỳ chọn, tham khảo):** Hotkey mặc định
+`Ctrl+Shift+X` (khác `Ctrl+Alt+X` cũ — tổ hợp `Ctrl+Alt` bị Chrome
 từ chối trong `suggested_key` vì trùng `AltGr`). `Ctrl+Shift+X` là tổ hợp hợp lệ nên
 manifest command `toggle-panel` KHAI BÁO `suggested_key.default = "Ctrl+Shift+X"` để Chrome
 tự bind sẵn, người dùng không phải gán tay tại `chrome://extensions/shortcuts`.
@@ -865,4 +892,5 @@ hotkey in-page cấu hình được trong panel.
 7. Costsheet/BOM chờ đúng popup `ArticleTop`.
 8. `Ctrl+Shift+X` (suggested_key trong manifest) mở/đóng panel được ngay cả khi focus đang
    nằm trong iframe của WFX, không cần gán tay ở `chrome://extensions/shortcuts`.
-9. Build extension lấy từ `src`, không sửa trực tiếp chỉ mỗi file trong `dist`.
+9. Sửa code trong `wfx_panel/` (nguồn) và build lại bằng `build-panel.ps1`; không
+   chỉnh trực tiếp file trong `dist/`. `python -m pytest` và `ruff check .` phải xanh.

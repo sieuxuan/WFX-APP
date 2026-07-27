@@ -6,7 +6,9 @@ Chạy dev:
     python -m wfx_panel.panel_app
 
 - Hotkey toàn cục mặc định Ctrl+Shift+X, có thể đổi trong Settings: ẩn/hiện
-  panel kể cả khi focus ở Chrome.
+  panel kể cả khi focus ở Chrome. Hotkey dùng global hook của thư viện
+  `keyboard`; nếu cửa sổ đang focus chạy quyền Administrator cao hơn app, hook có
+  thể không nhận phím — khi đó bấm icon launcher hoặc tray để mở panel.
 - Launcher vuông 48×48 luôn nổi; click để mở panel ngay cạnh launcher, giữ để
   kéo và chuột phải để ẩn xuống system tray.
 - Panel tự thu khi click ra ngoài. Launcher, panel và thông báo luôn được giữ
