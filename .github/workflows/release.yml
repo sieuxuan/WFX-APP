@@ -73,6 +73,7 @@ jobs:
             3. Mở **WFX-Panel.exe**.
 
             Điểm chính:
+            - Hotfix updater bị đứng ở màn hình “Đang khởi tạo”; tiến trình cập nhật nay chạy đúng runspace và giữ giao diện phản hồi trong lúc tải.
             - Giao diện hiện đại hơn, Settings tách rõ Tài khoản và Ứng dụng.
             - Tự hỏi lại thông tin khi thiếu tài khoản hoặc đăng nhập không thành công.
             - Chuyển nhanh Division WOVEN / KNIT / PSSG và highlight đúng Division hiện tại.
