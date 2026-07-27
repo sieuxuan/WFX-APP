@@ -97,6 +97,27 @@
     switch_division: "Đang đổi Division…",
     login: "Đang đăng nhập WFX…",
   };
+  // Nhãn tiếng Việt cho lịch sử tác vụ; tránh phơi tên hàm kỹ thuật ra người dùng.
+  const JOB_METHOD_LABELS = {
+    login: "Đăng nhập WFX",
+    check_session: "Kiểm tra phiên",
+    open_chrome: "Mở trình duyệt",
+    open_module: "Mở module",
+    prepare_catalog: "Chuẩn bị Catalog",
+    browse_catalog: "Mở vị trí Catalog",
+    scan_catalog_folders: "Quét folder Catalog",
+    catalog_action: "Tìm Catalog",
+    find_code: "Tìm Style Code",
+    find_buyer_reference: "Tìm Buyer Reference",
+    open_catalog_destination: "Mở Costing / BOM",
+    open_sale_asn_new: "Sale ASN mới",
+    open_supplier_category: "Mở Supplier",
+    find_supplier: "Tìm Supplier",
+    find_buyer: "Tìm Buyer",
+    switch_division: "Đổi Division",
+  };
+  const jobMethodLabel = (method) =>
+    JOB_METHOD_LABELS[String(method || "")] || String(method || "Tác vụ");
 
   function allModules() {
     return visibleModuleGroups().flatMap((group) =>
@@ -149,6 +170,63 @@
     }
   }
   window.wfxSetBusy = setBusy;
+
+  const OVERLAY_SPECS = [
+    { el: () => feedbackOverlay(), openClass: "feedback-open" },
+    { el: () => settingsOverlay(), openClass: "settings-open" },
+    { el: () => $(".log-overlay"), openClass: "log-open" },
+    { el: () => $(".module-overlay"), openClass: "module-open" },
+  ];
+
+  function activeOverlay() {
+    for (const spec of OVERLAY_SPECS) {
+      const element = spec.el();
+      if (element && element.classList.contains(spec.openClass)) return element;
+    }
+    return null;
+  }
+
+  function focusableIn(container) {
+    return [...container.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]),'
+      + ' select:not([disabled]), textarea:not([disabled]),'
+      + ' [tabindex]:not([tabindex="-1"])'
+    )].filter((element) => element.getClientRects().length > 0);
+  }
+
+  // #6 Giam Tab trong overlay đang mở để bàn phím không lọt ra panel nền.
+  function trapOverlayFocus(event) {
+    if (event.key !== "Tab") return;
+    if ($(".hotkey-button")?.dataset.capturing === "true") return;
+    const overlay = activeOverlay();
+    if (!overlay) return;
+    const focusable = focusableIn(overlay);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (!overlay.contains(active)) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  // #7 Không tự thu panel nếu người dùng đang có nội dung chưa lưu trong overlay.
+  function hasPendingUserInput() {
+    const overlay = activeOverlay();
+    if (!overlay) return false;
+    return [...overlay.querySelectorAll(
+      'input[type="text"], input[type="search"], input[type="password"], textarea'
+    )].some((field) => field.value && field.value.trim() !== "");
+  }
+
+  let overlayReturnFocus = null;
 
   function focusModuleSearch() {
     if (settingsOverlay().classList.contains("credentials-required")) {
@@ -336,6 +414,27 @@
     });
   }
 
+  // #5 Roving ↑/↓/Home/End giữa các option của listbox (kết quả, folder picker).
+  // Enter/Space kích hoạt option (đều là <button>); mở rộng group dùng nút expand
+  // riêng (Tab tới được, vì focus đã được giam trong overlay).
+  function bindListboxKeys(container) {
+    if (!container) return;
+    container.addEventListener("keydown", (event) => {
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const items = [...container.querySelectorAll('[role="option"]')]
+        .filter((element) => element.getClientRects().length > 0);
+      if (!items.length) return;
+      const index = items.indexOf(document.activeElement);
+      let next = index;
+      if (event.key === "ArrowDown") next = index < 0 ? 0 : Math.min(items.length - 1, index + 1);
+      else if (event.key === "ArrowUp") next = index < 0 ? 0 : Math.max(0, index - 1);
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = items.length - 1;
+      event.preventDefault();
+      items[next].focus();
+    });
+  }
+
   async function withButtonLoading(button, run) {
     if (!button) return run();
     button.classList.add("is-loading");
@@ -347,6 +446,9 @@
   }
 
   function openSettings(tabName = "account") {
+    if (!settingsOverlay().classList.contains("settings-open")) {
+      overlayReturnFocus = document.activeElement;
+    }
     selectSettingsTab(tabName);
     const overlay = settingsOverlay();
     overlay.classList.add("settings-open");
@@ -358,6 +460,8 @@
     if (overlay.classList.contains("credentials-required")) return;
     overlay.classList.remove("settings-open");
     overlay.setAttribute("aria-hidden", "true");
+    overlayReturnFocus?.focus?.();
+    overlayReturnFocus = null;
   }
 
   function showCredentialPrompt(code, message) {
@@ -513,7 +617,7 @@
       <article class="job-card" data-ok="${job.ok === true}" data-run-id="${escapeHtml(job.run_id)}">
         <span class="job-tone"></span>
         <div class="job-main">
-          <div class="job-title"><strong>${escapeHtml(job.method)}</strong><code>${escapeHtml(job.run_id)}</code></div>
+          <div class="job-title"><strong>${escapeHtml(jobMethodLabel(job.method))}</strong><code>${escapeHtml(job.run_id)}</code></div>
           <div class="job-message">${escapeHtml(job.message)}</div>
           <div class="job-meta">${escapeHtml(job.started_at)} · ${Number(job.elapsed_ms || 0)} ms · ${escapeHtml(job.code)}</div>
         </div>
@@ -620,6 +724,9 @@
   function openModuleModal(moduleId) {
     const module = allModules().find((item) => item.id === moduleId);
     if (!module) return;
+    if (!$(".module-overlay").classList.contains("module-open")) {
+      overlayReturnFocus = document.activeElement;
+    }
     selectedModule = module;
     const icon = $(".module-modal-icon");
     icon.className = `module-modal-icon accent-${module.accent}`;
@@ -657,6 +764,8 @@
     const overlay = $(".module-overlay");
     overlay.classList.remove("module-open");
     overlay.setAttribute("aria-hidden", "true");
+    overlayReturnFocus?.focus?.();
+    overlayReturnFocus = null;
   }
 
   function dismissAfterSuccessfulModule(result) {
@@ -1190,6 +1299,8 @@
       const row = event.target.closest("[data-result-code]");
       if (row) openCatalogResultCode(row);
     });
+    bindListboxKeys($(".catalog-results-list"));
+    bindListboxKeys($(".catalog-folder-list"));
     $$("[data-module-action]").forEach((button) =>
       button.addEventListener("click", () => moduleActions[button.dataset.moduleAction]?.()));
     $(".module-list").addEventListener("click", (event) => {
@@ -1212,8 +1323,11 @@
     // backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.
     window.addEventListener("blur", () => {
       if (busy) return;
+      // Đang gõ dở Style Code/góp ý/tài khoản mà lỡ click sang WFX thì giữ panel.
+      if (hasPendingUserInput()) return;
       window.setTimeout(() => api()?.request_panel_hide?.(), 130);
     });
+    window.addEventListener("keydown", trapOverlayFocus, true);
     $(".module-overlay").addEventListener("mousedown", (event) => {
       if (event.target === event.currentTarget) closeModuleModal();
     });
@@ -1312,6 +1426,14 @@
       input.type = show ? "text" : "password";
       $(".toggle-password").textContent = show ? "Ẩn" : "Hiện";
     });
+    // Enter trong ô User ID / Password = Lưu và đăng nhập, không phải rê chuột.
+    [".user-input", ".password-input"].forEach((selector) =>
+      $(selector).addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !busy) {
+          event.preventDefault();
+          $(".save-button").click();
+        }
+      }));
     $(".save-button").addEventListener("click", async (event) => {
       const button = event.currentTarget;
       const formStatus = $(".account-form-status");
@@ -1482,7 +1604,27 @@
         button.disabled = false;
       }
     });
-    $(".clear-history-button").addEventListener("click", async () => {
+    // Xóa lịch sử xoá luôn ảnh lỗi — yêu cầu bấm xác nhận hai bước để tránh mất
+    // bằng chứng do lỡ tay. Bấm lần đầu hỏi lại, tự huỷ sau 4 giây.
+    let clearHistoryArmed = null;
+    $(".clear-history-button").addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      if (button.dataset.confirm !== "true") {
+        button.dataset.confirm = "true";
+        button.dataset.label = button.textContent;
+        button.textContent = "Bấm lần nữa để xóa";
+        button.classList.add("is-danger");
+        clearHistoryArmed = window.setTimeout(() => {
+          button.dataset.confirm = "false";
+          button.textContent = button.dataset.label || "Xóa lịch sử";
+          button.classList.remove("is-danger");
+        }, 4000);
+        return;
+      }
+      window.clearTimeout(clearHistoryArmed);
+      button.dataset.confirm = "false";
+      button.textContent = button.dataset.label || "Xóa lịch sử";
+      button.classList.remove("is-danger");
       const result = await callQuiet("clear_job_history");
       if (result) {
         renderJobs([]);
