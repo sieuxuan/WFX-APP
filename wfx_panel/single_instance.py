@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import socket
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 HOST = "127.0.0.1"
 PORT = 49731
@@ -62,7 +62,7 @@ class SingleInstance:
                 return
             try:
                 connection, _ = server.accept()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 return

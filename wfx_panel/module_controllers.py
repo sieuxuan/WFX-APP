@@ -7,8 +7,9 @@ thành một khối if/else lớn.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar
+from typing import Any, ClassVar
 
 from wfx_panel import constants
 
@@ -51,10 +52,23 @@ class SampleListModule(ModuleController):
     module_id = "0004_0056_4070"
     description = "Tra cứu và thao tác danh sách sample."
 
+    def open(self, login_module: Any, log: Callable[[str], None]) -> dict:
+        opener = getattr(login_module, "open_module_with_floating_filter", None)
+        if callable(opener):
+            return opener(self.spec["name"], self.spec["xpath"], log)
+        return super().open(login_module, log)
+
 
 class SaleASNModule(ModuleController):
     module_id = "0004_0070_0020"
-    description = "Mở danh sách Sale ASN."
+    kind = "sale_asn"
+    description = "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn."
+
+    def open(self, login_module: Any, log: Callable[[str], None]) -> dict:
+        opener = getattr(login_module, "open_module_with_floating_filter", None)
+        if callable(opener):
+            return opener(self.spec["name"], self.spec["xpath"], log)
+        return super().open(login_module, log)
 
 
 class RMPOListModule(ModuleController):
@@ -104,12 +118,14 @@ class CompanySetupModule(ModuleController):
 
 class BuyerListModule(ModuleController):
     module_id = "0004_0010_1720"
-    description = "Mở danh sách buyer."
+    kind = "buyer"
+    description = "Mở Buyers List hoặc tìm và mở Buyer đầu tiên phù hợp."
 
 
 class SupplierListModule(ModuleController):
     module_id = "0005_0010_1290"
-    description = "Mở danh sách nhà cung cấp."
+    kind = "supplier"
+    description = "Mở Supplier theo Category hoặc tìm Supplier trên mọi Category."
 
 
 CONTROLLER_TYPES = (

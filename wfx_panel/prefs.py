@@ -165,8 +165,10 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "autostart": data.get("autostart", False) is True,
         "start_hidden": data.get("start_hidden", False) is True,
         "toast_enabled": data.get("toast_enabled", True) is not False,
+        "focus_chrome_on_module": data.get(
+            "focus_chrome_on_module", True
+        ) is not False,
         "always_on_top": data.get("always_on_top", True) is not False,
-        "stick_to_browser": data.get("stick_to_browser", True) is True,
         "admin_mode": data.get("admin_mode", False) is True,
         "update_channel": (
             "current"
@@ -191,8 +193,8 @@ def save_prefs(
     autostart: bool | None = None,
     start_hidden: bool | None = None,
     toast_enabled: bool | None = None,
+    focus_chrome_on_module: bool | None = None,
     always_on_top: bool | None = None,
-    stick_to_browser: bool | None = None,
     admin_mode: bool | None = None,
     update_channel: str | None = None,
     last_update_notice: str | None = None,
@@ -216,10 +218,10 @@ def save_prefs(
         current["start_hidden"] = bool(start_hidden)
     if toast_enabled is not None:
         current["toast_enabled"] = bool(toast_enabled)
+    if focus_chrome_on_module is not None:
+        current["focus_chrome_on_module"] = bool(focus_chrome_on_module)
     if always_on_top is not None:
         current["always_on_top"] = bool(always_on_top)
-    if stick_to_browser is not None:
-        current["stick_to_browser"] = bool(stick_to_browser)
     if admin_mode is not None:
         current["admin_mode"] = bool(admin_mode)
     if update_channel is not None:

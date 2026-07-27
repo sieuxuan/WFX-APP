@@ -1,5 +1,7 @@
-import login
 import json
+
+import login
+from wfx_panel.automation import browser
 
 
 def test_style_status_suffix_includes_both_grid_fields():
@@ -35,9 +37,11 @@ def test_detect_browser_accepts_edge_on_windows_layout(tmp_path, monkeypatch):
 
 
 def test_start_chrome_explains_when_no_compatible_browser(monkeypatch):
-    monkeypatch.setattr(login, "_chrome_is_ready", lambda: False)
-    monkeypatch.setattr(login, "detect_browser", lambda: None)
-    result = login.start_chrome(lambda _message: None)
+    # start_chrome gọi _chrome_is_ready/detect_browser cùng module, nên phải
+    # patch tại wfx_panel.automation.browser (không phải shim login).
+    monkeypatch.setattr(browser, "_chrome_is_ready", lambda: False)
+    monkeypatch.setattr(browser, "detect_browser", lambda: None)
+    result = browser.start_chrome(lambda _message: None)
     assert result["code"] == "BROWSER_NOT_FOUND"
     assert result["browser_available"] is False
     assert "Edge" in result["message"]
@@ -83,18 +87,18 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
     command = []
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
-    monkeypatch.setattr(login, "_chrome_is_ready", lambda: next(calls))
+    monkeypatch.setattr(browser, "_chrome_is_ready", lambda: next(calls))
     monkeypatch.setattr(
-        login,
+        browser,
         "detect_browser",
-        lambda: login.BrowserExecutable("Google Chrome", executable),
+        lambda: browser.BrowserExecutable("Google Chrome", executable),
     )
     monkeypatch.setattr(
-        login.subprocess,
+        browser.subprocess,
         "Popen",
         lambda args, **_kwargs: command.extend(args),
     )
-    login._start_persistent_chrome(lambda _message: None)
+    browser._start_persistent_chrome(lambda _message: None)
     assert "--disable-save-password-bubble" in command
     assert any(
         arg.startswith("--disable-features=")

@@ -47,7 +47,7 @@ def test_save_account_temp_file_uses_dot_env_tmp_suffix(tmp_path: Path):
 
 
 def test_resource_dir_is_repo_root_based_on_file_location():
-    assert prefs.RESOURCE_DIR == Path(prefs.__file__).resolve().parent.parent
+    assert Path(prefs.__file__).resolve().parent.parent == prefs.RESOURCE_DIR
     assert prefs.APP_DIR == prefs.RESOURCE_DIR
 
 
@@ -76,8 +76,9 @@ def test_new_pref_defaults(tmp_path):
     assert loaded["autostart"] is False
     assert loaded["start_hidden"] is False
     assert loaded["toast_enabled"] is True
+    assert loaded["focus_chrome_on_module"] is True
     assert loaded["always_on_top"] is True
-    assert loaded["stick_to_browser"] is True
+    assert "stick_to_browser" not in loaded
     assert loaded["admin_mode"] is False
     assert loaded["update_channel"] == "stable"
     assert loaded["last_update_notice"] == ""
@@ -161,6 +162,11 @@ def test_new_prefs_partial_update_preserves_others(tmp_path):
     assert loaded["toast_enabled"] is False
     assert loaded["start_hidden"] is True
     assert loaded["theme"] == "light"
+
+
+def test_focus_chrome_on_module_round_trip(tmp_path):
+    prefs.save_prefs(base_dir=tmp_path, focus_chrome_on_module=False)
+    assert prefs.load_prefs(base_dir=tmp_path)["focus_chrome_on_module"] is False
 
 
 def test_old_settings_survive_new_update_fields(tmp_path):

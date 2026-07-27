@@ -1,0 +1,47 @@
+[project]
+name = "wfx-smart-panel"
+version = "1.0.6"
+description = "WFX Smart Panel — desktop tự động hoá WorldFashionExchange (Playwright + pywebview)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.58,<2",
+    "pywebview>=5,<6",
+    "keyboard>=0.13,<1",
+    "pystray>=0.19,<1",
+    "Pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pyinstaller>=6",
+    "ruff>=0.16",
+]
+
+# Đây là ứng dụng desktop đóng gói bằng PyInstaller, không phát hành lên PyPI,
+# nên không khai báo [build-system]/không cài dạng wheel. requirements*.txt vẫn
+# được giữ vì build-panel.ps1, README và CI tham chiếu trực tiếp; danh sách
+# dependency ở trên là bản đối chiếu để không lệch nhau.
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = ["legacy", "build", "dist", "chrome-extension"]
+
+[tool.ruff.lint]
+# E/F: pyflakes + pycodestyle; I: isort; UP: pyupgrade; B: bugbear;
+# SIM: simplify; C4: comprehensions. Bật vừa đủ để "chuẩn chỉ" mà không ồn.
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = [
+    "E501",   # độ dài dòng do formatter lo, không fail lint
+    "B008",   # cho phép gọi hàm trong default (dùng ở argparse/dataclass field)
+    "SIM105", # giữ try/except/pass ở hot path thay vì contextlib.suppress
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

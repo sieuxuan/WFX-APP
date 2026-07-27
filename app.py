@@ -7,6 +7,5 @@ UI Tkinter cũ đã được loại bỏ để mọi cách khởi động (`pyth
 
 from wfx_panel.panel_app import main
 
-
 if __name__ == "__main__":
     main()

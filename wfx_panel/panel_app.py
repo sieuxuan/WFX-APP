@@ -15,239 +15,54 @@ from wfx_panel import hotkey, prefs, status, updater
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
+from wfx_panel.win32_window import (
+    MAIN_WINDOW_TITLE,
+    NOTIFICATION_HEIGHT,
+    NOTIFICATION_TITLE,
+    NOTIFICATION_WIDTH,
+    _bring_process_window_to_front,
+    _clamp_to_work_area,
+    _foreground_process_id,
+    _native_compact_context_choice,
+    _native_cursor_position,
+    _native_left_button_down,
+    _native_notification_visibility,
+    _set_process_window_bounds,
+    _snap_to_nearest_edge,
+    _window_rect_for_process,
+    _work_area_for_process_window,
+)
 
 HOTKEY = hotkey.DEFAULT
 STATUS_POLL_SECONDS = 5
-FOLLOW_POLL_SECONDS = 0.6
+COMPACT_ACTIVATION_POLL_SECONDS = 0.25
 UPDATE_INITIAL_DELAY_SECONDS = 1
 UPDATE_POLL_SECONDS = 4 * 60 * 60
-TOAST_MIN_SECONDS = 3.0
 ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
+NOTIFICATION_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
 
 WINDOW_WIDTH = 440
 WINDOW_HEIGHT = 620
 WINDOW_MARGIN = 24
-BROWSER_DOCK_GAP = 12
-BROWSER_DOCK_TOP = 72
 COMPACT_SIZE = 48
-
-
-def _bring_process_window_to_front(
-    process_id: int | None = None,
-    *,
-    on_top: bool = True,
-) -> bool:
-    """Đưa cửa sổ top-level của process lên trước Chrome trên Windows."""
-    if os.name != "nt":
-        return False
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
-        target_pid = int(process_id or os.getpid())
-        found: list[int] = []
-        callback_type = ctypes.WINFUNCTYPE(
-            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
-        )
-
-        @callback_type
-        def visit(hwnd, _lparam):
-            pid = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if (
-                pid.value == target_pid
-                and user32.IsWindowVisible(hwnd)
-                and user32.GetWindowTextLengthW(hwnd) > 0
-            ):
-                found.append(int(hwnd))
-                return False
-            return True
-
-        user32.EnumWindows(visit, 0)
-        if not found:
-            return False
-        hwnd = wintypes.HWND(found[0])
-        foreground = user32.GetForegroundWindow()
-        current_thread = kernel32.GetCurrentThreadId()
-        target_thread = user32.GetWindowThreadProcessId(hwnd, None)
-        foreground_thread = (
-            user32.GetWindowThreadProcessId(foreground, None)
-            if foreground
-            else 0
-        )
-        attached_foreground = bool(
-            foreground_thread
-            and foreground_thread != current_thread
-            and user32.AttachThreadInput(
-                current_thread, foreground_thread, True
-            )
-        )
-        attached_target = bool(
-            target_thread
-            and target_thread != current_thread
-            and user32.AttachThreadInput(current_thread, target_thread, True)
-        )
-        try:
-            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-            user32.SetWindowPos(
-                hwnd,
-                wintypes.HWND(-1 if on_top else -2),
-                0,
-                0,
-                0,
-                0,
-                0x0001 | 0x0002 | 0x0040,  # NOMOVE | NOSIZE | SHOWWINDOW
-            )
-            user32.BringWindowToTop(hwnd)
-            user32.SetForegroundWindow(hwnd)
-            user32.SetActiveWindow(hwnd)
-        finally:
-            if attached_target:
-                user32.AttachThreadInput(current_thread, target_thread, False)
-            if attached_foreground:
-                user32.AttachThreadInput(
-                    current_thread, foreground_thread, False
-                )
-        return True
-    except Exception:
-        return False
-
-
-def _window_rect_for_process(
-    process_id: int | None,
-) -> tuple[int, int, int, int] | None:
-    """Rect của top-level window thuộc đúng PID browser CDP."""
-    if os.name != "nt" or not process_id:
-        return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        found: list[tuple[int, int, int, int]] = []
-        callback_type = ctypes.WINFUNCTYPE(
-            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
-        )
-
-        class Rect(ctypes.Structure):
-            _fields_ = [
-                ("left", ctypes.c_long),
-                ("top", ctypes.c_long),
-                ("right", ctypes.c_long),
-                ("bottom", ctypes.c_long),
-            ]
-
-        @callback_type
-        def visit(hwnd, _lparam):
-            pid = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if (
-                pid.value == int(process_id)
-                and user32.IsWindowVisible(hwnd)
-                and user32.GetWindowTextLengthW(hwnd) > 0
-            ):
-                rect = Rect()
-                if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-                    found.append(
-                        (rect.left, rect.top, rect.right, rect.bottom)
-                    )
-                    return False
-            return True
-
-        user32.EnumWindows(visit, 0)
-        return found[0] if found else None
-    except Exception:
-        return None
-
-
-def _set_process_window_bounds(
-    process_id: int,
-    x: int,
-    y: int,
-    width: int | None = None,
-    height: int | None = None,
-) -> bool:
-    """Đặt rect top-level window trực tiếp bằng physical Win32 coordinates."""
-    if os.name != "nt":
-        return False
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        found: list[int] = []
-        callback_type = ctypes.WINFUNCTYPE(
-            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
-        )
-
-        @callback_type
-        def visit(hwnd, _lparam):
-            pid = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if (
-                pid.value == int(process_id)
-                and user32.IsWindowVisible(hwnd)
-                and user32.GetWindowTextLengthW(hwnd) > 0
-            ):
-                found.append(int(hwnd))
-                return False
-            return True
-
-        user32.EnumWindows(visit, 0)
-        if not found:
-            return False
-        flags = 0x0004 | 0x0040  # NOZORDER | SHOWWINDOW
-        if width is None or height is None:
-            flags |= 0x0001  # NOSIZE
-            width = 0
-            height = 0
-        return bool(
-            user32.SetWindowPos(
-                wintypes.HWND(found[0]),
-                None,
-                int(x),
-                int(y),
-                int(width),
-                int(height),
-                flags,
-            )
-        )
-    except Exception:
-        return False
-
-
-def _native_cursor_position() -> tuple[int, int] | None:
-    """Toạ độ con trỏ theo physical screen coordinates của Win32."""
-    if os.name != "nt":
-        return None
-    try:
-        import ctypes
-
-        user32 = ctypes.windll.user32
-        class Point(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-        point = Point()
-        if not user32.GetCursorPos(ctypes.byref(point)):
-            return None
-        return int(point.x), int(point.y)
-    except Exception:
-        return None
-
-
-def _native_left_button_down() -> bool:
-    """Đọc trực tiếp trạng thái chuột trái, không phụ thuộc WebView events."""
-    if os.name != "nt":
-        return False
-    try:
-        import ctypes
-
-        return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
-    except Exception:
-        return False
+WINDOW_TRANSITION_SECONDS = 0.14
+# NOTIFICATION_TITLE/WIDTH/HEIGHT sống ở win32_window (lớp native cần chúng);
+# import lại phía trên để _notification_position và create_window dùng chung.
+NOTIFICATION_MARGIN = 10
+NOTIFICATION_SECONDS = 4.2
+MODULE_NOTIFICATION_METHODS = frozenset(
+    {
+        "open_module",
+        "prepare_catalog",
+        "find_code",
+        "find_buyer_reference",
+        "open_sale_asn_new",
+        "open_supplier_category",
+        "find_supplier",
+        "find_buyer",
+    }
+)
 
 
 def _top_right_position() -> tuple[int, int]:
@@ -269,42 +84,107 @@ def _top_right_position() -> tuple[int, int]:
     return x, y
 
 
+def _notification_position() -> tuple[int, int]:
+    """Neo toast trên panel đang mở hoặc ngay phía trên icon thu gọn."""
+    left, top, right, bottom = (0, 0, 1920, 1080)
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class Rect(ctypes.Structure):
+                _fields_ = [
+                    ("left", ctypes.c_long),
+                    ("top", ctypes.c_long),
+                    ("right", ctypes.c_long),
+                    ("bottom", ctypes.c_long),
+                ]
+
+            rect = Rect()
+            if ctypes.windll.user32.SystemParametersInfoW(
+                0x0030, 0, ctypes.byref(rect), 0
+            ):
+                left, top, right, bottom = (
+                    rect.left, rect.top, rect.right, rect.bottom
+                )
+        except Exception:
+            pass
+    else:
+        try:
+            screen = webview.screens[0]
+            right, bottom = int(screen.width), int(screen.height)
+        except Exception:
+            pass
+
+    panel = _window_rect_for_process(os.getpid())
+    if panel is not None:
+        panel_width = panel[2] - panel[0]
+        panel_height = panel[3] - panel[1]
+        if panel_width <= COMPACT_SIZE + 12 and panel_height <= COMPACT_SIZE + 12:
+            x = panel[0] + (panel_width - NOTIFICATION_WIDTH) // 2
+            y = panel[1] - NOTIFICATION_HEIGHT - 8
+        else:
+            x = panel[2] - NOTIFICATION_WIDTH
+            above = panel[1] - NOTIFICATION_HEIGHT - 8
+            # Panel mặc định nằm sát đầu màn hình. Khi không đủ
+            # chỗ ở ngoài, toast nổi trên phần đầu panel thay vì
+            # trôi xuống góc màn hình.
+            y = above if above >= top + NOTIFICATION_MARGIN else panel[1] + 8
+    else:
+        x = right - NOTIFICATION_WIDTH - NOTIFICATION_MARGIN
+        y = bottom - NOTIFICATION_HEIGHT - NOTIFICATION_MARGIN
+    return (
+        max(left + NOTIFICATION_MARGIN, min(x, right - NOTIFICATION_WIDTH - NOTIFICATION_MARGIN)),
+        max(top + NOTIFICATION_MARGIN, min(y, bottom - NOTIFICATION_HEIGHT - NOTIFICATION_MARGIN)),
+    )
+
+
+class _NotificationBridge:
+    def __init__(self, app: PanelApp):
+        self._app = app
+
+    def dismiss(self) -> dict:
+        self._app._hide_notification()
+        return {"ok": True}
+
+
 class PanelApp:
     def __init__(self):
         self.api = PanelAPI()
         self.window = None
+        self.notification_window = None
         self.tray = None
         preferences = prefs.load_prefs()
         self._hotkey = preferences["hotkey"]
         self._toast_enabled = preferences["toast_enabled"]
+        self._focus_chrome_on_module = preferences[
+            "focus_chrome_on_module"
+        ]
         self._always_on_top = preferences["always_on_top"]
-        self._stick_to_browser = preferences["stick_to_browser"]
         self._start_hidden = preferences["start_hidden"]
         self._visible = not self._start_hidden
         self._compact = False
         self._full_window_size: tuple[int, int] | None = None
-        self._last_compact_browser_rect: tuple[int, int, int, int] | None = None
-        self._last_panel_browser_rect: tuple[int, int, int, int] | None = None
-        self._last_panel_window_rect: tuple[int, int, int, int] | None = None
-        self._compact_drag_thread: threading.Thread | None = None
-        self._compact_offset = (
-            (
-                preferences["compact_offset_x"],
-                preferences["compact_offset_y"],
-            )
+        # Vị trí đã lưu của icon thu gọn và của panel (physical Win32 coords).
+        # None nghĩa là chưa từng đặt tay; khi dùng luôn clamp lại vào work area
+        # của màn hình hiện tại phòng khi cấu hình màn hình đã đổi.
+        self._compact_offset: tuple[int, int] | None = (
+            (preferences["compact_offset_x"], preferences["compact_offset_y"])
             if preferences["compact_offset_x"] is not None
             and preferences["compact_offset_y"] is not None
             else None
         )
-        self._panel_offset = (
-            (
-                preferences["panel_offset_x"],
-                preferences["panel_offset_y"],
-            )
+        self._panel_offset: tuple[int, int] | None = (
+            (preferences["panel_offset_x"], preferences["panel_offset_y"])
             if preferences["panel_offset_x"] is not None
             and preferences["panel_offset_y"] is not None
             else None
         )
+        self._compact_drag_thread: threading.Thread | None = None
+        self._expanding_compact = False
+        self._compact_focus_armed = False
+        self._notification_ready = threading.Event()
+        self._notification_lock = threading.Lock()
+        self._notification_generation = 0
         self._quitting = False
         self._chrome_alive: bool | None = None
         self._last_update_notice = preferences["last_update_notice"]
@@ -354,6 +234,7 @@ class PanelApp:
 
     def hide_panel(self):
         if self.window and self._visible:
+            self._prepare_window_transition()
             try:
                 self.window.hide()
             except Exception:
@@ -386,23 +267,17 @@ class PanelApp:
                 "code": "PANEL_DRAG_STARTED",
                 "message": "Đang di chuyển icon WFX.",
             }
-        pid_getter = getattr(
-            self.api._login, "automation_browser_pid", None
-        )
-        browser_pid = pid_getter() if callable(pid_getter) else None
         cursor = _native_cursor_position()
         own_rect = _window_rect_for_process(os.getpid())
-        browser_rect = _window_rect_for_process(browser_pid)
         started = bool(
             _native_left_button_down()
             and cursor is not None
             and own_rect is not None
-            and browser_rect is not None
         )
         if started:
             self._compact_drag_thread = threading.Thread(
                 target=self._compact_drag_loop,
-                args=(cursor, own_rect, browser_pid),
+                args=(cursor, own_rect),
                 daemon=True,
             )
             self._compact_drag_thread.start()
@@ -420,55 +295,40 @@ class PanelApp:
         self,
         origin_cursor: tuple[int, int],
         origin_rect: tuple[int, int, int, int],
-        browser_pid: int | None,
     ) -> None:
-        """Theo con trỏ toàn hệ thống đến lúc nhả chuột rồi lưu vị trí."""
-        width = max(1, origin_rect[2] - origin_rect[0])
-        height = max(1, origin_rect[3] - origin_rect[1])
+        """Theo con trỏ toàn hệ thống; không phụ thuộc Chrome.
+
+        Mỗi bước đều clamp vào work area nên icon không bao giờ lọt khỏi màn
+        hình. Khi thả chuột thì dính vào mép gần nhất (kiểu bong bóng chat) và
+        lưu vị trí để lần thu gọn sau icon quay về đúng chỗ đã đặt.
+        """
+        width = origin_rect[2] - origin_rect[0]
+        height = origin_rect[3] - origin_rect[1]
+        area = _work_area_for_process_window(os.getpid())
+        last: tuple[int, int] | None = None
         while self._compact and _native_left_button_down():
             cursor = _native_cursor_position()
-            browser_rect = _window_rect_for_process(browser_pid)
-            if cursor is None or browser_rect is None:
+            if cursor is None:
                 break
-            left, top, right, bottom = browser_rect
             target_x = origin_rect[0] + cursor[0] - origin_cursor[0]
             target_y = origin_rect[1] + cursor[1] - origin_cursor[1]
-            target_x = max(
-                left + BROWSER_DOCK_GAP,
-                min(target_x, right - width - BROWSER_DOCK_GAP),
+            target_x, target_y = _clamp_to_work_area(
+                target_x, target_y, width, height, area
             )
-            target_y = max(
-                top + BROWSER_DOCK_GAP,
-                min(target_y, bottom - height - BROWSER_DOCK_GAP),
-            )
-            _set_process_window_bounds(
-                os.getpid(), int(target_x), int(target_y)
-            )
+            _set_process_window_bounds(os.getpid(), target_x, target_y)
+            last = (target_x, target_y)
             time.sleep(0.012)
-
-        browser_rect = _window_rect_for_process(browser_pid)
-        own_rect = _window_rect_for_process(os.getpid())
-        if browser_rect is None or own_rect is None:
+        if last is None:
             return
-        self._last_compact_browser_rect = browser_rect
-        self._compact_offset = (
-            own_rect[0] - browser_rect[0],
-            own_rect[1] - browser_rect[1],
+        snap_x, snap_y = _snap_to_nearest_edge(
+            last[0], last[1], width, height, area
         )
-        prefs.save_prefs(
-            compact_offset_x=self._compact_offset[0],
-            compact_offset_y=self._compact_offset[1],
-        )
+        _set_process_window_bounds(os.getpid(), snap_x, snap_y)
+        self._compact_offset = (snap_x, snap_y)
+        prefs.save_prefs(compact_offset_x=snap_x, compact_offset_y=snap_y)
 
     def collapse_to_browser_icon(self) -> dict:
-        """Thu panel thành launcher nổi trong đúng cửa sổ browser automation."""
-        if not self._stick_to_browser:
-            self.hide_panel()
-            return {
-                "ok": True,
-                "code": "PANEL_HIDDEN",
-                "message": "Đã thu panel về tray.",
-            }
+        """Thu panel thành launcher nổi tại vị trí hiện tại."""
         if self.window is None:
             return {
                 "ok": False,
@@ -477,61 +337,61 @@ class PanelApp:
             }
         try:
             current_rect = _window_rect_for_process(os.getpid())
+            area = _work_area_for_process_window(os.getpid())
             if current_rect is not None:
                 self._full_window_size = (
                     current_rect[2] - current_rect[0],
                     current_rect[3] - current_rect[1],
                 )
-                pid_getter = getattr(
-                    self.api._login, "automation_browser_pid", None
+                # Nhớ vị trí panel để lần mở lại đặt về đúng chỗ.
+                self._panel_offset = (current_rect[0], current_rect[1])
+                prefs.save_prefs(
+                    panel_offset_x=current_rect[0],
+                    panel_offset_y=current_rect[1],
                 )
-                browser_pid = pid_getter() if callable(pid_getter) else None
-                browser_rect = _window_rect_for_process(browser_pid)
-                if browser_rect is not None:
-                    offset = (
-                        current_rect[0] - browser_rect[0],
-                        current_rect[1] - browser_rect[1],
-                    )
-                    if offset != self._panel_offset:
-                        self._panel_offset = offset
-                        prefs.save_prefs(
-                            panel_offset_x=offset[0],
-                            panel_offset_y=offset[1],
-                        )
+            # Icon xuất hiện ngay góc trên-phải của panel (nơi mắt đang nhìn),
+            # hoặc quay về đúng chỗ đã parked lần trước; luôn clamp gọn trong
+            # màn hình để hết cảnh icon "nhảy" ra mép/khuất.
+            if self._compact_offset is not None:
+                icon_x, icon_y = self._compact_offset
+            elif current_rect is not None:
+                icon_x = current_rect[2] - COMPACT_SIZE
+                icon_y = current_rect[1]
+            else:
+                icon_x, icon_y = WINDOW_MARGIN, WINDOW_MARGIN
+            icon_x, icon_y = _clamp_to_work_area(
+                icon_x, icon_y, COMPACT_SIZE, COMPACT_SIZE, area
+            )
+            self._prepare_window_transition()
             self._set_compact_ui(True)
             self._compact = True
+            self._compact_focus_armed = False
             self._visible = True
-            self._last_compact_browser_rect = None
-            self._last_panel_browser_rect = None
-            self._last_panel_window_rect = None
             resized = bool(
-                current_rect
-                and _set_process_window_bounds(
+                _set_process_window_bounds(
                     os.getpid(),
-                    current_rect[0],
-                    current_rect[1],
+                    icon_x,
+                    icon_y,
                     COMPACT_SIZE,
                     COMPACT_SIZE,
                 )
             )
             if not resized:
                 self.window.resize(COMPACT_SIZE, COMPACT_SIZE)
-            self.window.on_top = True
-            if not self._dock_to_browser():
-                self.expand_from_browser_icon()
-                return {
-                    "ok": False,
-                    "code": "BROWSER_WINDOW_NOT_FOUND",
-                    "message": "Không tìm thấy cửa sổ browser automation để bám.",
-                }
+                self.window.move(icon_x, icon_y)
+            self._compact_offset = (icon_x, icon_y)
+            self.window.on_top = self._always_on_top
+            self._finish_window_transition()
             return {
                 "ok": True,
                 "code": "PANEL_COMPACT",
-                "message": "Nút WFX đang bám ở góc dưới bên phải browser automation.",
+                "message": "Đã thu WFX Smart thành icon.",
             }
         except Exception as error:
             self._compact = False
+            self._compact_focus_armed = False
             self._set_compact_ui(False)
+            self._finish_window_transition()
             return {
                 "ok": False,
                 "code": "PANEL_COMPACT_FAILED",
@@ -539,74 +399,150 @@ class PanelApp:
             }
 
     def expand_from_browser_icon(self) -> dict:
-        """Bung launcher về panel đầy đủ và neo cạnh browser automation."""
+        """Bung launcher về panel đầy đủ tại vị trí hiện tại."""
         if self.window is None:
             return {
                 "ok": False,
                 "code": "PANEL_NOT_READY",
                 "message": "Panel chưa sẵn sàng.",
             }
+        if self._expanding_compact:
+            return {
+                "ok": True,
+                "code": "PANEL_EXPANDING",
+                "message": "Panel đang mở rộng.",
+            }
+        self._expanding_compact = True
         try:
+            self._prepare_window_transition(wait=self._visible)
             if not self._visible:
                 self.window.show()
                 self._visible = True
             current_rect = _window_rect_for_process(os.getpid())
+            area = _work_area_for_process_window(os.getpid())
+            width, height = self._full_window_size or (
+                WINDOW_WIDTH,
+                WINDOW_HEIGHT,
+            )
+            # Neo panel tại vị trí icon rồi CLAMP trọn trong màn hình. Đây là
+            # chỗ trước đây bung panel từ đúng góc icon nên tràn ra ngoài —
+            # clamp tự đẩy panel sang trái/lên trên để luôn thấy đủ.
+            anchor = current_rect or (
+                self._panel_offset[0] if self._panel_offset else 0,
+                self._panel_offset[1] if self._panel_offset else 0,
+                0,
+                0,
+            )
+            target_x, target_y = _clamp_to_work_area(
+                anchor[0], anchor[1], width, height, area
+            )
             restored = bool(
                 current_rect
-                and self._full_window_size
                 and _set_process_window_bounds(
                     os.getpid(),
-                    current_rect[0],
-                    current_rect[1],
-                    self._full_window_size[0],
-                    self._full_window_size[1],
+                    target_x,
+                    target_y,
+                    width,
+                    height,
                 )
             )
             if not restored:
                 self.window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+                self.window.move(target_x, target_y)
+            self._panel_offset = (target_x, target_y)
+            prefs.save_prefs(
+                panel_offset_x=target_x, panel_offset_y=target_y
+            )
             self.window.on_top = self._always_on_top
             self._compact = False
-            self._last_compact_browser_rect = None
+            self._compact_focus_armed = False
             self._set_compact_ui(False)
-            if self._stick_to_browser:
-                self._last_panel_browser_rect = None
-                self._last_panel_window_rect = None
-                self._dock_to_browser()
             _bring_process_window_to_front(on_top=self._always_on_top)
+            self._focus_module_search()
+            self._finish_window_transition()
             return {
                 "ok": True,
                 "code": "PANEL_EXPANDED",
                 "message": "Đã mở WFX Smart.",
             }
         except Exception as error:
+            self._finish_window_transition()
             return {
                 "ok": False,
                 "code": "PANEL_EXPAND_FAILED",
                 "message": f"Không mở rộng được panel: {error}",
             }
+        finally:
+            self._expanding_compact = False
 
     def dismiss_panel(self):
-        if self._stick_to_browser:
-            return self.collapse_to_browser_icon()
-        self.hide_panel()
-        return {
-            "ok": True,
-            "code": "PANEL_HIDDEN",
-            "message": "Đã thu panel về tray.",
-        }
+        return self.collapse_to_browser_icon()
 
     def show_panel(self):
         if self._compact:
             self.expand_from_browser_icon()
             return
         if self.window and not self._visible:
+            self._prepare_window_transition(wait=False)
             try:
                 self.window.show()
             except Exception:
                 pass
             self._visible = True
-        if self._stick_to_browser:
-            self._dock_to_browser()
+            self._finish_window_transition()
+        _bring_process_window_to_front(on_top=self._always_on_top)
+        self._focus_module_search()
+
+    def _focus_module_search(self) -> None:
+        if self.window is None:
+            return
+        try:
+            self.window.evaluate_js(
+                "window.setTimeout(() => window.wfxFocusModuleSearch?.(), 60)"
+            )
+        except Exception:
+            pass
+
+    def _prepare_window_transition(self, *, wait: bool = True) -> None:
+        if self.window is None:
+            return
+        try:
+            self.window.evaluate_js("window.wfxPrepareWindowTransition?.()")
+            if wait:
+                time.sleep(WINDOW_TRANSITION_SECONDS)
+        except Exception:
+            pass
+
+    def _finish_window_transition(self) -> None:
+        if self.window is None:
+            return
+        try:
+            self.window.evaluate_js("window.wfxFinishWindowTransition?.()")
+        except Exception:
+            pass
+
+    def show_compact_context_menu(self) -> dict:
+        if not self._compact:
+            return {
+                "ok": False,
+                "code": "PANEL_NOT_COMPACT",
+                "message": "Panel chưa ở chế độ icon.",
+            }
+        choice = _native_compact_context_choice(self._always_on_top)
+        if choice == "hide":
+            self.hide_panel()
+            return {
+                "ok": True,
+                "code": "PANEL_HIDDEN",
+                "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
+            }
+        if choice == "toggle_on_top":
+            return self.api.set_always_on_top(not self._always_on_top)
+        return {
+            "ok": True,
+            "code": "COMPACT_MENU_DISMISSED",
+            "message": "Đã đóng menu.",
+        }
 
     def toggle(self):
         if self._compact:
@@ -631,6 +567,114 @@ class PanelApp:
 
     def set_toast_enabled_state(self, enabled: bool) -> None:
         self._toast_enabled = bool(enabled)
+        if not self._toast_enabled:
+            self._hide_notification()
+
+    def set_focus_chrome_on_module_state(self, enabled: bool) -> None:
+        self._focus_chrome_on_module = bool(enabled)
+
+    def focus_automation_browser(self) -> dict:
+        if not self._focus_chrome_on_module:
+            return {
+                "ok": True,
+                "code": "CHROME_FOCUS_DISABLED",
+                "message": "Đã tắt tự động đưa Chrome lên trước.",
+            }
+        pid_getter = getattr(
+            self.api._login, "automation_browser_pid", None
+        )
+        browser_pid = pid_getter() if callable(pid_getter) else None
+        focused = _bring_process_window_to_front(
+            browser_pid, on_top=None
+        )
+        return {
+            "ok": focused,
+            "code": "CHROME_FOCUSED" if focused else "CHROME_WINDOW_NOT_FOUND",
+            "message": (
+                "Đã đưa cửa sổ WFX lên trước."
+                if focused
+                else "Chưa tìm thấy cửa sổ browser automation."
+            ),
+        }
+
+    def _notification_loaded(self) -> None:
+        self._notification_ready.set()
+        _native_notification_visibility(False)
+
+    def _hide_notification(self, generation: int | None = None) -> None:
+        with self._notification_lock:
+            if (
+                generation is not None
+                and generation != self._notification_generation
+            ):
+                return
+            self._notification_generation += 1
+        if _native_notification_visibility(False):
+            return
+        if self.notification_window is not None:
+            try:
+                self.notification_window.hide()
+            except Exception:
+                pass
+
+    def _show_notification(self, result: dict) -> None:
+        if (
+            not self._toast_enabled
+            or self.notification_window is None
+            or not self._notification_ready.is_set()
+        ):
+            return
+        import json
+
+        tone = "success" if result.get("ok") else "error"
+        payload = {
+            "tone": tone,
+            "title": "Đã hoàn thành" if result.get("ok") else "Chưa hoàn thành",
+            "message": str(result.get("message") or "Đã xong."),
+            "theme": prefs.load_prefs()["theme"],
+        }
+        try:
+            self.notification_window.evaluate_js(
+                "window.wfxShowNotification("
+                f"{json.dumps(payload, ensure_ascii=False)})"
+            )
+            x, y = _notification_position()
+            if not _native_notification_visibility(True, x, y):
+                self.notification_window.move(x, y)
+                self.notification_window.show()
+        except Exception:
+            return
+        with self._notification_lock:
+            self._notification_generation += 1
+            generation = self._notification_generation
+        timer = threading.Timer(
+            NOTIFICATION_SECONDS,
+            self._hide_notification,
+            args=(generation,),
+        )
+        timer.daemon = True
+        timer.start()
+
+    def _expand_compact_from_taskbar(self) -> None:
+        if not self._compact or self._expanding_compact:
+            return
+        try:
+            self.window.restore()
+        except Exception:
+            pass
+        self.expand_from_browser_icon()
+
+    def _on_window_minimized(self) -> None:
+        if self._compact:
+            threading.Thread(
+                target=self._expand_compact_from_taskbar, daemon=True
+            ).start()
+
+    def _on_window_restored(self) -> None:
+        if self._compact:
+            threading.Thread(
+                target=self._expand_compact_from_taskbar, daemon=True
+            ).start()
 
     def _apply_always_on_top(self, enabled: bool) -> None:
         self._always_on_top = bool(enabled)
@@ -640,140 +684,23 @@ class PanelApp:
             except Exception:
                 pass
 
-    def _apply_stick_to_browser(self, enabled: bool) -> None:
-        self._stick_to_browser = bool(enabled)
-        if self._stick_to_browser:
-            self._last_panel_browser_rect = None
-            self._last_panel_window_rect = None
-            self._dock_to_browser()
-        elif self._compact:
-            self.expand_from_browser_icon()
-
-    def _dock_to_browser(self) -> bool:
-        if self.window is None or not self._visible:
-            return False
-        pid_getter = getattr(
-            self.api._login, "automation_browser_pid", None
-        )
-        if not callable(pid_getter):
-            return False
-        browser_rect = _window_rect_for_process(pid_getter())
-        if browser_rect is None:
-            return False
-        left, top, right, bottom = browser_rect
-        if right <= left or bottom <= top or left < -20_000:
-            return False
-        own_rect = _window_rect_for_process(os.getpid())
-        width = (
-            COMPACT_SIZE
-            if self._compact
-            else (
-                own_rect[2] - own_rect[0]
-                if own_rect is not None
-                else WINDOW_WIDTH
-            )
-        )
-        height = (
-            COMPACT_SIZE
-            if self._compact
-            else (
-                own_rect[3] - own_rect[1]
-                if own_rect is not None
-                else WINDOW_HEIGHT
-            )
-        )
-        if not self._compact and own_rect is not None:
-            self._full_window_size = (width, height)
-        if self._compact:
-            previous_browser = self._last_compact_browser_rect
-            if previous_browser is not None and own_rect is not None:
-                if previous_browser == browser_rect:
-                    # Browser đứng yên: không kéo launcher khỏi vị trí người
-                    # dùng vừa drag. Khi browser di chuyển, mang launcher đi
-                    # theo cùng độ lệch và giữ nó trong vùng browser.
-                    return True
-                delta_x = left - previous_browser[0]
-                delta_y = top - previous_browser[1]
-                x = own_rect[0] + delta_x
-                preferred_y = own_rect[1] + delta_y
-            else:
-                if self._compact_offset is not None:
-                    x = left + self._compact_offset[0]
-                    preferred_y = top + self._compact_offset[1]
-                else:
-                    x = right - width - BROWSER_DOCK_GAP
-                    preferred_y = bottom - height - BROWSER_DOCK_GAP
-            x = max(
-                left + BROWSER_DOCK_GAP,
-                min(x, right - width - BROWSER_DOCK_GAP),
-            )
-            self._last_compact_browser_rect = browser_rect
-        else:
-            previous_browser = self._last_panel_browser_rect
-            if (
-                previous_browser == browser_rect
-                and own_rect is not None
-                and self._last_panel_window_rect is not None
-            ):
-                # Header pywebview cho phép kéo cửa sổ native. Khi browser
-                # đứng yên, giữ nguyên vị trí mới thay vì vòng follow kéo panel
-                # ngược về góc phải sau 0.6 giây.
-                if own_rect != self._last_panel_window_rect:
-                    offset = (own_rect[0] - left, own_rect[1] - top)
-                    if offset != self._panel_offset:
-                        self._panel_offset = offset
-                        prefs.save_prefs(
-                            panel_offset_x=offset[0],
-                            panel_offset_y=offset[1],
-                        )
-                    self._last_panel_window_rect = own_rect
-                return True
-            if previous_browser is not None and own_rect is not None:
-                x = own_rect[0] + left - previous_browser[0]
-                preferred_y = own_rect[1] + top - previous_browser[1]
-            elif self._panel_offset is not None:
-                x = left + self._panel_offset[0]
-                preferred_y = top + self._panel_offset[1]
-            else:
-                x = right - width - BROWSER_DOCK_GAP
-                preferred_y = top + BROWSER_DOCK_TOP
-            x = max(
-                left + BROWSER_DOCK_GAP,
-                min(x, right - width - BROWSER_DOCK_GAP),
-            )
-            self._last_panel_browser_rect = browser_rect
-        y = max(
-            top + BROWSER_DOCK_GAP,
-            min(preferred_y, bottom - height - BROWSER_DOCK_GAP),
-        )
-        try:
-            if _set_process_window_bounds(
-                os.getpid(), int(x), int(y)
-            ):
-                if not self._compact:
-                    self._last_panel_window_rect = (
-                        int(x),
-                        int(y),
-                        int(x + width),
-                        int(y + height),
-                    )
-                return True
-            self.window.move(int(x), int(y))
-            if not self._compact:
-                self._last_panel_window_rect = (
-                    int(x),
-                    int(y),
-                    int(x + width),
-                    int(y + height),
-                )
-            return True
-        except Exception:
-            return False
-
-    def _window_follow_loop(self) -> None:
-        while not self._stop_status.wait(FOLLOW_POLL_SECONDS):
-            if self._stick_to_browser:
-                self._dock_to_browser()
+    def _compact_activation_loop(self) -> None:
+        """Mở icon khi người dùng kích hoạt nó từ taskbar."""
+        while not self._stop_status.wait(COMPACT_ACTIVATION_POLL_SECONDS):
+            if self._compact:
+                foreground_pid = _foreground_process_id()
+                if foreground_pid is not None and foreground_pid != os.getpid():
+                    self._compact_focus_armed = True
+                elif (
+                    foreground_pid == os.getpid()
+                    and self._compact_focus_armed
+                    and not self._expanding_compact
+                ):
+                    self._compact_focus_armed = False
+                    threading.Thread(
+                        target=self._expand_compact_from_taskbar,
+                        daemon=True,
+                    ).start()
 
     def _apply_update(self, state: dict) -> str | None:
         try:
@@ -814,19 +741,8 @@ class PanelApp:
             except Exception:
                 pass
 
-        if (
-            self._visible
-            or not self._toast_enabled
-            or elapsed < TOAST_MIN_SECONDS
-            or self.tray is None
-        ):
-            return
-        try:
-            self.tray.notify(
-                str(result.get("message") or "Đã xong."), "WFX Smart"
-            )
-        except Exception:
-            pass
+        if method in MODULE_NOTIFICATION_METHODS:
+            self._show_notification(result)
 
     def _status_loop(self) -> None:
         while not self._stop_status.wait(STATUS_POLL_SECONDS):
@@ -894,9 +810,8 @@ class PanelApp:
             self.window.show()
         except Exception:
             pass
-        if self._stick_to_browser:
-            self._dock_to_browser()
         _bring_process_window_to_front(on_top=self._always_on_top)
+        self._focus_module_search()
         self._visible = True
 
     def _on_closing(self):
@@ -986,6 +901,11 @@ class PanelApp:
             self.lock.close()
         if self.tray:
             self.tray.stop()
+        if self.notification_window:
+            try:
+                self.notification_window.destroy()
+            except Exception:
+                pass
         if self.window:
             self.window.destroy()
 
@@ -998,14 +918,15 @@ class PanelApp:
         self.api.collapse_to_browser_icon = self.collapse_to_browser_icon  # type: ignore[attr-defined]
         self.api.expand_from_browser_icon = self.expand_from_browser_icon  # type: ignore[attr-defined]
         self.api.begin_compact_drag = self.begin_compact_drag  # type: ignore[attr-defined]
+        self.api.show_compact_context_menu = self.show_compact_context_menu  # type: ignore[attr-defined]
         self.api.show_panel = self.show_panel   # type: ignore[attr-defined]
+        self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
         self.api.set_hotkey_applier(self._apply_hotkey)
         self.api.set_update_applier(self._apply_update)
         self.api.set_window_pref_appliers(
             self._apply_always_on_top,
-            self._apply_stick_to_browser,
         )
 
         original_set_toast = self.api.set_toast_enabled
@@ -1018,9 +939,20 @@ class PanelApp:
             return result
 
         self.api.set_toast_enabled = set_toast  # type: ignore[method-assign]
+
+        original_set_focus_chrome = self.api.set_focus_chrome_on_module
+
+        def set_focus_chrome(enabled):
+            result = original_set_focus_chrome(enabled)
+            self.set_focus_chrome_on_module_state(
+                result.get("focus_chrome_on_module", enabled)
+            )
+            return result
+
+        self.api.set_focus_chrome_on_module = set_focus_chrome  # type: ignore[method-assign]
         x, y = _top_right_position()
         self.window = webview.create_window(
-            "WFX Smart",
+            MAIN_WINDOW_TITLE,
             url=str(UI_INDEX),
             js_api=self.api,
             width=WINDOW_WIDTH,
@@ -1037,6 +969,27 @@ class PanelApp:
         self._visible = not self._start_hidden
         self.window.events.loaded += self.on_loaded
         self.window.events.closing += self._on_closing
+        self.window.events.minimized += self._on_window_minimized
+        self.window.events.restored += self._on_window_restored
+
+        notification_x, notification_y = _notification_position()
+        self.notification_window = webview.create_window(
+            NOTIFICATION_TITLE,
+            url=str(NOTIFICATION_INDEX),
+            js_api=_NotificationBridge(self),
+            width=NOTIFICATION_WIDTH,
+            height=NOTIFICATION_HEIGHT,
+            x=notification_x,
+            y=notification_y,
+            resizable=False,
+            frameless=True,
+            easy_drag=False,
+            focus=False,
+            on_top=True,
+            hidden=True,
+            background_color="#f4f8fa",
+        )
+        self.notification_window.events.loaded += self._notification_loaded
 
         def background():
             # Chạy song song lúc trang đang tải; window.wfxSetStatus/wfxPushLog
@@ -1050,7 +1003,7 @@ class PanelApp:
                 self._hotkey_ready.set()
             threading.Thread(target=self._status_loop, daemon=True).start()
             threading.Thread(
-                target=self._window_follow_loop, daemon=True
+                target=self._compact_activation_loop, daemon=True
             ).start()
             threading.Thread(target=self._update_loop, daemon=True).start()
             self._build_tray()
@@ -1064,13 +1017,13 @@ class PanelApp:
 def main():
     app = PanelApp()
     lock = SingleInstance(app.activate)
-    if not lock.acquire():
-        if lock.signal_existing():
-            # Đã có instance đang chạy: bật panel của nó lên rồi thoát im lặng.
-            return
-        # Cổng bị một chương trình khác giữ (không trả đúng handshake). Không
-        # được chặn người dùng mở app vì lý do không liên quan — chạy tiếp,
-        # chấp nhận mất khả năng chặn trùng trong phiên này.
+    if not lock.acquire() and lock.signal_existing():
+        # Đã có instance đang chạy: bật panel của nó lên rồi thoát im lặng.
+        return
+    # Nếu acquire() thất bại mà signal_existing() cũng thất bại: cổng bị một
+    # chương trình khác giữ (không trả đúng handshake). Không được chặn người
+    # dùng mở app vì lý do không liên quan — chạy tiếp, chấp nhận mất khả năng
+    # chặn trùng trong phiên này.
     app.lock = lock
     app.run()
 
