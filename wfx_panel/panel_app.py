@@ -30,9 +30,11 @@ from wfx_panel.win32_window import (
     _native_cursor_position,
     _native_left_button_down,
     _native_notification_visibility,
+    _set_bounds_by_title,
     _set_process_window_bounds,
     _window_rect_by_title,
     _work_area_for_process_window,
+    _work_area_for_window_title,
 )
 
 HOTKEY = hotkey.DEFAULT
@@ -47,8 +49,8 @@ BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
 WINDOW_WIDTH = 440
 WINDOW_HEIGHT = 620
 WINDOW_MARGIN = 24
-# Bubble = icon nổi thường trực (chat-head); panel bung ra cạnh nó.
-BUBBLE_SIZE = 54
+# Khôi phục đúng kích thước launcher cũ; bubble chỉ tách thành cửa sổ riêng.
+BUBBLE_SIZE = 48
 BUBBLE_PANEL_GAP = 10
 # NOTIFICATION_TITLE/WIDTH/HEIGHT sống ở win32_window (lớp native cần chúng);
 # import lại phía trên để _notification_position và create_window dùng chung.
@@ -88,7 +90,7 @@ def _top_right_position() -> tuple[int, int]:
 
 
 def _notification_position() -> tuple[int, int]:
-    """Neo toast trên panel đang mở hoặc ngay phía trên icon thu gọn."""
+    """Neo toast quanh bubble và giữ trọn trong đúng màn hình của bubble."""
     left, top, right, bottom = (0, 0, 1920, 1080)
     if os.name == "nt":
         try:
@@ -122,6 +124,9 @@ def _notification_position() -> tuple[int, int]:
     # canh phải mép bubble; nếu không đủ chỗ phía trên thì nổi ngay dưới.
     bubble = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
     if bubble is not None:
+        bubble_area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+        if bubble_area is not None:
+            left, top, right, bottom = bubble_area
         x = bubble[2] - NOTIFICATION_WIDTH
         above = bubble[1] - NOTIFICATION_HEIGHT - 8
         y = above if above >= top + NOTIFICATION_MARGIN else bubble[3] + 8
@@ -254,13 +259,16 @@ class PanelApp:
                 "message": "Panel chưa sẵn sàng.",
             }
         try:
-            self._position_panel_beside_bubble()
             if not self._panel_visible:
                 try:
                     self.window.show()
                 except Exception:
                     pass
                 self._panel_visible = True
+            # Đặt bounds sau khi show để Win32 chắc chắn thấy HWND panel và
+            # dùng cùng hệ toạ độ physical với bubble (quan trọng khi DPI khác
+            # nhau giữa hai màn hình).
+            self._position_panel_beside_bubble()
             try:
                 self.window.on_top = self._always_on_top
             except Exception:
@@ -287,23 +295,48 @@ class PanelApp:
         return self.show_panel()
 
     def _position_panel_beside_bubble(self) -> None:
-        """Đặt panel ngay cạnh bubble, luôn clamp trọn trong màn hình."""
-        area = _work_area_for_process_window(os.getpid())
+        """Đặt panel cạnh bubble và giữ toàn bộ trong cùng một màn hình."""
         bubble = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
+        # Panel đang ẩn nên helper theo process có thể không tìm thấy nó. Lấy
+        # monitor trực tiếp từ HWND bubble mới là nguồn chuẩn.
+        area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+        if area is None:
+            area = _work_area_for_process_window(os.getpid())
+
         width, height = WINDOW_WIDTH, WINDOW_HEIGHT
+        if area is not None:
+            # Với màn hình/work area nhỏ hơn panel chuẩn, co cửa sổ vừa đúng
+            # work area để không có cạnh nào tràn sang màn hình khác/taskbar.
+            width = min(width, max(1, area[2] - area[0]))
+            height = min(height, max(1, area[3] - area[1]))
+
         if bubble is not None:
-            mid = (area[0] + area[2]) // 2 if area is not None else None
-            if mid is not None and bubble[0] > mid:
-                x = bubble[0] - width - BUBBLE_PANEL_GAP  # bubble bên phải → panel trái
+            left_x = bubble[0] - width - BUBBLE_PANEL_GAP
+            right_x = bubble[2] + BUBBLE_PANEL_GAP
+            if area is not None:
+                fits_left = left_x >= area[0]
+                fits_right = right_x + width <= area[2]
+                if fits_left != fits_right:
+                    x = left_x if fits_left else right_x
+                elif fits_left:
+                    # Cả hai phía đều đủ: mở về phía có nhiều khoảng trống hơn.
+                    bubble_mid = (bubble[0] + bubble[2]) // 2
+                    screen_mid = (area[0] + area[2]) // 2
+                    x = left_x if bubble_mid >= screen_mid else right_x
+                else:
+                    # Không phía nào đủ nguyên vẹn: chọn phía rộng hơn rồi clamp.
+                    left_space = bubble[0] - area[0]
+                    right_space = area[2] - bubble[2]
+                    x = left_x if left_space >= right_space else right_x
             else:
-                x = bubble[2] + BUBBLE_PANEL_GAP  # bubble bên trái → panel phải
+                x = left_x if bubble[0] >= width else right_x
             y = bubble[1]
         else:
             x, y = _top_right_position()
         x, y = _clamp_to_work_area(x, y, width, height, area)
         if not _set_process_window_bounds(os.getpid(), x, y, width, height):
             try:
-                self.window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+                self.window.resize(width, height)
                 self.window.move(x, y)
             except Exception:
                 pass
@@ -365,7 +398,9 @@ class PanelApp:
         → hết lag). Cho đặt ở đâu cũng được, chỉ clamp để không lọt khỏi màn."""
         width = origin_rect[2] - origin_rect[0]
         height = origin_rect[3] - origin_rect[1]
-        area = _work_area_for_process_window(os.getpid())
+        area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+        if area is None:
+            area = _work_area_for_process_window(os.getpid())
         last: tuple[int, int] | None = None
         while _native_left_button_down():
             cursor = _native_cursor_position()
@@ -763,6 +798,24 @@ class PanelApp:
         x = max(WINDOW_MARGIN, screen_width - BUBBLE_SIZE - WINDOW_MARGIN)
         return x, 120
 
+    def _on_bubble_loaded(self) -> None:
+        """Giữ bubble đúng 48px native và tự chữa vị trí ngoài màn hình."""
+        rect = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
+        area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+        if rect is None or area is None:
+            return
+        x, y = _clamp_to_work_area(
+            rect[0], rect[1], BUBBLE_SIZE, BUBBLE_SIZE, area
+        )
+        # create_window dùng logical pixels và có thể bị Windows DPI scale.
+        # SetWindowPos lại bằng physical pixels để launcher không thành 72/96px.
+        _set_bounds_by_title(
+            BUBBLE_WINDOW_TITLE, x, y, BUBBLE_SIZE, BUBBLE_SIZE
+        )
+        if (x, y) != (rect[0], rect[1]):
+            self._bubble_offset = (x, y)
+            prefs.save_prefs(compact_offset_x=x, compact_offset_y=y)
+
     def run(self):
         if not ICON_PATH.exists():
             build_icon(ICON_PATH)
@@ -830,6 +883,7 @@ class PanelApp:
             js_api=_BubbleBridge(self),
             width=BUBBLE_SIZE,
             height=BUBBLE_SIZE,
+            min_size=(BUBBLE_SIZE, BUBBLE_SIZE),
             x=bubble_x,
             y=bubble_y,
             resizable=False,
@@ -839,6 +893,7 @@ class PanelApp:
             hidden=self._start_hidden,
             background_color="#0f9fb2",
         )
+        self.bubble_window.events.loaded += self._on_bubble_loaded
         self.bubble_window.events.closing += self._on_bubble_closing
 
         notification_x, notification_y = _notification_position()

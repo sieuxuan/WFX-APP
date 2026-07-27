@@ -25,6 +25,9 @@ def test_webview_uses_fresh_ui_cache():
     assert "webview.start(background, private_mode=True)" in source
     # Bubble là cửa sổ riêng, thường trực (chat-head).
     assert "url=str(BUBBLE_INDEX)" in source
+    # pywebview mặc định ép cửa sổ nhỏ thành khoảng 200×100 nếu không khai báo
+    # min_size; launcher 48px khi đó chỉ nằm giữa một khung xanh rất lớn.
+    assert "min_size=(BUBBLE_SIZE, BUBBLE_SIZE)" in source
 
 
 def test_top_right_position_places_window_near_top_right(monkeypatch):
@@ -371,6 +374,167 @@ def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
     # Bubble ở nửa phải (x=1880 > 960) → panel bên trái: 1880-440-10=1430.
     # y=1040 bị clamp xuống 1080-620=460 để thấy đủ.
     assert bounds_calls == [(1430, 460, module.WINDOW_WIDTH, module.WINDOW_HEIGHT)]
+
+
+def test_panel_stays_inside_bubble_monitor_at_all_four_corners(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    # Màn hình phụ nằm bên trái màn hình chính để bắt cả toạ độ âm.
+    area = (-1600, 0, 0, 900)
+    corners = (
+        (-1600, 0, -1552, 48),
+        (-48, 0, 0, 48),
+        (-1600, 852, -1552, 900),
+        (-48, 852, 0, 900),
+    )
+
+    class FakeWindow:
+        def resize(self, *_args):
+            pass
+
+        def move(self, *_args):
+            pass
+
+    app = module.PanelApp()
+    app.window = FakeWindow()
+    monkeypatch.setattr(
+        module, "_work_area_for_window_title", lambda _title: area
+    )
+
+    for bubble in corners:
+        calls = []
+        monkeypatch.setattr(
+            module, "_window_rect_by_title", lambda _title, rect=bubble: rect
+        )
+        monkeypatch.setattr(
+            module,
+            "_set_process_window_bounds",
+            lambda _pid, x, y, width, height, output=calls: (
+                output.append((x, y, width, height)) or True
+            ),
+        )
+
+        app._position_panel_beside_bubble()
+
+        assert len(calls) == 1
+        x, y, width, height = calls[0]
+        assert area[0] <= x <= area[2] - width
+        assert area[1] <= y <= area[3] - height
+        assert (width, height) == (module.WINDOW_WIDTH, module.WINDOW_HEIGHT)
+
+
+def test_panel_shrinks_to_fit_a_small_work_area(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    area = (100, 50, 420, 350)
+    calls = []
+
+    class FakeWindow:
+        def resize(self, *_args):
+            pass
+
+        def move(self, *_args):
+            pass
+
+    app = module.PanelApp()
+    app.window = FakeWindow()
+    monkeypatch.setattr(
+        module, "_window_rect_by_title", lambda _title: (372, 302, 420, 350)
+    )
+    monkeypatch.setattr(
+        module, "_work_area_for_window_title", lambda _title: area
+    )
+    monkeypatch.setattr(
+        module,
+        "_set_process_window_bounds",
+        lambda _pid, x, y, width, height: (
+            calls.append((x, y, width, height)) or True
+        ),
+    )
+
+    app._position_panel_beside_bubble()
+
+    assert calls == [(100, 50, 320, 300)]
+
+
+def test_bubble_loaded_repairs_an_offscreen_saved_position(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    moved = []
+    saved = []
+    monkeypatch.setattr(
+        module, "_window_rect_by_title", lambda _title: (1950, 1100, 1998, 1148)
+    )
+    monkeypatch.setattr(
+        module,
+        "_work_area_for_window_title",
+        lambda _title: (0, 0, 1920, 1080),
+    )
+    monkeypatch.setattr(
+        module,
+        "_set_bounds_by_title",
+        lambda title, x, y, width, height: (
+            moved.append((title, x, y, width, height)) or True
+        ),
+    )
+    monkeypatch.setattr(
+        module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
+    )
+
+    app._on_bubble_loaded()
+
+    assert moved == [
+        (
+            module.BUBBLE_WINDOW_TITLE,
+            1920 - module.BUBBLE_SIZE,
+            1080 - module.BUBBLE_SIZE,
+            module.BUBBLE_SIZE,
+            module.BUBBLE_SIZE,
+        )
+    ]
+    assert saved == [
+        {
+            "compact_offset_x": 1920 - module.BUBBLE_SIZE,
+            "compact_offset_y": 1080 - module.BUBBLE_SIZE,
+        }
+    ]
+
+
+def test_bubble_loaded_always_enforces_native_main_size(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    moved = []
+    # Mô phỏng WebView bị DPI scale thành 72×72 dù create_window nhận 48.
+    monkeypatch.setattr(
+        module, "_window_rect_by_title", lambda _title: (100, 100, 172, 172)
+    )
+    monkeypatch.setattr(
+        module,
+        "_work_area_for_window_title",
+        lambda _title: (0, 0, 1920, 1080),
+    )
+    monkeypatch.setattr(
+        module,
+        "_set_bounds_by_title",
+        lambda title, x, y, width, height: (
+            moved.append((title, x, y, width, height)) or True
+        ),
+    )
+    monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
+
+    app._on_bubble_loaded()
+
+    assert moved == [
+        (
+            module.BUBBLE_WINDOW_TITLE,
+            100,
+            100,
+            module.BUBBLE_SIZE,
+            module.BUBBLE_SIZE,
+        )
+    ]
 
 
 def test_bubble_context_menu_can_hide_to_tray(monkeypatch):

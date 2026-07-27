@@ -230,8 +230,30 @@ def _work_area_for_process_window(
         user32.EnumWindows(visit, 0)
         if not found:
             return None
-        hwnd = wintypes.HWND(min(found, key=lambda item: item[0])[1])
-        monitor = user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+        return _work_area_for_hwnd(min(found, key=lambda item: item[0])[1])
+    except Exception:
+        return None
+
+
+def _work_area_for_hwnd(
+    hwnd: int | None,
+) -> tuple[int, int, int, int] | None:
+    """Work area của đúng màn hình chứa ``hwnd``.
+
+    Khác helper theo process, hàm này dùng được cho bubble ngay cả khi panel
+    chính đang ẩn. ``MONITOR_DEFAULTTONEAREST`` còn giúp khôi phục cửa sổ vào
+    màn hình gần nhất sau khi người dùng tháo/đổi bố cục màn hình.
+    """
+    if os.name != "nt" or not hwnd:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        monitor = user32.MonitorFromWindow(
+            wintypes.HWND(int(hwnd)), 2
+        )  # MONITOR_DEFAULTTONEAREST
         if not monitor:
             return None
 
@@ -259,6 +281,13 @@ def _work_area_for_process_window(
         return (work.left, work.top, work.right, work.bottom)
     except Exception:
         return None
+
+
+def _work_area_for_window_title(
+    title: str,
+) -> tuple[int, int, int, int] | None:
+    """Work area của màn hình chứa cửa sổ có đúng ``title``."""
+    return _work_area_for_hwnd(_find_window_hwnd(title))
 
 
 def _set_process_window_bounds(

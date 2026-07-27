@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from wfx_panel import panel_app
+
 UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
 
 
@@ -87,6 +89,30 @@ def test_bubble_page_advertises_interactions():
     button = button[: button.index(">")]
     assert "chuột phải" in button  # menu tùy chọn
     assert "kéo" in button  # giữ để kéo
+
+
+def test_bubble_restores_the_previous_launcher_size():
+    assert panel_app.BUBBLE_SIZE == 48
+
+
+def test_bubble_restores_the_exact_main_launcher_visual():
+    html = (UI / "bubble.html").read_text(encoding="utf-8")
+    css = (UI / "bubble.css").read_text(encoding="utf-8")
+    assert 'class="compact-icon-shell"' in html
+    assert 'class="compact-orbit"' in html
+    assert 'class="compact-mark"' in html
+    assert "border-radius: 12px" in css
+    assert "width: 32px" in css
+    assert "width: 27px" in css
+    assert "bubble-breathe" not in css
+    assert "bubble-glow" not in html
+
+
+def test_bubble_has_no_corner_status_dot():
+    html = (UI / "bubble.html").read_text(encoding="utf-8")
+    css = (UI / "bubble.css").read_text(encoding="utf-8")
+    assert "compact-badge" not in html
+    assert "compact-badge" not in css
 
 
 def test_header_has_drag_region_class_for_frameless_window():
