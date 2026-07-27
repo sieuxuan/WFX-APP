@@ -15,6 +15,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # Bám requires-python>=3.11 trong pyproject: chạy cả biên dưới (3.11) và
+        # biên hiện dùng (3.12) để bắt lỗi khác biệt giữa hai phiên bản.
+        python-version: ["3.11", "3.12"]
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -22,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
