@@ -1,4 +1,4 @@
-## WFX Smart 1.0.5 (Python, thay extension)
+## WFX Smart 1.0.6
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -7,7 +7,11 @@ Chạy dev:
 
 - Hotkey toàn cục mặc định Ctrl+Shift+X, có thể đổi trong Settings: ẩn/hiện
   panel kể cả khi focus ở Chrome.
-- Nút đóng hoặc hotkey thu panel về system tray; tray có "Hiện panel" / "Thoát".
+- Launcher vuông 48×48 luôn nổi; click để mở panel ngay cạnh launcher, giữ để
+  kéo và chuột phải để ẩn xuống system tray.
+- Panel tự thu khi click ra ngoài. Launcher, panel và thông báo luôn được giữ
+  trọn trong cùng màn hình, kể cả khi đặt sát góc, dùng nhiều màn hình hoặc đổi
+  DPI/bố cục màn hình.
 - Tài khoản lưu ở `.env`; theme/tuỳ chọn ở `prefs.json`.
 - Mọi automation có `runId`, lịch sử cục bộ, thời gian chạy, ảnh lỗi và nút
   chạy lại. Không lưu User ID/password vào lịch sử.
@@ -22,10 +26,8 @@ Chạy dev:
   thay vì crash.
 - Nút mở browser sẽ mở đúng Chromium browser automation rồi đăng nhập WFX ngay
   bằng tài khoản đã lưu.
-- Settings có `Luôn trên cùng` và `Bám theo browser automation`. Chế độ bám
-  lấy PID đang listen đúng cổng CDP, nên không đi theo cửa sổ Chrome cá nhân.
-- Panel và icon thu gọn đều có thể kéo tới vị trí thuận tiện; vị trí tương đối
-  với browser automation được nhớ lại và không bị vòng lặp bám cửa sổ kéo ngược.
+- Settings có `Luôn trên cùng`; vị trí launcher được nhớ lại giữa các lần chạy
+  và tự sửa nếu màn hình đã lưu không còn tồn tại.
 - Ba nút Division `WOVEN`, `KNIT`, `PSSG` nằm trước Operation. App đọc
   `#CompanyName` của WFX để highlight Division thật và chỉ báo thành công sau
   khi WFX xác nhận đã chuyển.
@@ -43,7 +45,7 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Panel-v1.0.5-win64.zip` kèm file checksum `.sha256`.
+Gói phát hành: `WFX-Panel-v1.0.6-win64.zip` kèm file checksum `.sha256`.
 
 - Windows 11 có sẵn WebView2 trong phần lớn bản cài.
 - Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài
@@ -59,8 +61,3 @@ Test tích hợp WFX thật bằng tài khoản trong `.env`:
     python -m pytest tests/test_wfx_live.py -v
 
 Test không in credential hoặc Code ra output.
-
-## Chrome Extension (cũ)
-
-Đã chuyển sang `legacy/chrome-extension/` và đóng băng — xem `legacy/README.md`.
-App desktop `wfx_panel/` là bản thay thế.
