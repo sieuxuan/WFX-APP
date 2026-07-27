@@ -196,8 +196,9 @@ jobs:
           }
 
       - name: Publish GitHub Release
-        # softprops/action-gh-release v2 — pin SHA vì action nhận contents:write.
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        # softprops/action-gh-release v3.0.0 (Node 24) — pin full SHA vì action
+        # nhận contents:write.
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
         with:
           files: |
             ${{ env.ZIP_NAME }}

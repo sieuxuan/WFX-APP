@@ -18,6 +18,10 @@ def test_release_workflow_signs_package_with_pinned_private_publisher():
     assert "$verifyCms.CheckSignature($true)" in source
     assert "$actualCmsSigner -ne $expectedCmsSigner" in source
     assert 'Remove-Item `' in source
+    assert (
+        "softprops/action-gh-release@"
+        "b4309332981a82ec1c5618f44dd2e27cc8bfbfda"
+    ) in source
 
 
 def test_release_workflow_keeps_size_and_dependency_regression_guards():
