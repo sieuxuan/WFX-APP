@@ -151,6 +151,108 @@ def _select_catalog_category_on_page(
     raise PlaywrightTimeoutError(f"WFX không xác nhận Category {category_name}.")
 
 
+def _open_catalog_tree_on_page(
+    page: Page,
+    category_name: str,
+    category_value: str,
+    log: Callable[[str], None],
+) -> Frame:
+    """Mở cây Catalog và chọn Category, nhưng không tự click Master."""
+    previous_left = page.frame(name="left")
+    catalog = page.locator(f"xpath={CATALOG_XPATH}")
+    catalog.wait_for(state="attached", timeout=8_000)
+    _write_log(log, "[CATALOG] Đang mở cây thư mục...")
+    _click(catalog)
+    _select_catalog_category_on_page(
+        page,
+        category_name,
+        category_value,
+        log,
+        previous_frame=previous_left,
+    )
+    return _catalog_left_frame(page)
+
+
+def _catalog_folder_nodes(frame: Frame) -> list[dict[str, Any]]:
+    """Đọc toàn bộ cây con bên dưới Master từ DOM đã được WFX nạp."""
+    nodes = frame.evaluate(
+        """() => {
+            const clean = value =>
+                String(value || '').replace(/\\s+/g, ' ').trim();
+            const roots = [...document.querySelectorAll('ul[nodecode]')];
+            const root = roots.find(
+                element => clean(element.getAttribute('nodecode')) === 'Master'
+            );
+            if (!root) return [];
+            const directSpan = element =>
+                [...element.children].find(child =>
+                    child.matches?.('span[nodeid][onclick]')
+                ) || null;
+            return [...root.querySelectorAll('li > span[nodeid][onclick]')]
+                .map(span => {
+                    const li = span.closest('li');
+                    if (!li) return null;
+                    const path = [];
+                    let current = li;
+                    while (current && root.contains(current)) {
+                        const own = directSpan(current);
+                        if (own) path.unshift(clean(own.textContent));
+                        current = current.parentElement?.closest('li') || null;
+                    }
+                    const childTree = [...li.children].find(child =>
+                        child.matches?.('ul[nodecode]')
+                    );
+                    const nodeId = clean(span.getAttribute('nodeid'));
+                    if (!nodeId || !path.length) return null;
+                    return {
+                        node_id: nodeId,
+                        node_code: clean(childTree?.getAttribute('nodecode')),
+                        name: path[path.length - 1],
+                        path,
+                        path_label: path.join(' / '),
+                        kind: li.classList.contains('GroupNode')
+                            ? 'group'
+                            : 'folder',
+                        depth: path.length,
+                    };
+                })
+                .filter(Boolean);
+        }"""
+    )
+    return nodes if isinstance(nodes, list) else []
+
+
+def _catalog_folder_for_node(
+    frame: Frame,
+    node_id: str,
+) -> dict[str, Any] | None:
+    for folder in _catalog_folder_nodes(frame):
+        if str(folder.get("node_id") or "") == node_id:
+            return folder
+    return None
+
+
+def _wait_catalog_folder_selected(
+    page: Page,
+    node_id: str,
+    timeout_s: float = 10,
+) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        frame = page.frame(name="left")
+        if frame is not None:
+            try:
+                selected = frame.locator(
+                    f'span.clsTreeSelectedNode[nodeid="{node_id}"]'
+                )
+                if selected.count() > 0:
+                    return True
+            except PlaywrightError:
+                pass
+        page.wait_for_timeout(200)
+    return False
+
+
 def _filter_grid_and_maybe_open(
     grid: Frame,
     filter_kind: str,
@@ -563,6 +665,230 @@ def find_in_open_catalog(
         message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
         _write_log(log, message)
         return _result(False, "CATALOG_SEARCH_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def prepare_catalog_master(
+    category_name: str,
+    category_value: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Mở Catalog/Category/Master cho luồng Tìm, Costing và BOM."""
+    playwright: Playwright | None = None
+    try:
+        if not _chrome_is_ready():
+            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên chưa đăng nhập hoặc đã hết hạn.",
+            )
+
+        previous_grid = next(
+            (f for f in page.frames if "wfxcataloglist" in f.url.lower()),
+            None,
+        )
+        _open_catalog_tree_on_page(
+            page,
+            category_name,
+            category_value,
+            log,
+        )
+        _write_log(log, "[CATALOG] Đang chuẩn bị Master cho tìm kiếm...")
+        _click_catalog_master(page, log)
+        _show_catalog_floating_filter(
+            page,
+            log,
+            previous_frame=previous_grid,
+        )
+        return _result(
+            True,
+            "CATEGORY_SELECTED",
+            f"Đã chuẩn bị {category_name} > Master để tìm kiếm.",
+            category=category_name,
+            value=category_value,
+        )
+    except PlaywrightTimeoutError as exc:
+        message = f"Catalog Master chưa sẵn sàng: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATALOG_NOT_OPEN", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATEGORY_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def scan_catalog_folders(
+    category_name: str,
+    category_value: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Mở cây Catalog và trả về mọi folder/group user được nhìn thấy."""
+    playwright: Playwright | None = None
+    try:
+        if not _chrome_is_ready():
+            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên chưa đăng nhập hoặc đã hết hạn.",
+            )
+
+        frame = _open_catalog_tree_on_page(
+            page,
+            category_name,
+            category_value,
+            log,
+        )
+        folders = _catalog_folder_nodes(frame)
+        if not folders:
+            return _result(
+                False,
+                "CATALOG_FOLDER_TREE_EMPTY",
+                "WFX chưa trả về cây thư mục Catalog.",
+                category=category_name,
+                value=category_value,
+                folders=[],
+            )
+        _write_log(
+            log,
+            f"[CATALOG FOLDER] Đã quét {len(folders)} thư mục user được quyền xem.",
+        )
+        return _result(
+            True,
+            "CATALOG_FOLDERS_SCANNED",
+            f"Đã quét {len(folders)} thư mục Catalog.",
+            category=category_name,
+            value=category_value,
+            folders=folders,
+        )
+    except PlaywrightTimeoutError as exc:
+        message = f"Không quét được cây Catalog: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATALOG_FOLDER_SCAN_TIMEOUT", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATALOG_FOLDER_SCAN_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def open_catalog_folder(
+    category_name: str,
+    category_value: str,
+    node_id: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Mở một folder user theo node ID; node rỗng nghĩa là Master."""
+    node_id = str(node_id or "").strip()
+    if node_id and not node_id.isdigit():
+        return _result(
+            False,
+            "CATALOG_FOLDER_INVALID",
+            "Thư mục Catalog không hợp lệ.",
+        )
+
+    playwright: Playwright | None = None
+    try:
+        if not _chrome_is_ready():
+            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên chưa đăng nhập hoặc đã hết hạn.",
+            )
+
+        previous_grid = next(
+            (f for f in page.frames if "wfxcataloglist" in f.url.lower()),
+            None,
+        )
+        frame = _open_catalog_tree_on_page(
+            page,
+            category_name,
+            category_value,
+            log,
+        )
+        if not node_id:
+            _click_catalog_master(page, log)
+            _show_catalog_floating_filter(
+                page,
+                log,
+                previous_frame=previous_grid,
+            )
+            return _result(
+                True,
+                "CATALOG_FOLDER_OPENED",
+                f"Đã mở {category_name} > Master.",
+                category=category_name,
+                value=category_value,
+                folder={
+                    "node_id": "",
+                    "node_code": "Master",
+                    "name": "Master",
+                    "path": ["Master"],
+                    "path_label": "Master",
+                    "kind": "master",
+                    "depth": 0,
+                },
+            )
+
+        folder = _catalog_folder_for_node(frame, node_id)
+        if folder is None:
+            return _result(
+                False,
+                "CATALOG_FOLDER_STALE",
+                "Folder mặc định không còn tồn tại hoặc user không còn quyền xem.",
+                category=category_name,
+                value=category_value,
+            )
+
+        target = frame.locator(f'span[nodeid="{node_id}"][onclick]').first
+        target.wait_for(state="attached", timeout=3_000)
+        _write_log(
+            log,
+            f"[CATALOG FOLDER] Đang mở {folder['path_label']}...",
+        )
+        target.evaluate("element => element.click()")
+        if not _wait_catalog_folder_selected(page, node_id):
+            raise PlaywrightTimeoutError("WFX không xác nhận folder đã chọn.")
+        return _result(
+            True,
+            "CATALOG_FOLDER_OPENED",
+            f"Đã mở Catalog > {folder['path_label']}.",
+            category=category_name,
+            value=category_value,
+            folder=folder,
+        )
+    except PlaywrightTimeoutError as exc:
+        message = f"Không mở được folder Catalog: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATALOG_FOLDER_OPEN_TIMEOUT", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATALOG_FOLDER_OPEN_FAILED", message)
     finally:
         if playwright is not None:
             playwright.stop()

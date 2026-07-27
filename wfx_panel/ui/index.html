@@ -35,6 +35,11 @@
       </div>
     </header>
 
+    <div class="operation-progress" role="status" aria-live="polite" hidden>
+      <span class="operation-spinner" aria-hidden="true"></span>
+      <span class="operation-progress-text">Đang xử lý trên WFX…</span>
+    </div>
+
     <div class="panel-body">
       <section class="update-banner" hidden aria-live="polite">
         <div class="banner-icon" aria-hidden="true">↑</div>
@@ -96,55 +101,72 @@
             <span class="module-modal-icon accent-cyan" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4.5 7.5h6l1.8 2H19.5v9h-15v-11Z"/><path d="m9 14 2 2 4-5"/></svg>
             </span>
-            <div><span class="module-modal-kicker">Operation</span><strong id="module-modal-title">Catalog</strong></div>
+            <div class="module-modal-heading">
+              <strong id="module-modal-title">Catalog</strong>
+              <span class="module-modal-subtitle">Tìm style, mở Costing hoặc BOM.</span>
+            </div>
           </div>
           <button class="icon-button module-close-button" type="button" aria-label="Đóng module"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
         </header>
-        <p class="module-modal-description"></p>
 
         <div class="catalog-workspace" data-module-view="catalog">
-          <div class="catalog-category-row">
-            <label><span>Category</span>
-              <select class="catalog-category">
-                <option value="Apparel">Apparel</option>
-                <option value="Fixed Asset">Fixed Asset</option>
-                <option value="Miscellaneous">Miscellaneous</option>
-                <option value="Services">Services</option>
-                <option value="Textiles/Fabric">Textiles/Fabric</option>
-                <option value="Trims">Trims</option>
-              </select>
-            </label>
-            <button class="catalog-open-button" type="button" data-catalog-action="prepare">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6l2 2h8v12H4V5Z"/><path d="m9 14 2 2 4-5"/></svg>
-              Mở Catalog
+          <div class="catalog-browse-card">
+            <div class="catalog-category-row">
+              <label><span>Category</span>
+                <select class="catalog-category">
+                  <option value="Apparel">Apparel</option>
+                  <option value="Fixed Asset">Fixed Asset</option>
+                  <option value="Miscellaneous">Miscellaneous</option>
+                  <option value="Services">Services</option>
+                  <option value="Textiles/Fabric">Textiles/Fabric</option>
+                  <option value="Trims">Trims</option>
+                </select>
+              </label>
+              <button class="catalog-folder-refresh" type="button" data-catalog-action="refresh-folders" title="Quét lại folder Catalog" aria-label="Quét lại folder Catalog">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+              </button>
+            </div>
+            <div class="catalog-folder-field">
+              <div class="catalog-folder-label">
+                <span>Vị trí mặc định</span>
+                <strong class="catalog-folder-current">Mặc định (Master)</strong>
+              </div>
+              <div class="catalog-folder-search-box">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                <input class="catalog-folder-search" type="search" autocomplete="off" placeholder="Tìm folder, group hoặc đường dẫn…" disabled />
+              </div>
+              <div class="catalog-folder-list" role="listbox" aria-label="Chọn vị trí mặc định" aria-busy="true">
+                <div class="catalog-folder-empty">Đang tải danh sách…</div>
+              </div>
+            </div>
+            <button class="catalog-browse-button" type="button" data-catalog-action="browse" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6l2 2h8v11H4V6Z"/><path d="m10 12 2 2 3-4"/></svg>
+              <span class="catalog-browse-label">Mở Master</span>
             </button>
+          </div>
+          <div class="catalog-search-heading">
+            <strong>Tìm trong Master</strong>
           </div>
           <div class="catalog-query-row">
             <label><span>Style Code</span><input class="catalog-code" type="text" autocomplete="off" placeholder="Ví dụ: ABC123" /></label>
             <div class="catalog-query-actions">
-              <button class="catalog-find-button" type="button" data-catalog-action="code-find" disabled>Tìm</button>
+              <button type="button" data-catalog-action="code-find">Tìm</button>
+              <button type="button" data-catalog-action="code-costsheet">Costing</button>
+              <button type="button" data-catalog-action="code-bom">BOM</button>
             </div>
           </div>
           <div class="catalog-query-row">
             <label><span>Buyer Reference</span><input class="catalog-buyer-reference" type="text" autocomplete="off" placeholder="Nhập buyer reference" /></label>
             <div class="catalog-query-actions">
-              <button class="catalog-find-button" type="button" data-catalog-action="buyer-find" disabled>Tìm</button>
+              <button type="button" data-catalog-action="buyer-find">Tìm</button>
+              <button type="button" data-catalog-action="buyer-costsheet">Costing</button>
+              <button type="button" data-catalog-action="buyer-bom">BOM</button>
             </div>
           </div>
-          <div class="catalog-destination-step">
-            <div class="catalog-step-copy">
-              <strong>Bước tiếp theo</strong>
-              <span>Tìm một style trước, sau đó mở thẳng Costing hoặc BOM.</span>
-            </div>
-            <div class="style-status" aria-live="polite" hidden>
-              <span class="style-status-code"></span>
-              <span>Season <b class="style-status-season">—</b></span>
-              <span>CostSheet <b class="style-status-costsheet">—</b></span>
-            </div>
-            <div class="catalog-destination-actions">
-              <button class="destination-button" type="button" data-catalog-action="open-costsheet" disabled>Costing</button>
-              <button class="destination-button" type="button" data-catalog-action="open-bom" disabled>BOM</button>
-            </div>
+          <div class="style-status" aria-live="polite" hidden>
+            <span class="style-status-code"></span>
+            <span>Season <b class="style-status-season">—</b></span>
+            <span>CostSheet <b class="style-status-costsheet">—</b></span>
           </div>
         </div>
 

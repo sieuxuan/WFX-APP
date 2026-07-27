@@ -1,4 +1,4 @@
-## WFX Smart 1.0.7
+## WFX Smart 1.0.8
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -17,6 +17,10 @@ Chạy dev:
   chạy lại. Không lưu User ID/password vào lịch sử.
 - Khi tìm đúng một style Apparel, panel hiển thị thêm Season và Internal
   CostSheet Status đọc trực tiếp từ Catalog Grid.
+- Cây Group/Folder của Catalog Apparel chỉ scan một lần cho mỗi tài khoản và
+  được dùng lại sau khi mở lại app; nút Refresh là thao tác duy nhất ép scan lại.
+- Khi automation đang chạy, panel hiển thị tiến trình rõ ràng, chặn workflow
+  chạy trùng nhưng vẫn cho phép đóng/thu giao diện; toast hiện chữ đồng bộ.
 - Click module chỉ mở modal trong app trước; Catalog có workflow riêng trong
   modal. Các module chưa có workflow riêng sẽ mở thẳng WFX; controller riêng
   vẫn được giữ để mở rộng sau.
@@ -45,7 +49,7 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Panel-v1.0.7-win64.zip` kèm file checksum `.sha256`.
+Gói phát hành: `WFX-Panel-v1.0.8-win64.zip` kèm file checksum `.sha256`.
 
 - Windows 11 có sẵn WebView2 trong phần lớn bản cài.
 - Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài

@@ -31,6 +31,80 @@ def test_webview_uses_fresh_ui_cache():
     assert "min_size=(BUBBLE_SIZE, BUBBLE_SIZE)" in source
 
 
+def test_normal_startup_opens_full_panel(monkeypatch):
+    app = panel_app.PanelApp()
+    app._start_hidden = False
+    app._hotkey_ready.set()
+    calls = []
+
+    class FakeWindow:
+        def evaluate_js(self, script):
+            calls.append(("js", script))
+
+    class FakeApi:
+        def get_initial_state(self):
+            return {}
+
+        def flush_error_reports(self):
+            return None
+
+        def check_session(self):
+            return {"ok": False, "message": "no session"}
+
+    app.window = FakeWindow()
+    app.api = FakeApi()
+    app.show_panel = lambda: calls.append(("show-panel",)) or {"ok": True}
+    monkeypatch.setattr(
+        panel_app.prefs,
+        "load_account",
+        lambda: {"user_id": "", "password": ""},
+    )
+    monkeypatch.setattr(
+        panel_app.updater, "consume_update_result", lambda: None
+    )
+
+    app._startup()
+
+    assert ("show-panel",) in calls
+
+
+def test_start_hidden_preference_keeps_full_panel_hidden(monkeypatch):
+    app = panel_app.PanelApp()
+    app._start_hidden = True
+    app._hotkey_ready.set()
+    calls = []
+
+    class FakeWindow:
+        def evaluate_js(self, _script):
+            pass
+
+    class FakeApi:
+        def get_initial_state(self):
+            return {}
+
+        def flush_error_reports(self):
+            return None
+
+        def check_session(self):
+            return {"ok": False, "message": "no session"}
+
+    app.window = FakeWindow()
+    app.api = FakeApi()
+    app.show_panel = lambda: calls.append("show") or {"ok": True}
+    monkeypatch.setattr(
+        panel_app.prefs,
+        "load_account",
+        lambda: {"user_id": "", "password": ""},
+    )
+    monkeypatch.setattr(
+        panel_app.updater, "consume_update_result", lambda: None
+    )
+
+    app._startup()
+
+    assert calls == []
+
+
 def test_top_right_position_places_window_near_top_right(monkeypatch):
     class FakeScreen:
         width = 1920
@@ -61,12 +135,75 @@ def test_module_results_route_to_external_notification():
     app = PanelApp()
     sent = []
     app.window = None
-    app._show_notification = sent.append
+    app._show_notification = (
+        lambda result, **context: sent.append((result, context))
+    )
 
     app._on_result("find_code", {"ok": True, "message": "xong"}, 0.2)
     app._on_result("switch_division", {"ok": True, "message": "đổi"}, 0.2)
 
-    assert sent == [{"ok": True, "message": "xong"}]
+    assert sent == [
+        (
+            {"ok": True, "message": "xong"},
+            {"method": "find_code", "elapsed": 0.2},
+        )
+    ]
+
+
+def test_notification_shows_full_action_detail_without_resizing_webview(
+    monkeypatch,
+):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    scripts = []
+    moved = []
+    native_calls = []
+
+    class FakeWindow:
+        def evaluate_js(self, script):
+            scripts.append(script)
+
+        def move(self, x, y):
+            moved.append((x, y))
+
+        def show(self):
+            pass
+
+    class FakeTimer:
+        daemon = False
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    app.notification_window = FakeWindow()
+    app._notification_ready.set()
+    app._toast_enabled = True
+    monkeypatch.setattr(
+        module,
+        "_native_notification_visibility",
+        lambda *args: native_calls.append(args) or False,
+    )
+    monkeypatch.setattr(module.threading, "Timer", FakeTimer)
+
+    app._show_notification(
+        {
+            "ok": True,
+            "message": "Đã mở đầy đủ thông tin Costing cho style.",
+            "article_code": "ABC123",
+        },
+        method="catalog_action",
+        elapsed=2.5,
+    )
+
+    assert '"title": "Catalog · Hoàn thành"' in scripts[0]
+    assert '"detail": "Style ABC123 · 2,5 giây"' in scripts[0]
+    assert "Đã mở đầy đủ thông tin Costing cho style." in scripts[0]
+    assert native_calls and len(native_calls[0]) == 3
+    assert moved
 
 
 def test_external_notification_failure_never_breaks_result_flow(monkeypatch):

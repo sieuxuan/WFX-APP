@@ -86,6 +86,116 @@ def test_new_pref_defaults(tmp_path):
     assert loaded["compact_offset_y"] is None
     assert loaded["panel_offset_x"] is None
     assert loaded["panel_offset_y"] is None
+    assert loaded["catalog_default_folder"] is None
+
+
+def test_catalog_default_folder_round_trip(tmp_path):
+    folder = {
+        "user_id": "alice",
+        "category_name": "Apparel",
+        "category_value": "01",
+        "node_id": "101",
+        "node_code": "22_1",
+        "name": "DEV",
+        "path": ["KNIT", "DEV"],
+        "path_label": "ignored",
+        "kind": "group",
+    }
+    prefs.save_prefs(
+        base_dir=tmp_path,
+        catalog_default_folder=folder,
+    )
+    loaded = prefs.load_prefs(base_dir=tmp_path)["catalog_default_folder"]
+    assert loaded == {
+        **folder,
+        "path_label": "KNIT / DEV",
+        "depth": 2,
+    }
+
+
+def test_catalog_default_folder_rejects_unsafe_node_id(tmp_path):
+    prefs.save_prefs(
+        base_dir=tmp_path,
+        catalog_default_folder={
+            "user_id": "alice",
+            "category_name": "Apparel",
+            "category_value": "01",
+            "node_id": '1"] script',
+            "name": "bad",
+            "path": ["bad"],
+        },
+    )
+    assert prefs.load_prefs(
+        base_dir=tmp_path
+    )["catalog_default_folder"] is None
+
+
+def test_catalog_default_folder_rejects_non_apparel_category(tmp_path):
+    prefs.save_prefs(
+        base_dir=tmp_path,
+        catalog_default_folder={
+            "user_id": "alice",
+            "category_name": "Trims",
+            "category_value": "06",
+            "node_id": "",
+            "name": "Master",
+            "path": ["Master"],
+        },
+    )
+    assert prefs.load_prefs(
+        base_dir=tmp_path
+    )["catalog_default_folder"] is None
+
+
+def test_catalog_folder_cache_round_trip_is_scoped_to_user(tmp_path):
+    folders = [
+        {
+            "node_id": "101",
+            "node_code": "KNIT",
+            "name": "Development",
+            "path": ["KNIT", "Development"],
+            "kind": "group",
+            "depth": 99,
+        },
+        {
+            "node_id": "102",
+            "name": "Active",
+            "path": ["KNIT", "Development", "Active"],
+            "kind": "folder",
+        },
+    ]
+
+    saved = prefs.save_catalog_folder_cache(
+        "alice",
+        folders,
+        base_dir=tmp_path,
+    )
+
+    assert len(saved) == 2
+    assert saved[0]["depth"] == 2
+    assert prefs.load_catalog_folder_cache(
+        "alice",
+        base_dir=tmp_path,
+    ) == saved
+    assert prefs.load_catalog_folder_cache(
+        "bob",
+        base_dir=tmp_path,
+    ) is None
+    assert (tmp_path / "catalog-folders.json").is_file()
+
+
+def test_catalog_folder_cache_rejects_invalid_or_non_apparel_data(tmp_path):
+    assert prefs.save_catalog_folder_cache(
+        "alice",
+        [{"node_id": '1"]', "name": "bad", "path": ["bad"]}],
+        base_dir=tmp_path,
+    ) == []
+    assert prefs.save_catalog_folder_cache(
+        "alice",
+        [{"node_id": "1", "name": "Trims", "path": ["Trims"]}],
+        category_name="Trims",
+        base_dir=tmp_path,
+    ) == []
 
 
 def test_admin_mode_round_trip(tmp_path):

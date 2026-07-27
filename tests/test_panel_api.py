@@ -1,3 +1,5 @@
+import threading
+
 from wfx_panel import prefs
 from wfx_panel.panel_api import PanelAPI
 
@@ -70,6 +72,56 @@ class FakeLogin:
     def set_catalog_category(self, category_name, category_value, log=print):
         self.calls.append(("set_catalog_category", category_name, category_value))
         return {"ok": True, "code": "CATEGORY_SELECTED", "message": category_name}
+
+    def prepare_catalog_master(self, category_name, category_value, log=print):
+        self.calls.append(("prepare_catalog_master", category_name, category_value))
+        return {
+            "ok": True,
+            "code": "CATEGORY_SELECTED",
+            "message": category_name,
+            "category": category_name,
+            "value": category_value,
+        }
+
+    def scan_catalog_folders(self, category_name, category_value, log=print):
+        self.calls.append(("scan_catalog_folders", category_name, category_value))
+        return {
+            "ok": True,
+            "code": "CATALOG_FOLDERS_SCANNED",
+            "message": "scanned",
+            "category": category_name,
+            "value": category_value,
+            "folders": [
+                {
+                    "node_id": "101",
+                    "node_code": "22_1",
+                    "name": "DEV",
+                    "path": ["KNIT", "DEV"],
+                    "path_label": "KNIT / DEV",
+                    "kind": "group",
+                    "depth": 2,
+                }
+            ],
+        }
+
+    def open_catalog_folder(
+        self, category_name, category_value, node_id, log=print
+    ):
+        self.calls.append(
+            ("open_catalog_folder", category_name, category_value, node_id)
+        )
+        name = "Master" if not node_id else "KNIT / DEV"
+        return {
+            "ok": True,
+            "code": "CATALOG_FOLDER_OPENED",
+            "message": name,
+            "category": category_name,
+            "value": category_value,
+            "folder": {
+                "node_id": node_id,
+                "path_label": name,
+            },
+        }
 
     def quick_find_catalog(self, category_name, category_value, filter_kind, query,
                            user_id, password, company_id="psh", log=print, destination=None):
@@ -201,10 +253,224 @@ def test_catalog_search_requires_prepare_step(tmp_path):
     assert not any(call[0] == "find_in_open_catalog" for call in fake.calls)
 
 
+def test_catalog_direct_costing_is_one_user_action(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.catalog_action("Apparel", "code", "ABC123", "costsheet")
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert fake.calls == [
+        ("prepare_catalog_master", "Apparel", "01"),
+        ("find_in_open_catalog", "Apparel", "code", "ABC123"),
+        ("open_catalog_destination", "ABC123", "costsheet"),
+    ]
+
+
+def test_catalog_direct_destination_reuses_matching_popup(tmp_path):
+    api, fake = make_api(tmp_path)
+    api.catalog_action("Apparel", "code", "ABC123", None)
+    fake.calls.clear()
+
+    result = api.catalog_action("Apparel", "code", "ABC123", "bom")
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert fake.calls == [
+        ("open_catalog_destination", "ABC123", "bom"),
+    ]
+
+
+def test_catalog_folder_scan_and_default_are_scoped_to_user(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+
+    scanned = api.scan_catalog_folders("Apparel")
+    saved = api.set_catalog_default_folder("Apparel", "101")
+
+    assert scanned["code"] == "CATALOG_FOLDERS_SCANNED"
+    assert saved["default_folder"]["path_label"] == "KNIT / DEV"
+    stored = prefs.load_prefs(base_dir=tmp_path)["catalog_default_folder"]
+    assert stored["node_id"] == "101"
+    assert stored["user_id"] == "alice"
+    assert (
+        "scan_catalog_folders",
+        "Apparel",
+        "01",
+    ) in fake.calls
+
+    prefs.save_account("bob", "pw", base_dir=tmp_path)
+    other_api, _ = make_api(tmp_path)
+    assert other_api.get_initial_state()["catalog_default_folder"] is None
+
+
+def test_catalog_folder_tree_is_reused_across_app_restarts(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    first_api, first_fake = make_api(tmp_path)
+    first = first_api.scan_catalog_folders("Apparel")
+    assert first["code"] == "CATALOG_FOLDERS_SCANNED"
+    assert any(call[0] == "scan_catalog_folders" for call in first_fake.calls)
+
+    restarted_api, restarted_fake = make_api(tmp_path)
+    cached = restarted_api.scan_catalog_folders("Apparel")
+
+    assert cached["code"] == "CATALOG_FOLDERS_CACHED"
+    assert cached["folders"] == first["folders"]
+    assert not any(
+        call[0] == "scan_catalog_folders"
+        for call in restarted_fake.calls
+    )
+
+
+def test_catalog_folder_refresh_forces_a_new_scan(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+    api.scan_catalog_folders("Apparel")
+    fake.calls.clear()
+
+    refreshed = api.scan_catalog_folders("Apparel", True)
+
+    assert refreshed["code"] == "CATALOG_FOLDERS_SCANNED"
+    assert (
+        "scan_catalog_folders",
+        "Apparel",
+        "01",
+    ) in fake.calls
+
+
+def test_browse_catalog_opens_saved_folder_without_master_search(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+    api.scan_catalog_folders("Apparel")
+    api.set_catalog_default_folder("Apparel", "101")
+    fake.calls.clear()
+
+    result = api.browse_catalog("Apparel")
+
+    assert result["code"] == "CATALOG_FOLDER_OPENED"
+    assert fake.calls == [
+        ("open_catalog_folder", "Apparel", "01", "101"),
+    ]
+    assert not any(
+        call[0] in {"prepare_catalog_master", "find_in_open_catalog"}
+        for call in fake.calls
+    )
+
+
+def test_master_is_always_available_as_catalog_default(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+
+    saved = api.set_catalog_default_folder("Apparel", "")
+    result = api.browse_catalog("Apparel")
+
+    assert saved["default_folder"]["path_label"] == "Master"
+    assert ("open_catalog_folder", "Apparel", "01", "") in fake.calls
+    assert result["code"] == "CATALOG_FOLDER_OPENED"
+
+
+def test_stale_catalog_default_falls_back_to_master(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+    api.scan_catalog_folders("Apparel")
+    api.set_catalog_default_folder("Apparel", "101")
+    calls = []
+
+    def opener(category_name, category_value, node_id, log=print):
+        calls.append(node_id)
+        if node_id:
+            return {
+                "ok": False,
+                "code": "CATALOG_FOLDER_STALE",
+                "message": "stale",
+            }
+        return {
+            "ok": True,
+            "code": "CATALOG_FOLDER_OPENED",
+            "message": "Master",
+        }
+
+    fake.open_catalog_folder = opener
+    result = api.browse_catalog("Apparel")
+
+    assert calls == ["101", ""]
+    assert result["code"] == "CATALOG_FOLDER_FALLBACK"
+    stored = prefs.load_prefs(base_dir=tmp_path)["catalog_default_folder"]
+    assert stored["node_id"] == ""
+    assert stored["path_label"] == "Master"
+
+
+def test_division_change_keeps_scanned_catalog_folder_cache(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api, _ = make_api(tmp_path)
+    api.scan_catalog_folders("Apparel")
+
+    api.switch_division("knit")
+    saved = api.set_catalog_default_folder("Apparel", "101")
+
+    assert saved["code"] == "CATALOG_DEFAULT_FOLDER_SAVED"
+    assert saved["default_folder"]["node_id"] == "101"
+
+
+def test_account_change_clears_scanned_catalog_folder_cache(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api, _ = make_api(tmp_path)
+    api.scan_catalog_folders("Apparel")
+
+    api.save_account("bob", "pw2")
+    result = api.set_catalog_default_folder("Apparel", "101")
+
+    assert result["code"] == "CATALOG_FOLDER_NOT_SCANNED"
+
+
+def test_catalog_default_location_is_apparel_only(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    scanned = api.scan_catalog_folders("Trims")
+    saved = api.set_catalog_default_folder("Trims", "")
+    browsed = api.browse_catalog("Trims")
+
+    for result in (scanned, saved, browsed):
+        assert result["code"] == "CATALOG_DEFAULT_APPAREL_ONLY"
+        assert "Apparel" in result["message"]
+    assert not any(
+        call[0] in {"scan_catalog_folders", "open_catalog_folder"}
+        for call in fake.calls
+    )
+
+
 def test_open_module_builds_xpath(tmp_path):
     api, fake = make_api(tmp_path)
     api.open_module("0004_0050_0020")
     assert ("open_module", "OC List", '//*[@id="0004_0050_0020"]/a') in fake.calls
+
+
+def test_parallel_automation_is_rejected_instead_of_queuing(tmp_path):
+    api, fake = make_api(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+    completed = []
+
+    def slow_open(module_name, xpath, log=print):
+        started.set()
+        release.wait(timeout=2)
+        return {
+            "ok": True,
+            "code": "MODULE_OPENED",
+            "message": module_name,
+        }
+
+    fake.open_module = slow_open
+    worker = threading.Thread(
+        target=lambda: completed.append(api.open_module("0004_0050_0020")),
+    )
+    worker.start()
+    assert started.wait(timeout=1)
+
+    overlapping = api.open_module("0004_0056_4070")
+    release.set()
+    worker.join(timeout=2)
+
+    assert overlapping["code"] == "ACTION_IN_PROGRESS"
+    assert completed[0]["code"] == "MODULE_OPENED"
 
 
 def test_sale_asn_new_uses_new_menu_xpath(tmp_path):
@@ -231,8 +497,7 @@ def test_open_chrome_uses_login_module(tmp_path):
 def test_prepare_catalog_opens_then_selects(tmp_path):
     api, fake = make_api(tmp_path)
     api.prepare_catalog("Apparel")
-    names = [c[0] for c in fake.calls]
-    assert names == ["open_module", "set_catalog_category"]
+    assert fake.calls == [("prepare_catalog_master", "Apparel", "01")]
 
 
 def test_log_sink_receives_lines(tmp_path):
@@ -449,6 +714,7 @@ def test_initial_state_exposes_new_fields(tmp_path):
         "chrome_alive",
         "session_active",
         "last_login_at",
+        "catalog_default_folder",
     ):
         assert field in state, field
 

@@ -65,10 +65,14 @@ def test_index_html_has_contract_hooks():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
         'class="module-list"',
-        'data-catalog-action="prepare"',
+        'data-catalog-action="refresh-folders"',
+        'data-catalog-action="browse"',
         'data-catalog-action="code-find"',
-        'data-catalog-action="open-bom"',
-        'data-catalog-action="open-costsheet"',
+        'data-catalog-action="code-bom"',
+        'data-catalog-action="code-costsheet"',
+        'data-catalog-action="buyer-bom"',
+        'class="catalog-folder-search"',
+        'class="catalog-folder-list"',
         'class="catalog-code"',
         'class="catalog-buyer-reference"',
         'class="user-input"',
@@ -82,22 +86,43 @@ def test_index_html_has_contract_hooks():
     assert 'class="compact-launcher"' not in html
 
 
-def test_catalog_destination_is_a_separate_disabled_step():
+def test_catalog_search_and_destinations_are_direct_actions():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    assert 'class="catalog-destination-step"' in html
-    assert "Tìm một style trước" in html
-    for action in ("open-costsheet", "open-bom"):
+    assert "Tìm trong Master" in html
+    assert 'class="catalog-destination-step"' not in html
+    for action in (
+        "code-find",
+        "code-costsheet",
+        "code-bom",
+        "buyer-find",
+        "buyer-costsheet",
+        "buyer-bom",
+    ):
         tag = html[html.index(f'data-catalog-action="{action}"') :]
         tag = tag[: tag.index(">")]
-        assert "disabled" in tag
-    assert 'data-catalog-action="code-costsheet"' not in html
-    assert 'data-catalog-action="buyer-bom"' not in html
-    for action in ("code-find", "buyer-find"):
-        action_index = html.index(f'data-catalog-action="{action}"')
-        tag = html[html.rfind("<button", 0, action_index) :]
-        tag = tag[: tag.index(">")]
-        assert "catalog-find-button" in tag
-        assert "disabled" in tag
+        assert "disabled" not in tag
+    assert 'class="catalog-folder-search"' in html
+    assert 'class="catalog-folder-list"' in html
+    assert 'class="catalog-browse-button"' in html
+
+
+def test_catalog_folder_picker_is_searchable_and_hides_technical_copy():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'placeholder="Tìm folder, group hoặc đường dẫn…"' in html
+    assert 'role="listbox"' in html
+    assert 'class="catalog-folder-current"' in html
+    assert "Duyệt Catalog" not in html
+    assert "WFX Smart tự quét" not in html
+
+
+def test_module_modal_header_uses_name_and_description_only():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'id="module-modal-title"' in html
+    assert 'class="module-modal-subtitle"' in html
+    assert 'class="module-modal-kicker"' not in html
+    assert 'class="module-modal-description"' not in html
+    modal = html[html.index('class="module-modal"') :]
+    assert ">Operation<" not in modal
 
 
 def test_bubble_page_advertises_interactions():
@@ -229,6 +254,14 @@ def test_external_notification_and_generic_svg_icon_are_present():
     assert 'class="notification notification-success"' in notification
     assert "window.wfxShowNotification" in notification_js
     assert "textContent = payload.message" in notification_js
+    assert 'class="notification-detail"' in notification
+    assert "-webkit-line-clamp" not in (
+        UI / "notification.css"
+    ).read_text(encoding="utf-8")
+    assert 'classList.add("notification-visible")' in notification_js
+    assert "window.requestAnimationFrame(" not in notification_js
+    assert "getBoundingClientRect().height" not in notification_js
+    assert 'class="operation-progress"' in html
     assert 'class="generic-module-icon"' in html
     assert 'class="generic-module-code"' not in html
 
