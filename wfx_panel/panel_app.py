@@ -746,18 +746,20 @@ class PanelApp:
 
     def _status_loop(self) -> None:
         while not self._stop_status.wait(STATUS_POLL_SECONDS):
-            alive = status.chrome_alive()
-            if alive == self._chrome_alive:
-                continue
-            self._chrome_alive = alive
-            if self.window is None:
-                continue
+            # Một lỗi native/evaluate_js tạm thời không được giết luôn thread,
+            # nếu không trạng thái Chrome sẽ đứng im cả phiên.
             try:
+                alive = status.chrome_alive()
+                if alive == self._chrome_alive:
+                    continue
+                self._chrome_alive = alive
+                if self.window is None:
+                    continue
                 self.window.evaluate_js(
                     f"window.wfxSetChromeStatus({'true' if alive else 'false'})"
                 )
             except Exception:
-                pass
+                continue
 
     def _check_update_once(self) -> None:
         state = self.api.check_for_updates()
@@ -830,23 +832,26 @@ class PanelApp:
     def _taskbar_activation_loop(self) -> None:
         """Chỉ mở UI khi foreground chuyển từ app khác sang đúng HWND bubble."""
         while not self._stop_status.wait(TASKBAR_ACTIVATION_POLL_SECONDS):
-            foreground_pid = _foreground_process_id()
-            foreground_hwnd = _foreground_window_hwnd()
-            bubble_hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
-            if foreground_pid is not None and foreground_pid != os.getpid():
-                self._taskbar_focus_armed = True
-            elif (
-                foreground_pid == os.getpid()
-                and foreground_hwnd is not None
-                and foreground_hwnd == bubble_hwnd
-                and self._taskbar_focus_armed
-            ):
-                self._taskbar_focus_armed = False
-                self._open_panel_from_taskbar()
-            elif foreground_pid == os.getpid():
-                # Menu pystray cũng thuộc process này. Huỷ trạng thái chờ để
-                # đóng menu tray không bị hiểu nhầm thành click taskbar.
-                self._taskbar_focus_armed = False
+            try:
+                foreground_pid = _foreground_process_id()
+                foreground_hwnd = _foreground_window_hwnd()
+                bubble_hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
+                if foreground_pid is not None and foreground_pid != os.getpid():
+                    self._taskbar_focus_armed = True
+                elif (
+                    foreground_pid == os.getpid()
+                    and foreground_hwnd is not None
+                    and foreground_hwnd == bubble_hwnd
+                    and self._taskbar_focus_armed
+                ):
+                    self._taskbar_focus_armed = False
+                    self._open_panel_from_taskbar()
+                elif foreground_pid == os.getpid():
+                    # Menu pystray cũng thuộc process này. Huỷ trạng thái chờ để
+                    # đóng menu tray không bị hiểu nhầm thành click taskbar.
+                    self._taskbar_focus_armed = False
+            except Exception:
+                continue
 
     def _on_closing(self):
         # Panel bị đóng (Alt+F4 / nút X) → chỉ ẩn panel, bubble vẫn còn. Khi
