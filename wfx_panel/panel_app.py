@@ -32,8 +32,11 @@ from wfx_panel.win32_window import (
     _native_cursor_position,
     _native_left_button_down,
     _native_notification_visibility,
+    _scale_logical_size,
     _set_bounds_by_title,
     _set_process_window_bounds,
+    _unscale_physical_size,
+    _window_dpi_by_title,
     _window_rect_by_title,
     _work_area_for_point,
     _work_area_for_process_window,
@@ -129,6 +132,10 @@ def _top_right_position() -> tuple[int, int]:
 
 def _notification_position() -> tuple[int, int]:
     """Neo toast quanh bubble và giữ trọn trong đúng màn hình của bubble."""
+    notification_width, notification_height = _logical_size_on_bubble_monitor(
+        NOTIFICATION_WIDTH,
+        NOTIFICATION_HEIGHT,
+    )
     left, top, right, bottom = (0, 0, 1920, 1080)
     if os.name == "nt":
         try:
@@ -165,15 +172,33 @@ def _notification_position() -> tuple[int, int]:
         bubble_area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
         if bubble_area is not None:
             left, top, right, bottom = bubble_area
-        x = bubble[2] - NOTIFICATION_WIDTH
-        above = bubble[1] - NOTIFICATION_HEIGHT - 8
+        x = bubble[2] - notification_width
+        above = bubble[1] - notification_height - 8
         y = above if above >= top + NOTIFICATION_MARGIN else bubble[3] + 8
     else:
-        x = right - NOTIFICATION_WIDTH - NOTIFICATION_MARGIN
-        y = bottom - NOTIFICATION_HEIGHT - NOTIFICATION_MARGIN
+        x = right - notification_width - NOTIFICATION_MARGIN
+        y = bottom - notification_height - NOTIFICATION_MARGIN
     return (
-        max(left + NOTIFICATION_MARGIN, min(x, right - NOTIFICATION_WIDTH - NOTIFICATION_MARGIN)),
-        max(top + NOTIFICATION_MARGIN, min(y, bottom - NOTIFICATION_HEIGHT - NOTIFICATION_MARGIN)),
+        max(
+            left + NOTIFICATION_MARGIN,
+            min(x, right - notification_width - NOTIFICATION_MARGIN),
+        ),
+        max(
+            top + NOTIFICATION_MARGIN,
+            min(y, bottom - notification_height - NOTIFICATION_MARGIN),
+        ),
+    )
+
+
+def _logical_size_on_bubble_monitor(
+    width: int,
+    height: int,
+) -> tuple[int, int]:
+    """Physical size giữ nguyên logical viewport ở mọi Windows Scale."""
+    return _scale_logical_size(
+        width,
+        height,
+        _window_dpi_by_title(BUBBLE_WINDOW_TITLE),
     )
 
 
@@ -348,7 +373,12 @@ class PanelApp:
         if area is None:
             area = _work_area_for_process_window(os.getpid())
 
-        width, height = WINDOW_WIDTH, WINDOW_HEIGHT
+        dpi = _window_dpi_by_title(BUBBLE_WINDOW_TITLE)
+        width, height = _scale_logical_size(
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+            dpi,
+        )
         if area is not None:
             # Với màn hình/work area nhỏ hơn panel chuẩn, co cửa sổ vừa đúng
             # work area để không có cạnh nào tràn sang màn hình khác/taskbar.
@@ -381,7 +411,12 @@ class PanelApp:
         x, y = _clamp_to_work_area(x, y, width, height, area)
         if not _set_process_window_bounds(os.getpid(), x, y, width, height):
             try:
-                self.window.resize(width, height)
+                logical_width, logical_height = _unscale_physical_size(
+                    width,
+                    height,
+                    dpi,
+                )
+                self.window.resize(logical_width, logical_height)
                 self.window.move(x, y)
             except Exception:
                 pass
@@ -670,7 +705,21 @@ class PanelApp:
                 f"{json.dumps(payload, ensure_ascii=False)})"
             )
             x, y = _notification_position()
-            if not _native_notification_visibility(True, x, y):
+            width, height = _logical_size_on_bubble_monitor(
+                NOTIFICATION_WIDTH,
+                NOTIFICATION_HEIGHT,
+            )
+            if not _native_notification_visibility(
+                True,
+                x,
+                y,
+                width,
+                height,
+            ):
+                self.notification_window.resize(
+                    NOTIFICATION_WIDTH,
+                    NOTIFICATION_HEIGHT,
+                )
                 self.notification_window.move(x, y)
                 self.notification_window.show()
         except Exception:

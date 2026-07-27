@@ -178,6 +178,9 @@ def test_notification_shows_full_action_detail_without_resizing_webview(
         def evaluate_js(self, script):
             scripts.append(script)
 
+        def resize(self, width, height):
+            moved.append(("resize", width, height))
+
         def move(self, x, y):
             moved.append((x, y))
 
@@ -201,6 +204,7 @@ def test_notification_shows_full_action_detail_without_resizing_webview(
         "_native_notification_visibility",
         lambda *args: native_calls.append(args) or False,
     )
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
     monkeypatch.setattr(module.threading, "Timer", FakeTimer)
 
     app._show_notification(
@@ -216,7 +220,15 @@ def test_notification_shows_full_action_detail_without_resizing_webview(
     assert '"title": "Catalog · Hoàn thành"' in scripts[0]
     assert '"detail": "Style ABC123 · 2,5 giây"' in scripts[0]
     assert "Đã mở đầy đủ thông tin Costing cho style." in scripts[0]
-    assert native_calls and len(native_calls[0]) == 3
+    assert native_calls and native_calls[0][3:] == (
+        module.NOTIFICATION_WIDTH,
+        module.NOTIFICATION_HEIGHT,
+    )
+    assert (
+        "resize",
+        module.NOTIFICATION_WIDTH,
+        module.NOTIFICATION_HEIGHT,
+    ) in moved
     assert moved
 
 
@@ -436,6 +448,7 @@ def test_notification_is_anchored_above_bubble(monkeypatch):
     monkeypatch.setattr(
         module, "_window_rect_by_title", lambda _title: (900, 500, 948, 548)
     )
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
     x, y = module._notification_position()
     # Canh phải mép bubble, nổi phía trên.
     assert x == 948 - module.NOTIFICATION_WIDTH
@@ -449,9 +462,32 @@ def test_notification_drops_below_bubble_when_no_room_above(monkeypatch):
     monkeypatch.setattr(
         module, "_window_rect_by_title", lambda _title: (900, 5, 948, 53)
     )
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
     x, y = module._notification_position()
     assert x == 948 - module.NOTIFICATION_WIDTH
     assert y == 53 + 8
+
+
+def test_notification_keeps_logical_size_at_150_percent_scale(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    monkeypatch.setattr(
+        module,
+        "_window_rect_by_title",
+        lambda _title: (900, 500, 948, 548),
+    )
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 144)
+
+    x, y = module._notification_position()
+
+    width, height = module._scale_logical_size(
+        module.NOTIFICATION_WIDTH,
+        module.NOTIFICATION_HEIGHT,
+        144,
+    )
+    assert (width, height) == (348, 132)
+    assert x == 948 - width
+    assert y == 500 - height - 8
 
 
 def test_hold_to_drag_starts_bubble_drag_thread(monkeypatch):
@@ -655,6 +691,7 @@ def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
             pass
 
     app.window = FakeWindow()
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
     # Bubble sát góc phải-dưới → panel phải bung sang TRÁI và clamp vào trong.
     monkeypatch.setattr(
         module, "_window_rect_by_title", lambda _title: (1880, 1040, 1934, 1094)
@@ -679,6 +716,89 @@ def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
     assert bounds_calls == [(1430, 460, module.WINDOW_WIDTH, module.WINDOW_HEIGHT)]
 
 
+def test_panel_keeps_two_column_logical_width_at_125_percent_scale(
+    monkeypatch,
+):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+
+    class FakeWindow:
+        def resize(self, *_args):
+            pass
+
+        def move(self, *_args):
+            pass
+
+    app.window = FakeWindow()
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 120)
+    monkeypatch.setattr(
+        module,
+        "_window_rect_by_title",
+        lambda _title: (1880, 500, 1928, 548),
+    )
+    monkeypatch.setattr(
+        module,
+        "_work_area_for_window_title",
+        lambda _title: (0, 0, 1920, 1080),
+    )
+    monkeypatch.setattr(
+        module,
+        "_set_process_window_bounds",
+        lambda _pid, x, y, width, height: (
+            calls.append((x, y, width, height)) or True
+        ),
+    )
+
+    app._position_panel_beside_bubble()
+
+    physical_width, physical_height = module._scale_logical_size(
+        module.WINDOW_WIDTH,
+        module.WINDOW_HEIGHT,
+        120,
+    )
+    assert (physical_width, physical_height) == (550, 775)
+    assert calls == [(1320, 305, physical_width, physical_height)]
+    assert round(physical_width * 96 / 120) == module.WINDOW_WIDTH
+
+
+def test_panel_pywebview_fallback_uses_logical_size_at_high_dpi(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    calls = []
+
+    class FakeWindow:
+        def resize(self, width, height):
+            calls.append(("resize", width, height))
+
+        def move(self, x, y):
+            calls.append(("move", x, y))
+
+    app = module.PanelApp()
+    app.window = FakeWindow()
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 144)
+    monkeypatch.setattr(
+        module,
+        "_window_rect_by_title",
+        lambda _title: (1800, 300, 1848, 348),
+    )
+    monkeypatch.setattr(
+        module,
+        "_work_area_for_window_title",
+        lambda _title: (0, 0, 1920, 1200),
+    )
+    monkeypatch.setattr(
+        module,
+        "_set_process_window_bounds",
+        lambda *_args: False,
+    )
+
+    app._position_panel_beside_bubble()
+
+    assert ("resize", module.WINDOW_WIDTH, module.WINDOW_HEIGHT) in calls
+
+
 def test_panel_stays_inside_bubble_monitor_at_all_four_corners(monkeypatch):
     import wfx_panel.panel_app as module
 
@@ -700,6 +820,7 @@ def test_panel_stays_inside_bubble_monitor_at_all_four_corners(monkeypatch):
 
     app = module.PanelApp()
     app.window = FakeWindow()
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
     monkeypatch.setattr(module, "_work_area_for_window_title", lambda _title: area)
 
     for bubble in corners:
@@ -739,6 +860,7 @@ def test_panel_shrinks_to_fit_a_small_work_area(monkeypatch):
 
     app = module.PanelApp()
     app.window = FakeWindow()
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
     monkeypatch.setattr(
         module, "_window_rect_by_title", lambda _title: (372, 302, 420, 350)
     )

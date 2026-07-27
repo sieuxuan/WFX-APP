@@ -1088,9 +1088,9 @@ body.compact-mode .compact-launcher .compact-mark {
       .panel-open + .toast-stack { right: 18px; bottom: 92px; }
     }
     /* WebView desktop có inner viewport khoảng 420px dù window đặt 440px.
-       Chỉ chuyển một cột trên màn thực sự hẹp, không làm vỡ layout app. */
+       Module card đủ gọn để luôn giữ hai cột; chỉ các form dài chuyển một cột
+       trên màn thực sự hẹp. Đây cũng là lớp bảo vệ nếu WebView báo sai DPI. */
     @media (max-width: 360px) {
-      .module-grid { grid-template-columns: 1fr; }
       .panel-body { padding-left: 13px; padding-right: 13px; }
       .hotkey-label { display: none; }
       .form-grid { grid-template-columns: 1fr; }

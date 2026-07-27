@@ -1,6 +1,16 @@
 from wfx_panel import win32_window
 
 
+def test_logical_size_scales_to_physical_pixels_for_common_windows_dpi():
+    assert win32_window._scale_logical_size(440, 620, 96) == (440, 620)
+    assert win32_window._scale_logical_size(440, 620, 120) == (550, 775)
+    assert win32_window._scale_logical_size(440, 620, 144) == (660, 930)
+    assert win32_window._scale_logical_size(440, 620, 192) == (880, 1240)
+    assert win32_window._scale_logical_size(440, 620, 0) == (440, 620)
+    assert win32_window._unscale_physical_size(550, 775, 120) == (440, 620)
+    assert win32_window._unscale_physical_size(660, 930, 144) == (440, 620)
+
+
 def test_clamp_keeps_rect_inside_work_area():
     area = (0, 0, 1920, 1080)
     # Tràn phải-dưới → đẩy vào trong.
