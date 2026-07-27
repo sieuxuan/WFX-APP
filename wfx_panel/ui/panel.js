@@ -5,7 +5,7 @@
       { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm style, kiểm tra Season/CostSheet và mở BOM hoặc Costsheet." },
       { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "generic", description: "Theo dõi và mở danh sách Order Confirmation." },
       { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "generic", description: "Tra cứu và thao tác danh sách sample." },
-      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "generic", description: "Mở danh sách Sale ASN." },
+      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn." },
       { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "generic", description: "Theo dõi đơn mua nguyên phụ liệu." },
       { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "generic", description: "Mở danh sách Indent." },
       { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "generic", description: "Mở danh sách kiểm tra chất lượng." },
@@ -19,8 +19,8 @@
       { name: "Org Structure", id: "0090_0001", icon: "OR", kind: "generic", description: "Mở cấu trúc tổ chức." },
       { name: "System Coding", id: "0090_0250", icon: "SC", kind: "generic", description: "Mở cấu hình mã hệ thống." },
       { name: "Company Setup", id: "0090_0007", icon: "CO", kind: "generic", description: "Mở thiết lập công ty." },
-      { name: "Buyer List", id: "0004_0010_1720", icon: "BU", kind: "generic", description: "Mở danh sách buyer." },
-      { name: "Supplier List", id: "0005_0010_1290", icon: "SU", kind: "generic", description: "Mở danh sách nhà cung cấp." },
+      { name: "Buyer List", id: "0004_0010_1720", icon: "BU", kind: "buyer", description: "Mở Buyers List hoặc tìm và mở Buyer đầu tiên phù hợp." },
+      { name: "Supplier List", id: "0005_0010_1290", icon: "SU", kind: "supplier", description: "Mở Supplier theo Category hoặc tìm Supplier trên mọi Category." },
     ]},
   ];
 
@@ -32,6 +32,28 @@
   const escapeHtml = (value) => String(value == null ? "" : value)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const MODULE_ICON_PATHS = {
+    CA: '<path d="M4 7h6l2 2h8v10H4V7Z"/><path d="m9 14 2 2 4-5"/>',
+    OC: '<path d="M6 3h9l3 3v15H6V3Z"/><path d="M14 3v4h4"/><path d="m9 14 2 2 4-5"/>',
+    SL: '<path d="M9 3h6M10 3v6l-4 7a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 16l-4-7V3"/><path d="M7.5 15h9"/>',
+    AS: '<path d="M3 6h11v11H3V6Z"/><path d="M14 10h4l3 3v4h-7v-7Z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+    RM: '<path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/><path d="m9 14 2 2 4-4"/>',
+    IN: '<path d="M4 5h16v14H4V5Z"/><path d="M4 14h4l2 3h4l2-3h4"/><path d="M12 3v8m0 0-3-3m3 3 3-3"/>',
+    QA: '<path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-5"/>',
+    PR: '<path d="M4 7h16v11H4V7Z"/><path d="M7 7V5h8v2M15 12h5"/><path d="m17 10 3 2-3 2"/>',
+    SI: '<path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+    EI: '<circle cx="12" cy="12" r="9"/><path d="M9 9.5c0-1 1-1.8 3-1.8s3 .8 3 1.8-1 1.7-3 1.7-3 .8-3 1.8 1 1.8 3 1.8 3-.8 3-1.8M12 5.5v13"/>',
+    OR: '<rect x="9" y="3" width="6" height="4" rx="1"/><rect x="3" y="17" width="6" height="4" rx="1"/><rect x="15" y="17" width="6" height="4" rx="1"/><path d="M12 7v5M6 17v-5h12v5"/>',
+    SC: '<path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>',
+    CO: '<path d="M4 21V5l8-3 8 3v16M8 7h2m4 0h2M8 11h2m4 0h2M8 15h2m4 0h2M10 21v-3h4v3"/>',
+    BU: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/>',
+    SU: '<path d="M3 21V10l6 3v-3l6 3V6l6 3v12H3Z"/><path d="M7 17h2m3 0h2m3 0h2"/>',
+  };
+  function moduleIconSvg(icon) {
+    const paths = MODULE_ICON_PATHS[String(icon || "").toUpperCase()]
+      || '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 12h8M12 8v8"/>';
+    return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
+  }
   let busy = false;
   let closeAfterModule = true;
   let hotkeyLabel = "Ctrl + Shift + X";
@@ -43,6 +65,11 @@
   let sessionActive = null;
   let currentDivision = null;
   let hasCredentials = false;
+  let toastEnabled = true;
+  const MODULE_RUN_METHODS = new Set([
+    "open_module", "prepare_catalog", "find_code", "find_buyer_reference",
+    "open_sale_asn_new", "open_supplier_category", "find_supplier", "find_buyer",
+  ]);
 
   function allModules() {
     return visibleModuleGroups().flatMap((group) =>
@@ -66,8 +93,8 @@
           <button class="module-button module--${escapeHtml(module.kind || "generic")} module--${escapeHtml(group.name.toLowerCase())}" type="button"
             data-module-id="${escapeHtml(module.id)}"
             data-search="${escapeHtml(`${module.name} ${group.name} ${module.description || ""}`.toLowerCase())}">
-            <span class="module-icon accent-${escapeHtml(group.accent)}">${escapeHtml(module.icon)}</span>
-            <span class="module-copy"><span class="module-name">${escapeHtml(module.name)}</span><span class="module-kind">${escapeHtml(module.kind === "catalog" ? "Workflow nâng cao" : group.name)}</span></span>
+            <span class="module-icon accent-${escapeHtml(group.accent)}">${moduleIconSvg(module.icon)}</span>
+            <span class="module-copy"><span class="module-name">${escapeHtml(module.name)}</span></span>
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5-5 5"/></svg>
           </button>`).join("")}</div>
       </section>`).join("");
@@ -88,6 +115,22 @@
     }
   }
   window.wfxSetBusy = setBusy;
+
+  function focusModuleSearch() {
+    if (settingsOverlay().classList.contains("credentials-required")) {
+      const target = $(".user-input").value.trim() ? $(".password-input") : $(".user-input");
+      target.focus();
+      return;
+    }
+    closeSettings();
+    closeModuleModal();
+    $(".log-overlay").classList.remove("log-open");
+    feedbackOverlay().classList.remove("feedback-open");
+    const input = $(".search-box input");
+    input.focus();
+    input.select();
+  }
+  window.wfxFocusModuleSearch = focusModuleSearch;
 
   function setStatus(tone, label) {
     const status = $(".footer-status");
@@ -164,8 +207,18 @@
 
   function setCompactMode(enabled) {
     document.body.classList.toggle("compact-mode", enabled === true);
+    document.documentElement.classList.toggle("compact-mode", enabled === true);
   }
   window.wfxSetCompactMode = setCompactMode;
+
+  window.wfxPrepareWindowTransition = () => {
+    document.body.classList.add("window-transition-out");
+  };
+  window.wfxFinishWindowTransition = () => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      document.body.classList.remove("window-transition-out");
+    }));
+  };
 
   function setAdminAccess(access, moduleIds, enabled) {
     adminAccess = access === true;
@@ -202,6 +255,7 @@
   window.wfxSetAccount = setAccount;
 
   function selectSettingsTab(name) {
+    if (settingsOverlay().classList.contains("credentials-required") && name !== "account") return;
     const selected = name === "app" ? "app" : "account";
     $$(".settings-tab").forEach((button) =>
       button.setAttribute("aria-pressed", String(button.dataset.settingsTab === selected)));
@@ -219,6 +273,7 @@
 
   function closeSettings() {
     const overlay = settingsOverlay();
+    if (overlay.classList.contains("credentials-required")) return;
     overlay.classList.remove("settings-open");
     overlay.setAttribute("aria-hidden", "true");
   }
@@ -237,6 +292,7 @@
         : "Nhập User ID và Password để WFX Smart bắt đầu làm việc."
     );
     $(".password-input").value = "";
+    hasCredentials = false;
     settingsOverlay().classList.add("credentials-required");
     openSettings("account");
     window.setTimeout(() => {
@@ -249,6 +305,7 @@
   function clearCredentialPrompt() {
     $(".auth-prompt").hidden = true;
     settingsOverlay().classList.remove("credentials-required");
+    hasCredentials = true;
   }
 
   function setStyleStatus(style) {
@@ -375,6 +432,9 @@
     setBusy(true);
     setStatus("neutral", "Đang xử lý...");
     try {
+      if (MODULE_RUN_METHODS.has(method)) {
+        await api()?.focus_automation_browser?.();
+      }
       const result = await bridge[method](...args);
       handleResult(result);
       return result;
@@ -407,19 +467,26 @@
     selectedModule = module;
     const icon = $(".module-modal-icon");
     icon.className = `module-modal-icon accent-${module.accent}`;
-    icon.textContent = module.icon;
+    icon.innerHTML = moduleIconSvg(module.icon);
     $(".module-modal-kicker").textContent = module.group;
     $("#module-modal-title").textContent = module.name;
     $(".module-modal-description").textContent = module.description || "";
-    const isCatalog = module.kind === "catalog";
-    $("[data-module-view='catalog']").hidden = !isCatalog;
-    $("[data-module-view='generic']").hidden = isCatalog;
-    $(".generic-module-code").textContent = module.icon;
+    $$('[data-module-view]').forEach((view) => {
+      view.hidden = view.dataset.moduleView !== module.kind;
+    });
+    $(".generic-module-icon").innerHTML = moduleIconSvg(module.icon);
     $(".module-modal-status").textContent = "";
     const overlay = $(".module-overlay");
     overlay.classList.add("module-open");
     overlay.setAttribute("aria-hidden", "false");
-    setTimeout(() => (isCatalog ? $(".catalog-code") : $(".generic-module-open")).focus(), 0);
+    const focusTarget = {
+      catalog: ".catalog-code",
+      sale_asn: '[data-module-action="sale-asn-list"]',
+      supplier: ".supplier-category",
+      buyer: '[data-module-action="buyer-list"]',
+      generic: ".generic-module-open",
+    }[module.kind] || ".generic-module-open";
+    setTimeout(() => $(focusTarget)?.focus(), 0);
   }
 
   function closeModuleModal() {
@@ -428,16 +495,37 @@
     overlay.setAttribute("aria-hidden", "true");
   }
 
+  function dismissAfterSuccessfulModule(result) {
+    if (result && result.ok && closeAfterModule) {
+      window.setTimeout(() => api()?.dismiss_panel?.(), 120);
+    }
+  }
+
   async function openModule() {
     if (!selectedModule) return;
     const result = await call("open_module", selectedModule.id);
-    if (result && result.ok && closeAfterModule) api()?.dismiss_panel?.();
+    dismissAfterSuccessfulModule(result);
   }
 
   async function openModuleDirect(moduleId) {
     const result = await call("open_module", moduleId);
-    if (result && result.ok && closeAfterModule) api()?.dismiss_panel?.();
+    dismissAfterSuccessfulModule(result);
   }
+
+  async function runSelectedModuleAction(method, ...args) {
+    const result = await call(method, ...args);
+    dismissAfterSuccessfulModule(result);
+    return result;
+  }
+
+  const moduleActions = {
+    "sale-asn-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "sale-asn-new": () => runSelectedModuleAction("open_sale_asn_new"),
+    "supplier-open": () => runSelectedModuleAction("open_supplier_category", $(".supplier-category").value),
+    "supplier-find": () => runSelectedModuleAction("find_supplier", $(".supplier-query").value.trim()),
+    "buyer-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "buyer-find": () => runSelectedModuleAction("find_buyer", $(".buyer-query").value.trim()),
+  };
 
   const catalogActions = {
     "prepare": () => call("prepare_catalog", $(".catalog-category").value),
@@ -514,19 +602,23 @@
     $(".header-actions")?.addEventListener("mousedown", (event) => event.stopPropagation());
     $$("[data-catalog-action]").forEach((button) =>
       button.addEventListener("click", () => catalogActions[button.dataset.catalogAction]?.()));
+    $$("[data-module-action]").forEach((button) =>
+      button.addEventListener("click", () => moduleActions[button.dataset.moduleAction]?.()));
     $(".module-list").addEventListener("click", (event) => {
       const button = event.target.closest(".module-button");
       if (!button) return;
       const module = allModules().find(
         (item) => item.id === button.dataset.moduleId
       );
-      if (module && module.kind === "catalog") {
+      if (module && ["catalog", "sale_asn", "supplier", "buyer"].includes(module.kind)) {
         openModuleModal(button.dataset.moduleId);
       } else {
         openModuleDirect(button.dataset.moduleId);
       }
     });
     $(".module-close-button").addEventListener("click", closeModuleModal);
+    $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["supplier-find"](); });
+    $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["buyer-find"](); });
     const compactLauncher = $(".compact-launcher");
     let compactHoldTimer = null;
     let compactHoldTriggered = false;
@@ -553,6 +645,17 @@
         return;
       }
       api()?.expand_from_browser_icon?.();
+    });
+    compactLauncher.addEventListener("contextmenu", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (compactHoldTimer !== null) window.clearTimeout(compactHoldTimer);
+      compactHoldTimer = null;
+      compactHoldTriggered = false;
+      const result = await api()?.show_compact_context_menu?.();
+      if (result?.always_on_top !== undefined) {
+        $(".always-on-top-input").checked = Boolean(result.always_on_top);
+      }
     });
     $(".module-overlay").addEventListener("mousedown", (event) => {
       if (event.target === event.currentTarget) closeModuleModal();
@@ -698,7 +801,6 @@
       hotkeyButton.dataset.capturing = "false";
       if (result && result.ok) {
         hotkeyLabel = result.hotkey_label;
-        $(".hotkey-label").textContent = hotkeyLabel;
         setStatus("success", result.message || "");
       } else if (result) setStatus("error", result.message || "");
       resetHotkeyButton();
@@ -720,8 +822,17 @@
     $(".toast-input").addEventListener("change", async (event) => {
       const result = await callQuiet("set_toast_enabled", event.target.checked);
       if (result) {
-        event.target.checked = Boolean(result.toast_enabled);
+        toastEnabled = Boolean(result.toast_enabled);
+        event.target.checked = toastEnabled;
         setStatus(result.ok ? "success" : "error", result.message || "");
+      }
+    });
+    $(".focus-chrome-input").addEventListener("change", async (event) => {
+      const result = await callQuiet(
+        "set_focus_chrome_on_module", event.target.checked
+      );
+      if (result) {
+        event.target.checked = Boolean(result.focus_chrome_on_module);
       }
     });
     $(".always-on-top-input").addEventListener("change", async (event) => {
@@ -730,15 +841,6 @@
       );
       if (result) {
         event.target.checked = Boolean(result.always_on_top);
-        setStatus(result.ok ? "success" : "error", result.message || "");
-      }
-    });
-    $(".stick-browser-input").addEventListener("change", async (event) => {
-      const result = await callQuiet(
-        "set_stick_to_browser", event.target.checked
-      );
-      if (result) {
-        event.target.checked = Boolean(result.stick_to_browser);
         setStatus(result.ok ? "success" : "error", result.message || "");
       }
     });
@@ -818,14 +920,15 @@
     $(".close-module-input").checked = closeAfterModule;
     if (state.hotkey_label) {
       hotkeyLabel = state.hotkey_label;
-      $(".hotkey-label").textContent = hotkeyLabel;
       resetHotkeyButton();
     }
     $(".autostart-input").checked = state.autostart === true;
     $(".start-hidden-input").checked = state.start_hidden === true;
-    $(".toast-input").checked = state.toast_enabled !== false;
+    toastEnabled = state.toast_enabled !== false;
+    $(".toast-input").checked = toastEnabled;
+    $(".focus-chrome-input").checked =
+      state.focus_chrome_on_module !== false;
     $(".always-on-top-input").checked = state.always_on_top !== false;
-    $(".stick-browser-input").checked = state.stick_to_browser === true;
     setAdminAccess(
       state.admin_access,
       state.admin_module_ids,
@@ -841,12 +944,9 @@
     renderJobs(state.jobs || []);
     (state.logs || []).forEach(pushLog);
     if (!hasCredentials) {
-      window.setTimeout(
-        () => showCredentialPrompt(
-          "MISSING_CREDENTIALS",
-          "Đây là lần đầu sử dụng hoặc chưa có tài khoản đã lưu. Nhập thông tin WFX để tiếp tục."
-        ),
-        0
+      showCredentialPrompt(
+        "MISSING_CREDENTIALS",
+        "Đây là lần đầu sử dụng hoặc chưa có tài khoản đã lưu. Nhập thông tin WFX để tiếp tục."
       );
     }
   };

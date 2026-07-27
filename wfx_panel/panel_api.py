@@ -3,19 +3,21 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from wfx_panel import (
     autostart,
     constants,
-    hotkey as hotkey_spec,
     job_history,
     log_bridge,
     module_controllers,
     status,
     telemetry,
     updater,
+)
+from wfx_panel import (
+    hotkey as hotkey_spec,
 )
 from wfx_panel import prefs as prefs_default
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
@@ -35,6 +37,13 @@ SESSION_OK = frozenset(
         "CODE_OPENED",
         "DIVISION_CHANGED",
         "DIVISION_ALREADY_ACTIVE",
+        "MODULE_FILTER_READY",
+        "SALE_ASN_NEW_READY",
+        "SUPPLIER_CATEGORY_READY",
+        "SUPPLIER_FOUND",
+        "SUPPLIER_NOT_FOUND",
+        "BUYER_EDIT_OPENED",
+        "BUYER_NOT_FOUND",
     }
 )
 SESSION_LOST = frozenset(
@@ -59,6 +68,8 @@ NON_REPORTABLE_FAILURES = frozenset(
         "CATEGORY_UNKNOWN",
         "MODULE_UNKNOWN",
         "ADMIN_ACCESS_DENIED",
+        "SUPPLIER_NOT_FOUND",
+        "BUYER_NOT_FOUND",
         "PASSWORD_REQUIRED",
         "USER_ID_REQUIRED",
         "DIVISION_UNKNOWN",
@@ -83,7 +94,6 @@ class PanelAPI:
         self._hotkey_applier: Callable[[str], str | None] | None = None
         self._update_applier: Callable[[dict], str | None] | None = None
         self._on_top_applier: Callable[[bool], None] | None = None
-        self._stick_applier: Callable[[bool], None] | None = None
         self._session_active: bool | None = None
         self._last_login_at: str | None = None
         self._current_run_id: str | None = None
@@ -115,10 +125,8 @@ class PanelAPI:
     def set_window_pref_appliers(
         self,
         on_top: Callable[[bool], None],
-        stick: Callable[[bool], None],
     ) -> None:
         self._on_top_applier = on_top
-        self._stick_applier = stick
 
     def _log(self, message: str) -> None:
         if self._current_run_id:
@@ -200,8 +208,10 @@ class PanelAPI:
             "autostart": preferences["autostart"],
             "start_hidden": preferences["start_hidden"],
             "toast_enabled": preferences["toast_enabled"],
+            "focus_chrome_on_module": preferences[
+                "focus_chrome_on_module"
+            ],
             "always_on_top": preferences["always_on_top"],
-            "stick_to_browser": preferences["stick_to_browser"],
             **self._admin_state(),
             "reporting_configured": telemetry.is_configured(self._base_dir),
             "pending_reports": telemetry.outbox_count(self._base_dir),
@@ -295,6 +305,10 @@ class PanelAPI:
                 "prepare_catalog",
                 "find_code",
                 "find_buyer_reference",
+                "open_sale_asn_new",
+                "open_supplier_category",
+                "find_supplier",
+                "find_buyer",
             }
             and hasattr(self._login, "capture_failure_screenshot")
         ):
@@ -427,6 +441,92 @@ class PanelAPI:
 
         return self._run(
             "open_module", action, {"module_id": module_id}
+        )
+
+    def _admin_module_access_error(self, module_id: str) -> dict | None:
+        self._refresh_admin_access()
+        if (
+            self._admin_access is True
+            and module_id in self._admin_module_ids
+        ):
+            return None
+        return {
+            "ok": False,
+            "code": "ADMIN_ACCESS_DENIED",
+            "message": "Tài khoản WFX không có quyền mở module Admin này.",
+            **self._admin_state(),
+        }
+
+    def open_sale_asn_new(self) -> dict:
+        def action() -> dict:
+            return self._login.open_sale_asn_new(
+                constants.SALE_ASN_NEW_XPATH,
+                self._log,
+            )
+
+        return self._run("open_sale_asn_new", action)
+
+    def open_supplier_category(self, category_name: str) -> dict:
+        def action() -> dict:
+            value = constants.CATEGORIES.get(category_name)
+            if value is None:
+                return {
+                    "ok": False,
+                    "code": "CATEGORY_UNKNOWN",
+                    "message": f"Category lạ: {category_name}",
+                }
+            denied = self._admin_module_access_error("0005_0010_1290")
+            if denied is not None:
+                return denied
+            supplier = constants.MODULE_BY_ID["0005_0010_1290"]
+            return self._login.open_supplier_category(
+                supplier["xpath"],
+                category_name,
+                value,
+                self._log,
+            )
+
+        return self._run(
+            "open_supplier_category",
+            action,
+            {"category_name": category_name},
+        )
+
+    def find_supplier(self, query: str) -> dict:
+        def action() -> dict:
+            denied = self._admin_module_access_error("0005_0010_1290")
+            if denied is not None:
+                return denied
+            supplier = constants.MODULE_BY_ID["0005_0010_1290"]
+            return self._login.find_supplier_across_categories(
+                supplier["xpath"],
+                constants.CATEGORIES,
+                str(query or "").strip(),
+                self._log,
+            )
+
+        return self._run(
+            "find_supplier",
+            action,
+            {"query": str(query or "").strip()},
+        )
+
+    def find_buyer(self, query: str) -> dict:
+        def action() -> dict:
+            denied = self._admin_module_access_error("0004_0010_1720")
+            if denied is not None:
+                return denied
+            buyer = constants.MODULE_BY_ID["0004_0010_1720"]
+            return self._login.find_and_open_buyer(
+                buyer["xpath"],
+                str(query or "").strip(),
+                self._log,
+            )
+
+        return self._run(
+            "find_buyer",
+            action,
+            {"query": str(query or "").strip()},
         )
 
     def switch_division(self, division_key: str) -> dict:
@@ -654,6 +754,24 @@ class PanelAPI:
             "toast_enabled": saved["toast_enabled"],
         }
 
+    def set_focus_chrome_on_module(self, enabled: bool) -> dict:
+        saved = self._prefs.save_prefs(
+            base_dir=self._base_dir,
+            focus_chrome_on_module=bool(enabled),
+        )
+        return {
+            "ok": True,
+            "code": "PREF_SAVED",
+            "message": (
+                "Chrome sẽ tự hiện khi chạy module."
+                if saved["focus_chrome_on_module"]
+                else "Đã tắt tự động đưa Chrome lên trước."
+            ),
+            "focus_chrome_on_module": saved[
+                "focus_chrome_on_module"
+            ],
+        }
+
     def set_always_on_top(self, enabled: bool) -> dict:
         value = bool(enabled)
         saved = self._prefs.save_prefs(
@@ -670,24 +788,6 @@ class PanelAPI:
                 else "Panel không còn bị ghim trên cùng."
             ),
             "always_on_top": saved["always_on_top"],
-        }
-
-    def set_stick_to_browser(self, enabled: bool) -> dict:
-        value = bool(enabled)
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, stick_to_browser=value
-        )
-        if self._stick_applier is not None:
-            self._stick_applier(saved["stick_to_browser"])
-        return {
-            "ok": True,
-            "code": "WINDOW_PREF_SAVED",
-            "message": (
-                "Panel sẽ bám theo đúng browser automation."
-                if saved["stick_to_browser"]
-                else "Đã tắt bám theo browser."
-            ),
-            "stick_to_browser": saved["stick_to_browser"],
         }
 
     def set_admin_mode(self, enabled: bool) -> dict:

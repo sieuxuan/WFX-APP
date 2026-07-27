@@ -9,6 +9,8 @@ CATEGORIES = {
     "Trims": "05",
 }
 
+SALE_ASN_NEW_XPATH = '//*[@id="0004_0070_4340"]/a'
+
 DIVISIONS = {
     "woven": {
         "key": "woven",

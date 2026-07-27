@@ -31,6 +31,14 @@ def test_desktop_override_forces_panel_visible():
         assert css.index(declaration) < hidden_default, declaration
 
 
+def test_transition_background_is_restored_after_root_reset():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    root_reset = css.index(":root {")
+    restored = css.index(":root { background: var(--panel-bg); }")
+    assert restored > root_reset
+    assert ":root.compact-mode { background: #0f9fb2; }" in css
+
+
 def test_overlay_toggle_classes_match_the_css():
     """panel.js phải bật overlay bằng ĐÚNG tên class mà style.css định nghĩa.
 
@@ -71,6 +79,13 @@ def test_index_html_has_contract_hooks():
     assert "compact-drag-handle" not in html
 
 
+def test_compact_launcher_advertises_right_click_options():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    launcher = html[html.index('class="compact-launcher"') :]
+    launcher = launcher[: launcher.index(">")]
+    assert "chuột phải" in launcher
+
+
 def test_header_has_drag_region_class_for_frameless_window():
     # Finding D: window.easy_drag=False + pywebview's own '.pywebview-drag-region'
     # convention (webview/js/customize.js) is the only thing that lets users move
@@ -97,8 +112,8 @@ def test_settings_has_new_toggles_and_enabled_hotkey_button():
         'class="autostart-input"',
         'class="start-hidden-input"',
         'class="toast-input"',
+        'class="focus-chrome-input"',
         'class="always-on-top-input"',
-        'class="stick-browser-input"',
     ]:
         assert hook in html, hook
     hotkey_tag = html[html.index('class="hotkey-button"') :]
@@ -132,6 +147,35 @@ def test_division_switcher_precedes_operation_and_has_three_choices():
     ]:
         assert f'data-division="{key}"' in html
         assert f"<span>{label}</span>" in html
+    for removed in [
+        "Không gian làm việc",
+        "Mở đúng màn hình WFX chỉ với một lần bấm",
+        "Division đang làm việc",
+        "Hà Nội",
+        "Singapore",
+        "Chọn Division trước khi mở",
+    ]:
+        assert removed not in html
+
+
+def test_catalog_modal_uses_svg_icon_instead_of_ca_text():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    icon = html[html.index('class="module-modal-icon') :]
+    icon = icon[: icon.index("</span>")]
+    assert "<svg" in icon
+    assert ">CA<" not in icon
+
+
+def test_external_notification_and_generic_svg_icon_are_present():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    notification = (UI / "notification.html").read_text(encoding="utf-8")
+    notification_js = (UI / "notification.js").read_text(encoding="utf-8")
+    assert 'class="toast-stack"' not in html
+    assert 'class="notification notification-success"' in notification
+    assert "window.wfxShowNotification" in notification_js
+    assert "textContent = payload.message" in notification_js
+    assert 'class="generic-module-icon"' in html
+    assert 'class="generic-module-code"' not in html
 
 
 def test_settings_are_split_into_account_and_app_tabs_with_auth_prompt():
@@ -183,6 +227,36 @@ def test_catalog_is_a_module_modal_not_a_fixed_dashboard_card():
     assert 'class="module-overlay"' in html
     assert 'data-module-view="catalog"' in html
     assert 'class="catalog-card"' not in html
+
+
+def test_sale_asn_supplier_and_buyer_workspaces_have_contract_hooks():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    for hook in [
+        'data-module-view="sale_asn"',
+        'data-module-action="sale-asn-list"',
+        'data-module-action="sale-asn-new"',
+        'data-module-view="supplier"',
+        'class="supplier-category"',
+        'class="supplier-query"',
+        'data-module-action="supplier-open"',
+        'data-module-action="supplier-find"',
+        'data-module-view="buyer"',
+        'class="buyer-query"',
+        'data-module-action="buyer-list"',
+        'data-module-action="buyer-find"',
+    ]:
+        assert hook in html, hook
+    assert 'class="stick-browser-input"' not in html
+    assert "Bám theo browser automation" not in html
+    for category in [
+        "Apparel",
+        "Fixed Asset",
+        "Miscellaneous",
+        "Services",
+        "Textiles/Fabric",
+        "Trims",
+    ]:
+        assert f'>{category}</option>' in html
 
 
 def test_activity_sheet_has_jobs_screenshot_and_retry_hooks():

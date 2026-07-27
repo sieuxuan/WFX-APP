@@ -32,3 +32,30 @@ def test_controller_delegates_to_login_module():
     assert calls == [
         ("OC List", '//*[@id="0004_0050_0020"]/a')
     ]
+
+
+def test_sample_and_sale_asn_list_enable_floating_filter():
+    calls = []
+
+    class FakeLogin:
+        @staticmethod
+        def open_module_with_floating_filter(name, xpath, log):
+            calls.append((name, xpath))
+            return {"ok": True, "code": "MODULE_FILTER_READY"}
+
+    for module_id in ("0004_0056_4070", "0004_0070_0020"):
+        result = module_controllers.get(module_id).open(
+            FakeLogin, lambda _line: None
+        )
+        assert result["code"] == "MODULE_FILTER_READY"
+
+    assert calls == [
+        ("Sample List", '//*[@id="0004_0056_4070"]/a'),
+        ("Sale ASN", '//*[@id="0004_0070_0020"]/a'),
+    ]
+
+
+def test_special_module_manifests_expose_modal_kinds():
+    assert module_controllers.get("0004_0070_0020").manifest()["kind"] == "sale_asn"
+    assert module_controllers.get("0005_0010_1290").manifest()["kind"] == "supplier"
+    assert module_controllers.get("0004_0010_1720").manifest()["kind"] == "buyer"

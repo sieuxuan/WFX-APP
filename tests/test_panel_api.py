@@ -38,6 +38,24 @@ class FakeLogin:
         self.calls.append(("open_module", module_name, xpath))
         return {"ok": True, "code": "MODULE_OPENED", "message": module_name}
 
+    def open_sale_asn_new(self, xpath, log=print):
+        self.calls.append(("open_sale_asn_new", xpath))
+        return {"ok": True, "code": "SALE_ASN_NEW_READY", "message": "ready"}
+
+    def open_supplier_category(self, xpath, category_name, category_value, log=print):
+        self.calls.append((
+            "open_supplier_category", xpath, category_name, category_value
+        ))
+        return {"ok": True, "code": "SUPPLIER_CATEGORY_READY", "message": "ready"}
+
+    def find_supplier_across_categories(self, xpath, categories, query, log=print):
+        self.calls.append(("find_supplier", xpath, dict(categories), query))
+        return {"ok": True, "code": "SUPPLIER_FOUND", "message": "found"}
+
+    def find_and_open_buyer(self, xpath, query, log=print):
+        self.calls.append(("find_buyer", xpath, query))
+        return {"ok": True, "code": "BUYER_EDIT_OPENED", "message": "opened"}
+
     def switch_division(self, division_key, log=print):
         self.calls.append(("switch_division", division_key))
         return {
@@ -85,6 +103,16 @@ def test_open_module_builds_xpath(tmp_path):
     api, fake = make_api(tmp_path)
     api.open_module("0004_0050_0020")
     assert ("open_module", "OC List", '//*[@id="0004_0050_0020"]/a') in fake.calls
+
+
+def test_sale_asn_new_uses_new_menu_xpath(tmp_path):
+    api, fake = make_api(tmp_path)
+    result = api.open_sale_asn_new()
+    assert result["code"] == "SALE_ASN_NEW_READY"
+    assert (
+        "open_sale_asn_new",
+        '//*[@id="0004_0070_4340"]/a',
+    ) in fake.calls
 
 
 def test_open_chrome_uses_login_module(tmp_path):
@@ -296,6 +324,14 @@ def test_toggle_prefs_persist(tmp_path):
     assert loaded["toast_enabled"] is False
 
 
+def test_focus_chrome_on_module_defaults_on_and_persists(tmp_path):
+    api, _ = make_api(tmp_path)
+    assert api.get_initial_state()["focus_chrome_on_module"] is True
+    result = api.set_focus_chrome_on_module(False)
+    assert result["focus_chrome_on_module"] is False
+    assert prefs.load_prefs(base_dir=tmp_path)["focus_chrome_on_module"] is False
+
+
 def test_initial_state_exposes_new_fields(tmp_path):
     api, _ = make_api(tmp_path)
     state = api.get_initial_state()
@@ -305,6 +341,7 @@ def test_initial_state_exposes_new_fields(tmp_path):
         "autostart",
         "start_hidden",
         "toast_enabled",
+        "focus_chrome_on_module",
         "chrome_alive",
         "session_active",
         "last_login_at",
@@ -387,17 +424,14 @@ def test_initial_state_contains_module_classes_and_jobs(tmp_path):
 def test_window_preferences_apply_and_persist(tmp_path):
     api, _ = make_api(tmp_path)
     on_top = []
-    stick = []
-    api.set_window_pref_appliers(on_top.append, stick.append)
+    api.set_window_pref_appliers(on_top.append)
     top_result = api.set_always_on_top(False)
-    stick_result = api.set_stick_to_browser(True)
     assert top_result["always_on_top"] is False
-    assert stick_result["stick_to_browser"] is True
     assert on_top == [False]
-    assert stick == [True]
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["always_on_top"] is False
-    assert loaded["stick_to_browser"] is True
+    assert "stick_to_browser" not in loaded
+    assert not hasattr(api, "set_stick_to_browser")
 
 
 def test_failed_automation_records_local_screenshot(tmp_path):
@@ -433,8 +467,60 @@ class AuthorizedAdminLogin(FakeLogin):
         return {
             "ok": True,
             "code": "MODULE_ACCESS_CHECKED",
-            "accessible_module_ids": ["0090_0250", "0004_0010_1720"],
+            "accessible_module_ids": [
+                "0090_0250", "0004_0010_1720", "0005_0010_1290"
+            ],
         }
+
+
+def test_supplier_category_and_find_delegate_with_all_categories(tmp_path):
+    fake = AuthorizedAdminLogin()
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+
+    opened = api.open_supplier_category("Textiles/Fabric")
+    found = api.find_supplier("  Acme  ")
+
+    assert opened["code"] == "SUPPLIER_CATEGORY_READY"
+    assert found["code"] == "SUPPLIER_FOUND"
+    assert (
+        "open_supplier_category",
+        '//*[@id="0005_0010_1290"]/a',
+        "Textiles/Fabric",
+        "03",
+    ) in fake.calls
+    call = next(item for item in fake.calls if item[0] == "find_supplier")
+    assert call[1] == '//*[@id="0005_0010_1290"]/a'
+    assert call[2] == {
+        "Apparel": "01",
+        "Fixed Asset": "04",
+        "Miscellaneous": "12",
+        "Services": "06",
+        "Textiles/Fabric": "03",
+        "Trims": "05",
+    }
+    assert call[3] == "Acme"
+
+
+def test_find_buyer_uses_current_buyer_list_and_trimmed_query(tmp_path):
+    fake = AuthorizedAdminLogin()
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    result = api.find_buyer("  BirdDogs ")
+    assert result["code"] == "BUYER_EDIT_OPENED"
+    assert (
+        "find_buyer",
+        '//*[@id="0004_0010_1720"]/a',
+        "BirdDogs",
+    ) in fake.calls
+
+
+def test_supplier_and_buyer_workflows_preserve_admin_access_gate(tmp_path):
+    api, fake = make_api(tmp_path)
+    assert api.open_supplier_category("Apparel")["code"] == "ADMIN_ACCESS_DENIED"
+    assert api.find_supplier("Acme")["code"] == "ADMIN_ACCESS_DENIED"
+    assert api.find_buyer("BirdDogs")["code"] == "ADMIN_ACCESS_DENIED"
+    assert not any(call[0] in {
+        "open_supplier_category", "find_supplier", "find_buyer"
+    } for call in fake.calls)
 
 
 def test_admin_mode_requires_real_wfx_access(tmp_path):
@@ -458,7 +544,9 @@ def test_admin_login_exposes_only_authorized_modules(tmp_path):
     logged_in = api.login()
     assert logged_in["admin_access"] is True
     assert logged_in["admin_mode"] is False
-    assert logged_in["admin_module_ids"] == ["0004_0010_1720", "0090_0250"]
+    assert logged_in["admin_module_ids"] == [
+        "0004_0010_1720", "0005_0010_1290", "0090_0250"
+    ]
 
     enabled = api.set_admin_mode(True)
     assert enabled["admin_mode"] is True

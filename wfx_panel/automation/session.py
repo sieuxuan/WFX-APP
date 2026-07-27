@@ -1,0 +1,415 @@
+"""Đăng nhập, phiên, division và điều phối run() cho automation WFX.
+
+Tách nguyên văn từ login.py — không đổi logic.
+"""
+
+from __future__ import annotations
+
+from wfx_panel.automation._common import (
+    CATALOG_XPATH,
+    COMPANY_ID,
+    DIVISIONS,
+    URL,
+    Any,
+    Callable,
+    Page,
+    Path,
+    Playwright,
+    PlaywrightError,
+    PlaywrightTimeoutError,
+    _click,
+    _result,
+    _write_log,
+    os,
+    sync_playwright,
+    time,
+)
+from wfx_panel.automation.browser import (
+    _attach_dialog_handler,
+    _chrome_is_ready,
+    _connect_to_chrome,
+    _start_persistent_chrome,
+)
+
+
+def login(
+    page: Page,
+    user_id: str,
+    password: str,
+    company_id: str = COMPANY_ID,
+) -> None:
+    page.goto(URL, wait_until="domcontentloaded")
+    page.locator("#txtUserID").fill(user_id)
+    page.locator("#txtCompany").fill(company_id)
+    _click(page.locator("#btlLogin[value='Next']"))
+
+    password_input = page.locator("#txtPassword")
+    password_input.wait_for(state="visible")
+    password_input.fill(password)
+    _click(page.locator("#btlLogin[value='Log In']"))
+
+    # Catalog là menu phổ thông. Không dùng một menu Admin làm điều kiện login:
+    # tài khoản thường có thể đăng nhập hợp lệ nhưng không có System Coding.
+    page.locator(f"xpath={CATALOG_XPATH}").wait_for(state="attached")
+
+
+def _session_is_active(page: Page) -> bool:
+    try:
+        return page.locator('xpath=//*[@id="0003_6200"]/a').count() > 0
+    except PlaywrightError:
+        return False
+
+
+def _division_for_text(value: str | None) -> dict[str, str] | None:
+    normalized = " ".join(str(value or "").split()).casefold()
+    if not normalized:
+        return None
+    for division in DIVISIONS.values():
+        if str(division["name"]).casefold() in normalized:
+            return {
+                "current_division": str(division["key"]),
+                "division_label": str(division["label"]),
+                "division_name": str(division["name"]),
+            }
+    return None
+
+
+def _division_state_for_page(page: Page) -> dict[str, str | None]:
+    """Đọc Division từ CompanyName ở bất kỳ frame nào của WFX."""
+    for frame in page.frames:
+        try:
+            company = frame.locator("#CompanyName")
+            if company.count() == 0:
+                continue
+            value = " ".join(
+                (
+                    company.first.get_attribute("title")
+                    or company.first.inner_text(timeout=700)
+                    or ""
+                ).split()
+            )
+            matched = _division_for_text(value)
+            if matched:
+                return matched
+        except PlaywrightError:
+            continue
+    return {
+        "current_division": None,
+        "division_label": None,
+        "division_name": None,
+    }
+
+
+def get_division_state(
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Đọc Division hiện tại mà không điều hướng trang WFX."""
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+            **_division_state_for_page_placeholder(),
+        )
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Chưa có phiên WFX đăng nhập.",
+                **_division_state_for_page_placeholder(),
+            )
+        state = _division_state_for_page(page)
+        _write_log(
+            log,
+            f"[DIVISION] Hiện tại: {state.get('division_label') or 'không xác định'}.",
+        )
+        return _result(
+            True,
+            "DIVISION_DETECTED",
+            "Đã nhận diện Division hiện tại.",
+            **state,
+        )
+    except Exception as exc:
+        return _result(
+            False,
+            "DIVISION_DETECT_FAILED",
+            f"{type(exc).__name__}: {exc}",
+            **_division_state_for_page_placeholder(),
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def _division_state_for_page_placeholder() -> dict[str, None]:
+    return {
+        "current_division": None,
+        "division_label": None,
+        "division_name": None,
+    }
+
+
+def switch_division(
+    division_key: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Chuyển Base Setting bằng đúng bookmark Division của WFX."""
+    key = str(division_key or "").strip().casefold()
+    target = DIVISIONS.get(key)
+    if target is None:
+        return _result(
+            False,
+            "DIVISION_UNKNOWN",
+            f"Division không hỗ trợ: {division_key}",
+            **_division_state_for_page_placeholder(),
+        )
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+            **_division_state_for_page_placeholder(),
+        )
+
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên chưa đăng nhập hoặc đã hết hạn.",
+                **_division_state_for_page_placeholder(),
+            )
+
+        current = _division_state_for_page(page)
+        if current.get("current_division") == key:
+            return _result(
+                True,
+                "DIVISION_ALREADY_ACTIVE",
+                f"Bạn đang ở Division {target['label']}.",
+                **current,
+            )
+
+        selector = (
+            'a.hasbookmark[href*="ChangeBaseSetting=1"]'
+            f'[href*="MemberCompanyCode={target["member_company_code"]}"]'
+            f'[href*="folderID={target["folder_id"]}"]'
+        )
+        actionable = None
+        for frame in page.frames:
+            try:
+                candidate = frame.locator(selector)
+                if candidate.count() > 0:
+                    actionable = candidate.first
+                    break
+            except PlaywrightError:
+                continue
+        if actionable is None:
+            return _result(
+                False,
+                "DIVISION_OPTION_NOT_FOUND",
+                f"Không tìm thấy Division {target['label']} trong menu WFX.",
+                **current,
+            )
+
+        _write_log(log, f"[DIVISION] Đang chuyển sang {target['label']}...")
+        actionable.evaluate("element => element.click()")
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            state = _division_state_for_page(page)
+            if state.get("current_division") == key:
+                _write_log(log, f"[DIVISION] Đã chuyển sang {target['label']}.")
+                return _result(
+                    True,
+                    "DIVISION_CHANGED",
+                    f"Đã chuyển sang Division {target['label']}.",
+                    **state,
+                )
+            page.wait_for_timeout(250)
+        return _result(
+            False,
+            "DIVISION_CHANGE_NOT_CONFIRMED",
+            f"WFX chưa xác nhận Division {target['label']}.",
+            **_division_state_for_page(page),
+        )
+    except Exception as exc:
+        return _result(
+            False,
+            "DIVISION_CHANGE_FAILED",
+            f"{type(exc).__name__}: {exc}",
+            **_division_state_for_page_placeholder(),
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def check_session(log: Callable[[str], None] = print) -> dict[str, Any]:
+    """Kiểm tra Chrome hiện tại mà không điều hướng hoặc login lại."""
+    if not _chrome_is_ready():
+        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        if _session_is_active(page):
+            _write_log(log, "[SESSION] Đang sử dụng phiên WFX đã login.")
+            return _result(
+                True,
+                "SESSION_ACTIVE",
+                "Đã kết nối phiên WFX đang mở.",
+                **_division_state_for_page(page),
+            )
+        return _result(False, "NOT_LOGGED_IN", "Chưa có phiên WFX đăng nhập.")
+    except Exception as exc:
+        return _result(False, "SESSION_CHECK_FAILED", f"{type(exc).__name__}: {exc}")
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def check_module_access(
+    module_specs: list[dict[str, str]],
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Đọc menu WFX thực tế để xác định module nào tài khoản được cấp quyền.
+
+    Chỉ kiểm tra anchor menu đang tồn tại trong trang home, không click và
+    không làm thay đổi màn hình đang làm việc.
+    """
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+            accessible_module_ids=[],
+        )
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Chưa có phiên WFX đăng nhập.",
+                accessible_module_ids=[],
+            )
+        accessible: list[str] = []
+        for spec in module_specs:
+            module_id = str(spec.get("id") or "")
+            xpath = str(spec.get("xpath") or "")
+            if not module_id or not xpath:
+                continue
+            try:
+                if page.locator(f"xpath={xpath}").count() > 0:
+                    accessible.append(module_id)
+            except PlaywrightError:
+                continue
+        _write_log(
+            log,
+            f"[ACCESS] Đã xác minh {len(accessible)}/{len(module_specs)} module Admin.",
+        )
+        return _result(
+            True,
+            "MODULE_ACCESS_CHECKED",
+            "Đã xác minh quyền module WFX.",
+            accessible_module_ids=accessible,
+        )
+    except Exception as exc:
+        return _result(
+            False,
+            "MODULE_ACCESS_CHECK_FAILED",
+            f"{type(exc).__name__}: {exc}",
+            accessible_module_ids=[],
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def capture_failure_screenshot(
+    path: str | Path,
+    log: Callable[[str], None] = print,
+) -> bool:
+    """Chụp tab WFX hiện tại sau lỗi; không đọc cookie/storage."""
+    if not _chrome_is_ready():
+        return False
+    playwright: Playwright | None = None
+    try:
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        page.screenshot(path=str(destination), full_page=False)
+        _write_log(log, "[DIAGNOSTIC] Đã lưu ảnh lỗi cục bộ.")
+        return destination.is_file()
+    except Exception as error:
+        _write_log(
+            log,
+            f"[DIAGNOSTIC] Không chụp được ảnh lỗi: {type(error).__name__}",
+        )
+        return False
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def run(
+    user_id: str | None = None,
+    password: str | None = None,
+    company_id: str = COMPANY_ID,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Chỉ đăng nhập WFX. Không tự mở module và không đóng Chrome."""
+    user_id = (user_id or os.getenv("WFX_USER_ID", "")).strip()
+    password = password or os.getenv("WFX_PASSWORD", "")
+    playwright: Playwright | None = None
+    try:
+        _start_persistent_chrome(log)
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if _session_is_active(page):
+            _write_log(log, "[SESSION] Phiên WFX vẫn còn hiệu lực, không login lại.")
+            return _result(
+                True,
+                "SESSION_REUSED",
+                "Đã dùng lại phiên WFX đang đăng nhập.",
+                url=page.url,
+                **_division_state_for_page(page),
+            )
+        if not user_id or not password:
+            return _result(
+                False,
+                "MISSING_CREDENTIALS",
+                "Chưa lưu User ID và Password trong Settings.",
+            )
+        login(page, user_id, password, company_id)
+        _write_log(log, "Đăng nhập thành công.")
+        return _result(
+            True,
+            "LOGGED_IN",
+            "Đăng nhập thành công. Chrome vẫn đang mở.",
+            url=page.url,
+            **_division_state_for_page(page),
+        )
+    except PlaywrightTimeoutError:
+        message = "Đăng nhập không thành công hoặc trang WFX phản hồi quá chậm."
+        _write_log(log, message)
+        return _result(False, "LOGIN_TIMEOUT", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {exc}"
+        _write_log(log, message)
+        return _result(False, "LOGIN_FAILED", message)
+    finally:
+        # Chỉ ngắt Playwright; Chrome là tiến trình độc lập và tiếp tục chạy.
+        if playwright is not None:
+            playwright.stop()

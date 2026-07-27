@@ -15,7 +15,6 @@ from playwright.sync_api import sync_playwright
 import login
 from wfx_panel import prefs
 
-
 pytestmark = pytest.mark.skipif(
     os.getenv("WFX_LIVE_TEST") != "1",
     reason="Chỉ chạy khi chủ động bật WFX_LIVE_TEST=1",

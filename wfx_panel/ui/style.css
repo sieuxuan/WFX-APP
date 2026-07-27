@@ -1,7 +1,8 @@
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: transparent; }
-body { overflow: hidden; }
-body.compact-mode { background: #0f9fb2; }
+html, body { margin: 0; height: 100%; background: var(--panel-bg, #f4f9fb); }
+html.compact-mode, body.compact-mode { background: #0f9fb2; }
+body { overflow: hidden; opacity: 1; transition: opacity .14s ease; will-change: opacity; }
+body.window-transition-out { opacity: .04; }
 /* Trong extension, .panel là lớp trượt ra đè lên trang WFX: nó ẩn sẵn
    (opacity/visibility/pointer-events) và chỉ hiện khi JS thêm .panel-open lúc
    người dùng bấm nút launcher. Bản desktop bỏ hẳn launcher — cửa sổ CHÍNH LÀ
@@ -37,6 +38,7 @@ body.compact-mode .compact-launcher {
     radial-gradient(circle at 74% 18%, rgba(255,255,255,.3), transparent 28%),
     var(--launcher-grad);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 8px 20px rgba(0,0,0,.24);
+  animation: compact-arrive .2s cubic-bezier(.2,.8,.25,1);
 }
 body.compact-mode .compact-launcher:active { cursor: grabbing; }
 .compact-icon-shell {
@@ -71,6 +73,10 @@ body.compact-mode .compact-launcher .compact-mark {
   border-radius: 50%;
   background: var(--good);
   box-shadow: 0 0 8px var(--good);
+}
+@keyframes compact-arrive {
+  from { transform: scale(.88); }
+  to { transform: scale(1); }
 }
 
     :root {
@@ -109,6 +115,8 @@ body.compact-mode .compact-launcher .compact-mark {
       --scrim: rgba(1,7,11,.7); --launcher-grad: linear-gradient(145deg,#0d2637,#091722 62%,#112a39);
       --launcher-ink: #e9fbff; --glow: rgba(40,202,225,.12);
     }
+    :root { background: var(--panel-bg); }
+    :root.compact-mode { background: #0f9fb2; }
     *, *::before, *::after { box-sizing: border-box; }
     button, input { font: inherit; }
     button { -webkit-tap-highlight-color: transparent; }
@@ -215,11 +223,12 @@ body.compact-mode .compact-launcher .compact-mark {
     .group-heading { display: flex; align-items: center; gap: 7px; margin: 0 3px 5px; color: var(--text-2); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     .group-accent { width: 6px; height: 6px; border-radius: 50%; }
     .group-count { margin-left: auto; color: var(--text-3); font-size: 10px; font-weight: 600; }
-    .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 6px; }
-    .module-button { width: 100%; min-width: 0; min-height: 42px; display: grid; grid-template-columns: 28px minmax(0,1fr) 12px; align-items: center; gap: 8px; padding: 7px 9px; color: var(--text); text-align: left; cursor: pointer; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); transition: transform .18s ease, color .18s, border-color .18s, background .18s; }
+    .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 5px; }
+    .module-button { width: 100%; min-width: 0; min-height: 39px; display: grid; grid-template-columns: 24px minmax(0,1fr) 10px; align-items: center; gap: 6px; padding: 5px 7px; color: var(--text); text-align: left; cursor: pointer; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); transition: transform .18s ease, color .18s, border-color .18s, background .18s; }
     .module-button:hover { border-color: var(--accent-border); background: var(--surface-hover); transform: translateY(-1px); }
     .module-button:active { transform: scale(.985); }
-    .module-icon { width: 28px; height: 28px; display: grid; place-items: center; justify-self: center; font-size: 9.5px; font-weight: 800; line-height: 1; letter-spacing: .03em; border: 1px solid currentColor; border-radius: 7px; }
+    .module-icon { width: 24px; height: 24px; display: grid; place-items: center; justify-self: center; border: 1px solid currentColor; border-radius: 7px; }
+    .module-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
     .accent-cyan { color: var(--accent); background-color: var(--accent-soft); }
     .accent-violet { color: #7c5cff; background-color: rgba(124,92,255,.1); }
     .accent-amber { color: #b9741a; background-color: rgba(200,130,20,.12); }
@@ -228,8 +237,8 @@ body.compact-mode .compact-launcher .compact-mark {
     .group-accent.accent-cyan { background: currentColor; color: var(--accent); box-shadow: 0 0 8px currentColor; }
     .group-accent.accent-violet { background: currentColor; box-shadow: 0 0 8px currentColor; }
     .group-accent.accent-amber { background: currentColor; box-shadow: 0 0 8px currentColor; }
-    .module-name { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-    .module-button > svg { width: 12px; fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s, stroke .18s; }
+    .module-name { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .module-button > svg { width: 10px; fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s, stroke .18s; }
     .module-button:hover > svg { stroke: var(--accent); transform: translateX(2px); }
     .empty-state { height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-3); text-align: center; }
     .empty-state[hidden] { display: none; }
@@ -324,15 +333,6 @@ body.compact-mode .compact-launcher .compact-mark {
     .feedback-status[data-tone="success"] { color: var(--good); }
     .feedback-status[data-tone="error"] { color: var(--bad); }
 
-    .toast-stack { position: fixed; z-index: 2147483647; right: 28px; bottom: 102px; width: min(340px, calc(100vw - 30px)); display: flex; flex-direction: column; align-items: flex-end; gap: 7px; pointer-events: none; font-family: "Segoe UI Variable Text", Inter,"Segoe UI",system-ui,sans-serif; }
-    .panel-open + .toast-stack { right: 560px; }
-    .toast { max-width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: var(--toast-text); font-size: 12px; line-height: 1.35; border: 1px solid var(--toast-border); border-radius: 11px; background: var(--toast-bg); box-shadow: var(--shadow-sm); opacity: 0; transform: translateY(7px) scale(.98); transition: .2s ease; }
-    .toast-visible { opacity: 1; transform: translateY(0) scale(1); }
-    .toast-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px currentColor; }
-    .toast-success .toast-dot { color: var(--good); background: var(--good); }
-    .toast-warning .toast-dot { color: var(--warn); background: var(--warn); }
-    .toast-error .toast-dot { color: var(--bad); background: var(--bad); }
-
     /* Desktop workspace ------------------------------------------------- */
     .update-banner,
     .browser-banner {
@@ -425,34 +425,11 @@ body.compact-mode .compact-launcher .compact-mark {
       from { transform: translateY(1px); opacity: .72; }
       to { transform: translateY(-1px); opacity: 1; }
     }
-    .workspace-summary {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-top: 8px;
-      padding: 3px 3px 1px;
-    }
-    .workspace-summary > div span,
-    .workspace-summary > div strong { display: block; }
-    .workspace-summary > div span {
-      color: var(--accent);
-      font-size: 9.5px;
-      font-weight: 800;
-      letter-spacing: .1em;
-      text-transform: uppercase;
-    }
-    .workspace-summary > div strong {
-      margin-top: 2px;
-      color: var(--text);
-      font-size: 13px;
-    }
-
     .module-button {
       position: relative;
-      min-height: 46px;
-      grid-template-columns: 29px minmax(0,1fr) 12px;
-      padding: 7px 10px;
+      min-height: 39px;
+      grid-template-columns: 25px minmax(0,1fr) 10px;
+      padding: 5px 8px;
       overflow: hidden;
     }
     .module-button::after {
@@ -467,19 +444,9 @@ body.compact-mode .compact-launcher .compact-mark {
       transition: background .18s;
     }
     .module-button:hover::after { background: var(--accent); }
-    .module-icon { width: 27px; height: 27px; }
+    .module-icon { width: 24px; height: 24px; }
     .module-copy { min-width: 0; }
-    .module-name { display: block; font-size: 12.5px; }
-    .module-kind {
-      display: block;
-      margin-top: 2px;
-      overflow: hidden;
-      color: var(--text-3);
-      font-size: 9px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
+    .module-name { display: block; font-size: 12px; }
     /* Module modal ------------------------------------------------------ */
     .module-overlay {
       position: absolute;
@@ -527,6 +494,15 @@ body.compact-mode .compact-launcher .compact-mark {
       border: 1px solid currentColor;
       border-radius: 10px;
     }
+    .module-modal-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
     .module-modal-identity span,
     .module-modal-identity strong { display: block; }
     .module-modal-kicker {
@@ -561,6 +537,42 @@ body.compact-mode .compact-launcher .compact-mark {
       font-weight: 650;
     }
     .catalog-open-button { height: 34px; }
+    .special-module-workspace {
+      display: grid;
+      gap: 9px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .special-module-workspace[hidden] { display: none !important; }
+    .workflow-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+    .workflow-choice {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 10px;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--surface-2);
+      transition: border-color .18s, transform .18s, background .18s;
+    }
+    .workflow-choice:hover { border-color: var(--accent-border); background: var(--accent-soft); transform: translateY(-1px); }
+    .workflow-choice svg { width: 22px; height: 22px; flex: 0 0 auto; fill: none; stroke: var(--accent); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .workflow-choice span, .workflow-choice strong, .workflow-choice small { display: block; min-width: 0; }
+    .workflow-choice strong { font-size: 12.5px; }
+    .workflow-choice small { margin-top: 2px; color: var(--text-3); font-size: 9px; line-height: 1.3; }
+    .workflow-choice-wide { width: 100%; }
+    .special-section { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 8px; }
+    .special-search-section { padding-top: 9px; border-top: 1px solid var(--border); }
+    .special-section label > span { display: block; margin: 0 0 4px 2px; color: var(--text-2); font-size: 11px; font-weight: 650; }
+    .special-section select, .special-section input { width: 100%; height: 34px; padding: 0 9px; color: var(--text); font-size: 12.5px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+    .special-section select:focus, .special-section input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .special-primary-button { height: 34px; padding: 0 11px; color: var(--accent-ink); font-size: 11.5px; font-weight: 750; white-space: nowrap; cursor: pointer; border: 0; border-radius: 8px; background: var(--accent-grad); }
     .generic-module-workspace {
       padding: 14px;
       text-align: center;
@@ -580,7 +592,7 @@ body.compact-mode .compact-launcher .compact-mark {
       border-radius: 16px;
       background: var(--accent-soft);
     }
-    .generic-module-code { font-size: 15px; font-weight: 850; }
+    .generic-module-icon svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
     .generic-module-title { color: var(--text); font-size: 13px; }
     .generic-module-workspace p { margin: 5px 0 12px; color: var(--text-3); font-size: 10.5px; }
     .generic-module-workspace .primary-button { width: 100%; }
@@ -691,34 +703,13 @@ body.compact-mode .compact-launcher .compact-mark {
       border-radius: 10px;
     }
     .panel-body { padding: 10px 12px 0; }
-    .workspace-summary {
-      margin-top: 2px;
-      padding: 2px 3px 5px;
-    }
-    .workspace-summary > div strong {
-      max-width: 315px;
-      font-size: 13.5px;
-      letter-spacing: -.01em;
-    }
-    .workspace-ready {
-      padding: 4px 7px;
-      color: var(--warn);
-      font-size: 8px;
-      font-weight: 850;
-      letter-spacing: .12em;
-      border: 1px solid currentColor;
-      border-radius: 999px;
-      background: var(--warn-soft);
-    }
-    .workspace-ready[data-state="ok"] { color: var(--good); background: var(--good-soft); }
-
     .division-card {
       position: relative;
-      margin: 5px 0 9px;
-      padding: 10px;
+      margin: 2px 0 9px;
+      padding: 7px;
       overflow: hidden;
       border: 1px solid var(--accent-border);
-      border-radius: 15px;
+      border-radius: 13px;
       background:
         linear-gradient(135deg, var(--surface), var(--accent-soft));
       box-shadow: 0 12px 30px var(--glow), inset 0 1px 0 rgba(255,255,255,.4);
@@ -735,85 +726,16 @@ body.compact-mode .compact-launcher .compact-mark {
       background: var(--glow);
       filter: blur(2px);
     }
-    .division-heading {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .division-title-wrap {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .division-symbol {
-      width: 30px;
-      height: 30px;
-      display: grid;
-      place-items: center;
-      flex: 0 0 auto;
-      color: var(--accent-strong);
-      border: 1px solid var(--accent-border);
-      border-radius: 9px;
-      background: var(--accent-soft);
-    }
-    .division-symbol svg {
-      width: 18px;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 1.6;
-      stroke-linecap: round;
-    }
-    .division-kicker,
-    .division-current { display: block; }
-    .division-kicker {
-      color: var(--text-3);
-      font-size: 8.5px;
-      font-weight: 800;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-    .division-current {
-      margin-top: 2px;
-      overflow: hidden;
-      color: var(--text);
-      font-size: 12px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .division-live {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 7px;
-      color: var(--text-3);
-      font-size: 8px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--surface);
-    }
-    .division-live i {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-    .division-live[data-state="ok"] { color: var(--good); }
-    .division-live[data-state="bad"] { color: var(--bad); }
     .division-options {
       position: relative;
       z-index: 1;
       display: grid;
       grid-template-columns: repeat(3, minmax(0,1fr));
       gap: 6px;
-      margin-top: 8px;
     }
     .division-button {
       min-width: 0;
-      height: 40px;
+      height: 34px;
       padding: 4px 6px;
       color: var(--text-2);
       cursor: pointer;
@@ -828,17 +750,11 @@ body.compact-mode .compact-launcher .compact-mark {
       border-color: var(--accent-border);
       transform: translateY(-1px);
     }
-    .division-button span,
-    .division-button small { display: block; }
+    .division-button span { display: block; }
     .division-button span {
       font-size: 10.5px;
       font-weight: 850;
       letter-spacing: .035em;
-    }
-    .division-button small {
-      margin-top: 1px;
-      color: var(--text-3);
-      font-size: 8px;
     }
     .division-button[aria-pressed="true"] {
       color: var(--accent-ink);
@@ -846,17 +762,8 @@ body.compact-mode .compact-launcher .compact-mark {
       background: var(--accent-grad);
       box-shadow: 0 7px 18px var(--glow);
     }
-    .division-button[aria-pressed="true"] small { color: currentColor; opacity: .72; }
     .division-button:disabled { cursor: not-allowed; opacity: .52; }
     .division-button.is-switching { opacity: 1; animation: division-pulse .8s ease infinite alternate; }
-    .division-hint {
-      position: relative;
-      z-index: 1;
-      margin: 6px 1px 0;
-      color: var(--text-3);
-      font-size: 8px;
-      line-height: 1.3;
-    }
     @keyframes division-pulse { to { box-shadow: 0 0 0 3px var(--accent-soft); } }
 
     .search-box {
@@ -870,12 +777,12 @@ body.compact-mode .compact-launcher .compact-mark {
       border-color: var(--accent-border);
       box-shadow: 0 0 0 3px var(--accent-soft);
     }
-    .module-group { margin-top: 10px; }
+    .module-group { margin-top: 8px; }
     .group-heading { padding: 0 3px 5px; }
-    .module-grid { gap: 7px; }
+    .module-grid { gap: 5px; }
     .module-button {
-      min-height: 49px;
-      border-radius: 12px;
+      min-height: 40px;
+      border-radius: 10px;
       box-shadow: 0 4px 13px rgba(10,50,65,.035);
     }
     .module-button:hover {
@@ -952,6 +859,9 @@ body.compact-mode .compact-launcher .compact-mark {
     }
     .auth-prompt[hidden] { display: none !important; }
     .auth-prompt[data-tone="error"] { color: var(--bad); background: var(--bad-soft); }
+    .settings-main-overlay.credentials-required .settings-tabs,
+    .settings-main-overlay.credentials-required .settings-close-button,
+    .settings-main-overlay.credentials-required .sheet-handle { display: none; }
     .auth-prompt-icon {
       width: 28px;
       height: 28px;
