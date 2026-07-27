@@ -166,11 +166,23 @@ jobs:
             $zipPath = Join-Path $PWD $zipName
             $checksumPath = "$zipPath.sha256"
             $signaturePath = "$checksumPath.p7s"
-            Compress-Archive `
-              -Path "dist/WFX-Panel/*" `
-              -DestinationPath $zipPath `
-              -CompressionLevel Optimal `
-              -Force
+            # bsdtar của Windows runner nén cây PyInstaller nhanh và ổn định
+            # hơn Compress-Archive rất nhiều.
+            & tar.exe -a -c -f $zipPath `
+              -C (Join-Path $PWD "dist/WFX-Panel") .
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $zipPath)) {
+              throw "Không tạo được gói ZIP phát hành."
+            }
+            $archiveEntries = @(& tar.exe -tf $zipPath)
+            if (
+              $LASTEXITCODE -ne 0 -or
+              $archiveEntries -notcontains "./WFX-Panel.exe" -or
+              -not ($archiveEntries | Where-Object {
+                $_ -like "./_internal/*"
+              })
+            ) {
+              throw "Gói ZIP thiếu WFX-Panel.exe hoặc _internal."
+            }
             $hash = (
               Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
             ).Hash.ToLowerInvariant()
