@@ -56,8 +56,12 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Panel-v1.0.9-win64.zip` kèm checksum `.sha256` và chữ ký
+Gói phát hành: `WFX-Smart-v1.0.9-win64.zip` kèm checksum `.sha256` và chữ ký
 detached `.sha256.p7s`.
+
+Nâng cấp từ 1.0.8 trở xuống cần giải nén 1.0.9 vào một thư mục riêng đúng một
+lần. Prefix gói mới cố ý không kích hoạt updater cũ vốn có thể xóa cả thư mục
+chứa EXE. Từ 1.0.9 trở đi, cập nhật tự động dùng chuỗi xác minh và rollback mới.
 
 Workflow release yêu cầu hai GitHub Actions secrets:
 
@@ -67,6 +71,11 @@ Workflow release yêu cầu hai GitHub Actions secrets:
 Workflow đóng thumbprint certificate vào executable, ký Authenticode cho EXE
 và ký CMS cho checksum. Thiếu certificate sẽ fail release; bản chạy từ source
 không được phép tự cài update.
+
+Certificate phát hành hiện là publisher certificate riêng được ghim thumbprint:
+updater xác minh chữ ký toán học, timestamp và đúng public key trước khi thay
+file. Cách này bảo vệ chuỗi update nhưng Windows SmartScreen vẫn có thể cảnh báo
+ở lần tải/cài đầu cho tới khi chuyển sang certificate Code Signing từ CA công cộng.
 
 - Windows 11 có sẵn WebView2 trong phần lớn bản cài.
 - Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài

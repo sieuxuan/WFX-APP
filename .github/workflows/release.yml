@@ -103,7 +103,29 @@ jobs:
           WFX_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WFX_SIGNING_CERTIFICATE_PASSWORD }}
         run: |
           $certPath = Join-Path $env:RUNNER_TEMP "wfx-signing.pfx"
+          $publicCertPath = Join-Path $env:RUNNER_TEMP "wfx-signing.cer"
+          $thumbprint = $null
           try {
+            $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $certPath,
+              $env:WFX_SIGNING_CERTIFICATE_PASSWORD
+            )
+            $thumbprint = (
+              $certificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
+            ).ToUpperInvariant()
+            [IO.File]::WriteAllBytes(
+              $publicCertPath,
+              $certificate.Export(
+                [Security.Cryptography.X509Certificates.X509ContentType]::Cert
+              )
+            )
+            # Runner là máy tạm. Chỉ trust publisher root trong job để signtool
+            # kiểm tra đầy đủ Authenticode; cuối step sẽ gỡ certificate này.
+            Import-Certificate `
+              -FilePath $publicCertPath `
+              -CertStoreLocation "Cert:\CurrentUser\Root" |
+                Out-Null
+
             $exePath = Join-Path $PWD "dist/WFX-Panel/WFX-Panel.exe"
             & signtool sign /fd SHA256 /td SHA256 `
               /tr "http://timestamp.digicert.com" `
@@ -116,6 +138,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "Chữ ký WFX-Panel.exe không hợp lệ."
             }
+            $authenticode = Get-AuthenticodeSignature -LiteralPath $exePath
+            $actualExeSigner = (
+              $authenticode.SignerCertificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
+            ).ToUpperInvariant()
+            if ($actualExeSigner -ne $thumbprint) {
+              throw "EXE không được ký bằng đúng publisher certificate."
+            }
+            if (-not $authenticode.TimeStamperCertificate) {
+              throw "EXE chưa có timestamp."
+            }
 
             $version = python -c "from wfx_panel.version import APP_VERSION; print(APP_VERSION)"
             $tag = "v$version"
@@ -127,7 +159,10 @@ jobs:
                 "Tag $env:GITHUB_REF_NAME không khớp APP_VERSION $version."
               )
             }
-            $zipName = "WFX-Panel-v$version-win64.zip"
+            # Prefix mới cố ý không tương thích updater <= 1.0.8. Bản cũ có
+            # thể xóa cả thư mục chứa EXE; người dùng nâng cấp 1.0.9 thủ công
+            # một lần, rồi các bản sau dùng updater an toàn.
+            $zipName = "WFX-Smart-v$version-win64.zip"
             $zipPath = Join-Path $PWD $zipName
             $checksumPath = "$zipPath.sha256"
             $signaturePath = "$checksumPath.p7s"
@@ -146,10 +181,6 @@ jobs:
             )
 
             Add-Type -AssemblyName System.Security.Cryptography.Pkcs
-            $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-              $certPath,
-              $env:WFX_SIGNING_CERTIFICATE_PASSWORD
-            )
             $content = [Security.Cryptography.Pkcs.ContentInfo]::new(
               [IO.File]::ReadAllBytes($checksumPath)
             )
@@ -173,8 +204,14 @@ jobs:
             "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
           }
           finally {
+            if ($thumbprint) {
+              Remove-Item `
+                -LiteralPath "Cert:\CurrentUser\Root\$thumbprint" `
+                -Force `
+                -ErrorAction SilentlyContinue
+            }
             Remove-Item `
-              -LiteralPath $certPath `
+              -LiteralPath $certPath, $publicCertPath `
               -Force `
               -ErrorAction SilentlyContinue
           }
@@ -194,8 +231,13 @@ jobs:
 
             Cách cài:
             1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
-            2. Giải nén toàn bộ thư mục.
+            2. Giải nén vào một thư mục riêng (không chép đè bản 1.0.8).
             3. Mở **WFX-Panel.exe**.
+
+            **Lưu ý khi nâng cấp từ 1.0.8 trở xuống:** hãy cài thủ công một lần
+            theo ba bước trên. Gói 1.0.9 cố ý không kích hoạt updater cũ để tránh
+            nguy cơ updater đó xóa nhầm thư mục chứa ứng dụng. Từ 1.0.9 trở đi,
+            cập nhật tự động đã được ký số, giới hạn file được thay và có rollback.
 
             Điểm chính:
             - Catalog Apparel tự nhận diện cây Group/Folder theo tài khoản.
