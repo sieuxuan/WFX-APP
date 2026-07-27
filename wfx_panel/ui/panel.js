@@ -54,6 +54,9 @@
       || '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 12h8M12 8v8"/>';
     return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
   }
+  // Ngưỡng cứu UI nếu bridge call không phản hồi. Dài hơn tổng deadline hợp lệ
+  // của các automation (login + grid settle + filter + mở đích ~ trên phút).
+  const CALL_WATCHDOG_MS = 180000;
   let busy = false;
   let closeAfterModule = true;
   let hotkeyLabel = "Ctrl + Shift + X";
@@ -691,17 +694,39 @@
     const busyMessage = BUSY_MESSAGES[method] || "Đang xử lý trên WFX…";
     setBusy(true, busyMessage);
     setStatus("neutral", busyMessage);
+    // Watchdog: nếu một bridge call treo (Chrome/WFX không phản hồi, promise
+    // không resolve), giải phóng UI thay vì để mọi nút disable vĩnh viễn ("đơ").
+    // Backend vẫn giữ run lock; kết quả thật (nếu có) sẽ về sau qua result sink.
+    let watchdog;
+    const timeout = new Promise((resolve) => {
+      watchdog = window.setTimeout(
+        () => resolve({ __timeout: true }), CALL_WATCHDOG_MS
+      );
+    });
     try {
       if (MODULE_RUN_METHODS.has(method)) {
         await api()?.focus_automation_browser?.();
       }
-      const result = await bridge[method](...args);
+      const pending = bridge[method](...args);
+      // Nếu watchdog thắng trước, promise gốc reject muộn sẽ không còn ai bắt →
+      // gắn no-op catch để tránh "unhandled rejection". Race vẫn bắt lỗi bình thường.
+      pending.catch(() => {});
+      const result = await Promise.race([pending, timeout]);
+      if (result && result.__timeout) {
+        setStatus(
+          "error",
+          "Tác vụ chạy quá lâu và có thể vẫn đang xử lý trên WFX. "
+            + "Vui lòng chờ hoặc thử lại sau giây lát.",
+        );
+        return null;
+      }
       handleResult(result);
       return result;
     } catch (error) {
       setStatus("error", String(error));
       return null;
     } finally {
+      window.clearTimeout(watchdog);
       setBusy(false);
     }
   }

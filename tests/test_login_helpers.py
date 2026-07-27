@@ -37,6 +37,24 @@ def test_detect_browser_accepts_edge_on_windows_layout(tmp_path, monkeypatch):
     assert found.path == edge
 
 
+def test_detect_browser_finds_edge_under_program_files_x86(tmp_path, monkeypatch):
+    # Regression: env var name is ProgramFiles(x86); a missing ")" meant browsers
+    # installed only under "C:\\Program Files (x86)\\" (common for Edge) were never
+    # detected, wrongly reporting "no compatible browser".
+    x86 = tmp_path / "ProgramFilesX86"
+    edge = x86 / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+    edge.parent.mkdir(parents=True)
+    edge.write_bytes(b"edge")
+    monkeypatch.delenv("WFX_CHROME_PATH", raising=False)
+    monkeypatch.setenv("PROGRAMFILES", str(tmp_path / "ProgramFiles"))
+    monkeypatch.setenv("PROGRAMFILES(X86)", str(x86))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    monkeypatch.setattr(login.shutil, "which", lambda _name: None)
+    found = login.detect_browser()
+    assert found is not None
+    assert found.path == edge
+
+
 def test_start_chrome_explains_when_no_compatible_browser(monkeypatch):
     # start_chrome gọi _chrome_is_ready/detect_browser cùng module, nên phải
     # patch tại wfx_panel.automation.browser (không phải shim login).

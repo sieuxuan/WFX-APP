@@ -47,7 +47,7 @@ def detect_browser() -> BrowserExecutable | None:
         Path(value)
         for value in (
             os.getenv("PROGRAMFILES"),
-            os.getenv("PROGRAMFILES(X86"),
+            os.getenv("PROGRAMFILES(X86)"),
             os.getenv("LOCALAPPDATA"),
         )
         if value

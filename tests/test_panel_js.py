@@ -183,6 +183,13 @@ def test_action_buttons_show_inline_spinner():
     assert 'classList.add("is-loading")' in JS
 
 
+def test_bridge_calls_have_a_watchdog_against_hangs():
+    # Nếu một bridge call treo, UI phải tự hồi phục thay vì disable vĩnh viễn.
+    assert "CALL_WATCHDOG_MS" in JS
+    assert "Promise.race([pending, timeout])" in JS
+    assert "__timeout" in JS
+
+
 def test_job_history_uses_friendly_labels():
     assert "JOB_METHOD_LABELS" in JS
     assert "jobMethodLabel(job.method)" in JS
