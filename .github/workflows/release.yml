@@ -96,58 +96,18 @@ jobs:
             }
           }
 
-      - name: Sign, package and create signed checksum
+      - name: Package and create signed checksum
         id: package
-        shell: powershell
+        shell: pwsh
         env:
           WFX_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WFX_SIGNING_CERTIFICATE_PASSWORD }}
         run: |
           $certPath = Join-Path $env:RUNNER_TEMP "wfx-signing.pfx"
-          $publicCertPath = Join-Path $env:RUNNER_TEMP "wfx-signing.cer"
-          $thumbprint = $null
           try {
             $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
               $certPath,
               $env:WFX_SIGNING_CERTIFICATE_PASSWORD
             )
-            $thumbprint = (
-              $certificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
-            ).ToUpperInvariant()
-            [IO.File]::WriteAllBytes(
-              $publicCertPath,
-              $certificate.Export(
-                [Security.Cryptography.X509Certificates.X509ContentType]::Cert
-              )
-            )
-            # Runner là máy tạm. Chỉ trust publisher root trong job để signtool
-            # kiểm tra đầy đủ Authenticode; cuối step sẽ gỡ certificate này.
-            Import-Certificate `
-              -FilePath $publicCertPath `
-              -CertStoreLocation "Cert:\CurrentUser\Root" |
-                Out-Null
-
-            $exePath = Join-Path $PWD "dist/WFX-Panel/WFX-Panel.exe"
-            & signtool sign /fd SHA256 /td SHA256 `
-              /tr "http://timestamp.digicert.com" `
-              /f $certPath /p $env:WFX_SIGNING_CERTIFICATE_PASSWORD `
-              $exePath
-            if ($LASTEXITCODE -ne 0) {
-              throw "Không ký được WFX-Panel.exe."
-            }
-            & signtool verify /pa /all $exePath
-            if ($LASTEXITCODE -ne 0) {
-              throw "Chữ ký WFX-Panel.exe không hợp lệ."
-            }
-            $authenticode = Get-AuthenticodeSignature -LiteralPath $exePath
-            $actualExeSigner = (
-              $authenticode.SignerCertificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
-            ).ToUpperInvariant()
-            if ($actualExeSigner -ne $thumbprint) {
-              throw "EXE không được ký bằng đúng publisher certificate."
-            }
-            if (-not $authenticode.TimeStamperCertificate) {
-              throw "EXE chưa có timestamp."
-            }
 
             $version = python -c "from wfx_panel.version import APP_VERSION; print(APP_VERSION)"
             $tag = "v$version"
@@ -209,21 +169,28 @@ jobs:
               $true
             )
             $verifyCms.Decode([IO.File]::ReadAllBytes($signaturePath))
-            $verifyCms.CheckSignature($false)
+            $verifyCms.CheckSignature($true)
+            if ($verifyCms.SignerInfos.Count -ne 1) {
+              throw "Chữ ký CMS phải có đúng một publisher."
+            }
+            $cmsSigner = $verifyCms.SignerInfos[0].Certificate
+            $actualCmsSigner = (
+              $cmsSigner.Thumbprint -replace '[^A-Fa-f0-9]', ''
+            ).ToUpperInvariant()
+            $expectedCmsSigner = (
+              $certificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
+            ).ToUpperInvariant()
+            if ($actualCmsSigner -ne $expectedCmsSigner) {
+              throw "Chữ ký CMS không đúng publisher certificate."
+            }
 
             "VERSION=$version" >> $env:GITHUB_ENV
             "TAG=$tag" >> $env:GITHUB_ENV
             "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
           }
           finally {
-            if ($thumbprint) {
-              Remove-Item `
-                -LiteralPath "Cert:\CurrentUser\Root\$thumbprint" `
-                -Force `
-                -ErrorAction SilentlyContinue
-            }
             Remove-Item `
-              -LiteralPath $certPath, $publicCertPath `
+              -LiteralPath $certPath `
               -Force `
               -ErrorAction SilentlyContinue
           }

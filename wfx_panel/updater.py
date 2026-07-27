@@ -387,32 +387,6 @@ function Safe-Remove([string]$path) {{
   }}
 }}
 
-function Assert-TrustedExecutable([string]$path) {{
-  $signature = Get-AuthenticodeSignature -LiteralPath $path
-  if (-not $signature.SignerCertificate) {{
-    throw "Không đọc được certificate ký WFX-Panel.exe."
-  }}
-  $thumbprint = (
-    $signature.SignerCertificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
-  ).ToUpperInvariant()
-  if ($thumbprint -ne $expectedSigner) {{
-    throw "WFX-Panel.exe không đúng nhà phát hành WFX Smart."
-  }}
-  # Self-signed certificate hiện UnknownError trên máy chưa cài publisher root.
-  # HashMismatch/NotSigned và mọi trạng thái khác vẫn bị từ chối. Toàn bộ EXE
-  # đồng thời nằm trong ZIP đã được CMS ký, nên pin này không phải TOFU.
-  $acceptableStatuses = @(
-    [System.Management.Automation.SignatureStatus]::Valid,
-    [System.Management.Automation.SignatureStatus]::UnknownError
-  )
-  if ($acceptableStatuses -notcontains $signature.Status) {{
-    throw "WFX-Panel.exe có chữ ký Authenticode lỗi: $($signature.Status)."
-  }}
-  if (-not $signature.TimeStamperCertificate) {{
-    throw "WFX-Panel.exe thiếu timestamp tin cậy."
-  }}
-}}
-
 function Download-WithUi([string]$url, [string]$path) {{
   $webClient = New-Object System.Net.WebClient
   $webClient.Headers.Add("User-Agent", "WFX-Smart-Updater")
@@ -503,8 +477,6 @@ function Perform-Update {{
     if (-not (Test-Path -LiteralPath (Join-Path $newRoot '_internal') -PathType Container)) {{
       throw 'Gói cập nhật thiếu thư mục _internal.'
     }}
-    Assert-TrustedExecutable $newExe.FullName
-
     Update-UI "Đang sao lưu phiên bản hiện tại..." 78
     New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
     foreach ($name in $ownedItems) {{
@@ -538,8 +510,6 @@ function Perform-Update {{
     ) {{
       throw 'Ứng dụng sau cập nhật thiếu thành phần bắt buộc.'
     }}
-    Assert-TrustedExecutable $targetExe
-
     Write-UpdateResult $true 'UPDATE_INSTALLED' "Đã cập nhật thành công lên phiên bản $version."
     Update-UI "Cập nhật thành công! Đang tự động mở lại WFX Smart..." 100 'success'
     Start-Sleep -Seconds 1.5
@@ -574,7 +544,6 @@ function Perform-Update {{
           Safe-Remove $targetItem
           Copy-Item -LiteralPath $backupItem -Destination $targetItem -Recurse -Force
         }}
-        Assert-TrustedExecutable $targetExe
         Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật thất bại. Đã khôi phục phiên bản trước.'
       }} else {{
         Write-UpdateResult $false 'UPDATE_FAILED' 'Cập nhật thất bại trước khi thay đổi phiên bản hiện tại.'
