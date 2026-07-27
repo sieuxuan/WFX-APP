@@ -249,6 +249,9 @@ def test_catalog_folder_picker_groups_and_searches_large_trees():
     assert 'category === CATALOG_DEFAULT_CATEGORY' in JS
     assert 'category !== CATALOG_DEFAULT_CATEGORY' in JS
     assert "if (catalogFolderScanning) return;" in JS
+    assert "data-folder-retry" in JS
+    assert 'button.matches("[data-folder-retry]")' in JS
+    assert "const hasRetry = Boolean(" in JS
     assert '"scan_catalog_folders",\n      category,\n      Boolean(force)' in JS
 
 

@@ -79,6 +79,10 @@ def _resolve_data_dir() -> Path:
 DATA_DIR = _resolve_data_dir()
 
 
+class CredentialProtectionError(RuntimeError):
+    """Không thể lưu credential an toàn bằng DPAPI trên Windows."""
+
+
 def _env_path(base_dir: Path) -> Path:
     return Path(base_dir) / ".env"
 
@@ -276,6 +280,14 @@ def load_account(base_dir: Path | None = None) -> dict:
     else:
         # Tương thích ngược: bản cũ và file migrate còn WFX_PASSWORD plaintext.
         password = values.get("WFX_PASSWORD", "")
+        if password and os.name == "nt":
+            # Đọc legacy lần đầu là thời điểm migration: ghi lại ngay bằng DPAPI
+            # để plaintext không tiếp tục nằm trên đĩa tới lần người dùng Save.
+            save_account(
+                values.get("WFX_USER_ID", ""),
+                password,
+                base_dir=base_dir,
+            )
     return {
         "user_id": values.get("WFX_USER_ID", ""),
         "password": password,
@@ -307,7 +319,12 @@ def save_account(user_id: str, password: str, base_dir: Path | None = None) -> N
             f"WFX_PASSWORD_ENC={json.dumps(protected, ensure_ascii=False)}"
         )
     else:
-        # Fallback (không phải Windows / DPAPI lỗi): giữ hành vi cũ để app vẫn chạy.
+        if os.name == "nt" and password:
+            # Trên Windows không bao giờ hạ cấp im lặng từ DPAPI xuống plaintext.
+            raise CredentialProtectionError(
+                "Windows không mã hoá được mật khẩu bằng DPAPI; chưa lưu thay đổi."
+            )
+        # Hỗ trợ môi trường phát triển không phải Windows.
         password_line = (
             f"WFX_PASSWORD={json.dumps(password, ensure_ascii=False)}"
         )

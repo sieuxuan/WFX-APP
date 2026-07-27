@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from wfx_panel import panel_app
@@ -262,17 +263,33 @@ def test_external_notification_and_generic_svg_icon_are_present():
     assert 'class="generic-module-code"' not in html
 
 
-def test_settings_are_split_into_account_and_app_tabs_with_auth_prompt():
+def test_settings_are_split_into_three_focused_tabs_with_auth_prompt():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
         'data-settings-tab="account"',
-        'data-settings-tab="app"',
+        'data-settings-tab="automation"',
+        'data-settings-tab="appearance"',
         'data-settings-panel="account"',
-        'data-settings-panel="app"',
+        'data-settings-panel="automation"',
+        'data-settings-panel="appearance"',
         'class="auth-prompt"',
         'class="account-form-status"',
+        'class="settings-sticky-header"',
     ]:
         assert hook in html
+
+
+def test_supporting_text_and_footer_use_readable_minimum_size():
+    css = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in UI.glob("*.css")
+    )
+    assert not re.search(
+        r"font-size:\s*(?:8(?:\.5)?|9(?:\.5)?|10(?:\.5)?)px",
+        css,
+    )
+    assert ".panel-footer { min-height: 30px" in css
+    assert ".admin-mode-row[hidden] { display: none !important; }" in css
 
 
 def test_catalog_has_conditional_chrome_button_and_style_status():

@@ -6,11 +6,51 @@ import json
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from wfx_panel import log_bridge
+
 MAX_JOBS = 200
+RETENTION_DAYS = 7
 _LOCK = threading.Lock()
+_SENSITIVE_REQUEST_KEYS = frozenset(
+    {
+        "password",
+        "user_id",
+        "query",
+        "article_code",
+        "style_code",
+        "buyer_reference",
+        "url",
+        "cookie",
+        "token",
+    }
+)
+_RETRYABLE_METHODS = frozenset(
+    {
+        "login",
+        "check_session",
+        "open_module",
+        "prepare_catalog",
+        "scan_catalog_folders",
+        "browse_catalog",
+    }
+)
+_PERSISTED_JOB_KEYS = frozenset(
+    {
+        "run_id",
+        "method",
+        "request",
+        "ok",
+        "code",
+        "message",
+        "started_at",
+        "elapsed_ms",
+        "screenshot",
+    }
+)
 
 
 def new_run_id() -> str:
@@ -36,46 +76,131 @@ def _load(base_dir: Path) -> list[dict[str, Any]]:
         return []
 
 
+def _write(base_dir: Path, rows: list[dict[str, Any]]) -> None:
+    base_dir.mkdir(parents=True, exist_ok=True)
+    path = _history_path(base_dir)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(
+        json.dumps(rows[:MAX_JOBS], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temp.replace(path)
+
+
+def _now() -> datetime:
+    return datetime.now().astimezone()
+
+
+def _expired(row: dict[str, Any], now: datetime) -> bool:
+    try:
+        started = datetime.fromisoformat(str(row.get("started_at") or ""))
+    except ValueError:
+        return True
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=now.tzinfo)
+    return started < now - timedelta(days=RETENTION_DAYS)
+
+
+def _remove_screenshot(base_dir: Path, row: dict[str, Any]) -> None:
+    raw = str(row.get("screenshot") or "")
+    if not raw:
+        return
+    path = Path(raw).resolve()
+    allowed = screenshot_dir(base_dir).resolve()
+    if path.parent == allowed and path.suffix.casefold() == ".png":
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _prune(
+    base_dir: Path,
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
+    now = _now()
+    kept: list[dict[str, Any]] = []
+    changed = False
+    for row in rows:
+        if not isinstance(row, dict) or _expired(row, now):
+            if isinstance(row, dict):
+                _remove_screenshot(base_dir, row)
+            changed = True
+            continue
+        safe_row = _safe_job(row)
+        kept.append(safe_row)
+        changed = changed or safe_row != row
+    trimmed = kept[:MAX_JOBS]
+    return trimmed, changed or len(trimmed) != len(rows)
+
+
+def _safe_request(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): item
+        for key, item in value.items()
+        if str(key).casefold() not in _SENSITIVE_REQUEST_KEYS
+        and isinstance(item, (str, int, float, bool, type(None)))
+    }
+
+
+def _safe_job(job: dict[str, Any]) -> dict[str, Any]:
+    safe = {key: value for key, value in job.items() if key in _PERSISTED_JOB_KEYS}
+    safe["request"] = _safe_request(job.get("request"))
+    safe["message"] = log_bridge.sanitize_log_text(job.get("message") or "")
+    return safe
+
+
+def can_retry(job: dict[str, Any]) -> bool:
+    return str(job.get("method") or "") in _RETRYABLE_METHODS
+
+
 def append(base_dir: Path, job: dict[str, Any]) -> None:
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
     with _LOCK:
-        rows = _load(base_dir)
-        rows.insert(0, job)
-        rows = rows[:MAX_JOBS]
-        path = _history_path(base_dir)
-        temp = path.with_suffix(".tmp")
-        temp.write_text(
-            json.dumps(rows, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        temp.replace(path)
+        rows, _ = _prune(base_dir, _load(base_dir))
+        rows.insert(0, _safe_job(job))
+        _write(base_dir, rows)
 
 
 def list_jobs(base_dir: Path, limit: int = 30) -> list[dict[str, Any]]:
     safe_limit = max(1, min(int(limit), MAX_JOBS))
-    rows = _load(Path(base_dir))[:safe_limit]
+    base_dir = Path(base_dir)
+    with _LOCK:
+        rows, changed = _prune(base_dir, _load(base_dir))
+        if changed:
+            _write(base_dir, rows)
+        rows = rows[:safe_limit]
     return [
         {
-            **row,
+            "run_id": row.get("run_id"),
+            "method": row.get("method"),
+            "ok": bool(row.get("ok")),
+            "code": row.get("code"),
+            "message": row.get("message"),
+            "started_at": row.get("started_at"),
+            "elapsed_ms": row.get("elapsed_ms"),
             "has_screenshot": bool(
-                row.get("screenshot")
-                and Path(str(row["screenshot"])).is_file()
+                row.get("screenshot") and Path(str(row["screenshot"])).is_file()
             ),
+            "retryable": not bool(row.get("ok")) and can_retry(row),
         }
         for row in rows
     ]
 
 
 def get_job(base_dir: Path, run_id: str) -> dict[str, Any] | None:
-    return next(
-        (
-            row
-            for row in _load(Path(base_dir))
-            if row.get("run_id") == run_id
-        ),
-        None,
-    )
+    base_dir = Path(base_dir)
+    with _LOCK:
+        rows, changed = _prune(base_dir, _load(base_dir))
+        if changed:
+            _write(base_dir, rows)
+        return next(
+            (row for row in rows if row.get("run_id") == run_id),
+            None,
+        )
 
 
 def clear(base_dir: Path) -> None:

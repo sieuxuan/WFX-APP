@@ -16,6 +16,7 @@ import ctypes
 import os
 
 _ENC_PREFIX = "dpapi:v1:"
+_CRYPTPROTECT_UI_FORBIDDEN = 0x1
 
 
 class _DataBlob(ctypes.Structure):
@@ -55,7 +56,12 @@ def protect(plaintext: str) -> str | None:
         blob_in = _to_blob(plaintext.encode("utf-8"))
         blob_out = _DataBlob()
         ok = crypt32.CryptProtectData(
-            ctypes.byref(blob_in), None, None, None, None, 0,
+            ctypes.byref(blob_in),
+            None,
+            None,
+            None,
+            None,
+            _CRYPTPROTECT_UI_FORBIDDEN,
             ctypes.byref(blob_out),
         )
         if not ok:
@@ -83,7 +89,12 @@ def unprotect(token: str) -> str | None:
         blob_in = _to_blob(raw)
         blob_out = _DataBlob()
         ok = crypt32.CryptUnprotectData(
-            ctypes.byref(blob_in), None, None, None, None, 0,
+            ctypes.byref(blob_in),
+            None,
+            None,
+            None,
+            None,
+            _CRYPTPROTECT_UI_FORBIDDEN,
             ctypes.byref(blob_out),
         )
         if not ok:

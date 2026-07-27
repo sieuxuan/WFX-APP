@@ -11,16 +11,20 @@ permissions:
 
 jobs:
   release:
-    name: Build and publish Windows release
+    name: Build, sign and publish Windows release
     runs-on: windows-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        # actions/checkout v4 — pin full SHA để action là immutable.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        # actions/setup-python v5 — pin full SHA theo secure-use guidance.
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
           cache: pip
@@ -29,39 +33,160 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: Run tests
-        run: python -m pytest -q
+        run: |
+          python -m ruff check .
+          python -m pip_audit -r requirements.txt
+          python -m pytest -q
+
+      - name: Prepare Windows signing identity
+        shell: powershell
+        env:
+          WFX_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WFX_SIGNING_CERTIFICATE_BASE64 }}
+          WFX_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WFX_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WFX_SIGNING_CERTIFICATE_BASE64)) {
+            throw "Thiếu secret WFX_SIGNING_CERTIFICATE_BASE64."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WFX_SIGNING_CERTIFICATE_PASSWORD)) {
+            throw "Thiếu secret WFX_SIGNING_CERTIFICATE_PASSWORD."
+          }
+          $certPath = Join-Path $env:RUNNER_TEMP "wfx-signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $certPath,
+            [Convert]::FromBase64String($env:WFX_SIGNING_CERTIFICATE_BASE64)
+          )
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $certPath,
+            $env:WFX_SIGNING_CERTIFICATE_PASSWORD
+          )
+          $thumbprint = (
+            $certificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
+          ).ToUpperInvariant()
+          if ($thumbprint -notmatch '^[A-F0-9]{40}$') {
+            throw "Certificate ký Windows không có thumbprint hợp lệ."
+          }
+          @"
+          """Danh tính certificate được workflow release tạo tự động."""
+
+          EXPECTED_SIGNER_THUMBPRINT = "$thumbprint"
+          "@ | Set-Content -LiteralPath "wfx_panel/_signing_identity.py" -Encoding UTF8
 
       - name: Build Windows app
         shell: powershell
         run: |
           python wfx_panel/assets/generate_icon.py
           python -m PyInstaller --noconfirm --clean wfx_panel/wfx-panel.spec
+          $buildRoot = Join-Path $PWD "dist/WFX-Panel"
+          $buildBytes = (
+            Get-ChildItem -LiteralPath $buildRoot -Recurse -File |
+              Measure-Object -Property Length -Sum
+          ).Sum
+          $buildSizeMb = [math]::Round($buildBytes / 1MB, 1)
+          Write-Host "Packaged size: $buildSizeMb MB"
+          if ($buildSizeMb -gt 180) {
+            throw "Bản đóng gói vượt giới hạn 180 MB."
+          }
+          foreach ($unused in @("PyQt5", "PyQt6", "numpy", "cryptography")) {
+            if (
+              Test-Path -LiteralPath (
+                Join-Path $buildRoot "_internal/$unused"
+              )
+            ) {
+              throw "Bản đóng gói còn dependency không dùng: $unused"
+            }
+          }
 
-      - name: Package and checksum
+      - name: Sign, package and create signed checksum
         id: package
         shell: powershell
+        env:
+          WFX_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WFX_SIGNING_CERTIFICATE_PASSWORD }}
         run: |
-          $version = python -c "from wfx_panel.version import APP_VERSION; print(APP_VERSION)"
-          $tag = "v$version"
-          $zipName = "WFX-Panel-v$version-win64.zip"
-          $zipPath = Join-Path $PWD $zipName
-          Compress-Archive -Path "dist/WFX-Panel/*" -DestinationPath $zipPath -CompressionLevel Optimal -Force
-          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          [System.IO.File]::WriteAllText(
-            "$zipPath.sha256",
-            "$hash  $zipName`n",
-            [System.Text.UTF8Encoding]::new($false)
-          )
-          "VERSION=$version" >> $env:GITHUB_ENV
-          "TAG=$tag" >> $env:GITHUB_ENV
-          "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+          $certPath = Join-Path $env:RUNNER_TEMP "wfx-signing.pfx"
+          try {
+            $exePath = Join-Path $PWD "dist/WFX-Panel/WFX-Panel.exe"
+            & signtool sign /fd SHA256 /td SHA256 `
+              /tr "http://timestamp.digicert.com" `
+              /f $certPath /p $env:WFX_SIGNING_CERTIFICATE_PASSWORD `
+              $exePath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Không ký được WFX-Panel.exe."
+            }
+            & signtool verify /pa /all $exePath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chữ ký WFX-Panel.exe không hợp lệ."
+            }
+
+            $version = python -c "from wfx_panel.version import APP_VERSION; print(APP_VERSION)"
+            $tag = "v$version"
+            if (
+              $env:GITHUB_REF_TYPE -eq "tag" -and
+              $env:GITHUB_REF_NAME -ne $tag
+            ) {
+              throw (
+                "Tag $env:GITHUB_REF_NAME không khớp APP_VERSION $version."
+              )
+            }
+            $zipName = "WFX-Panel-v$version-win64.zip"
+            $zipPath = Join-Path $PWD $zipName
+            $checksumPath = "$zipPath.sha256"
+            $signaturePath = "$checksumPath.p7s"
+            Compress-Archive `
+              -Path "dist/WFX-Panel/*" `
+              -DestinationPath $zipPath `
+              -CompressionLevel Optimal `
+              -Force
+            $hash = (
+              Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
+            ).Hash.ToLowerInvariant()
+            [IO.File]::WriteAllText(
+              $checksumPath,
+              "$hash  $zipName`n",
+              [Text.UTF8Encoding]::new($false)
+            )
+
+            Add-Type -AssemblyName System.Security.Cryptography.Pkcs
+            $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $certPath,
+              $env:WFX_SIGNING_CERTIFICATE_PASSWORD
+            )
+            $content = [Security.Cryptography.Pkcs.ContentInfo]::new(
+              [IO.File]::ReadAllBytes($checksumPath)
+            )
+            $cms = [Security.Cryptography.Pkcs.SignedCms]::new($content, $true)
+            $signer = [Security.Cryptography.Pkcs.CmsSigner]::new($certificate)
+            $signer.IncludeOption = (
+              [Security.Cryptography.X509Certificates.X509IncludeOption]::WholeChain
+            )
+            $cms.ComputeSignature($signer)
+            [IO.File]::WriteAllBytes($signaturePath, $cms.Encode())
+
+            $verifyCms = [Security.Cryptography.Pkcs.SignedCms]::new(
+              $content,
+              $true
+            )
+            $verifyCms.Decode([IO.File]::ReadAllBytes($signaturePath))
+            $verifyCms.CheckSignature($false)
+
+            "VERSION=$version" >> $env:GITHUB_ENV
+            "TAG=$tag" >> $env:GITHUB_ENV
+            "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+          }
+          finally {
+            Remove-Item `
+              -LiteralPath $certPath `
+              -Force `
+              -ErrorAction SilentlyContinue
+          }
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        # softprops/action-gh-release v2 — pin SHA vì action nhận contents:write.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: |
             ${{ env.ZIP_NAME }}
             ${{ env.ZIP_NAME }}.sha256
+            ${{ env.ZIP_NAME }}.sha256.p7s
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
@@ -80,9 +205,9 @@ jobs:
             - Không chạy chồng hai workflow WFX; UI báo tiến trình và vẫn cho phép đóng/thu panel.
             - Toast nhỏ gọn, hiện chữ đồng bộ và không làm nghẽn WebView.
             - Launcher, panel, tray, taskbar và nhiều màn hình tiếp tục hoạt động ổn định.
-            - Trình cập nhật một nút giữ nguyên tài khoản và Settings sau khi cài bản mới.
+            - Trình cập nhật chỉ thay file của WFX Smart và có rollback an toàn.
 
-            File .sha256 dùng để kiểm tra gói tải về không bị thay đổi.
+            File `.sha256` và chữ ký `.p7s` xác minh gói tải về đúng từ nhà phát hành.
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

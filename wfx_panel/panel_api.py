@@ -673,7 +673,18 @@ class PanelAPI:
                     "message": "Vui lòng nhập mật khẩu trước khi lưu.",
                 }
             password = existing_password
-        self._prefs.save_account(user_id, password, base_dir=self._base_dir)
+        try:
+            self._prefs.save_account(user_id, password, base_dir=self._base_dir)
+        except getattr(
+            self._prefs,
+            "CredentialProtectionError",
+            RuntimeError,
+        ) as error:
+            return {
+                "ok": False,
+                "code": "CREDENTIAL_PROTECTION_FAILED",
+                "message": str(error),
+            }
         if previous_user_id.casefold() != user_id.casefold():
             self._catalog.reset_for_account_change()
         self._log("[SETTINGS] Đã lưu tài khoản")
@@ -976,6 +987,15 @@ class PanelAPI:
             }
         request = job.get("request") or {}
         method = job.get("method")
+        if not job_history.can_retry(job):
+            return {
+                "ok": False,
+                "code": "JOB_NOT_RETRYABLE",
+                "message": (
+                    "Tác vụ này không thể chạy lại vì lịch sử không lưu "
+                    "nội dung tìm kiếm nhạy cảm."
+                ),
+            }
         if method == "login":
             return self.login()
         if method == "check_session":

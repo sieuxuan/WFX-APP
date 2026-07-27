@@ -45,6 +45,25 @@ def test_legacy_plaintext_password_still_loads(tmp_path):
     )
     loaded = prefs.load_account(base_dir=tmp_path)
     assert loaded == {"user_id": "bob", "password": "legacy-pw"}
+    raw = (tmp_path / ".env").read_text(encoding="utf-8")
+    if _ON_WINDOWS:
+        assert "legacy-pw" not in raw
+        assert "WFX_PASSWORD_ENC=" in raw
+    else:
+        assert 'WFX_PASSWORD="legacy-pw"' in raw
+
+
+@pytest.mark.skipif(not _ON_WINDOWS, reason="DPAPI chỉ có trên Windows")
+def test_windows_never_falls_back_to_plaintext_when_dpapi_fails(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(secret, "protect", lambda _password: None)
+
+    with pytest.raises(prefs.CredentialProtectionError):
+        prefs.save_account("alice", "must-not-leak", base_dir=tmp_path)
+
+    assert not (tmp_path / ".env").exists()
 
 
 def test_save_account_preserves_unknown_env_lines(tmp_path):

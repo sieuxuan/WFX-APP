@@ -73,7 +73,7 @@
 
       <label class="search-box">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-        <input type="search" placeholder="Tìm nhanh module..." autocomplete="off" />
+        <input type="search" aria-label="Tìm module" placeholder="Tìm nhanh module..." autocomplete="off" />
       </label>
 
       <div class="modules-scroll">
@@ -231,20 +231,26 @@
 
     <div class="settings-overlay settings-main-overlay" aria-label="Thiết lập WFX" aria-hidden="true">
       <div class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <div class="sheet-handle"></div>
-        <div class="sheet-heading">
-          <div><strong id="settings-title">Cài đặt WFX Smart</strong><span>Đơn giản, riêng tư và đồng bộ với cách bạn làm việc</span></div>
-          <button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
-        </div>
-        <div class="settings-tabs" role="tablist" aria-label="Nhóm cài đặt">
-          <button type="button" class="settings-tab" role="tab" data-settings-tab="account" aria-selected="true" tabindex="0">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
-            Tài khoản
-          </button>
-          <button type="button" class="settings-tab" role="tab" data-settings-tab="app" aria-selected="false" tabindex="-1">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"/><path d="M19 13.5v-3l-2-.6-.6-1.4 1-1.8-2.1-2.1-1.8 1L12 5l-.6-2h-3l-.6 2-1.4.6-1.8-1-2.1 2.1 1 1.8-.6 1.4-2 .6v3l2 .6.6 1.4-1 1.8 2.1 2.1 1.8-1 1.4.6.6 2h3l.6-2 1.5-.6 1.8 1 2.1-2.1-1-1.8.6-1.4 2-.6Z"/></svg>
-            Ứng dụng
-          </button>
+        <div class="settings-sticky-header">
+          <div class="sheet-handle"></div>
+          <div class="sheet-heading">
+            <div><strong id="settings-title">Cài đặt WFX Smart</strong><span>Ba nhóm ngắn gọn, thay đổi được lưu ngay</span></div>
+            <button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+          </div>
+          <div class="settings-tabs" role="tablist" aria-label="Nhóm cài đặt">
+            <button type="button" class="settings-tab" role="tab" data-settings-tab="account" aria-selected="true" tabindex="0">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+              Tài khoản
+            </button>
+            <button type="button" class="settings-tab" role="tab" data-settings-tab="automation" aria-selected="false" tabindex="-1">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7V4m8 3V4M5 9h14v10H5V9Z"/><path d="m8 14 2 2 5-5"/></svg>
+              Tự động hóa
+            </button>
+            <button type="button" class="settings-tab" role="tab" data-settings-tab="appearance" aria-selected="false" tabindex="-1">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4Z"/><circle cx="7.5" cy="9" r=".8"/><circle cx="10" cy="6.5" r=".8"/></svg>
+              Giao diện
+            </button>
+          </div>
         </div>
 
         <section class="settings-panel settings-account-panel" data-settings-panel="account">
@@ -257,8 +263,8 @@
             <div><span>Kết nối WFX</span><strong class="account-status-label">Chưa kiểm tra</strong></div>
           </div>
           <div class="form-grid">
-            <label><span>User ID</span><input class="user-input" type="text" autocomplete="username" placeholder="Nhập WFX User ID" /></label>
-            <label class="password-field"><span>Password</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="Nhập lại mật khẩu" /><button class="toggle-password" type="button">Hiện</button></div></label>
+            <label><span>Tên đăng nhập WFX</span><input class="user-input" type="text" autocomplete="username" placeholder="Nhập User ID" /></label>
+            <label class="password-field"><span>Mật khẩu</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="Nhập lại mật khẩu" /><button class="toggle-password" type="button">Hiện</button></div></label>
           </div>
           <p class="account-help">Mật khẩu được lưu riêng trên máy này và không hiển thị lại. Nếu WFX từ chối đăng nhập, ứng dụng sẽ mở màn hình này để bạn nhập lại.</p>
           <p class="account-form-status" aria-live="polite"></p>
@@ -268,16 +274,19 @@
           </button>
         </section>
 
-        <section class="settings-panel settings-app-panel" data-settings-panel="app" hidden>
-          <div class="settings-section-heading"><span>Điều khiển nhanh</span><small>Kéo thanh trên cùng để di chuyển panel • giữ icon thu gọn để kéo</small></div>
+        <section class="settings-panel settings-automation-panel" data-settings-panel="automation" hidden>
+          <div class="settings-section-heading"><span>Thao tác tự động</span><small>Điều chỉnh cách panel phối hợp với WFX và Windows</small></div>
           <div class="setting-row hotkey-row"><div><strong>Hotkey mở panel</strong><span>Bấm nút rồi nhấn tổ hợp mới</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
           <label class="setting-row toggle-row"><div><strong>Đóng panel sau khi mở module</strong><span>Tự thu thành icon để không che WFX</span></div><input class="close-module-input" type="checkbox" checked /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Đưa Chrome lên khi chạy module</strong><span>Mặc định chuyển ngay sang cửa sổ WFX</span></div><input class="focus-chrome-input" type="checkbox" checked /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Khởi động cùng Windows</strong><span>Sẵn sàng ngay khi bạn đăng nhập máy</span></div><input class="autostart-input" type="checkbox" /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Mở ẩn trong tray</strong><span>Khởi động yên lặng, gọi bằng hotkey</span></div><input class="start-hidden-input" type="checkbox" /><i></i></label>
-          <div class="settings-section-heading settings-section-spaced"><span>Cửa sổ &amp; thông báo</span><small>Tùy chỉnh cách WFX Smart xuất hiện</small></div>
+          <label class="setting-row toggle-row admin-mode-row" hidden><div><strong>Chế độ quản trị</strong><span>Chỉ hiện module Admin được tài khoản cấp quyền</span></div><input class="admin-mode-input" type="checkbox" /><i></i></label>
+        </section>
+
+        <section class="settings-panel settings-appearance-panel" data-settings-panel="appearance" hidden>
+          <div class="settings-section-heading"><span>Hiển thị &amp; thông báo</span><small>Giữ panel dễ nhìn nhưng không che công việc</small></div>
           <label class="setting-row toggle-row"><div><strong>Luôn trên cùng</strong><span>Giữ panel phía trên các cửa sổ khác</span></div><input class="always-on-top-input" type="checkbox" checked /><i></i></label>
-          <label class="setting-row toggle-row admin-mode-row" hidden><div><strong>Admin Mode</strong><span>Chỉ hiện module Admin được cấp quyền</span></div><input class="admin-mode-input" type="checkbox" /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Thông báo khi xong việc</strong><span>Hiện thông báo WFX Smart bên ngoài panel</span></div><input class="toast-input" type="checkbox" checked /><i></i></label>
           <div class="setting-row appearance-row"><div><strong>Giao diện</strong><span>Chọn nền phù hợp với mắt bạn</span></div>
             <div class="segmented" role="group" aria-label="Giao diện">
@@ -315,10 +324,10 @@
     </div>
 
     <div class="settings-overlay log-overlay" aria-label="Lịch sử hoạt động">
-      <div class="settings-sheet activity-sheet">
+      <div class="settings-sheet activity-sheet" role="dialog" aria-modal="true" aria-labelledby="activity-title">
         <div class="sheet-handle"></div>
         <div class="sheet-heading">
-          <div><strong>Lịch sử hoạt động</strong><span>Run ID, ảnh lỗi và chạy lại</span></div>
+          <div><strong id="activity-title">Lịch sử hoạt động</strong><span>Tự xóa sau 7 ngày • không lưu nội dung tìm kiếm</span></div>
           <div class="log-heading-actions">
             <button class="history-refresh-button catalog-log-copy" type="button">Làm mới</button>
             <button class="icon-button log-close-button" type="button" aria-label="Đóng nhật ký"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>

@@ -375,7 +375,9 @@
 
   function selectSettingsTab(name) {
     if (settingsOverlay().classList.contains("credentials-required") && name !== "account") return;
-    const selected = name === "app" ? "app" : "account";
+    const selected = ["automation", "appearance"].includes(name)
+      ? name
+      : "account";
     $$(".settings-tab").forEach((button) => {
       const on = button.dataset.settingsTab === selected;
       button.setAttribute("aria-selected", String(on));
@@ -534,16 +536,22 @@
           || !supportsDefault || !scanned;
     }
     if ($(".catalog-folder-list")) {
+      const hasRetry = Boolean(
+        $(".catalog-folder-list").querySelector("[data-folder-retry]")
+      );
       $(".catalog-folder-list").setAttribute(
         "aria-disabled",
         String(
-          busy || catalogFolderScanning || catalogFolderSaving
-            || !supportsDefault || !scanned,
+          hasRetry
+            ? busy || catalogFolderScanning
+            : busy || catalogFolderScanning || catalogFolderSaving
+              || !supportsDefault || !scanned,
         ),
       );
       $$(".catalog-folder-list button").forEach((button) => {
-        button.disabled =
-          busy || catalogFolderScanning || catalogFolderSaving
+        button.disabled = button.matches("[data-folder-retry]")
+          ? busy || catalogFolderScanning
+          : busy || catalogFolderScanning || catalogFolderSaving
             || !supportsDefault || !scanned;
       });
     }
@@ -626,7 +634,7 @@
         </div>
         <div class="job-actions">
           ${job.has_screenshot ? '<button type="button" data-job-action="screenshot">Ảnh</button>' : ""}
-          ${job.ok ? "" : '<button type="button" data-job-action="retry">Chạy lại</button>'}
+          ${job.retryable ? '<button type="button" data-job-action="retry">Chạy lại</button>' : ""}
         </div>
       </article>`).join("");
   }
@@ -1069,6 +1077,11 @@
   }
 
   function handleCatalogFolderClick(event) {
+    const retry = event.target.closest("[data-folder-retry]");
+    if (retry) {
+      scanCatalogFolders(true);
+      return;
+    }
     const toggle = event.target.closest("[data-folder-toggle]");
     if (toggle) {
       toggleCatalogFolder(String(toggle.dataset.folderToggle || ""));
@@ -1122,7 +1135,9 @@
         "Chọn folder hoặc group bạn thường dùng.";
     } else {
       $(".catalog-folder-list").innerHTML =
-        '<div class="catalog-folder-empty">Chưa tải được folder.</div>';
+        '<div class="catalog-folder-empty">Chưa tải được folder.'
+        + '<br><button class="catalog-folder-retry" type="button" '
+        + 'data-folder-retry>Thử tải lại</button></div>';
       $(".catalog-folder-list").setAttribute("aria-busy", "false");
       $(".module-modal-status").textContent =
         result?.message || "Chưa tải được folder Catalog.";

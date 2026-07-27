@@ -1,22 +1,23 @@
 [project]
 name = "wfx-smart-panel"
-version = "1.0.8"
+version = "1.0.9"
 description = "WFX Smart Panel — desktop tự động hoá WorldFashionExchange (Playwright + pywebview)."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "playwright>=1.58,<2",
-    "pywebview>=5,<6",
-    "keyboard>=0.13,<1",
-    "pystray>=0.19,<1",
-    "Pillow>=10",
+    "playwright==1.61.0",
+    "pywebview==5.4",
+    "keyboard==0.13.5",
+    "pystray==0.19.5",
+    "Pillow==12.3.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
-    "pyinstaller>=6",
-    "ruff>=0.16",
+    "pytest==9.1.1",
+    "pyinstaller==6.17.0",
+    "ruff==0.16.0",
+    "pip-audit==2.10.1",
 ]
 
 # Đây là ứng dụng desktop đóng gói bằng PyInstaller, không phát hành lên PyPI,
