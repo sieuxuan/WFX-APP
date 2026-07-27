@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 import keyboard
@@ -25,6 +26,7 @@ from wfx_panel.win32_window import (
     _clamp_to_work_area,
     _find_window_hwnd,
     _foreground_process_id,
+    _foreground_window_hwnd,
     _move_hwnd,
     _native_compact_context_choice,
     _native_cursor_position,
@@ -33,14 +35,21 @@ from wfx_panel.win32_window import (
     _set_bounds_by_title,
     _set_process_window_bounds,
     _window_rect_by_title,
+    _work_area_for_point,
     _work_area_for_process_window,
     _work_area_for_window_title,
 )
 
 HOTKEY = hotkey.DEFAULT
 STATUS_POLL_SECONDS = 5
+TASKBAR_ACTIVATION_POLL_SECONDS = 0.25
+BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS = 0.75
+TRAY_RIGHT_BUTTON_UP = 0x0205  # WM_RBUTTONUP
 UPDATE_INITIAL_DELAY_SECONDS = 1
 UPDATE_POLL_SECONDS = 4 * 60 * 60
+WFX_MANUAL_URL = (
+    "https://wfx.pro-sports.com.vn/wfx-digital-dictionary/system-manual"
+)
 ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 NOTIFICATION_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
@@ -62,12 +71,26 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "prepare_catalog",
         "find_code",
         "find_buyer_reference",
+        "open_catalog_destination",
         "open_sale_asn_new",
         "open_supplier_category",
         "find_supplier",
         "find_buyer",
     }
 )
+
+
+class _WfxTrayIcon(pystray.Icon):
+    """Báo right-click tray trước khi backend Win32 hiển thị popup menu."""
+
+    def __init__(self, *args, on_context_menu=None, **kwargs):
+        self._on_context_menu = on_context_menu
+        super().__init__(*args, **kwargs)
+
+    def _on_notify(self, wparam, lparam):
+        if int(lparam) == TRAY_RIGHT_BUTTON_UP and self._on_context_menu:
+            self._on_context_menu()
+        return super()._on_notify(wparam, lparam)
 
 
 def _top_right_position() -> tuple[int, int]:
@@ -160,6 +183,9 @@ class _BubbleBridge:
     def begin_bubble_drag(self) -> dict:
         return self._app.begin_bubble_drag()
 
+    def note_bubble_interaction(self) -> dict:
+        return self._app.note_bubble_interaction()
+
     def bubble_context_menu(self) -> dict:
         return self._app.bubble_context_menu()
 
@@ -192,6 +218,9 @@ class PanelApp:
             else None
         )
         self._bubble_drag_thread: threading.Thread | None = None
+        self._bubble_direct_action_until = 0.0
+        self._taskbar_focus_armed = False
+        self._taskbar_opening = False
         self._notification_ready = threading.Event()
         self._notification_lock = threading.Lock()
         self._notification_generation = 0
@@ -388,6 +417,13 @@ class PanelApp:
             ),
         }
 
+    def note_bubble_interaction(self) -> dict:
+        """Đánh dấu click/drag trực tiếp để monitor taskbar không toggle lần hai."""
+        self._bubble_direct_action_until = (
+            time.monotonic() + BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS
+        )
+        return {"ok": True, "code": "BUBBLE_INTERACTION_NOTED"}
+
     def _bubble_drag_loop(
         self,
         hwnd: int,
@@ -398,14 +434,17 @@ class PanelApp:
         → hết lag). Cho đặt ở đâu cũng được, chỉ clamp để không lọt khỏi màn."""
         width = origin_rect[2] - origin_rect[0]
         height = origin_rect[3] - origin_rect[1]
-        area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
-        if area is None:
-            area = _work_area_for_process_window(os.getpid())
+        fallback_area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+        if fallback_area is None:
+            fallback_area = _work_area_for_process_window(os.getpid())
         last: tuple[int, int] | None = None
         while _native_left_button_down():
             cursor = _native_cursor_position()
             if cursor is None:
                 break
+            # Chọn work area theo chính con trỏ ở mỗi frame. Nếu giữ area của
+            # màn hình ban đầu, clamp sẽ chặn bubble vĩnh viễn ở mép monitor.
+            area = _work_area_for_point(cursor[0], cursor[1]) or fallback_area
             target_x = origin_rect[0] + cursor[0] - origin_cursor[0]
             target_y = origin_rect[1] + cursor[1] - origin_cursor[1]
             target_x, target_y = _clamp_to_work_area(
@@ -420,7 +459,7 @@ class PanelApp:
         prefs.save_prefs(compact_offset_x=last[0], compact_offset_y=last[1])
 
     def bubble_context_menu(self) -> dict:
-        """Menu chuột phải trên bubble: ẩn vào tray / bật-tắt luôn trên cùng."""
+        """Menu bubble: always-on-top / ẩn xuống tray / thoát ứng dụng."""
         choice = _native_compact_context_choice(
             self._always_on_top, BUBBLE_WINDOW_TITLE
         )
@@ -433,6 +472,13 @@ class PanelApp:
             }
         if choice == "toggle_on_top":
             return self.api.set_always_on_top(not self._always_on_top)
+        if choice == "exit":
+            self.quit()
+            return {
+                "ok": True,
+                "code": "APP_EXITING",
+                "message": "Đang thoát WFX Smart.",
+            }
         return {
             "ok": True,
             "code": "MENU_DISMISSED",
@@ -459,6 +505,26 @@ class PanelApp:
                 pass
         self._bubble_hidden = False
         self.show_panel()
+
+    def open_wfx_manual(self) -> dict:
+        """Mở hướng dẫn WFX trong trình duyệt mặc định của người dùng."""
+        try:
+            opened = bool(webbrowser.open(WFX_MANUAL_URL, new=2))
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "MANUAL_OPEN_FAILED",
+                "message": f"Không mở được WFX Manual: {error}",
+            }
+        return {
+            "ok": opened,
+            "code": "MANUAL_OPENED" if opened else "MANUAL_OPEN_FAILED",
+            "message": (
+                "Đã mở WFX Manual."
+                if opened
+                else "Không tìm thấy trình duyệt để mở WFX Manual."
+            ),
+        }
 
     def _focus_module_search(self) -> None:
         if self.window is None:
@@ -688,6 +754,53 @@ class PanelApp:
         else:
             self.show_panel()
 
+    def _open_panel_from_taskbar(self) -> None:
+        """Khôi phục bubble và mở toàn bộ UI khi kích hoạt từ taskbar."""
+        if (
+            self._taskbar_opening
+            or self._bubble_hidden
+            or time.monotonic() < self._bubble_direct_action_until
+        ):
+            return
+        self._taskbar_opening = True
+        try:
+            if self.bubble_window is not None:
+                try:
+                    self.bubble_window.restore()
+                    self.bubble_window.show()
+                except Exception:
+                    pass
+            self.show_panel()
+        finally:
+            self._taskbar_opening = False
+
+    def _on_bubble_taskbar_event(self) -> None:
+        # Callback GUI phải trả nhanh; restore/show có thể phát event lồng nhau.
+        threading.Thread(
+            target=self._open_panel_from_taskbar, daemon=True
+        ).start()
+
+    def _taskbar_activation_loop(self) -> None:
+        """Chỉ mở UI khi foreground chuyển từ app khác sang đúng HWND bubble."""
+        while not self._stop_status.wait(TASKBAR_ACTIVATION_POLL_SECONDS):
+            foreground_pid = _foreground_process_id()
+            foreground_hwnd = _foreground_window_hwnd()
+            bubble_hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
+            if foreground_pid is not None and foreground_pid != os.getpid():
+                self._taskbar_focus_armed = True
+            elif (
+                foreground_pid == os.getpid()
+                and foreground_hwnd is not None
+                and foreground_hwnd == bubble_hwnd
+                and self._taskbar_focus_armed
+            ):
+                self._taskbar_focus_armed = False
+                self._open_panel_from_taskbar()
+            elif foreground_pid == os.getpid():
+                # Menu pystray cũng thuộc process này. Huỷ trạng thái chờ để
+                # đóng menu tray không bị hiểu nhầm thành click taskbar.
+                self._taskbar_focus_armed = False
+
     def _on_closing(self):
         # Panel bị đóng (Alt+F4 / nút X) → chỉ ẩn panel, bubble vẫn còn. Khi
         # đang thoát thật (quit → destroy) thì bỏ qua để đóng hẳn.
@@ -761,13 +874,24 @@ class PanelApp:
     def _build_tray(self):
         image = Image.open(ICON_PATH)
         menu = pystray.Menu(
-            pystray.MenuItem(
-                "Hiện WFX Smart", lambda: self.show_from_tray(), default=True
-            ),
+            pystray.MenuItem("Hiện WFX Smart", lambda: self.show_from_tray()),
             pystray.MenuItem("Thoát", lambda: self.quit()),
         )
-        self.tray = pystray.Icon("wfx-panel", image, "WFX Smart Panel", menu)
+        self.tray = _WfxTrayIcon(
+            "wfx-panel",
+            image,
+            "WFX Smart Panel",
+            menu,
+            on_context_menu=self._note_tray_context_menu,
+        )
         self.tray.run()  # blocking → chạy trong thread riêng
+
+    def _note_tray_context_menu(self) -> None:
+        """Chặn tray right-click bị taskbar monitor hiểu nhầm là bubble."""
+        self._taskbar_focus_armed = False
+        self._bubble_direct_action_until = (
+            time.monotonic() + BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS
+        )
 
     def quit(self):
         self._quitting = True
@@ -824,6 +948,7 @@ class PanelApp:
         self.api.show_panel = self.show_panel   # type: ignore[attr-defined]
         self.api.toggle_panel = self.toggle_panel  # type: ignore[attr-defined]
         self.api.request_panel_hide = self.request_panel_hide  # type: ignore[attr-defined]
+        self.api.open_wfx_manual = self.open_wfx_manual  # type: ignore[attr-defined]
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
@@ -895,6 +1020,8 @@ class PanelApp:
         )
         self.bubble_window.events.loaded += self._on_bubble_loaded
         self.bubble_window.events.closing += self._on_bubble_closing
+        self.bubble_window.events.minimized += self._on_bubble_taskbar_event
+        self.bubble_window.events.restored += self._on_bubble_taskbar_event
 
         notification_x, notification_y = _notification_position()
         self.notification_window = webview.create_window(
@@ -926,6 +1053,9 @@ class PanelApp:
             finally:
                 self._hotkey_ready.set()
             threading.Thread(target=self._status_loop, daemon=True).start()
+            threading.Thread(
+                target=self._taskbar_activation_loop, daemon=True
+            ).start()
             threading.Thread(target=self._update_loop, daemon=True).start()
             self._build_tray()
 

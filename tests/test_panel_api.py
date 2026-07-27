@@ -75,7 +75,43 @@ class FakeLogin:
                            user_id, password, company_id="psh", log=print, destination=None):
         self.calls.append(("quick_find_catalog", category_name, category_value,
                            filter_kind, query, user_id, password, destination))
-        return {"ok": True, "code": "RESULT_OPENED", "message": query, "codes": [query]}
+        return {
+            "ok": True,
+            "code": "RESULT_OPENED",
+            "message": query,
+            "codes": [query],
+            "article_code": query,
+            "category": category_name,
+            "filter_kind": filter_kind,
+            "query": query,
+        }
+
+    def find_in_open_catalog(self, category_name, filter_kind, query, log=print):
+        self.calls.append(
+            ("find_in_open_catalog", category_name, filter_kind, query)
+        )
+        return {
+            "ok": True,
+            "code": "RESULT_OPENED",
+            "message": query,
+            "codes": [query],
+            "article_code": query,
+            "category": category_name,
+            "filter_kind": filter_kind,
+            "query": query,
+        }
+
+    def open_catalog_destination(self, article_code, destination, log=print):
+        self.calls.append(
+            ("open_catalog_destination", article_code, destination)
+        )
+        return {
+            "ok": True,
+            "code": "CATALOG_DESTINATION_OPENED",
+            "message": destination,
+            "article_code": article_code,
+            "destination": destination,
+        }
 
 
 def make_api(tmp_path):
@@ -84,19 +120,85 @@ def make_api(tmp_path):
     return api, fake
 
 
-def test_find_code_calls_quick_find(tmp_path):
+def test_find_code_uses_the_prepared_catalog_grid(tmp_path):
     prefs.save_account("u", "p", base_dir=tmp_path)
     api, fake = make_api(tmp_path)
-    result = api.find_code("Apparel", "ABC123", destination="bom")
+    api.prepare_catalog("Apparel")
+    result = api.find_code("Apparel", "ABC123")
     assert result["code"] == "RESULT_OPENED"
-    assert ("quick_find_catalog", "Apparel", "01", "code", "ABC123", "u", "p", "bom") in fake.calls
+    assert (
+        "find_in_open_catalog",
+        "Apparel",
+        "code",
+        "ABC123",
+    ) in fake.calls
+    assert not any(call[0] == "quick_find_catalog" for call in fake.calls)
 
 
 def test_find_buyer_reference_uses_buyer_kind(tmp_path):
     prefs.save_account("u", "p", base_dir=tmp_path)
     api, fake = make_api(tmp_path)
+    api.prepare_catalog("Apparel")
     api.find_buyer_reference("Apparel", "PO-9")
-    assert ("quick_find_catalog", "Apparel", "01", "buyer_reference", "PO-9", "u", "p", None) in fake.calls
+    assert (
+        "find_in_open_catalog",
+        "Apparel",
+        "buyer_reference",
+        "PO-9",
+    ) in fake.calls
+
+
+def test_catalog_destination_reuses_current_search_without_reopening_catalog(
+    tmp_path,
+):
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+
+    api.prepare_catalog("Apparel")
+    fake.calls.clear()
+    found = api.find_code("Apparel", "ABC123")
+    opened = api.open_catalog_destination("costsheet", found["article_code"])
+
+    assert opened["code"] == "CATALOG_DESTINATION_OPENED"
+    assert fake.calls == [
+        (
+            "find_in_open_catalog",
+            "Apparel",
+            "code",
+            "ABC123",
+        ),
+        ("open_catalog_destination", "ABC123", "costsheet"),
+    ]
+
+
+def test_catalog_destination_requires_a_current_search_result(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.open_catalog_destination("bom", "ABC123")
+
+    assert result["code"] == "CATALOG_RESULT_REQUIRED"
+    assert fake.calls == []
+
+
+def test_catalog_destination_rejects_a_stale_style(tmp_path):
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+    api.prepare_catalog("Apparel")
+    api.find_code("Apparel", "ABC123")
+
+    result = api.open_catalog_destination("bom", "OTHER")
+
+    assert result["code"] == "CATALOG_RESULT_CHANGED"
+    assert not any(call[0] == "open_catalog_destination" for call in fake.calls)
+
+
+def test_catalog_search_requires_prepare_step(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.find_code("Apparel", "ABC123")
+
+    assert result["code"] == "CATALOG_PREPARE_REQUIRED"
+    assert not any(call[0] == "find_in_open_catalog" for call in fake.calls)
 
 
 def test_open_module_builds_xpath(tmp_path):
@@ -218,6 +320,8 @@ def test_result_sink_receives_method_result_and_elapsed(tmp_path):
     api.set_result_sink(
         lambda method, result, elapsed: seen.append((method, result, elapsed))
     )
+    api.prepare_catalog("Apparel")
+    seen.clear()
     api.find_code("Apparel", "ABC123")
     assert len(seen) == 1
     method, result, elapsed = seen[0]
@@ -459,6 +563,32 @@ def test_failed_automation_records_local_screenshot(tmp_path):
     assert job["run_id"] == result["run_id"]
     assert job["has_screenshot"] is True
     assert "password" not in str(job).lower()
+
+
+def test_failed_division_switch_records_local_screenshot(tmp_path):
+    class FailingDivisionLogin(FakeLogin):
+        def switch_division(self, division_key, log=print):
+            return {
+                "ok": False,
+                "code": "DIVISION_CHANGE_NOT_CONFIRMED",
+                "message": f"fake failure: {division_key}",
+            }
+
+        def capture_failure_screenshot(self, path, log=print):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"png")
+            return True
+
+    api = PanelAPI(
+        login_module=FailingDivisionLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+
+    result = api.switch_division("knit")
+
+    assert result["ok"] is False
+    assert api.get_job_history()["jobs"][0]["has_screenshot"] is True
 
 
 class AuthorizedAdminLogin(FakeLogin):

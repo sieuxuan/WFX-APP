@@ -37,6 +37,7 @@ SESSION_OK = frozenset(
         "CODE_OPENED",
         "DIVISION_CHANGED",
         "DIVISION_ALREADY_ACTIVE",
+        "CATALOG_DESTINATION_OPENED",
         "MODULE_FILTER_READY",
         "SALE_ASN_NEW_READY",
         "SUPPLIER_CATEGORY_READY",
@@ -74,6 +75,12 @@ NON_REPORTABLE_FAILURES = frozenset(
         "USER_ID_REQUIRED",
         "DIVISION_UNKNOWN",
         "DIVISION_OPTION_NOT_FOUND",
+        "CATALOG_RESULT_REQUIRED",
+        "CATALOG_RESULT_CHANGED",
+        "CATALOG_RESULT_EXPIRED",
+        "CATALOG_PREPARE_REQUIRED",
+        "CATALOG_SEARCH_CONTEXT_LOST",
+        "ARTICLE_DESTINATION_UNKNOWN",
         "HOTKEY_INVALID",
         "JOB_NOT_FOUND",
         "JOB_NOT_RETRYABLE",
@@ -102,6 +109,10 @@ class PanelAPI:
         self._current_division: str | None = None
         self._division_label: str | None = None
         self._division_name: str | None = None
+        # Kết quả Catalog duy nhất vừa được mở. Costing/BOM phải dùng đúng
+        # popup này, không được chạy lại toàn bộ Catalog từ đầu.
+        self._catalog_result: dict[str, str] | None = None
+        self._catalog_prepared_category: str | None = None
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -256,6 +267,12 @@ class PanelAPI:
             self._current_division = None
             self._division_label = None
             self._division_name = None
+            self._catalog_result = None
+            self._catalog_prepared_category = None
+
+        if code in {"DIVISION_CHANGED", "LOGGED_IN"}:
+            self._catalog_result = None
+            self._catalog_prepared_category = None
 
         if result.get("current_division") is not None:
             self._current_division = str(result["current_division"])
@@ -309,6 +326,8 @@ class PanelAPI:
                 "open_supplier_category",
                 "find_supplier",
                 "find_buyer",
+                "switch_division",
+                "open_catalog_destination",
             }
             and hasattr(self._login, "capture_failure_screenshot")
         ):
@@ -547,6 +566,9 @@ class PanelAPI:
         )
 
     def prepare_catalog(self, category_name: str) -> dict:
+        self._catalog_result = None
+        self._catalog_prepared_category = None
+
         def action() -> dict:
             value = constants.CATEGORIES.get(category_name)
             if value is None:
@@ -564,9 +586,12 @@ class PanelAPI:
                 category_name, value, self._log
             )
 
-        return self._run(
+        result = self._run(
             "prepare_catalog", action, {"category_name": category_name}
         )
+        if result.get("code") == "CATEGORY_SELECTED":
+            self._catalog_prepared_category = str(category_name)
+        return result
 
     def find_code(self, category_name: str, code: str, destination: str | None = None) -> dict:
         return self._quick("find_code", category_name, "code", code, destination)
@@ -596,26 +621,97 @@ class PanelAPI:
                     "code": "CATEGORY_UNKNOWN",
                     "message": f"Category lạ: {category_name}",
                 }
-            account = self._account()
-            return self._login.quick_find_catalog(
+            if self._catalog_prepared_category != category_name:
+                return {
+                    "ok": False,
+                    "code": "CATALOG_PREPARE_REQUIRED",
+                    "message": (
+                        f"Hãy bấm Mở Catalog để chuẩn bị Category {category_name} "
+                        "trước khi tìm."
+                    ),
+                }
+            if not hasattr(self._login, "find_in_open_catalog"):
+                return {
+                    "ok": False,
+                    "code": "CATALOG_SEARCH_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ tìm theo từng bước.",
+                }
+            return self._login.find_in_open_catalog(
                 category_name,
-                value,
                 filter_kind,
                 query,
-                account["user_id"],
-                account["password"],
-                self._login.COMPANY_ID,
                 self._log,
-                destination=destination,
             )
 
-        return self._run(
+        result = self._run(
             method_name,
             action,
             {
                 "category_name": category_name,
                 "query": query,
                 "destination": destination,
+            },
+        )
+        if result.get("code") == "RESULT_OPENED" and result.get("article_code"):
+            self._catalog_result = {
+                "article_code": str(result["article_code"]),
+                "category_name": str(category_name),
+                "filter_kind": str(filter_kind),
+                "query": str(query).strip(),
+            }
+        else:
+            self._catalog_result = None
+            if result.get("code") == "CATALOG_SEARCH_CONTEXT_LOST":
+                self._catalog_prepared_category = None
+        return result
+
+    def open_catalog_destination(
+        self,
+        destination: str,
+        article_code: str,
+    ) -> dict:
+        """Mở Costing/BOM từ kết quả tìm hiện tại, không search Catalog lại."""
+
+        def action() -> dict:
+            current = self._catalog_result
+            expected = str(article_code or "").strip()
+            if current is None or not expected:
+                return {
+                    "ok": False,
+                    "code": "CATALOG_RESULT_REQUIRED",
+                    "message": "Hãy bấm Tìm và mở một style trước.",
+                }
+            if current["article_code"].casefold() != expected.casefold():
+                self._catalog_result = None
+                return {
+                    "ok": False,
+                    "code": "CATALOG_RESULT_CHANGED",
+                    "message": "Kết quả tìm đã thay đổi. Hãy bấm Tìm lại.",
+                }
+            if current["category_name"] != "Apparel":
+                return {
+                    "ok": False,
+                    "code": "APPAREL_ONLY",
+                    "message": "Costing và BOM chỉ hỗ trợ Category Apparel.",
+                }
+            if not hasattr(self._login, "open_catalog_destination"):
+                return {
+                    "ok": False,
+                    "code": "CATALOG_DESTINATION_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ bước này.",
+                }
+            return self._login.open_catalog_destination(
+                expected,
+                str(destination or "").casefold(),
+                self._log,
+            )
+
+        return self._run(
+            "open_catalog_destination",
+            action,
+            {
+                "destination": str(destination or "").casefold(),
+                "article_code": str(article_code or "").strip(),
             },
         )
 
@@ -964,6 +1060,11 @@ class PanelAPI:
                 str(request.get("category_name") or "Apparel"),
                 str(request.get("query") or ""),
                 request.get("destination"),
+            )
+        if method == "open_catalog_destination":
+            return self.open_catalog_destination(
+                str(request.get("destination") or ""),
+                str(request.get("article_code") or ""),
             )
         return {
             "ok": False,

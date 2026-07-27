@@ -67,7 +67,8 @@ def test_index_html_has_contract_hooks():
         'class="module-list"',
         'data-catalog-action="prepare"',
         'data-catalog-action="code-find"',
-        'data-catalog-action="buyer-bom"',
+        'data-catalog-action="open-bom"',
+        'data-catalog-action="open-costsheet"',
         'class="catalog-code"',
         'class="catalog-buyer-reference"',
         'class="user-input"',
@@ -79,6 +80,24 @@ def test_index_html_has_contract_hooks():
         assert hook in html, hook
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
     assert 'class="compact-launcher"' not in html
+
+
+def test_catalog_destination_is_a_separate_disabled_step():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'class="catalog-destination-step"' in html
+    assert "Tìm một style trước" in html
+    for action in ("open-costsheet", "open-bom"):
+        tag = html[html.index(f'data-catalog-action="{action}"') :]
+        tag = tag[: tag.index(">")]
+        assert "disabled" in tag
+    assert 'data-catalog-action="code-costsheet"' not in html
+    assert 'data-catalog-action="buyer-bom"' not in html
+    for action in ("code-find", "buyer-find"):
+        action_index = html.index(f'data-catalog-action="{action}"')
+        tag = html[html.rfind("<button", 0, action_index) :]
+        tag = tag[: tag.index(">")]
+        assert "catalog-find-button" in tag
+        assert "disabled" in tag
 
 
 def test_bubble_page_advertises_interactions():
@@ -122,6 +141,13 @@ def test_header_has_drag_region_class_for_frameless_window():
     # not honored by WebView2/pywebview's drag implementation.
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert 'class="panel-header pywebview-drag-region"' in html
+
+
+def test_header_exposes_wfx_manual_button():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'class="icon-button manual-button"' in html
+    assert 'aria-label="Mở hướng dẫn sử dụng WFX"' in html
+    assert 'title="WFX Manual"' in html
 
 
 def test_footer_has_health_indicators():

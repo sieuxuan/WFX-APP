@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from wfx_panel import panel_app, prefs
@@ -154,6 +155,123 @@ def test_activate_shows_panel_and_fronts_window(monkeypatch):
     assert app._panel_visible is True
 
 
+def test_taskbar_activation_restores_bubble_and_opens_full_ui(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+
+    class FakeBubble:
+        def restore(self):
+            calls.append("restore")
+
+        def show(self):
+            calls.append("bubble-show")
+
+    app.bubble_window = FakeBubble()
+
+    def show_panel():
+        calls.append("panel-show")
+        app._panel_visible = True
+        return {"ok": True}
+
+    app.show_panel = show_panel
+    monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+
+    app._open_panel_from_taskbar()
+
+    assert calls == ["restore", "bubble-show", "panel-show"]
+    assert app._panel_visible is True
+
+
+def test_direct_bubble_click_does_not_double_toggle_from_taskbar(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    times = iter([100.0, 100.1, 101.0])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
+    app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+
+    app.note_bubble_interaction()
+    app._open_panel_from_taskbar()
+    assert calls == []
+
+    app._open_panel_from_taskbar()
+    assert calls == ["panel-show"]
+
+
+def test_taskbar_minimize_and_restore_events_open_panel(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+
+    class ImmediateThread:
+        def __init__(self, *, target, daemon):
+            self.target = target
+            self.daemon = daemon
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(module.threading, "Thread", ImmediateThread)
+    app._open_panel_from_taskbar = lambda: calls.append("open")
+
+    app._on_bubble_taskbar_event()
+    app._on_bubble_taskbar_event()
+
+    assert calls == ["open", "open"]
+
+
+def test_taskbar_foreground_transition_opens_only_for_bubble(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    waits = iter([False, False, True])
+    process_ids = iter([99999, os.getpid()])
+    foreground_windows = iter([111, 4242])
+    calls = []
+
+    monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
+    monkeypatch.setattr(
+        module, "_foreground_process_id", lambda: next(process_ids)
+    )
+    monkeypatch.setattr(
+        module, "_foreground_window_hwnd", lambda: next(foreground_windows)
+    )
+    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 4242)
+    app._open_panel_from_taskbar = lambda: calls.append("open")
+
+    app._taskbar_activation_loop()
+
+    assert calls == ["open"]
+
+
+def test_tray_foreground_window_cancels_taskbar_activation(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    waits = iter([False, False, False, True])
+    process_ids = iter([99999, os.getpid(), os.getpid()])
+    foreground_windows = iter([111, 7000, 4242])
+    calls = []
+
+    monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
+    monkeypatch.setattr(
+        module, "_foreground_process_id", lambda: next(process_ids)
+    )
+    monkeypatch.setattr(
+        module, "_foreground_window_hwnd", lambda: next(foreground_windows)
+    )
+    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 4242)
+    app._open_panel_from_taskbar = lambda: calls.append("open")
+
+    app._taskbar_activation_loop()
+
+    assert calls == []
+
+
 def test_panel_no_longer_has_browser_docking_behavior():
     import wfx_panel.panel_app as module
 
@@ -240,6 +358,9 @@ def test_bubble_drag_loop_moves_and_saves_without_snapping(monkeypatch):
         module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
     monkeypatch.setattr(
+        module, "_work_area_for_point", lambda _x, _y: (0, 0, 1920, 1080)
+    )
+    monkeypatch.setattr(
         module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
     )
     monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
@@ -273,6 +394,9 @@ def test_bubble_drag_loop_keeps_icon_inside_screen_when_dragged_past_edge(
         module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
     monkeypatch.setattr(
+        module, "_work_area_for_point", lambda _x, _y: (0, 0, 1920, 1080)
+    )
+    monkeypatch.setattr(
         module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
     )
     monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
@@ -284,6 +408,42 @@ def test_bubble_drag_loop_keeps_icon_inside_screen_when_dragged_past_edge(
     for x, y in moved:
         assert 0 <= x <= 1920 - 48
         assert 0 <= y <= 1080 - 48
+
+
+def test_bubble_drag_loop_can_cross_to_another_monitor(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    mouse_states = iter([True, False])
+    moved = []
+    saved = []
+
+    monkeypatch.setattr(
+        module, "_native_left_button_down", lambda: next(mouse_states)
+    )
+    monkeypatch.setattr(module, "_native_cursor_position", lambda: (2200, 300))
+    monkeypatch.setattr(
+        module,
+        "_work_area_for_window_title",
+        lambda _title: (0, 0, 1920, 1080),
+    )
+    monkeypatch.setattr(
+        module,
+        "_work_area_for_point",
+        lambda x, _y: (1920, 0, 3840, 1080) if x >= 1920 else (0, 0, 1920, 1080),
+    )
+    monkeypatch.setattr(
+        module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
+    )
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
+    )
+
+    app._bubble_drag_loop(4242, (1800, 300), (1760, 280, 1808, 328))
+
+    assert moved == [(2160, 280)]
+    assert saved == [{"compact_offset_x": 2160, "compact_offset_y": 280}]
 
 
 def test_show_panel_shows_window_and_hide_panel_hides_it(monkeypatch):
@@ -586,6 +746,111 @@ def test_bubble_context_menu_can_toggle_on_top(monkeypatch):
     assert applied == [False]
 
 
+def test_bubble_context_menu_can_exit(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    monkeypatch.setattr(
+        module, "_native_compact_context_choice", lambda *_a: "exit"
+    )
+    app.quit = lambda: calls.append("quit")
+
+    result = app.bubble_context_menu()
+
+    assert result["code"] == "APP_EXITING"
+    assert calls == ["quit"]
+
+
+def test_tray_menu_has_commands_without_a_default_open_action(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    items = []
+    menu_values = []
+
+    def menu_item(label, action, **options):
+        item = (label, action, options)
+        items.append(item)
+        return item
+
+    class FakeIcon:
+        def __init__(self, _name, _image, _title, menu, **_options):
+            menu_values.extend(menu)
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr(module.Image, "open", lambda _path: object())
+    monkeypatch.setattr(module.pystray, "MenuItem", menu_item)
+    monkeypatch.setattr(module.pystray, "Menu", lambda *values: values)
+    monkeypatch.setattr(module, "_WfxTrayIcon", FakeIcon)
+
+    app._build_tray()
+
+    assert [label for label, _action, _options in items] == [
+        "Hiện WFX Smart",
+        "Thoát",
+    ]
+    assert all(options.get("default") is not True for _, _, options in items)
+    assert len(menu_values) == 2
+
+
+def test_tray_right_click_suppresses_taskbar_activation(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app._taskbar_focus_armed = True
+    monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+
+    app._note_tray_context_menu()
+
+    assert app._taskbar_focus_armed is False
+    assert app._bubble_direct_action_until == (
+        100.0 + module.BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS
+    )
+
+
+def test_native_tray_icon_reports_right_click_before_backend(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    calls = []
+    monkeypatch.setattr(
+        module.pystray.Icon,
+        "_on_notify",
+        lambda _self, wparam, lparam: calls.append(("backend", wparam, lparam)),
+        raising=False,
+    )
+    icon = object.__new__(module._WfxTrayIcon)
+    icon._running = False
+    icon._icon_handle = None
+    icon._on_context_menu = lambda: calls.append(("context",))
+
+    icon._on_notify(12, module.TRAY_RIGHT_BUTTON_UP)
+
+    assert calls == [
+        ("context",),
+        ("backend", 12, module.TRAY_RIGHT_BUTTON_UP),
+    ]
+
+
+def test_wfx_manual_opens_the_configured_url(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    monkeypatch.setattr(
+        module.webbrowser,
+        "open",
+        lambda url, *, new: calls.append((url, new)) or True,
+    )
+
+    result = app.open_wfx_manual()
+
+    assert result["code"] == "MANUAL_OPENED"
+    assert calls == [(module.WFX_MANUAL_URL, 2)]
+
+
 def test_runtime_on_top_setting_updates_pywebview_window():
     from wfx_panel.panel_app import PanelApp
 
@@ -633,6 +898,11 @@ def test_bubble_and_notification_windows_are_created():
     assert "focus=False" in source
     # Bubble bắt sự kiện đóng để thu vào tray thay vì huỷ.
     assert "self.bubble_window.events.closing += self._on_bubble_closing" in source
+    # Click taskbar phải mở đầy đủ UI, cả khi Windows phát minimize/restore
+    # hoặc chỉ chuyển foreground về bubble.
+    assert "self.bubble_window.events.minimized += self._on_bubble_taskbar_event" in source
+    assert "self.bubble_window.events.restored += self._on_bubble_taskbar_event" in source
+    assert "target=self._taskbar_activation_loop" in source
     # Panel tự thu khi mất focus qua kiểm tra foreground.
     assert "_foreground_process_id()" in source
 
