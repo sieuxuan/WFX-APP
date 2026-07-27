@@ -13,6 +13,8 @@ def test_release_workflow_signs_and_temporarily_trusts_private_publisher():
     assert 'Cert:\\CurrentUser\\Root' in source
     assert "signtool verify /pa /all" in source
     assert '$zipName = "WFX-Smart-v$version-win64.zip"' in source
+    assert "tar.exe -a -c -f" in source
+    assert '$archiveEntries -notcontains "./WFX-Panel.exe"' in source
     assert "TimeStamperCertificate" in source
     assert "$verifyCms.CheckSignature($false)" in source
     assert 'Remove-Item `' in source
