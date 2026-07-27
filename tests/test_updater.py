@@ -109,6 +109,10 @@ def test_schedule_update_downloads_verifies_and_rolls_back(
     assert "UPDATE_INSTALLED" in content
     assert "UPDATE_ROLLED_BACK" in content
     assert "Start-Process -FilePath $targetExe" in content
+    assert "DownloadFileTaskAsync" in content
+    assert "[System.Windows.Forms.Application]::DoEvents()" in content
+    assert "$startTimer.Add_Tick" in content
+    assert "[System.Threading.Tasks.Task]::Run" not in content
     assert "git " not in content.lower()
     assert launched
 

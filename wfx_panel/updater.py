@@ -270,18 +270,25 @@ $btnClose.Add_Click({{ $form.Close() }})
 $form.Controls.Add($btnClose)
 
 function Update-UI([string]$text, [int]$percent = -1, [string]$tone = 'info') {{
-  $form.Invoke([action]{{
-    $lblStatus.Text = $text
-    if ($tone -eq 'error') {{
-      $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110)
-    }} elseif ($tone -eq 'success') {{
-      $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(100, 220, 140)
-    }}
-    if ($percent -ge 0) {{
-      $progressBar.Style = "Blocks"
-      $progressBar.Value = [math]::Min(100, [math]::Max(0, $percent))
-    }}
-  }})
+  # Perform-Update chạy trên chính WinForms/PowerShell runspace. Cập nhật
+  # control trực tiếp rồi bơm message loop để cửa sổ không bị "Not responding".
+  $lblStatus.Text = $text
+  if ($tone -eq 'error') {{
+    $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110)
+  }} elseif ($tone -eq 'success') {{
+    $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(100, 220, 140)
+  }} else {{
+    $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 195, 215)
+  }}
+  if ($percent -ge 0) {{
+    $progressBar.Style = "Blocks"
+    $progressBar.Value = [math]::Min(100, [math]::Max(0, $percent))
+  }} else {{
+    $progressBar.Style = "Marquee"
+    $progressBar.MarqueeAnimationSpeed = 30
+  }}
+  $form.Refresh()
+  [System.Windows.Forms.Application]::DoEvents()
 }}
 
 function Safe-Remove([string]$path) {{
@@ -300,21 +307,42 @@ function Safe-Remove([string]$path) {{
   }}
 }}
 
+function Download-WithUi([string]$url, [string]$path) {{
+  $webClient = New-Object System.Net.WebClient
+  $webClient.Headers.Add("User-Agent", "WFX-Smart-Updater")
+  try {{
+    $task = $webClient.DownloadFileTaskAsync([Uri]$url, $path)
+    while (-not $task.IsCompleted) {{
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 80
+    }}
+    # GetResult ném lại lỗi HTTP/network thật thay vì để task fault im lặng.
+    $task.GetAwaiter().GetResult()
+  }} finally {{
+    $webClient.Dispose()
+  }}
+}}
+
 function Perform-Update {{
   try {{
     Update-UI "Đang chờ ứng dụng chính đóng..." 5
-    Wait-Process -Id {pid} -Timeout 15 -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
+    $waitDeadline = (Get-Date).AddSeconds(15)
+    while (
+      (Get-Process -Id {pid} -ErrorAction SilentlyContinue) -and
+      (Get-Date) -lt $waitDeadline
+    ) {{
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 120
+    }}
+    Start-Sleep -Milliseconds 300
 
     Safe-Remove $workDir
     Safe-Remove $backupDir
     New-Item -ItemType Directory -Path $expandedDir -Force | Out-Null
 
-    Update-UI "Đang tải gói cập nhật WFX Smart v$version..." 20
-    $webClient = New-Object System.Net.WebClient
-    $webClient.Headers.Add("User-Agent", "WFX-Smart-Updater")
-    $webClient.DownloadFile($packageUrl, $zipPath)
-    $webClient.DownloadFile($checksumUrl, $checksumPath)
+    Update-UI "Đang tải gói cập nhật WFX Smart v$version..."
+    Download-WithUi $packageUrl $zipPath
+    Download-WithUi $checksumUrl $checksumPath
 
     Update-UI "Đang kiểm tra mã checksum SHA-256..." 50
     $expectedHash = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\\s+')[0]
@@ -355,7 +383,7 @@ function Perform-Update {{
     }}
 
     Safe-Remove $backupDir
-    $form.Invoke([action]{{ $form.Close() }})
+    $form.Close()
   }} catch {{
     $err = $_.Exception.Message
     $_ | Out-String | Add-Content -LiteralPath $updateLog
@@ -379,17 +407,22 @@ function Perform-Update {{
         Start-Process -FilePath $targetExe -WorkingDirectory $installDir
       }}
     }}
-    $form.Invoke([action]{{
-      $btnClose.Visible = $true
-      $progressBar.Visible = $false
-    }})
+    $btnClose.Visible = $true
+    $progressBar.Visible = $false
+    $form.Refresh()
   }} finally {{
     Safe-Remove $workDir
   }}
 }}
 
+$startTimer = New-Object System.Windows.Forms.Timer
+$startTimer.Interval = 120
+$startTimer.Add_Tick({{
+  $startTimer.Stop()
+  Perform-Update
+}})
 $form.Add_Shown({{
-  [System.Threading.Tasks.Task]::Run([action]{{ Perform-Update }})
+  $startTimer.Start()
 }})
 
 $form.ShowDialog() | Out-Null
