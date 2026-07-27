@@ -700,21 +700,17 @@ class PanelApp:
 
     def _apply_update(self, state: dict) -> str | None:
         try:
-            executable = (
-                Path(sys.executable)
-                if getattr(sys, "frozen", False)
-                else Path.cwd() / "dist" / "WFX-Panel" / "WFX-Panel.exe"
-            )
-            executable_args = None
-            if not getattr(sys, "frozen", False) and not executable.is_file():
-                executable = Path(sys.executable)
-                executable_args = ["-m", "wfx_panel.panel_app"]
+            if not getattr(sys, "frozen", False):
+                return (
+                    "Bản development không tự cài cập nhật. "
+                    "Hãy build WFX-Panel.exe hoặc cài bản phát hành đã ký."
+                )
+            executable = Path(sys.executable)
 
             updater.schedule_update(
                 state,
                 current_pid=os.getpid(),
                 executable=executable,
-                executable_args=executable_args,
             )
             threading.Timer(1.0, self.quit).start()
             return None

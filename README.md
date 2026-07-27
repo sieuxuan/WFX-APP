@@ -1,4 +1,4 @@
-## WFX Smart 1.0.8
+## WFX Smart 1.0.9
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -14,9 +14,12 @@ Chạy dev:
 - Panel tự thu khi click ra ngoài. Launcher, panel và thông báo luôn được giữ
   trọn trong cùng màn hình, kể cả khi đặt sát góc, dùng nhiều màn hình hoặc đổi
   DPI/bố cục màn hình.
-- Tài khoản lưu ở `.env`; theme/tuỳ chọn ở `prefs.json`.
+- Tài khoản lưu ở `.env`; mật khẩu được DPAPI mã hoá thành
+  `WFX_PASSWORD_ENC`. Bản Windows từ chối lưu nếu DPAPI không hoạt động;
+  theme/tuỳ chọn ở `prefs.json`.
 - Mọi automation có `runId`, lịch sử cục bộ, thời gian chạy, ảnh lỗi và nút
-  chạy lại. Không lưu User ID/password vào lịch sử.
+  chạy lại cho tác vụ không chứa truy vấn nhạy cảm. Không lưu User ID/password,
+  Style Code hay nội dung tìm kiếm; lịch sử và ảnh lỗi tự xóa sau 7 ngày.
 - Khi tìm đúng một style Apparel, panel hiển thị thêm Season và Internal
   CostSheet Status đọc trực tiếp từ Catalog Grid.
 - Cây Group/Folder của Catalog Apparel chỉ scan một lần cho mỗi tài khoản và
@@ -38,10 +41,12 @@ Chạy dev:
   `#CompanyName` của WFX để highlight Division thật và chỉ báo thành công sau
   khi WFX xác nhận đã chuyển.
 - Khi chưa có tài khoản hoặc WFX từ chối đăng nhập, tab Tài khoản tự mở để
-  người dùng nhập lại; Settings được chia thành Tài khoản và Ứng dụng.
+  người dùng nhập lại; Settings được chia thành Tài khoản, Tự động hóa và
+  Giao diện.
 - App tự kiểm tra GitHub Release Stable mỗi 4 giờ. Khi có bản mới, người dùng
-  chỉ cần bấm `Cập nhật ngay`; app tải gói đã xác minh SHA-256, đóng, cài và
-  tự mở lại. Nếu cài lỗi, app tự trở về bản trước. Settings vẫn được giữ nguyên.
+  chỉ cần bấm `Cập nhật ngay`; app xác minh chữ ký certificate của checksum,
+  kiểm tra SHA-256, chỉ thay `WFX-Panel.exe` và `_internal`, rồi tự mở lại.
+  Nếu cài lỗi, app rollback đúng hai thành phần này. Settings vẫn được giữ nguyên.
 - `app.py`, `start_app.bat` và executable đều mở cùng UI pywebview; UI Tkinter
   cũ đã được loại bỏ.
 
@@ -51,7 +56,17 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Panel-v1.0.8-win64.zip` kèm file checksum `.sha256`.
+Gói phát hành: `WFX-Panel-v1.0.9-win64.zip` kèm checksum `.sha256` và chữ ký
+detached `.sha256.p7s`.
+
+Workflow release yêu cầu hai GitHub Actions secrets:
+
+- `WFX_SIGNING_CERTIFICATE_BASE64`: nội dung PFX đã base64.
+- `WFX_SIGNING_CERTIFICATE_PASSWORD`: mật khẩu PFX.
+
+Workflow đóng thumbprint certificate vào executable, ký Authenticode cho EXE
+và ký CMS cho checksum. Thiếu certificate sẽ fail release; bản chạy từ source
+không được phép tự cài update.
 
 - Windows 11 có sẵn WebView2 trong phần lớn bản cài.
 - Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài

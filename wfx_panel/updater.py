@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,17 +20,18 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from wfx_panel._signing_identity import EXPECTED_SIGNER_THUMBPRINT
 from wfx_panel.version import APP_VERSION
 
 REPOSITORY = "sieuxuan/WFX-APP"
-LATEST_RELEASE_API = (
-    f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
-)
+LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 REQUEST_TIMEOUT_SECONDS = 20
 ASSET_PATTERN = re.compile(
     r"^WFX-Panel-v(?P<version>\d+\.\d+\.\d+)-win64\.zip$",
     re.IGNORECASE,
 )
+EXPECTED_EXECUTABLE_NAME = "WFX-Panel.exe"
+OWNED_INSTALL_ITEMS = (EXPECTED_EXECUTABLE_NAME, "_internal")
 
 
 def _version_tuple(value: str) -> tuple[int, int, int]:
@@ -58,15 +60,35 @@ def _load_latest_release() -> dict[str, Any]:
 def _safe_release_url(value: str) -> str:
     url = str(value or "").strip()
     parsed = urlparse(url)
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname not in {"github.com", "objects.githubusercontent.com"}
-    ):
+    if parsed.scheme != "https" or parsed.hostname not in {
+        "github.com",
+        "objects.githubusercontent.com",
+    }:
         raise ValueError("Đường dẫn tải bản cập nhật không hợp lệ.")
     return url
 
 
-def _release_assets(release: dict[str, Any]) -> tuple[str, str, str]:
+def _validate_asset_urls(
+    version: str,
+    package_url: str,
+    checksum_url: str,
+    signature_url: str,
+) -> None:
+    package_name = f"WFX-Panel-v{version}-win64.zip"
+    expected = (
+        package_name,
+        package_name + ".sha256",
+        package_name + ".sha256.p7s",
+    )
+    actual = tuple(
+        Path(urlparse(url).path).name
+        for url in (package_url, checksum_url, signature_url)
+    )
+    if actual != expected:
+        raise ValueError("Tên các tệp cập nhật không khớp phiên bản được phát hành.")
+
+
+def _release_assets(release: dict[str, Any]) -> tuple[str, str, str, str]:
     tag = str(release.get("tag_name") or "").strip()
     version = tag.removeprefix("v")
     _version_tuple(version)
@@ -76,16 +98,16 @@ def _release_assets(release: dict[str, Any]) -> tuple[str, str, str]:
 
     package_name = f"WFX-Panel-v{version}-win64.zip"
     checksum_name = package_name + ".sha256"
+    signature_name = checksum_name + ".p7s"
     by_name = {
-        str(asset.get("name") or ""): str(
-            asset.get("browser_download_url") or ""
-        )
+        str(asset.get("name") or ""): str(asset.get("browser_download_url") or "")
         for asset in assets
         if isinstance(asset, dict)
     }
     package_url = _safe_release_url(by_name.get(package_name, ""))
     checksum_url = _safe_release_url(by_name.get(checksum_name, ""))
-    return version, package_url, checksum_url
+    signature_url = _safe_release_url(by_name.get(signature_name, ""))
+    return version, package_url, checksum_url, signature_url
 
 
 def check_for_updates(
@@ -101,7 +123,7 @@ def check_for_updates(
     _ = root, channel
     try:
         release = _load_latest_release()
-        version, package_url, checksum_url = _release_assets(release)
+        version, package_url, checksum_url, signature_url = _release_assets(release)
         common = {
             "channel": "stable",
             "version": version,
@@ -110,6 +132,7 @@ def check_for_updates(
             "release_url": str(release.get("html_url") or ""),
             "package_url": package_url,
             "checksum_url": checksum_url,
+            "signature_url": signature_url,
         }
         if _version_tuple(version) <= _version_tuple(APP_VERSION):
             return {
@@ -129,14 +152,18 @@ def check_for_updates(
             ),
             "can_update": True,
         }
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
+    except (
+        HTTPError,
+        URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
         return {
             "ok": False,
             "code": "UPDATE_CHECK_FAILED",
-            "message": (
-                "Chưa thể kiểm tra bản cập nhật. "
-                "Ứng dụng sẽ tự thử lại sau."
-            ),
+            "message": ("Chưa thể kiểm tra bản cập nhật. Ứng dụng sẽ tự thử lại sau."),
             "can_update": False,
             "channel": "stable",
             "version": APP_VERSION,
@@ -148,9 +175,10 @@ def _ps_quote(value: str | Path) -> str:
 
 
 def _data_dir() -> Path:
-    return Path(
-        os.getenv("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
-    ) / "WFX-Panel"
+    return (
+        Path(os.getenv("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+        / "WFX-Panel"
+    )
 
 
 def consume_update_result(base_dir: Path | None = None) -> dict | None:
@@ -183,21 +211,45 @@ def schedule_update(
     _version_tuple(version)
     package_url = _safe_release_url(str(state.get("package_url") or ""))
     checksum_url = _safe_release_url(str(state.get("checksum_url") or ""))
+    signature_url = _safe_release_url(str(state.get("signature_url") or ""))
+    _validate_asset_urls(
+        version,
+        package_url,
+        checksum_url,
+        signature_url,
+    )
+    if _version_tuple(version) <= _version_tuple(APP_VERSION):
+        raise ValueError("Chỉ được cài phiên bản mới hơn bản đang chạy.")
     target_exe = Path(executable or sys.executable).resolve()
+    if target_exe.name.casefold() != EXPECTED_EXECUTABLE_NAME.casefold():
+        raise ValueError(
+            "Cập nhật tự động chỉ được phép thay WFX-Panel.exe trong bản đóng gói."
+        )
+    if not target_exe.is_file():
+        raise ValueError("Không tìm thấy WFX-Panel.exe đang chạy.")
+    internal_dir = target_exe.parent / "_internal"
+    if not internal_dir.is_dir():
+        raise ValueError("Bản cài đặt hiện tại thiếu thư mục _internal.")
+    signer_thumbprint = re.sub(r"[^A-Fa-f0-9]", "", EXPECTED_SIGNER_THUMBPRINT).upper()
+    if not re.fullmatch(r"[A-F0-9]{40}", signer_thumbprint):
+        raise ValueError(
+            "Bản ứng dụng này chưa có danh tính ký số; không thể tự cập nhật an toàn."
+        )
     install_dir = target_exe.parent
     pid = int(current_pid or os.getpid())
+    if pid <= 0:
+        raise ValueError("Process ID của ứng dụng không hợp lệ.")
 
     data_dir = _data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     log_path = data_dir / "update.log"
     result_path = data_dir / "update-result.json"
-    helper = Path(tempfile.gettempdir()) / f"wfx-panel-update-{pid}.ps1"
+    work_dir = Path(tempfile.mkdtemp(prefix=f"wfx-panel-update-{pid}-")).resolve()
+    helper = work_dir / "update.ps1"
 
     exe_args_list = [str(arg) for arg in (executable_args or [])]
     exe_args_ps = (
-        ",".join(_ps_quote(arg) for arg in exe_args_list)
-        if exe_args_list
-        else ""
+        ",".join(_ps_quote(arg) for arg in exe_args_list) if exe_args_list else ""
     )
 
     content = f"""$ErrorActionPreference = 'Stop'
@@ -210,15 +262,29 @@ $updateLog = {_ps_quote(log_path)}
 $resultPath = {_ps_quote(result_path)}
 $packageUrl = {_ps_quote(package_url)}
 $checksumUrl = {_ps_quote(checksum_url)}
+$signatureUrl = {_ps_quote(signature_url)}
+$expectedSigner = {_ps_quote(signer_thumbprint)}
 $version = {_ps_quote(version)}
 $targetExe = {_ps_quote(target_exe)}
 $installDir = {_ps_quote(install_dir)}
 $exeArgs = @({exe_args_ps})
-$workDir = Join-Path $env:TEMP 'wfx-panel-update-{pid}'
+$workDir = {_ps_quote(work_dir)}
 $zipPath = Join-Path $workDir 'WFX-Panel.zip'
 $checksumPath = Join-Path $workDir 'WFX-Panel.zip.sha256'
+$signaturePath = Join-Path $workDir 'WFX-Panel.zip.sha256.p7s'
 $expandedDir = Join-Path $workDir 'expanded'
-$backupDir = "$installDir.backup-{pid}"
+$backupDir = Join-Path $workDir 'backup'
+$ownedItems = @('WFX-Panel.exe', '_internal')
+$installStarted = $false
+$allowedRemovePaths = @(
+  [System.IO.Path]::GetFullPath($workDir).TrimEnd('\\'),
+  [System.IO.Path]::GetFullPath(
+    (Join-Path $installDir 'WFX-Panel.exe')
+  ).TrimEnd('\\'),
+  [System.IO.Path]::GetFullPath(
+    (Join-Path $installDir '_internal')
+  ).TrimEnd('\\')
+)
 
 function Write-UpdateResult([bool]$ok, [string]$code, [string]$message) {{
   @{{ok=$ok; code=$code; message=$message; version=$version}} |
@@ -293,18 +359,46 @@ function Update-UI([string]$text, [int]$percent = -1, [string]$tone = 'info') {{
 }}
 
 function Safe-Remove([string]$path) {{
+  $safePath = [System.IO.Path]::GetFullPath($path).TrimEnd('\\')
+  if ($allowedRemovePaths -notcontains $safePath) {{
+    throw "Từ chối xóa đường dẫn ngoài phạm vi updater: $safePath"
+  }}
+  if (Test-Path -LiteralPath $safePath) {{
+    $item = Get-Item -LiteralPath $safePath -Force
+    if (
+      ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+    ) {{
+      throw "Từ chối xóa reparse point: $safePath"
+    }}
+  }}
   for ($i = 0; $i -lt 15; $i++) {{
     try {{
-      if (Test-Path -LiteralPath $path) {{
-        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+      if (Test-Path -LiteralPath $safePath) {{
+        Remove-Item -LiteralPath $safePath -Recurse -Force -ErrorAction Stop
       }}
       return
     }} catch {{
       Start-Sleep -Milliseconds 500
     }}
   }}
-  if (Test-Path -LiteralPath $path) {{
-    Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $safePath) {{
+    Remove-Item -LiteralPath $safePath -Recurse -Force -ErrorAction Stop
+  }}
+}}
+
+function Assert-TrustedExecutable([string]$path) {{
+  $signature = Get-AuthenticodeSignature -LiteralPath $path
+  if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {{
+    throw "WFX-Panel.exe không có chữ ký Authenticode hợp lệ."
+  }}
+  if (-not $signature.SignerCertificate) {{
+    throw "Không đọc được certificate ký WFX-Panel.exe."
+  }}
+  $thumbprint = (
+    $signature.SignerCertificate.Thumbprint -replace '[^A-Fa-f0-9]', ''
+  ).ToUpperInvariant()
+  if ($thumbprint -ne $expectedSigner) {{
+    throw "WFX-Panel.exe không đúng nhà phát hành WFX Smart."
   }}
 }}
 
@@ -335,17 +429,45 @@ function Perform-Update {{
       [System.Windows.Forms.Application]::DoEvents()
       Start-Sleep -Milliseconds 120
     }}
+    if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
+      throw 'Ứng dụng chính chưa đóng; chưa thay đổi file cài đặt.'
+    }}
     Start-Sleep -Milliseconds 300
 
-    Safe-Remove $workDir
-    Safe-Remove $backupDir
+    $workItem = Get-Item -LiteralPath $workDir -Force
+    if (
+      ($workItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+    ) {{
+      throw 'Thư mục tạm updater không an toàn.'
+    }}
     New-Item -ItemType Directory -Path $expandedDir -Force | Out-Null
 
     Update-UI "Đang tải gói cập nhật WFX Smart v$version..."
     Download-WithUi $packageUrl $zipPath
     Download-WithUi $checksumUrl $checksumPath
+    Download-WithUi $signatureUrl $signaturePath
 
-    Update-UI "Đang kiểm tra mã checksum SHA-256..." 50
+    Update-UI "Đang xác minh chữ ký nhà phát hành..." 45
+    Add-Type -AssemblyName System.Security.Cryptography.Pkcs
+    $signedContent = [System.Security.Cryptography.Pkcs.ContentInfo]::new(
+      [System.IO.File]::ReadAllBytes($checksumPath)
+    )
+    $signedCms = [System.Security.Cryptography.Pkcs.SignedCms]::new(
+      $signedContent,
+      $true
+    )
+    $signedCms.Decode([System.IO.File]::ReadAllBytes($signaturePath))
+    $signedCms.CheckSignature($false)
+    if ($signedCms.SignerInfos.Count -ne 1) {{
+      throw 'Chữ ký checksum không có đúng một nhà phát hành.'
+    }}
+    $signer = $signedCms.SignerInfos[0].Certificate
+    $actualSigner = ($signer.Thumbprint -replace '[^A-Fa-f0-9]', '').ToUpperInvariant()
+    if ($actualSigner -ne $expectedSigner) {{
+      throw 'Certificate ký bản cập nhật không đúng nhà phát hành WFX Smart.'
+    }}
+
+    Update-UI "Đang kiểm tra mã checksum SHA-256..." 55
     $expectedHash = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\\s+')[0]
     if ($expectedHash -notmatch '^[A-Fa-f0-9]{{64}}$') {{
       throw 'Tệp checksum SHA-256 không hợp lệ.'
@@ -357,21 +479,53 @@ function Perform-Update {{
 
     Update-UI "Đang giải nén gói cập nhật..." 70
     Expand-Archive -LiteralPath $zipPath -DestinationPath $expandedDir -Force
-    $newExe = Get-ChildItem -LiteralPath $expandedDir -Filter 'WFX-Panel.exe' -Recurse | Select-Object -First 1
-    if (-not $newExe) {{
-      throw 'Không tìm thấy WFX-Panel.exe trong gói cài đặt.'
+    $newExecutables = @(
+      Get-ChildItem -LiteralPath $expandedDir -Filter 'WFX-Panel.exe' -Recurse
+    )
+    if ($newExecutables.Count -ne 1) {{
+      throw 'Gói cập nhật phải có đúng một WFX-Panel.exe.'
     }}
+    $newExe = $newExecutables[0]
     $newRoot = $newExe.Directory.FullName
-
-    Update-UI "Đang cài đặt phiên bản mới..." 85
-    Copy-Item -LiteralPath $installDir -Destination $backupDir -Recurse -Force
-    Safe-Remove $installDir
-    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-    Copy-Item -Path (Join-Path $newRoot '*') -Destination $installDir -Recurse -Force
-
-    if (-not (Test-Path -LiteralPath $targetExe)) {{
-      throw 'Tệp ứng dụng sau cập nhật không tồn tại.'
+    if (-not (Test-Path -LiteralPath (Join-Path $newRoot '_internal') -PathType Container)) {{
+      throw 'Gói cập nhật thiếu thư mục _internal.'
     }}
+    Assert-TrustedExecutable $newExe.FullName
+
+    Update-UI "Đang sao lưu phiên bản hiện tại..." 78
+    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    foreach ($name in $ownedItems) {{
+      $currentItem = Join-Path $installDir $name
+      if (-not (Test-Path -LiteralPath $currentItem)) {{
+        throw "Bản cài đặt hiện tại thiếu thành phần bắt buộc: $name"
+      }}
+      Copy-Item -LiteralPath $currentItem -Destination $backupDir -Recurse -Force
+    }}
+    foreach ($name in $ownedItems) {{
+      if (-not (Test-Path -LiteralPath (Join-Path $backupDir $name))) {{
+        throw "Sao lưu chưa đầy đủ; chưa thay đổi bản cài đặt: $name"
+      }}
+    }}
+
+    Update-UI "Đang cài đặt phiên bản mới..." 88
+    $installStarted = $true
+    foreach ($name in $ownedItems) {{
+      $sourceItem = Join-Path $newRoot $name
+      $targetItem = Join-Path $installDir $name
+      if (-not (Test-Path -LiteralPath $sourceItem)) {{
+        throw "Gói cập nhật thiếu thành phần bắt buộc: $name"
+      }}
+      Safe-Remove $targetItem
+      Copy-Item -LiteralPath $sourceItem -Destination $targetItem -Recurse -Force
+    }}
+
+    if (
+      -not (Test-Path -LiteralPath $targetExe -PathType Leaf) -or
+      -not (Test-Path -LiteralPath (Join-Path $installDir '_internal') -PathType Container)
+    ) {{
+      throw 'Ứng dụng sau cập nhật thiếu thành phần bắt buộc.'
+    }}
+    Assert-TrustedExecutable $targetExe
 
     Write-UpdateResult $true 'UPDATE_INSTALLED' "Đã cập nhật thành công lên phiên bản $version."
     Update-UI "Cập nhật thành công! Đang tự động mở lại WFX Smart..." 100 'success'
@@ -388,19 +542,41 @@ function Perform-Update {{
   }} catch {{
     $err = $_.Exception.Message
     $_ | Out-String | Add-Content -LiteralPath $updateLog
-    Update-UI "Cập nhật thất bại: $err`nĐang khôi phục phiên bản cũ..." 50 'error'
+    $recoveryMessage = 'Bản hiện tại chưa bị thay đổi.'
+    if ($installStarted) {{
+      $recoveryMessage = 'Đang khôi phục phiên bản cũ...'
+    }}
+    Update-UI "Cập nhật thất bại: $err`n$recoveryMessage" 50 'error'
     try {{
-      if (Test-Path -LiteralPath $backupDir) {{
-        Safe-Remove $installDir
-        Move-Item -LiteralPath $backupDir -Destination $installDir -Force
+      if ($installStarted) {{
+        if (-not (Test-Path -LiteralPath $backupDir -PathType Container)) {{
+          throw 'Không tìm thấy bản sao lưu để rollback.'
+        }}
+        foreach ($name in $ownedItems) {{
+          $targetItem = Join-Path $installDir $name
+          $backupItem = Join-Path $backupDir $name
+          if (-not (Test-Path -LiteralPath $backupItem)) {{
+            throw "Bản sao lưu thiếu thành phần: $name"
+          }}
+          Safe-Remove $targetItem
+          Copy-Item -LiteralPath $backupItem -Destination $targetItem -Recurse -Force
+        }}
+        Assert-TrustedExecutable $targetExe
+        Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật thất bại. Đã khôi phục phiên bản trước.'
+      }} else {{
+        Write-UpdateResult $false 'UPDATE_FAILED' 'Cập nhật thất bại trước khi thay đổi phiên bản hiện tại.'
       }}
-      Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật thất bại. Đã khôi phục phiên bản trước.'
     }} catch {{
       $_ | Out-String | Add-Content -LiteralPath $updateLog
       Write-UpdateResult $false 'UPDATE_ROLLBACK_FAILED' 'Không thể hoàn tất cập nhật. Vui lòng tải lại ứng dụng.'
     }}
 
-    Update-UI "Lỗi: $err`nĐã khôi phục phiên bản trước. Vui lòng thử lại." 0 'error'
+    $finalMessage = if ($installStarted) {{
+      'Đã thử khôi phục phiên bản trước. Vui lòng kiểm tra lại ứng dụng.'
+    }} else {{
+      'Bản hiện tại chưa bị thay đổi. Vui lòng thử lại.'
+    }}
+    Update-UI "Lỗi: $err`n$finalMessage" 0 'error'
     if (Test-Path -LiteralPath $targetExe) {{
       if ($exeArgs.Count -gt 0) {{
         Start-Process -FilePath $targetExe -ArgumentList $exeArgs -WorkingDirectory $installDir
@@ -432,19 +608,22 @@ $form.ShowDialog() | Out-Null
     creation_flags = 0
     if os.name == "nt":
         creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen(
-        [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(helper),
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=creation_flags,
-    )
+    try:
+        subprocess.Popen(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(helper),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creation_flags,
+        )
+    except Exception:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise
     return helper
-

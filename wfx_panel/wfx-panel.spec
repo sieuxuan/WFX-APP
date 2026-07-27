@@ -20,6 +20,7 @@ a = Analysis(
     hiddenimports=[
         "login",
         "wfx_panel.catalog_controller",
+        "wfx_panel._signing_identity",
         "wfx_panel.secret",
         "wfx_panel.automation",
         "wfx_panel.automation.browser",
@@ -33,7 +34,23 @@ a = Analysis(
     ],
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    # WFX Smart chạy pywebview bằng WebView2/WinForms trên Windows. Các backend
+    # Qt cùng dependency phân tích ảnh/ký SSL tùy chọn bị hook của pywebview và
+    # Pillow kéo vào dù app không gọi tới; loại chúng giúp giảm hơn 100 MB mà
+    # không đụng tới Playwright hoặc pythonnet cần cho runtime thật.
+    excludes=[
+        "PyQt5",
+        "PyQt6",
+        "PySide2",
+        "PySide6",
+        "numpy",
+        "cryptography",
+        "yaml",
+        "psutil",
+        "tkinter",
+        "IPython",
+        "matplotlib",
+    ],
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="WFX-Panel",

@@ -8,9 +8,14 @@ def test_icon_and_ui_paths_resolve_under_resource_dir():
     # Finding B: bundled read-only assets (ui/, assets/) must always resolve
     # from RESOURCE_DIR, both frozen and unfrozen — this is unrelated to where
     # user data (.env/prefs.json) is written.
-    assert panel_app.ICON_PATH == prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
+    assert (
+        panel_app.ICON_PATH == prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
+    )
     assert panel_app.UI_INDEX == prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
-    assert panel_app.NOTIFICATION_INDEX == prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
+    assert (
+        panel_app.NOTIFICATION_INDEX
+        == prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
+    )
     assert panel_app.UI_INDEX.exists()
     assert panel_app.NOTIFICATION_INDEX.exists()
 
@@ -29,6 +34,21 @@ def test_webview_uses_fresh_ui_cache():
     # pywebview mặc định ép cửa sổ nhỏ thành khoảng 200×100 nếu không khai báo
     # min_size; launcher 48px khi đó chỉ nằm giữa một khung xanh rất lớn.
     assert "min_size=(BUBBLE_SIZE, BUBBLE_SIZE)" in source
+
+
+def test_windows_build_excludes_unused_optional_gui_and_science_stacks():
+    spec = (prefs.RESOURCE_DIR / "wfx_panel" / "wfx-panel.spec").read_text(
+        encoding="utf-8"
+    )
+    for package in (
+        '"PyQt5"',
+        '"PyQt6"',
+        '"PySide2"',
+        '"PySide6"',
+        '"numpy"',
+        '"cryptography"',
+    ):
+        assert package in spec
 
 
 def test_normal_startup_opens_full_panel(monkeypatch):
@@ -59,9 +79,7 @@ def test_normal_startup_opens_full_panel(monkeypatch):
         "load_account",
         lambda: {"user_id": "", "password": ""},
     )
-    monkeypatch.setattr(
-        panel_app.updater, "consume_update_result", lambda: None
-    )
+    monkeypatch.setattr(panel_app.updater, "consume_update_result", lambda: None)
 
     app._startup()
 
@@ -96,9 +114,7 @@ def test_start_hidden_preference_keeps_full_panel_hidden(monkeypatch):
         "load_account",
         lambda: {"user_id": "", "password": ""},
     )
-    monkeypatch.setattr(
-        panel_app.updater, "consume_update_result", lambda: None
-    )
+    monkeypatch.setattr(panel_app.updater, "consume_update_result", lambda: None)
 
     app._startup()
 
@@ -135,9 +151,7 @@ def test_module_results_route_to_external_notification():
     app = PanelApp()
     sent = []
     app.window = None
-    app._show_notification = (
-        lambda result, **context: sent.append((result, context))
-    )
+    app._show_notification = lambda result, **context: sent.append((result, context))
 
     app._on_result("find_code", {"ok": True, "message": "xong"}, 0.2)
     app._on_result("switch_division", {"ok": True, "message": "đổi"}, 0.2)
@@ -287,7 +301,9 @@ def test_activate_shows_panel_and_fronts_window(monkeypatch):
     )
     app.activate()
     assert shown[0] is True
-    assert any("wfxFocusModuleSearch" in item for item in shown if isinstance(item, str))
+    assert any(
+        "wfxFocusModuleSearch" in item for item in shown if isinstance(item, str)
+    )
     assert fronted == [True]
     assert app._panel_visible is True
 
@@ -371,9 +387,7 @@ def test_taskbar_foreground_transition_opens_only_for_bubble(monkeypatch):
     calls = []
 
     monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
-    monkeypatch.setattr(
-        module, "_foreground_process_id", lambda: next(process_ids)
-    )
+    monkeypatch.setattr(module, "_foreground_process_id", lambda: next(process_ids))
     monkeypatch.setattr(
         module, "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
@@ -395,9 +409,7 @@ def test_tray_foreground_window_cancels_taskbar_activation(monkeypatch):
     calls = []
 
     monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
-    monkeypatch.setattr(
-        module, "_foreground_process_id", lambda: next(process_ids)
-    )
+    monkeypatch.setattr(module, "_foreground_process_id", lambda: next(process_ids))
     monkeypatch.setattr(
         module, "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
@@ -487,9 +499,7 @@ def test_bubble_drag_loop_moves_and_saves_without_snapping(monkeypatch):
     moved = []
     saved = []
 
-    monkeypatch.setattr(
-        module, "_native_left_button_down", lambda: next(mouse_states)
-    )
+    monkeypatch.setattr(module, "_native_left_button_down", lambda: next(mouse_states))
     monkeypatch.setattr(module, "_native_cursor_position", lambda: (850, 740))
     monkeypatch.setattr(
         module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
@@ -522,9 +532,7 @@ def test_bubble_drag_loop_keeps_icon_inside_screen_when_dragged_past_edge(
     mouse_states = iter([True, False])
     moved = []
 
-    monkeypatch.setattr(
-        module, "_native_left_button_down", lambda: next(mouse_states)
-    )
+    monkeypatch.setattr(module, "_native_left_button_down", lambda: next(mouse_states))
     # Con trỏ nhảy ra ngoài mép phải-dưới màn hình.
     monkeypatch.setattr(module, "_native_cursor_position", lambda: (5000, 5000))
     monkeypatch.setattr(
@@ -555,9 +563,7 @@ def test_bubble_drag_loop_can_cross_to_another_monitor(monkeypatch):
     moved = []
     saved = []
 
-    monkeypatch.setattr(
-        module, "_native_left_button_down", lambda: next(mouse_states)
-    )
+    monkeypatch.setattr(module, "_native_left_button_down", lambda: next(mouse_states))
     monkeypatch.setattr(module, "_native_cursor_position", lambda: (2200, 300))
     monkeypatch.setattr(
         module,
@@ -694,9 +700,7 @@ def test_panel_stays_inside_bubble_monitor_at_all_four_corners(monkeypatch):
 
     app = module.PanelApp()
     app.window = FakeWindow()
-    monkeypatch.setattr(
-        module, "_work_area_for_window_title", lambda _title: area
-    )
+    monkeypatch.setattr(module, "_work_area_for_window_title", lambda _title: area)
 
     for bubble in corners:
         calls = []
@@ -738,15 +742,11 @@ def test_panel_shrinks_to_fit_a_small_work_area(monkeypatch):
     monkeypatch.setattr(
         module, "_window_rect_by_title", lambda _title: (372, 302, 420, 350)
     )
-    monkeypatch.setattr(
-        module, "_work_area_for_window_title", lambda _title: area
-    )
+    monkeypatch.setattr(module, "_work_area_for_window_title", lambda _title: area)
     monkeypatch.setattr(
         module,
         "_set_process_window_bounds",
-        lambda _pid, x, y, width, height: (
-            calls.append((x, y, width, height)) or True
-        ),
+        lambda _pid, x, y, width, height: calls.append((x, y, width, height)) or True,
     )
 
     app._position_panel_beside_bubble()
@@ -851,9 +851,7 @@ def test_bubble_context_menu_can_hide_to_tray(monkeypatch):
     app.window = FakeWindow()
     app.bubble_window = FakeBubble()
     app._panel_visible = True
-    monkeypatch.setattr(
-        module, "_native_compact_context_choice", lambda *_a: "hide"
-    )
+    monkeypatch.setattr(module, "_native_compact_context_choice", lambda *_a: "hide")
 
     result = app.bubble_context_menu()
 
@@ -872,10 +870,13 @@ def test_bubble_context_menu_can_toggle_on_top(monkeypatch):
     monkeypatch.setattr(
         module, "_native_compact_context_choice", lambda *_a: "toggle_on_top"
     )
-    app.api.set_always_on_top = lambda value: applied.append(value) or {
-        "ok": True,
-        "always_on_top": value,
-    }
+    app.api.set_always_on_top = lambda value: (
+        applied.append(value)
+        or {
+            "ok": True,
+            "always_on_top": value,
+        }
+    )
 
     result = app.bubble_context_menu()
 
@@ -888,9 +889,7 @@ def test_bubble_context_menu_can_exit(monkeypatch):
 
     app = module.PanelApp()
     calls = []
-    monkeypatch.setattr(
-        module, "_native_compact_context_choice", lambda *_a: "exit"
-    )
+    monkeypatch.setattr(module, "_native_compact_context_choice", lambda *_a: "exit")
     app.quit = lambda: calls.append("quit")
 
     result = app.bubble_context_menu()
@@ -1037,8 +1036,12 @@ def test_bubble_and_notification_windows_are_created():
     assert "self.bubble_window.events.closing += self._on_bubble_closing" in source
     # Click taskbar phải mở đầy đủ UI, cả khi Windows phát minimize/restore
     # hoặc chỉ chuyển foreground về bubble.
-    assert "self.bubble_window.events.minimized += self._on_bubble_taskbar_event" in source
-    assert "self.bubble_window.events.restored += self._on_bubble_taskbar_event" in source
+    assert (
+        "self.bubble_window.events.minimized += self._on_bubble_taskbar_event" in source
+    )
+    assert (
+        "self.bubble_window.events.restored += self._on_bubble_taskbar_event" in source
+    )
     assert "target=self._taskbar_activation_loop" in source
     # Panel tự thu khi mất focus qua kiểm tra foreground.
     assert "_foreground_process_id()" in source
