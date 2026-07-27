@@ -65,7 +65,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} là bản nâng cấp kiến trúc automation và trải nghiệm launcher/panel dành cho người dùng WFX.
+            WFX Smart ${{ env.VERSION }} nâng cấp Catalog và độ ổn định của ứng dụng desktop.
 
             Cách cài:
             1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
@@ -73,14 +73,14 @@ jobs:
             3. Mở **WFX-Panel.exe**.
 
             Điểm chính:
-            - Launcher vuông 48×48 tách thành cửa sổ riêng, luôn nổi và kéo mượt.
-            - Click launcher để mở panel ngay cạnh; click ra ngoài tự thu panel về launcher.
-            - Panel, launcher và thông báo luôn nằm trọn trong đúng màn hình, kể cả ở bốn góc, màn hình phụ, DPI khác nhau hoặc sau khi tháo màn hình.
-            - Tách automation thành các module browser/session/catalog/directory để dễ kiểm thử và bảo trì.
-            - Catalog tiếp tục hỗ trợ tìm Code/Buyer Reference, Season và Internal CostSheet Status.
-            - Lịch sử tác vụ có thời gian chạy, ảnh lỗi và nút chạy lại; không lưu credential.
-            - Mở Chrome automation, dùng lại phiên đăng nhập WFX và chuyển Division WOVEN / KNIT / PSSG.
-            - Trình cập nhật một nút giữ nguyên Settings sau khi cài bản mới.
+            - Catalog Apparel tự nhận diện cây Group/Folder theo tài khoản.
+            - Cây Catalog chỉ scan lần đầu, được dùng lại sau khi mở lại app; Refresh mới ép scan lại.
+            - Group, Folder và Master đều có thể đặt làm vị trí mặc định.
+            - Tìm Style Code/Buyer Reference và mở thẳng Costing/BOM trong một thao tác.
+            - Không chạy chồng hai workflow WFX; UI báo tiến trình và vẫn cho phép đóng/thu panel.
+            - Toast nhỏ gọn, hiện chữ đồng bộ và không làm nghẽn WebView.
+            - Launcher, panel, tray, taskbar và nhiều màn hình tiếp tục hoạt động ổn định.
+            - Trình cập nhật một nút giữ nguyên tài khoản và Settings sau khi cài bản mới.
 
             File .sha256 dùng để kiểm tra gói tải về không bị thay đổi.
           make_latest: true

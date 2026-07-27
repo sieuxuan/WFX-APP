@@ -66,13 +66,35 @@
   let currentDivision = null;
   let hasCredentials = false;
   let toastEnabled = true;
-  let catalogPreparedCategory = null;
   let lastCatalogResult = null;
+  let catalogDefaultFolder = null;
+  const catalogFoldersByCategory = new Map();
+  const catalogExpandedFoldersByCategory = new Map();
+  const CATALOG_DEFAULT_CATEGORY = "Apparel";
+  let catalogSelectedNodeId = "";
+  let catalogFolderScanning = false;
+  let catalogFolderSaving = false;
+  let catalogFolderScanGeneration = 0;
   const MODULE_RUN_METHODS = new Set([
     "open_module", "prepare_catalog", "find_code", "find_buyer_reference",
-    "open_catalog_destination",
+    "open_catalog_destination", "browse_catalog", "catalog_action",
     "open_sale_asn_new", "open_supplier_category", "find_supplier", "find_buyer",
   ]);
+  const BUSY_MESSAGES = {
+    open_module: "Đang mở module trên WFX…",
+    prepare_catalog: "Đang chuẩn bị Catalog…",
+    browse_catalog: "Đang mở vị trí Catalog…",
+    catalog_action: "Đang tìm và mở dữ liệu Catalog…",
+    find_code: "Đang tìm Style Code…",
+    find_buyer_reference: "Đang tìm Buyer Reference…",
+    open_catalog_destination: "Đang mở dữ liệu style…",
+    open_sale_asn_new: "Đang mở Sale ASN mới…",
+    open_supplier_category: "Đang mở Supplier…",
+    find_supplier: "Đang tìm Supplier…",
+    find_buyer: "Đang tìm Buyer…",
+    switch_division: "Đang đổi Division…",
+    login: "Đang đăng nhập WFX…",
+  };
 
   function allModules() {
     return visibleModuleGroups().flatMap((group) =>
@@ -104,11 +126,17 @@
     filterModules($(".search-box input")?.value || "");
   }
 
-  function setBusy(value) {
+  function setBusy(value, message = "Đang xử lý trên WFX…") {
     busy = value;
     document.body.classList.toggle("is-busy", value);
+    const progress = $(".operation-progress");
+    if (progress) {
+      progress.hidden = !value;
+      $(".operation-progress-text").textContent = message;
+    }
     $$("button, select, input").forEach((element) => {
       if (element.closest(".settings-overlay")) return;
+      if (element.matches(".close-button, .module-close-button")) return;
       element.disabled = value;
     });
     if (!value) {
@@ -319,21 +347,46 @@
   }
 
   function clearCatalogPreparation() {
-    catalogPreparedCategory = null;
     clearCatalogResult();
   }
 
   function syncCatalogStepButtons() {
     const category = $(".catalog-category")?.value || "";
-    const prepared = catalogPreparedCategory === category;
-    $$(".catalog-find-button").forEach((button) => {
-      button.disabled = busy || !prepared;
-    });
-    const destinationReady = prepared
-      && Boolean(lastCatalogResult?.articleCode)
-      && lastCatalogResult.category === "Apparel";
-    $$(".catalog-destination-actions button").forEach((button) => {
-      button.disabled = busy || !destinationReady;
+    const supportsDefault = category === CATALOG_DEFAULT_CATEGORY;
+    const scanned = catalogFoldersByCategory.has(category);
+    if ($(".catalog-browse-card")) {
+      $(".catalog-browse-card").hidden = !supportsDefault;
+    }
+    if ($(".catalog-folder-search")) {
+      $(".catalog-folder-search").disabled =
+        busy || catalogFolderScanning || catalogFolderSaving
+          || !supportsDefault || !scanned;
+    }
+    if ($(".catalog-folder-list")) {
+      $(".catalog-folder-list").setAttribute(
+        "aria-disabled",
+        String(
+          busy || catalogFolderScanning || catalogFolderSaving
+            || !supportsDefault || !scanned,
+        ),
+      );
+      $$(".catalog-folder-list button").forEach((button) => {
+        button.disabled =
+          busy || catalogFolderScanning || catalogFolderSaving
+            || !supportsDefault || !scanned;
+      });
+    }
+    if ($(".catalog-browse-button")) {
+      $(".catalog-browse-button").disabled =
+        busy || catalogFolderScanning || catalogFolderSaving
+          || !supportsDefault || !scanned;
+    }
+    if ($(".catalog-folder-refresh")) {
+      $(".catalog-folder-refresh").disabled =
+        busy || catalogFolderScanning || catalogFolderSaving;
+    }
+    $$(".catalog-query-actions button").forEach((button) => {
+      button.disabled = busy || catalogFolderScanning;
     });
   }
 
@@ -431,21 +484,14 @@
     if (result.style_status) setStyleStatus(result.style_status);
     if (result.code === "RESULT_OPENED" && result.article_code) {
       rememberCatalogResult(result);
-    } else if (result.code === "CATEGORY_SELECTED") {
-      catalogPreparedCategory = String(
-        result.category || $(".catalog-category").value
-      );
-      clearCatalogResult();
     } else if ([
       "NO_RESULTS", "MULTIPLE_RESULTS", "CATALOG_RESULT_REQUIRED",
       "CATALOG_RESULT_CHANGED", "CATALOG_RESULT_EXPIRED",
     ].includes(result.code)) {
       clearCatalogResult();
     }
-    if ([
-      "CATALOG_PREPARE_REQUIRED", "CATALOG_SEARCH_CONTEXT_LOST",
-    ].includes(result.code)) {
-      clearCatalogPreparation();
+    if (result.default_folder !== undefined) {
+      catalogDefaultFolder = result.default_folder;
     }
     if (result.admin_access !== undefined) {
       setAdminAccess(
@@ -471,8 +517,9 @@
       setStatus("error", "Bridge chưa sẵn sàng");
       return null;
     }
-    setBusy(true);
-    setStatus("neutral", "Đang xử lý...");
+    const busyMessage = BUSY_MESSAGES[method] || "Đang xử lý trên WFX…";
+    setBusy(true, busyMessage);
+    setStatus("neutral", busyMessage);
     try {
       if (MODULE_RUN_METHODS.has(method)) {
         await api()?.focus_automation_browser?.();
@@ -510,9 +557,9 @@
     const icon = $(".module-modal-icon");
     icon.className = `module-modal-icon accent-${module.accent}`;
     icon.innerHTML = moduleIconSvg(module.icon);
-    $(".module-modal-kicker").textContent = module.group;
     $("#module-modal-title").textContent = module.name;
-    $(".module-modal-description").textContent = module.description || "";
+    $(".module-modal-subtitle").textContent =
+      module.description || "Mở màn hình WFX.";
     $$('[data-module-view]').forEach((view) => {
       view.hidden = view.dataset.moduleView !== module.kind;
     });
@@ -529,6 +576,12 @@
       generic: ".generic-module-open",
     }[module.kind] || ".generic-module-open";
     setTimeout(() => $(focusTarget)?.focus(), 0);
+    if (module.kind === "catalog") {
+      syncCatalogStepButtons();
+      if ($(".catalog-category").value === CATALOG_DEFAULT_CATEGORY) {
+        setTimeout(() => scanCatalogFolders(false), 0);
+      }
+    }
   }
 
   function closeModuleModal() {
@@ -569,52 +622,363 @@
     "buyer-find": () => runSelectedModuleAction("find_buyer", $(".buyer-query").value.trim()),
   };
 
-  async function runCatalogSearch(method, query) {
-    if (catalogPreparedCategory !== $(".catalog-category").value) {
-      setStatus("error", "Hãy bấm Mở Catalog trước khi tìm.");
+  function masterFolder(category) {
+    return {
+      category_name: category,
+      node_id: "",
+      name: "Master",
+      path_label: "Mặc định (Master)",
+      kind: "master",
+    };
+  }
+
+  function normalizeCatalogSearch(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("vi")
+      .trim();
+  }
+
+  function catalogFolderTree(folders) {
+    const roots = [];
+    const stack = [];
+    (Array.isArray(folders) ? folders : []).forEach((folder) => {
+      const depth = Math.max(
+        1,
+        Number(folder.depth || (Array.isArray(folder.path) ? folder.path.length : 1)),
+      );
+      const node = { ...folder, depth, children: [] };
+      while (stack.length && stack[stack.length - 1].depth >= depth) {
+        stack.pop();
+      }
+      if (stack.length) stack[stack.length - 1].children.push(node);
+      else roots.push(node);
+      stack.push(node);
+    });
+    return roots;
+  }
+
+  function expandedCatalogFolders(category) {
+    if (!catalogExpandedFoldersByCategory.has(category)) {
+      catalogExpandedFoldersByCategory.set(category, new Set());
+    }
+    return catalogExpandedFoldersByCategory.get(category);
+  }
+
+  function catalogFolderIcon(kind) {
+    if (kind === "group") {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17v-12Z"/></svg>';
+  }
+
+  function renderCatalogFolderRow(folder, category, searchMode = false) {
+    const nodeId = String(folder.node_id || "");
+    const isGroup = folder.kind === "group";
+    const expanded = expandedCatalogFolders(category).has(nodeId);
+    const hasChildren = Array.isArray(folder.children) && folder.children.length > 0;
+    const selected = nodeId === catalogSelectedNodeId;
+    const parentPath = Array.isArray(folder.path)
+      ? folder.path.slice(0, -1).join(" / ")
+      : "";
+    const depth = searchMode ? 0 : Math.max(0, Number(folder.depth || 1) - 1);
+    const detail = searchMode
+      ? (parentPath || (isGroup ? "Group" : "Folder"))
+      : (isGroup
+        ? `${folder.children?.length || 0} mục`
+        : (hasChildren ? `${folder.children.length} mục con` : "Folder"));
+    const expandButton = hasChildren && !searchMode
+      ? `<button class="catalog-folder-expand" type="button"
+          data-folder-toggle="${escapeHtml(nodeId)}"
+          aria-label="${expanded ? "Thu gọn" : "Mở rộng"} ${escapeHtml(folder.name)}"
+          aria-expanded="${expanded}">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 5 5 5-5 5"/></svg>
+        </button>`
+      : '<span class="catalog-folder-expand-spacer" aria-hidden="true"></span>';
+
+    if (isGroup) {
+      return `<div class="catalog-folder-row catalog-folder-group${
+        selected ? " is-selected" : ""
+      }"
+          data-node-kind="group" style="--folder-depth:${depth}">
+        ${expandButton}
+        <button class="catalog-group-heading" type="button"
+          data-folder-select="${escapeHtml(nodeId)}"
+          role="option" aria-selected="${selected}"
+          data-catalog-group-action="select">
+          <span class="catalog-folder-type-icon">${catalogFolderIcon("group")}</span>
+          <span class="catalog-folder-copy">
+            <strong>${escapeHtml(folder.name || "Group")}</strong>
+            <small>${escapeHtml(detail)}</small>
+          </span>
+          <svg class="catalog-folder-check" viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10 4 4 8-9"/></svg>
+        </button>
+      </div>`;
+    }
+
+    return `<div class="catalog-folder-row${selected ? " is-selected" : ""}"
+        data-node-kind="folder" style="--folder-depth:${depth}">
+      ${expandButton}
+      <button class="catalog-folder-choice" type="button"
+        data-folder-select="${escapeHtml(nodeId)}"
+        role="option" aria-selected="${selected}">
+        <span class="catalog-folder-type-icon">${catalogFolderIcon("folder")}</span>
+        <span class="catalog-folder-copy">
+          <strong>${escapeHtml(folder.name || "Folder")}</strong>
+          <small>${escapeHtml(detail)}</small>
+        </span>
+        <svg class="catalog-folder-check" viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10 4 4 8-9"/></svg>
+      </button>
+    </div>`;
+  }
+
+  function renderCatalogFolderList() {
+    const category = $(".catalog-category")?.value || "";
+    const host = $(".catalog-folder-list");
+    if (!host || !catalogFoldersByCategory.has(category)) return;
+    const folders = catalogFoldersByCategory.get(category) || [];
+    const query = normalizeCatalogSearch($(".catalog-folder-search")?.value);
+    const master = masterFolder(category);
+    const selectedFolder = folders.find(
+      (folder) => String(folder.node_id || "") === catalogSelectedNodeId,
+    );
+    $(".catalog-folder-current").textContent = selectedFolder?.path_label
+      || "Mặc định (Master)";
+    $(".catalog-browse-label").textContent = !selectedFolder
+      ? "Mở Master"
+      : (selectedFolder.kind === "group"
+        ? "Mở group đã chọn"
+        : "Mở folder đã chọn");
+
+    const masterSelected = catalogSelectedNodeId === "";
+    const masterRow = `<div class="catalog-folder-row catalog-master-row${
+      masterSelected ? " is-selected" : ""
+    }" data-node-kind="master" style="--folder-depth:0">
+      <span class="catalog-folder-expand-spacer" aria-hidden="true"></span>
+      <button class="catalog-folder-choice" type="button" data-folder-select=""
+        role="option" aria-selected="${masterSelected}">
+        <span class="catalog-folder-type-icon">${catalogFolderIcon("folder")}</span>
+        <span class="catalog-folder-copy"><strong>${escapeHtml(master.path_label)}</strong><small>Catalog gốc</small></span>
+        <svg class="catalog-folder-check" viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10 4 4 8-9"/></svg>
+      </button>
+    </div>`;
+
+    if (query) {
+      const matches = folders.filter((folder) =>
+        normalizeCatalogSearch(
+          `${folder.name || ""} ${folder.path_label || ""}`,
+        ).includes(query)
+      );
+      const visibleMatches = matches.slice(0, 100);
+      const rows = visibleMatches.map((folder) =>
+        renderCatalogFolderRow({ ...folder, children: [] }, category, true)
+      ).join("");
+      const more = matches.length > visibleMatches.length
+        ? `<div class="catalog-folder-more">Còn ${
+          matches.length - visibleMatches.length
+        } kết quả — nhập thêm để thu hẹp.</div>`
+        : "";
+      host.innerHTML = masterRow + (rows || (
+        '<div class="catalog-folder-empty">Không tìm thấy folder phù hợp.</div>'
+      )) + more;
+    } else {
+      const expanded = expandedCatalogFolders(category);
+      const rows = [];
+      const appendVisible = (nodes) => {
+        nodes.forEach((folder) => {
+          rows.push(renderCatalogFolderRow(folder, category));
+          if (folder.children?.length && expanded.has(String(folder.node_id || ""))) {
+            appendVisible(folder.children);
+          }
+        });
+      };
+      appendVisible(catalogFolderTree(folders));
+      host.innerHTML = masterRow + (rows.join("") || (
+        '<div class="catalog-folder-empty">Không có folder nào khác.</div>'
+      ));
+    }
+    host.setAttribute("aria-busy", "false");
+    syncCatalogStepButtons();
+  }
+
+  function renderCatalogFolders(category, folders, preferred = null) {
+    if (!$(".catalog-folder-list") || $(".catalog-category").value !== category) return;
+    const items = Array.isArray(folders) ? folders : [];
+    const wanted = preferred && preferred.category_name === category
+      ? String(preferred.node_id || "")
+      : "";
+    catalogSelectedNodeId = items.some(
+      (folder) => String(folder.node_id || "") === wanted
+    ) ? wanted : "";
+    const selected = items.find(
+      (folder) => String(folder.node_id || "") === catalogSelectedNodeId,
+    );
+    if (selected && Array.isArray(selected.path)) {
+      const expanded = expandedCatalogFolders(category);
+      items.forEach((folder) => {
+        if (
+          folder.kind === "group"
+          && Array.isArray(folder.path)
+          && folder.path.length < selected.path.length
+          && folder.path.every((name, index) => name === selected.path[index])
+        ) {
+          expanded.add(String(folder.node_id || ""));
+        }
+      });
+    }
+    renderCatalogFolderList();
+  }
+
+  function toggleCatalogFolder(nodeId) {
+    const category = $(".catalog-category").value;
+    const expanded = expandedCatalogFolders(category);
+    if (expanded.has(nodeId)) expanded.delete(nodeId);
+    else expanded.add(nodeId);
+    renderCatalogFolderList();
+  }
+
+  async function selectCatalogFolder(nodeId) {
+    if (catalogFolderSaving) return;
+    const category = $(".catalog-category").value;
+    const folders = catalogFoldersByCategory.get(category) || [];
+    const folder = folders.find(
+      (item) => String(item.node_id || "") === nodeId,
+    );
+    const previous = catalogSelectedNodeId;
+    catalogSelectedNodeId = nodeId;
+    renderCatalogFolderList();
+    catalogFolderSaving = true;
+    syncCatalogStepButtons();
+    try {
+      const result = await saveSelectedCatalogFolder();
+      if (!result?.ok) {
+        catalogSelectedNodeId = previous;
+        renderCatalogFolderList();
+      }
+    } finally {
+      catalogFolderSaving = false;
+      syncCatalogStepButtons();
+    }
+  }
+
+  function handleCatalogFolderClick(event) {
+    const toggle = event.target.closest("[data-folder-toggle]");
+    if (toggle) {
+      toggleCatalogFolder(String(toggle.dataset.folderToggle || ""));
+      return;
+    }
+    const choice = event.target.closest("[data-folder-select]");
+    if (choice) {
+      selectCatalogFolder(String(choice.dataset.folderSelect || ""));
+    }
+  }
+
+  async function scanCatalogFolders(force = false) {
+    const category = $(".catalog-category").value;
+    if (category !== CATALOG_DEFAULT_CATEGORY) {
+      catalogFolderScanning = false;
+      syncCatalogStepButtons();
+      return;
+    }
+    // Modal có thể đóng/mở lại trong lúc lần scan đầu còn chạy. Không tạo
+    // thêm workflow CDP song song; kết quả đầu tiên sẽ tự render khi xong.
+    if (catalogFolderScanning) return;
+    if (!force && catalogFoldersByCategory.has(category)) {
+      renderCatalogFolders(
+        category,
+        catalogFoldersByCategory.get(category),
+        catalogDefaultFolder,
+      );
+      return;
+    }
+    const generation = ++catalogFolderScanGeneration;
+    catalogFolderScanning = true;
+    $(".catalog-folder-list").innerHTML =
+      '<div class="catalog-folder-empty">Đang tải danh sách…</div>';
+    $(".catalog-folder-list").setAttribute("aria-busy", "true");
+    $(".module-modal-status").textContent = "Đang tải folder…";
+    syncCatalogStepButtons();
+    const result = await callQuiet(
+      "scan_catalog_folders",
+      category,
+      Boolean(force),
+    );
+    if (generation !== catalogFolderScanGeneration) return;
+    catalogFolderScanning = false;
+    if (result?.ok && Array.isArray(result.folders)) {
+      catalogFoldersByCategory.set(category, result.folders);
+      if (result.default_folder !== undefined) {
+        catalogDefaultFolder = result.default_folder;
+      }
+      renderCatalogFolders(category, result.folders, catalogDefaultFolder);
+      $(".module-modal-status").textContent =
+        "Chọn folder hoặc group bạn thường dùng.";
+    } else {
+      $(".catalog-folder-list").innerHTML =
+        '<div class="catalog-folder-empty">Chưa tải được folder.</div>';
+      $(".catalog-folder-list").setAttribute("aria-busy", "false");
+      $(".module-modal-status").textContent =
+        result?.message || "Chưa tải được folder Catalog.";
+      syncCatalogStepButtons();
+    }
+  }
+
+  async function saveSelectedCatalogFolder() {
+    const result = await callQuiet(
+      "set_catalog_default_folder",
+      $(".catalog-category").value,
+      catalogSelectedNodeId,
+    );
+    if (result) {
+      handleResult(result);
+      $(".module-modal-status").textContent = result.message || "";
+    }
+    return result;
+  }
+
+  async function browseCatalog() {
+    return runSelectedModuleAction(
+      "browse_catalog",
+      $(".catalog-category").value,
+    );
+  }
+
+  async function runCatalogAction(filterKind, query, destination = null) {
+    const value = String(query || "").trim();
+    if (!value) {
+      setStatus("error", "Vui lòng nhập nội dung cần tìm.");
       return null;
     }
     clearCatalogResult();
-    return call(method, $(".catalog-category").value, query.trim(), null);
-  }
-
-  async function openCatalogDestination(destination) {
-    if (!lastCatalogResult) {
-      setStatus("error", "Hãy bấm Tìm và mở một style trước.");
-      return null;
-    }
-    const currentQuery = lastCatalogResult.filterKind === "code"
-      ? $(".catalog-code").value.trim()
-      : $(".catalog-buyer-reference").value.trim();
-    if (
-      lastCatalogResult.category !== $(".catalog-category").value
-      || lastCatalogResult.query.toLowerCase() !== currentQuery.toLowerCase()
-    ) {
-      clearCatalogResult();
-      setStatus("error", "Nội dung tìm đã thay đổi. Hãy bấm Tìm lại.");
-      return null;
-    }
-    return call(
-      "open_catalog_destination",
+    return runSelectedModuleAction(
+      "catalog_action",
+      $(".catalog-category").value,
+      filterKind,
+      value,
       destination,
-      lastCatalogResult.articleCode,
     );
   }
 
   const catalogActions = {
-    "prepare": () => {
-      clearCatalogPreparation();
-      return call("prepare_catalog", $(".catalog-category").value);
-    },
-    "code-find": () => runCatalogSearch(
-      "find_code", $(".catalog-code").value
+    "refresh-folders": () => scanCatalogFolders(true),
+    "browse": () => browseCatalog(),
+    "code-find": () => runCatalogAction("code", $(".catalog-code").value),
+    "code-costsheet": () => runCatalogAction(
+      "code", $(".catalog-code").value, "costsheet"
     ),
-    "buyer-find": () => runCatalogSearch(
-      "find_buyer_reference",
-      $(".catalog-buyer-reference").value,
+    "code-bom": () => runCatalogAction(
+      "code", $(".catalog-code").value, "bom"
     ),
-    "open-costsheet": () => openCatalogDestination("costsheet"),
-    "open-bom": () => openCatalogDestination("bom"),
+    "buyer-find": () => runCatalogAction(
+      "buyer_reference", $(".catalog-buyer-reference").value
+    ),
+    "buyer-costsheet": () => runCatalogAction(
+      "buyer_reference", $(".catalog-buyer-reference").value, "costsheet"
+    ),
+    "buyer-bom": () => runCatalogAction(
+      "buyer_reference", $(".catalog-buyer-reference").value, "bom"
+    ),
   };
 
   function filterModules(query) {
@@ -712,7 +1076,21 @@
     $(".generic-module-open").addEventListener("click", openModule);
     $(".catalog-code").addEventListener("keydown", (event) => { if (event.key === "Enter") catalogActions["code-find"](); });
     $(".catalog-buyer-reference").addEventListener("keydown", (event) => { if (event.key === "Enter") catalogActions["buyer-find"](); });
-    $(".catalog-category").addEventListener("change", clearCatalogPreparation);
+    $(".catalog-category").addEventListener("change", () => {
+      clearCatalogPreparation();
+      $(".catalog-folder-search").value = "";
+      $(".module-modal-status").textContent = "";
+      syncCatalogStepButtons();
+      if ($(".catalog-category").value === CATALOG_DEFAULT_CATEGORY) {
+        scanCatalogFolders(false);
+      }
+    });
+    $(".catalog-folder-search").addEventListener(
+      "input", renderCatalogFolderList
+    );
+    $(".catalog-folder-list").addEventListener(
+      "click", handleCatalogFolderClick
+    );
     $(".catalog-code").addEventListener("input", clearCatalogResult);
     $(".catalog-buyer-reference").addEventListener("input", clearCatalogResult);
     $(".search-box input").addEventListener("input", (event) => filterModules(event.target.value));
@@ -985,6 +1363,15 @@
     $(".focus-chrome-input").checked =
       state.focus_chrome_on_module !== false;
     $(".always-on-top-input").checked = state.always_on_top !== false;
+    catalogDefaultFolder = state.catalog_default_folder || null;
+    if (
+      catalogDefaultFolder?.category_name
+      && [...$(".catalog-category").options].some(
+        (option) => option.value === catalogDefaultFolder.category_name
+      )
+    ) {
+      $(".catalog-category").value = catalogDefaultFolder.category_name;
+    }
     setAdminAccess(
       state.admin_access,
       state.admin_module_ids,

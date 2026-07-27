@@ -260,3 +260,74 @@ def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch)
         ("filter", grid, "code", "ABC123"),
         ("stop",),
     ]
+
+
+def test_catalog_folder_rejects_non_numeric_node_before_browser_access():
+    result = catalog.open_catalog_folder(
+        "Apparel",
+        "01",
+        '1"] unsafe',
+    )
+    assert result["code"] == "CATALOG_FOLDER_INVALID"
+
+
+def test_catalog_folder_scan_uses_tree_without_clicking_master(monkeypatch):
+    calls = []
+
+    class PlaywrightRuntime:
+        def stop(self):
+            calls.append(("stop",))
+
+    class PlaywrightStarter:
+        def start(self):
+            return PlaywrightRuntime()
+
+    page = object()
+    frame = object()
+    folders = [
+        {
+            "node_id": "101",
+            "path": ["KNIT", "DEV"],
+            "path_label": "KNIT / DEV",
+            "kind": "group",
+        }
+    ]
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda _playwright: (object(), page),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+    monkeypatch.setattr(
+        catalog,
+        "_open_catalog_tree_on_page",
+        lambda actual_page, category, value, _log: (
+            calls.append(("tree", actual_page, category, value)) or frame
+        ),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_catalog_folder_nodes",
+        lambda actual_frame: (
+            calls.append(("scan", actual_frame)) or folders
+        ),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_click_catalog_master",
+        lambda *_args, **_kwargs: calls.append(("master",)),
+    )
+
+    result = catalog.scan_catalog_folders("Apparel", "01")
+
+    assert result["code"] == "CATALOG_FOLDERS_SCANNED"
+    assert result["folders"] == folders
+    assert ("master",) not in calls
+    assert calls == [
+        ("tree", page, "Apparel", "01"),
+        ("scan", frame),
+        ("stop",),
+    ]

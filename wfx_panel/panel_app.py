@@ -69,6 +69,8 @@ MODULE_NOTIFICATION_METHODS = frozenset(
     {
         "open_module",
         "prepare_catalog",
+        "browse_catalog",
+        "catalog_action",
         "find_code",
         "find_buyer_reference",
         "open_catalog_destination",
@@ -78,6 +80,19 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "find_buyer",
     }
 )
+NOTIFICATION_ACTION_LABELS = {
+    "open_module": "Mở module",
+    "prepare_catalog": "Catalog",
+    "browse_catalog": "Catalog",
+    "catalog_action": "Catalog",
+    "find_code": "Tìm Style Code",
+    "find_buyer_reference": "Tìm Buyer Reference",
+    "open_catalog_destination": "Catalog",
+    "open_sale_asn_new": "Sale ASN",
+    "open_supplier_category": "Supplier",
+    "find_supplier": "Tìm Supplier",
+    "find_buyer": "Tìm Buyer",
+}
 
 
 class _WfxTrayIcon(pystray.Icon):
@@ -205,8 +220,9 @@ class PanelApp:
         self._always_on_top = preferences["always_on_top"]
         self._start_hidden = preferences["start_hidden"]
         self.bubble_window = None
-        # Bubble (icon) là trạng thái nghỉ thường trực; panel mặc định ẩn và
-        # chỉ bung ra khi bấm bubble, tự ẩn khi click ra ngoài.
+        # Bubble là trạng thái nghỉ sau khi thu panel. Khi user chạy app bình
+        # thường, UI đầy đủ phải xuất hiện ngay lần đầu (trừ khi họ chủ động
+        # bật "Mở ẩn trong tray").
         self._panel_visible = False
         self._bubble_hidden = self._start_hidden
         # Vị trí thường trực của bubble (physical Win32 coords) — tái dùng pref
@@ -608,7 +624,13 @@ class PanelApp:
             except Exception:
                 pass
 
-    def _show_notification(self, result: dict) -> None:
+    def _show_notification(
+        self,
+        result: dict,
+        *,
+        method: str = "",
+        elapsed: float | None = None,
+    ) -> None:
         if (
             not self._toast_enabled
             or self.notification_window is None
@@ -618,10 +640,28 @@ class PanelApp:
         import json
 
         tone = "success" if result.get("ok") else "error"
+        action_label = NOTIFICATION_ACTION_LABELS.get(method, "WFX Smart")
+        status_label = "Hoàn thành" if result.get("ok") else "Cần kiểm tra"
+        details = []
+        article_code = str(result.get("article_code") or "").strip()
+        if article_code:
+            details.append(f"Style {article_code}")
+        folder = result.get("folder")
+        if isinstance(folder, dict):
+            path_label = str(folder.get("path_label") or "").strip()
+            if path_label:
+                details.append(path_label)
+        if elapsed is not None:
+            details.append(
+                "< 1 giây"
+                if elapsed < 1
+                else f"{elapsed:.1f} giây".replace(".", ",")
+            )
         payload = {
             "tone": tone,
-            "title": "Đã hoàn thành" if result.get("ok") else "Chưa hoàn thành",
+            "title": f"{action_label} · {status_label}",
             "message": str(result.get("message") or "Đã xong."),
+            "detail": " · ".join(details),
             "theme": prefs.load_prefs()["theme"],
         }
         try:
@@ -639,7 +679,10 @@ class PanelApp:
             self._notification_generation += 1
             generation = self._notification_generation
         timer = threading.Timer(
-            NOTIFICATION_SECONDS,
+            min(
+                10.0,
+                NOTIFICATION_SECONDS + len(payload["message"]) / 45,
+            ),
             self._hide_notification,
             args=(generation,),
         )
@@ -695,7 +738,11 @@ class PanelApp:
                 pass
 
         if method in MODULE_NOTIFICATION_METHODS:
-            self._show_notification(result)
+            self._show_notification(
+                result,
+                method=method,
+                elapsed=elapsed,
+            )
 
     def _status_loop(self) -> None:
         while not self._stop_status.wait(STATUS_POLL_SECONDS):
@@ -827,6 +874,8 @@ class PanelApp:
             state = self.api.get_initial_state()
             import json
             self.window.evaluate_js(f"window.wfxBootstrap({json.dumps(state, ensure_ascii=False)})")
+            if not self._start_hidden:
+                self.show_panel()
             threading.Thread(
                 target=self.api.flush_error_reports,
                 daemon=True,
@@ -857,6 +906,8 @@ class PanelApp:
             # mặc định — nếu không cập nhật footer ở đây, người dùng sẽ thấy
             # trạng thái treo vĩnh viễn mà không biết vì sao.
             self._set_status("error", message)
+            if not self._start_hidden:
+                self.show_panel()
 
         # Hotkey có thể đã đăng ký xong hoặc chưa tại thời điểm này (background()
         # chạy song song). Đợi tối đa 5s rồi báo lỗi hotkey (nếu có) — đây là lần
@@ -869,7 +920,7 @@ class PanelApp:
             )
             self._push_log(f"[ERROR] {hotkey_message}")
             self._set_status("error", hotkey_message)
-        # Trạng thái nghỉ = bubble; không tự bung panel lúc khởi động.
+        # Sau khi user thu panel, bubble tiếp tục là trạng thái nghỉ.
 
     def _build_tray(self):
         image = Image.open(ICON_PATH)

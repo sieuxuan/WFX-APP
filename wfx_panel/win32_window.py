@@ -17,9 +17,10 @@ MAIN_WINDOW_TITLE = "WFX Smart"
 NOTIFICATION_TITLE = "WFX Smart Notification"
 BUBBLE_WINDOW_TITLE = "WFX Smart Bubble"
 
-# Kích thước cửa sổ toast (native SetWindowPos cần biết) + khoảng hở dính mép.
-NOTIFICATION_WIDTH = 250
-NOTIFICATION_HEIGHT = 58
+# Kích thước ổn định: không resize WebView trong callback automation vì có thể
+# làm nghẽn GUI thread. Phần tử bên trong vẫn nhỏ, dành đủ chỗ cho nội dung.
+NOTIFICATION_WIDTH = 232
+NOTIFICATION_HEIGHT = 88
 COMPACT_EDGE_MARGIN = 12
 
 

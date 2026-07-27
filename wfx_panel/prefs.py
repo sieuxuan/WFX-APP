@@ -86,6 +86,160 @@ def _prefs_path(base_dir: Path) -> Path:
     return Path(base_dir) / "prefs.json"
 
 
+def _catalog_cache_path(base_dir: Path) -> Path:
+    return Path(base_dir) / "catalog-folders.json"
+
+
+def _normalise_catalog_folder(value: object) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    category_name = str(value.get("category_name") or "").strip()[:80]
+    category_value = str(value.get("category_value") or "").strip()[:40]
+    user_id = str(value.get("user_id") or "").strip()[:120]
+    node_id = str(value.get("node_id") or "").strip()
+    if node_id and not node_id.isdigit():
+        return None
+    raw_path = value.get("path")
+    path = (
+        [str(part).strip()[:120] for part in raw_path if str(part).strip()]
+        if isinstance(raw_path, list)
+        else []
+    )
+    path = path[:20]
+    # Cây vị trí mặc định hiện chỉ có ý nghĩa nghiệp vụ với Apparel.
+    # Loại luôn dữ liệu cũ của category khác để không tự động mở sai nơi.
+    if category_name != "Apparel" or category_value != "01":
+        return None
+    if not node_id:
+        return {
+            "category_name": category_name,
+            "category_value": category_value,
+            "user_id": user_id,
+            "node_id": "",
+            "node_code": "Master",
+            "name": "Master",
+            "path": ["Master"],
+            "path_label": "Master",
+            "kind": "master",
+            "depth": 0,
+        }
+    name = str(value.get("name") or (path[-1] if path else "")).strip()[:120]
+    if not name or not path:
+        return None
+    return {
+        "category_name": category_name,
+        "category_value": category_value,
+        "user_id": user_id,
+        "node_id": node_id,
+        "node_code": str(value.get("node_code") or "").strip()[:160],
+        "name": name,
+        "path": path,
+        "path_label": " / ".join(path),
+        "kind": "group" if value.get("kind") == "group" else "folder",
+        "depth": len(path),
+    }
+
+
+def _normalise_catalog_tree_node(value: object) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    node_id = str(value.get("node_id") or "").strip()
+    if not node_id.isdigit():
+        return None
+    raw_path = value.get("path")
+    path = (
+        [str(part).strip()[:120] for part in raw_path if str(part).strip()]
+        if isinstance(raw_path, list)
+        else []
+    )[:20]
+    name = str(value.get("name") or (path[-1] if path else "")).strip()[:120]
+    if not name or not path:
+        return None
+    return {
+        "node_id": node_id,
+        "node_code": str(value.get("node_code") or "").strip()[:160],
+        "name": name,
+        "path": path,
+        "path_label": " / ".join(path),
+        "kind": "group" if value.get("kind") == "group" else "folder",
+        "depth": len(path),
+    }
+
+
+def load_catalog_folder_cache(
+    user_id: str,
+    category_name: str = "Apparel",
+    base_dir: Path | None = None,
+) -> list[dict] | None:
+    """Đọc cây Catalog đã scan, chỉ khi đúng account + Apparel."""
+    base_dir = DATA_DIR if base_dir is None else base_dir
+    path = _catalog_cache_path(base_dir)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    owner = str(data.get("user_id") or "").strip()
+    requested_user = str(user_id or "").strip()
+    if (
+        not requested_user
+        or owner.casefold() != requested_user.casefold()
+        or data.get("category_name") != "Apparel"
+        or category_name != "Apparel"
+    ):
+        return None
+    folders = []
+    seen = set()
+    raw_folders = data.get("folders")
+    if not isinstance(raw_folders, list):
+        return None
+    for raw in raw_folders[:5000]:
+        folder = _normalise_catalog_tree_node(raw)
+        if folder is None or folder["node_id"] in seen:
+            continue
+        seen.add(folder["node_id"])
+        folders.append(folder)
+    return folders or None
+
+
+def save_catalog_folder_cache(
+    user_id: str,
+    folders: list[dict],
+    category_name: str = "Apparel",
+    base_dir: Path | None = None,
+) -> list[dict]:
+    """Lưu riêng cây lớn để save prefs/vị trí cửa sổ luôn nhẹ."""
+    base_dir = DATA_DIR if base_dir is None else base_dir
+    owner = str(user_id or "").strip()
+    if not owner or category_name != "Apparel":
+        return []
+    normalised = []
+    seen = set()
+    for raw in folders[:5000]:
+        folder = _normalise_catalog_tree_node(raw)
+        if folder is None or folder["node_id"] in seen:
+            continue
+        seen.add(folder["node_id"])
+        normalised.append(folder)
+    if not normalised:
+        return []
+    path = _catalog_cache_path(base_dir)
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(
+        json.dumps(
+            {
+                "user_id": owner,
+                "category_name": "Apparel",
+                "folders": normalised,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    temp.replace(path)
+    return normalised
+
+
 def load_account(base_dir: Path | None = None) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     path = _env_path(base_dir)
@@ -180,6 +334,9 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "compact_offset_y": compact_offset_y,
         "panel_offset_x": panel_offset_x,
         "panel_offset_y": panel_offset_y,
+        "catalog_default_folder": _normalise_catalog_folder(
+            data.get("catalog_default_folder")
+        ),
     }
 
 
@@ -202,6 +359,7 @@ def save_prefs(
     compact_offset_y: int | None = None,
     panel_offset_x: int | None = None,
     panel_offset_y: int | None = None,
+    catalog_default_folder: dict | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     current = load_prefs(base_dir)
@@ -238,6 +396,10 @@ def save_prefs(
         current["panel_offset_x"] = int(panel_offset_x)
     if panel_offset_y is not None:
         current["panel_offset_y"] = int(panel_offset_y)
+    if catalog_default_folder is not None:
+        current["catalog_default_folder"] = _normalise_catalog_folder(
+            catalog_default_folder
+        )
     # Nhận tham số cũ để không phá caller, nhưng nhãn luôn được dẫn xuất từ
     # hotkey thật và không được ghi riêng xuống prefs.json.
     _ = hotkey_label

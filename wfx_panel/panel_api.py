@@ -38,6 +38,10 @@ SESSION_OK = frozenset(
         "DIVISION_CHANGED",
         "DIVISION_ALREADY_ACTIVE",
         "CATALOG_DESTINATION_OPENED",
+        "CATALOG_FOLDER_OPENED",
+        "CATALOG_FOLDER_FALLBACK",
+        "CATALOG_FOLDERS_SCANNED",
+        "CATALOG_FOLDERS_CACHED",
         "MODULE_FILTER_READY",
         "SALE_ASN_NEW_READY",
         "SUPPLIER_CATEGORY_READY",
@@ -80,6 +84,12 @@ NON_REPORTABLE_FAILURES = frozenset(
         "CATALOG_RESULT_EXPIRED",
         "CATALOG_PREPARE_REQUIRED",
         "CATALOG_SEARCH_CONTEXT_LOST",
+        "CATALOG_FOLDER_STALE",
+        "CATALOG_FOLDER_TREE_EMPTY",
+        "CATALOG_FOLDER_INVALID",
+        "CATALOG_FOLDER_SCAN_IN_PROGRESS",
+        "CATALOG_SCAN_ACCOUNT_CHANGED",
+        "ACTION_IN_PROGRESS",
         "ARTICLE_DESTINATION_UNKNOWN",
         "HOTKEY_INVALID",
         "JOB_NOT_FOUND",
@@ -113,6 +123,10 @@ class PanelAPI:
         # popup này, không được chạy lại toàn bộ Catalog từ đầu.
         self._catalog_result: dict[str, str] | None = None
         self._catalog_prepared_category: str | None = None
+        self._catalog_folder_cache: dict[str, list[dict]] = {}
+        # Playwright/CDP không được chạy hai workflow song song trên cùng WFX
+        # session. Trả về ngay thay vì xếp hàng khiến WebView trông bị treo.
+        self._run_lock = threading.Lock()
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -154,6 +168,18 @@ class PanelAPI:
 
     def _account(self) -> dict:
         return self._prefs.load_account(base_dir=self._base_dir)
+
+    def _catalog_default_for_account(self) -> dict | None:
+        folder = self._prefs.load_prefs(
+            base_dir=self._base_dir
+        )["catalog_default_folder"]
+        if not folder:
+            return None
+        user_id = str(self._account().get("user_id") or "").strip()
+        owner = str(folder.get("user_id") or "").strip()
+        if not user_id or owner.casefold() != user_id.casefold():
+            return None
+        return folder
 
     def _admin_state(self) -> dict:
         preferences = self._prefs.load_prefs(base_dir=self._base_dir)
@@ -223,6 +249,7 @@ class PanelAPI:
                 "focus_chrome_on_module"
             ],
             "always_on_top": preferences["always_on_top"],
+            "catalog_default_folder": self._catalog_default_for_account(),
             **self._admin_state(),
             "reporting_configured": telemetry.is_configured(self._base_dir),
             "pending_reports": telemetry.outbox_count(self._base_dir),
@@ -286,6 +313,25 @@ class PanelAPI:
                 pass
 
     def _run(
+        self,
+        method_name: str,
+        action: Callable[[], dict],
+        request: dict | None = None,
+    ) -> dict:
+        if not self._run_lock.acquire(blocking=False):
+            return {
+                "ok": False,
+                "code": "ACTION_IN_PROGRESS",
+                "message": "WFX Smart đang xử lý tác vụ trước. Vui lòng chờ hoàn tất.",
+                **self._session_status(),
+                **self._division_state(),
+            }
+        try:
+            return self._run_unlocked(method_name, action, request)
+        finally:
+            self._run_lock.release()
+
+    def _run_unlocked(
         self,
         method_name: str,
         action: Callable[[], dict],
@@ -565,6 +611,290 @@ class PanelAPI:
             {"division_key": str(division_key or "").casefold()},
         )
 
+    def _cached_catalog_folders(
+        self,
+        category_name: str,
+    ) -> list[dict] | None:
+        cached = self._catalog_folder_cache.get(category_name)
+        if cached:
+            return cached
+        account = self._account()
+        loader = getattr(self._prefs, "load_catalog_folder_cache", None)
+        if not callable(loader):
+            return None
+        persisted = loader(
+            str(account.get("user_id") or ""),
+            category_name,
+            base_dir=self._base_dir,
+        )
+        if persisted:
+            self._catalog_folder_cache[category_name] = persisted
+            return persisted
+        return None
+
+    def scan_catalog_folders(
+        self,
+        category_name: str,
+        force: bool = False,
+    ) -> dict:
+        """Quét cây folder user được quyền xem, không mở Master."""
+        self._catalog_result = None
+        self._catalog_prepared_category = None
+        if category_name != "Apparel":
+            return {
+                "ok": False,
+                "code": "CATALOG_DEFAULT_APPAREL_ONLY",
+                "message": "Vị trí mặc định chỉ áp dụng cho Apparel.",
+            }
+        if not force:
+            cached = self._cached_catalog_folders(category_name)
+            if cached:
+                return {
+                    "ok": True,
+                    "code": "CATALOG_FOLDERS_CACHED",
+                    "message": "Đã tải cây Catalog đã lưu.",
+                    "category": category_name,
+                    "value": constants.CATEGORIES[category_name],
+                    "folders": cached,
+                    "default_folder": self._catalog_default_for_account(),
+                    **self._session_status(),
+                    **self._division_state(),
+                }
+        scan_user_id = str(
+            self._account().get("user_id") or ""
+        ).strip()
+
+        def action() -> dict:
+            value = constants.CATEGORIES.get(category_name)
+            if value is None:
+                return {
+                    "ok": False,
+                    "code": "CATEGORY_UNKNOWN",
+                    "message": f"Category lạ: {category_name}",
+                }
+            scanner = getattr(self._login, "scan_catalog_folders", None)
+            if not callable(scanner):
+                return {
+                    "ok": False,
+                    "code": "CATALOG_FOLDER_SCAN_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ quét folder Catalog.",
+                }
+            return scanner(category_name, value, self._log)
+
+        result = self._run(
+            "scan_catalog_folders",
+            action,
+            {
+                "category_name": category_name,
+                "force": bool(force),
+            },
+        )
+        if result.get("code") == "CATALOG_FOLDERS_SCANNED":
+            current_user_id = str(
+                self._account().get("user_id") or ""
+            ).strip()
+            if scan_user_id.casefold() != current_user_id.casefold():
+                return {
+                    "ok": False,
+                    "code": "CATALOG_SCAN_ACCOUNT_CHANGED",
+                    "message": (
+                        "Tài khoản đã đổi trong lúc tải Catalog. "
+                        "Hãy mở Catalog lại."
+                    ),
+                    **self._session_status(),
+                    **self._division_state(),
+                }
+            folders = [
+                folder
+                for folder in result.get("folders", [])
+                if isinstance(folder, dict)
+                and str(folder.get("node_id") or "").isdigit()
+            ]
+            self._catalog_folder_cache[category_name] = folders
+            saver = getattr(
+                self._prefs,
+                "save_catalog_folder_cache",
+                None,
+            )
+            if callable(saver):
+                try:
+                    persisted = saver(
+                        scan_user_id,
+                        folders,
+                        category_name,
+                        base_dir=self._base_dir,
+                    )
+                    if persisted:
+                        folders = persisted
+                        result["folders"] = folders
+                        self._catalog_folder_cache[category_name] = folders
+                except OSError:
+                    # Cache chỉ là tối ưu UX; scan thành công không được biến
+                    # thành lỗi chỉ vì ổ đĩa tạm thời không ghi được.
+                    pass
+            saved = self._catalog_default_for_account()
+            if (
+                saved
+                and saved.get("category_name") == category_name
+                and saved.get("node_id")
+                and not any(
+                    folder.get("node_id") == saved.get("node_id")
+                    for folder in folders
+                )
+            ):
+                master = self._master_folder(category_name)
+                self._prefs.save_prefs(
+                    base_dir=self._base_dir,
+                    catalog_default_folder=master,
+                )
+                result["default_folder"] = master
+                result["message"] += (
+                    " Folder mặc định cũ không còn quyền truy cập; "
+                    "đã chuyển về Master."
+                )
+            else:
+                result["default_folder"] = saved
+        return result
+
+    def _master_folder(self, category_name: str) -> dict:
+        return {
+            "category_name": category_name,
+            "category_value": constants.CATEGORIES.get(category_name, ""),
+            "user_id": str(self._account().get("user_id") or "").strip(),
+            "node_id": "",
+            "node_code": "Master",
+            "name": "Master",
+            "path": ["Master"],
+            "path_label": "Master",
+            "kind": "master",
+            "depth": 0,
+        }
+
+    def set_catalog_default_folder(
+        self,
+        category_name: str,
+        node_id: str,
+    ) -> dict:
+        if category_name != "Apparel":
+            return {
+                "ok": False,
+                "code": "CATALOG_DEFAULT_APPAREL_ONLY",
+                "message": "Vị trí mặc định chỉ áp dụng cho Apparel.",
+            }
+        value = constants.CATEGORIES.get(category_name)
+        if value is None:
+            return {
+                "ok": False,
+                "code": "CATEGORY_UNKNOWN",
+                "message": f"Category lạ: {category_name}",
+            }
+        node_id = str(node_id or "").strip()
+        if not node_id:
+            folder = self._master_folder(category_name)
+        else:
+            folder = next(
+                (
+                    item
+                    for item in self._catalog_folder_cache.get(
+                        category_name, []
+                    )
+                    if str(item.get("node_id") or "") == node_id
+                ),
+                None,
+            )
+            if folder is None:
+                return {
+                    "ok": False,
+                    "code": "CATALOG_FOLDER_NOT_SCANNED",
+                    "message": "Hãy quét lại cây Catalog trước khi chọn folder.",
+                }
+            folder = {
+                **folder,
+                "category_name": category_name,
+                "category_value": value,
+                "user_id": str(
+                    self._account().get("user_id") or ""
+                ).strip(),
+            }
+        saved = self._prefs.save_prefs(
+            base_dir=self._base_dir,
+            catalog_default_folder=folder,
+        )["catalog_default_folder"]
+        self._log(
+            f"[SETTINGS] Folder Catalog mặc định: "
+            f"{saved['path_label'] if saved else 'Master'}"
+        )
+        return {
+            "ok": True,
+            "code": "CATALOG_DEFAULT_FOLDER_SAVED",
+            "message": (
+                f"Đã đặt folder mặc định: {saved['path_label']}."
+                if saved
+                else "Đã đặt folder mặc định: Master."
+            ),
+            "default_folder": saved,
+        }
+
+    def browse_catalog(self, category_name: str) -> dict:
+        """Mở folder mặc định để duyệt; không dùng cho Tìm/Costing/BOM."""
+        self._catalog_result = None
+        self._catalog_prepared_category = None
+        if category_name != "Apparel":
+            return {
+                "ok": False,
+                "code": "CATALOG_DEFAULT_APPAREL_ONLY",
+                "message": "Vị trí mặc định chỉ áp dụng cho Apparel.",
+            }
+
+        def action() -> dict:
+            value = constants.CATEGORIES.get(category_name)
+            if value is None:
+                return {
+                    "ok": False,
+                    "code": "CATEGORY_UNKNOWN",
+                    "message": f"Category lạ: {category_name}",
+                }
+            opener = getattr(self._login, "open_catalog_folder", None)
+            if not callable(opener):
+                return {
+                    "ok": False,
+                    "code": "CATALOG_FOLDER_OPEN_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ mở folder mặc định.",
+                }
+            saved = self._catalog_default_for_account()
+            node_id = (
+                str(saved.get("node_id") or "")
+                if saved and saved.get("category_name") == category_name
+                else ""
+            )
+            result = opener(category_name, value, node_id, self._log)
+            if result.get("code") != "CATALOG_FOLDER_STALE":
+                return result
+
+            master = self._master_folder(category_name)
+            self._prefs.save_prefs(
+                base_dir=self._base_dir,
+                catalog_default_folder=master,
+            )
+            fallback = opener(category_name, value, "", self._log)
+            if fallback.get("ok"):
+                return {
+                    **fallback,
+                    "code": "CATALOG_FOLDER_FALLBACK",
+                    "message": (
+                        "Folder mặc định không còn tồn tại hoặc đã mất quyền. "
+                        "Đã chuyển về Master."
+                    ),
+                    "default_folder": master,
+                }
+            return result
+
+        return self._run(
+            "browse_catalog",
+            action,
+            {"category_name": category_name},
+        )
+
     def prepare_catalog(self, category_name: str) -> dict:
         self._catalog_result = None
         self._catalog_prepared_category = None
@@ -577,6 +907,12 @@ class PanelAPI:
                     "code": "CATEGORY_UNKNOWN",
                     "message": f"Category lạ: {category_name}",
                 }
+            if hasattr(self._login, "prepare_catalog_master"):
+                return self._login.prepare_catalog_master(
+                    category_name,
+                    value,
+                    self._log,
+                )
             opened = self._login.open_module(
                 "Catalog", self._login.CATALOG_XPATH, self._log
             )
@@ -665,6 +1001,166 @@ class PanelAPI:
                 self._catalog_prepared_category = None
         return result
 
+    def catalog_action(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+        destination: str | None = None,
+    ) -> dict:
+        """Một nút cho Tìm/Costing/BOM, nhưng vẫn luôn tìm trong Master."""
+        category_name = str(category_name or "")
+        filter_kind = str(filter_kind or "").casefold()
+        query = str(query or "").strip()
+        destination = str(destination or "").casefold() or None
+
+        def matches_current() -> bool:
+            current = self._catalog_result
+            return bool(
+                current
+                and current["category_name"] == category_name
+                and current["filter_kind"] == filter_kind
+                and current["query"].casefold() == query.casefold()
+            )
+
+        def remember(search: dict) -> None:
+            article_code = str(search.get("article_code") or "").strip()
+            if search.get("code") == "RESULT_OPENED" and article_code:
+                self._catalog_result = {
+                    "article_code": article_code,
+                    "category_name": category_name,
+                    "filter_kind": filter_kind,
+                    "query": query,
+                }
+            else:
+                self._catalog_result = None
+
+        def action() -> dict:
+            value = constants.CATEGORIES.get(category_name)
+            if value is None:
+                return {
+                    "ok": False,
+                    "code": "CATEGORY_UNKNOWN",
+                    "message": f"Category lạ: {category_name}",
+                }
+            if filter_kind not in {"code", "buyer_reference"}:
+                return {
+                    "ok": False,
+                    "code": "INVALID_FILTER",
+                    "message": "Kiểu tìm Catalog không hợp lệ.",
+                }
+            if not query:
+                return {
+                    "ok": False,
+                    "code": "QUERY_REQUIRED",
+                    "message": "Vui lòng nhập nội dung cần tìm.",
+                }
+            if destination not in {None, "costsheet", "bom"}:
+                return {
+                    "ok": False,
+                    "code": "ARTICLE_DESTINATION_UNKNOWN",
+                    "message": "Chỉ hỗ trợ mở Costing hoặc BOM.",
+                }
+            if destination and category_name != "Apparel":
+                return {
+                    "ok": False,
+                    "code": "APPAREL_ONLY",
+                    "message": "Costing và BOM chỉ hỗ trợ Category Apparel.",
+                }
+
+            if destination and matches_current():
+                direct = self._login.open_catalog_destination(
+                    self._catalog_result["article_code"],
+                    destination,
+                    self._log,
+                )
+                if direct.get("code") != "CATALOG_RESULT_EXPIRED":
+                    return direct
+                self._catalog_result = None
+
+            search: dict | None = None
+            if (
+                self._catalog_prepared_category == category_name
+                and hasattr(self._login, "find_in_open_catalog")
+            ):
+                search = self._login.find_in_open_catalog(
+                    category_name,
+                    filter_kind,
+                    query,
+                    self._log,
+                )
+                if search.get("code") == "CATALOG_SEARCH_CONTEXT_LOST":
+                    search = None
+                    self._catalog_prepared_category = None
+
+            if search is None:
+                if hasattr(self._login, "prepare_catalog_master"):
+                    prepared = self._login.prepare_catalog_master(
+                        category_name,
+                        value,
+                        self._log,
+                    )
+                else:
+                    prepared = self._login.open_module(
+                        "Catalog",
+                        self._login.CATALOG_XPATH,
+                        self._log,
+                    )
+                    if prepared.get("ok"):
+                        prepared = self._login.set_catalog_category(
+                            category_name,
+                            value,
+                            self._log,
+                        )
+                if not prepared.get("ok"):
+                    return prepared
+                self._catalog_prepared_category = category_name
+                search = self._login.find_in_open_catalog(
+                    category_name,
+                    filter_kind,
+                    query,
+                    self._log,
+                )
+
+            remember(search)
+            if search.get("code") != "RESULT_OPENED" or not destination:
+                return search
+
+            opened = self._login.open_catalog_destination(
+                str(search["article_code"]),
+                destination,
+                self._log,
+            )
+            if opened.get("ok"):
+                return {
+                    **search,
+                    **opened,
+                    "style_status": search.get("style_status"),
+                    "article_code": search.get("article_code"),
+                    "category": category_name,
+                    "filter_kind": filter_kind,
+                    "query": query,
+                }
+            return opened
+
+        result = self._run(
+            "catalog_action",
+            action,
+            {
+                "category_name": category_name,
+                "filter_kind": filter_kind,
+                "query": query,
+                "destination": destination,
+            },
+        )
+        if result.get("code") in {
+            "CATALOG_SEARCH_CONTEXT_LOST",
+            "CATALOG_RESULT_EXPIRED",
+        }:
+            self._catalog_prepared_category = None
+            self._catalog_result = None
+        return result
+
     def open_catalog_destination(
         self,
         destination: str,
@@ -722,6 +1218,9 @@ class PanelAPI:
         # sửa User ID hoặc bấm CTA mà không gõ lại mật khẩu, KHÔNG được ghi đè
         # mật khẩu đã lưu bằng chuỗi rỗng — giữ nguyên mật khẩu cũ.
         user_id = str(user_id or "").strip()
+        previous_user_id = str(
+            self._account().get("user_id") or ""
+        ).strip()
         password = password or ""
         if not user_id:
             return {
@@ -739,6 +1238,10 @@ class PanelAPI:
                 }
             password = existing_password
         self._prefs.save_account(user_id, password, base_dir=self._base_dir)
+        if previous_user_id.casefold() != user_id.casefold():
+            self._catalog_folder_cache.clear()
+            self._catalog_result = None
+            self._catalog_prepared_category = None
         self._log("[SETTINGS] Đã lưu tài khoản")
         return {
             "ok": True,
@@ -1048,6 +1551,22 @@ class PanelAPI:
         if method == "prepare_catalog":
             return self.prepare_catalog(
                 str(request.get("category_name") or "Apparel")
+            )
+        if method == "scan_catalog_folders":
+            return self.scan_catalog_folders(
+                str(request.get("category_name") or "Apparel"),
+                True,
+            )
+        if method == "browse_catalog":
+            return self.browse_catalog(
+                str(request.get("category_name") or "Apparel")
+            )
+        if method == "catalog_action":
+            return self.catalog_action(
+                str(request.get("category_name") or "Apparel"),
+                str(request.get("filter_kind") or "code"),
+                str(request.get("query") or ""),
+                request.get("destination"),
             )
         if method == "find_code":
             return self.find_code(

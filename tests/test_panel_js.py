@@ -12,16 +12,19 @@ def test_exposes_python_callable_globals():
 
 def test_wires_all_catalog_actions():
     for action in [
-        "prepare",
+        "refresh-folders",
+        "browse",
         "code-find",
+        "code-costsheet",
+        "code-bom",
         "buyer-find",
-        "open-costsheet",
-        "open-bom",
+        "buyer-costsheet",
+        "buyer-bom",
     ]:
         assert f'"{action}"' in JS
-    assert '"open_catalog_destination"' in JS
-    assert '"code-costsheet"' not in JS
-    assert '"buyer-bom"' not in JS
+    assert '"catalog_action"' in JS
+    assert '"browse_catalog"' in JS
+    assert '"scan_catalog_folders"' in JS
 
 
 def test_module_groups_present():
@@ -53,6 +56,8 @@ def test_completed_module_actions_use_external_notifications():
         "find_code",
         "find_buyer_reference",
         "open_catalog_destination",
+        "browse_catalog",
+        "catalog_action",
     ]:
         assert f'"{method}"' in JS
     assert "await api()?.focus_automation_browser?.()" in JS
@@ -157,16 +162,40 @@ def test_special_module_workflows_are_wired():
         assert f'"{action}"' in JS
 
 
-def test_catalog_destination_does_not_repeat_search_flow():
-    assert 'openCatalogDestination("costsheet")' in JS
-    assert 'openCatalogDestination("bom")' in JS
-    assert 'call(\n      "open_catalog_destination"' in JS
-    assert 'call("find_code", $(".catalog-category").value' not in JS
-    assert 'call("find_buyer_reference", $(".catalog-category").value' not in JS
+def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
+    assert 'runCatalogAction(\n      "code", $(".catalog-code").value, "costsheet"' in JS
+    assert 'runCatalogAction(\n      "code", $(".catalog-code").value, "bom"' in JS
+    assert '"buyer_reference", $(".catalog-buyer-reference").value, "costsheet"' in JS
+    assert '"buyer_reference", $(".catalog-buyer-reference").value, "bom"' in JS
+    assert '"catalog_action"' in JS
+    assert '"browse_catalog"' in JS
+    assert "scanCatalogFolders(false)" in JS
+    assert "set_catalog_default_folder" in JS
     assert "clearCatalogResult" in JS
-    assert "catalogPreparedCategory" in JS
-    assert "CATALOG_SEARCH_CONTEXT_LOST" in JS
-    assert "syncCatalogStepButtons" in JS
+    assert "catalogPreparedCategory" not in JS
+
+
+def test_catalog_folder_picker_groups_and_searches_large_trees():
+    assert "catalogFolderTree" in JS
+    assert "normalizeCatalogSearch" in JS
+    assert "renderCatalogFolderList" in JS
+    assert "visibleMatches = matches.slice(0, 100)" in JS
+    assert '"[data-folder-toggle]"' in JS
+    assert '"[data-folder-select]"' in JS
+    assert 'data-node-kind="group"' in JS
+    assert 'data-catalog-group-action="select"' in JS
+    assert 'selectedFolder.kind === "group"' in JS
+    assert 'CATALOG_DEFAULT_CATEGORY = "Apparel"' in JS
+    assert 'category === CATALOG_DEFAULT_CATEGORY' in JS
+    assert 'category !== CATALOG_DEFAULT_CATEGORY' in JS
+    assert "if (catalogFolderScanning) return;" in JS
+    assert '"scan_catalog_folders",\n      category,\n      Boolean(force)' in JS
+
+
+def test_module_modal_header_uses_module_description_as_subtitle():
+    assert '$(".module-modal-subtitle").textContent' in JS
+    assert '$(".module-modal-kicker")' not in JS
+    assert '$(".module-modal-description")' not in JS
 
 
 def test_job_history_retry_and_screenshot_are_wired():
@@ -177,6 +206,12 @@ def test_job_history_retry_and_screenshot_are_wired():
         "clear_job_history",
     ]:
         assert method in JS
+
+
+def test_running_module_has_visible_progress_and_keeps_close_controls_enabled():
+    assert "BUSY_MESSAGES" in JS
+    assert '$(".operation-progress-text").textContent = message' in JS
+    assert 'element.matches(".close-button, .module-close-button")' in JS
 
 
 def test_auto_update_banner_uses_one_click_installer():
