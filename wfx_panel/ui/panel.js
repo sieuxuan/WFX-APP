@@ -67,6 +67,8 @@
   let hasCredentials = false;
   let toastEnabled = true;
   let lastCatalogResult = null;
+  let catalogKind = "code";
+  let catalogThemeChoice = "light";
   let catalogDefaultFolder = null;
   const catalogFoldersByCategory = new Map();
   const catalogExpandedFoldersByCategory = new Map();
@@ -261,11 +263,29 @@
   }
   window.wfxPushLog = pushLog;
 
+  function resolveTheme(choice) {
+    if (choice === "dark") return "dark";
+    if (choice === "system") {
+      return window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+    return "light";
+  }
+
   function applyTheme(theme) {
-    const value = theme === "dark" ? "dark" : "light";
-    document.documentElement.dataset.theme = value;
-    $$(".seg-button").forEach((button) =>
-      button.setAttribute("aria-pressed", String(button.dataset.themeChoice === value)));
+    catalogThemeChoice = ["light", "dark", "system"].includes(theme)
+      ? theme
+      : "light";
+    document.documentElement.dataset.theme = resolveTheme(catalogThemeChoice);
+    // Scope vào đúng nút chọn giao diện; nút catalog-kind cũng dùng .seg-button
+    // nên KHÔNG được quét chung .seg-button ở đây.
+    $$("[data-theme-choice]").forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.themeChoice === catalogThemeChoice),
+      ));
   }
   window.wfxApplyTheme = applyTheme;
 
@@ -275,11 +295,55 @@
   function selectSettingsTab(name) {
     if (settingsOverlay().classList.contains("credentials-required") && name !== "account") return;
     const selected = name === "app" ? "app" : "account";
-    $$(".settings-tab").forEach((button) =>
-      button.setAttribute("aria-pressed", String(button.dataset.settingsTab === selected)));
+    $$(".settings-tab").forEach((button) => {
+      const on = button.dataset.settingsTab === selected;
+      button.setAttribute("aria-selected", String(on));
+      button.tabIndex = on ? 0 : -1;
+    });
     $$("[data-settings-panel]").forEach((panel) => {
       panel.hidden = panel.dataset.settingsPanel !== selected;
     });
+  }
+
+  function selectActivityTab(name) {
+    const selected = name === "log" ? "log" : "jobs";
+    $$(".activity-tabs button").forEach((button) => {
+      const on = button.dataset.activityTab === selected;
+      button.setAttribute("aria-selected", String(on));
+      button.tabIndex = on ? 0 : -1;
+    });
+    $$("[data-activity-view]").forEach((view) => {
+      view.hidden = view.dataset.activityView !== selected;
+    });
+  }
+
+  // Điều hướng tablist bằng phím mũi tên (WAI-ARIA), giữ roving tabindex.
+  function bindTablistKeys(container, onSelect) {
+    if (!container) return;
+    container.addEventListener("keydown", (event) => {
+      const tabs = [...container.querySelectorAll('[role="tab"]')];
+      const index = tabs.indexOf(document.activeElement);
+      if (index < 0) return;
+      let next = -1;
+      if (["ArrowRight", "ArrowDown"].includes(event.key)) next = (index + 1) % tabs.length;
+      else if (["ArrowLeft", "ArrowUp"].includes(event.key)) next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      if (next < 0) return;
+      event.preventDefault();
+      tabs[next].focus();
+      onSelect(tabs[next]);
+    });
+  }
+
+  async function withButtonLoading(button, run) {
+    if (!button) return run();
+    button.classList.add("is-loading");
+    try {
+      return await run();
+    } finally {
+      button.classList.remove("is-loading");
+    }
   }
 
   function openSettings(tabName = "account") {
@@ -490,6 +554,9 @@
     ].includes(result.code)) {
       clearCatalogResult();
     }
+    if (["MULTIPLE_RESULTS", "NO_RESULTS", "RESULT_OPENED"].includes(result.code)) {
+      renderCatalogResults(result);
+    }
     if (result.default_folder !== undefined) {
       catalogDefaultFolder = result.default_folder;
     }
@@ -569,7 +636,7 @@
     overlay.classList.add("module-open");
     overlay.setAttribute("aria-hidden", "false");
     const focusTarget = {
-      catalog: ".catalog-code",
+      catalog: ".catalog-query",
       sale_asn: '[data-module-action="sale-asn-list"]',
       supplier: ".supplier-category",
       buyer: '[data-module-action="buyer-list"]',
@@ -577,6 +644,8 @@
     }[module.kind] || ".generic-module-open";
     setTimeout(() => $(focusTarget)?.focus(), 0);
     if (module.kind === "catalog") {
+      syncCatalogKind();
+      hideCatalogResults();
       syncCatalogStepButtons();
       if ($(".catalog-category").value === CATALOG_DEFAULT_CATEGORY) {
         setTimeout(() => scanCatalogFolders(false), 0);
@@ -591,6 +660,9 @@
   }
 
   function dismissAfterSuccessfulModule(result) {
+    // MULTIPLE_RESULTS tuy ok=true nhưng người dùng còn phải chọn 1 Code trong
+    // danh sách ngay trên panel — không được tự thu panel lúc này.
+    if (result && result.code === "MULTIPLE_RESULTS") return;
     if (result && result.ok && closeAfterModule) {
       window.setTimeout(() => api()?.hide_panel?.(), 120);
     }
@@ -951,6 +1023,7 @@
       return null;
     }
     clearCatalogResult();
+    hideCatalogResults();
     return runSelectedModuleAction(
       "catalog_action",
       $(".catalog-category").value,
@@ -960,24 +1033,80 @@
     );
   }
 
+  function syncCatalogKind() {
+    $$(".catalog-kind-button").forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.catalogKind === catalogKind),
+      ));
+    const input = $(".catalog-query");
+    if (input) {
+      input.placeholder = catalogKind === "buyer_reference"
+        ? "Nhập Buyer Reference"
+        : "Ví dụ: ABC123";
+    }
+  }
+
+  function hideCatalogResults() {
+    const wrap = $(".catalog-results");
+    if (!wrap) return;
+    wrap.hidden = true;
+    $(".catalog-results-list").innerHTML = "";
+    $(".catalog-results-count").textContent = "";
+  }
+
+  // Feature: khi có nhiều Code, hiển thị danh sách ngay trong panel để người
+  // dùng chọn thay vì phải tự nhìn grid trên WFX; Không có kết quả thì báo rõ.
+  function renderCatalogResults(result) {
+    const wrap = $(".catalog-results");
+    const list = $(".catalog-results-list");
+    if (!wrap || !list) return;
+    if (result.code === "MULTIPLE_RESULTS"
+        && Array.isArray(result.styles) && result.styles.length) {
+      $(".catalog-results-count").textContent = `${result.styles.length} Code`;
+      list.innerHTML = result.styles.map((style) => {
+        const code = String(style.code || "");
+        const parts = [];
+        if (style.season) parts.push(`Season <b>${escapeHtml(style.season)}</b>`);
+        if (style.internal_costsheet_status) {
+          parts.push(`CS <b>${escapeHtml(style.internal_costsheet_status)}</b>`);
+        }
+        return `<button type="button" class="catalog-result-row" role="option"
+          data-result-code="${escapeHtml(code)}">
+          <span class="catalog-result-code">${escapeHtml(code)}</span>
+          <span class="catalog-result-meta">${parts.join(" · ")}</span>
+        </button>`;
+      }).join("");
+      wrap.hidden = false;
+    } else if (result.code === "NO_RESULTS") {
+      $(".catalog-results-count").textContent = "";
+      list.innerHTML = '<div class="catalog-results-empty">Không tìm thấy kết quả.'
+        + ' Kiểm tra lại nội dung, hoặc đổi giữa Style Code và Buyer Reference.</div>';
+      wrap.hidden = false;
+    } else {
+      hideCatalogResults();
+    }
+  }
+
+  async function openCatalogResultCode(row) {
+    const code = String(row?.dataset.resultCode || "");
+    if (!code) return;
+    $(".catalog-query").value = code;
+    catalogKind = "code";
+    syncCatalogKind();
+    // Mở đúng Code đã chọn: lọc lại grid Master đã chuẩn bị bằng chính Code này.
+    await withButtonLoading(row, () => runCatalogAction("code", code));
+  }
+
   const catalogActions = {
     "refresh-folders": () => scanCatalogFolders(true),
     "browse": () => browseCatalog(),
-    "code-find": () => runCatalogAction("code", $(".catalog-code").value),
-    "code-costsheet": () => runCatalogAction(
-      "code", $(".catalog-code").value, "costsheet"
+    "find": () => runCatalogAction(catalogKind, $(".catalog-query").value),
+    "costsheet": () => runCatalogAction(
+      catalogKind, $(".catalog-query").value, "costsheet"
     ),
-    "code-bom": () => runCatalogAction(
-      "code", $(".catalog-code").value, "bom"
-    ),
-    "buyer-find": () => runCatalogAction(
-      "buyer_reference", $(".catalog-buyer-reference").value
-    ),
-    "buyer-costsheet": () => runCatalogAction(
-      "buyer_reference", $(".catalog-buyer-reference").value, "costsheet"
-    ),
-    "buyer-bom": () => runCatalogAction(
-      "buyer_reference", $(".catalog-buyer-reference").value, "bom"
+    "bom": () => runCatalogAction(
+      catalogKind, $(".catalog-query").value, "bom"
     ),
   };
 
@@ -1045,7 +1174,22 @@
   function bind() {
     $(".header-actions")?.addEventListener("mousedown", (event) => event.stopPropagation());
     $$("[data-catalog-action]").forEach((button) =>
-      button.addEventListener("click", () => catalogActions[button.dataset.catalogAction]?.()));
+      button.addEventListener("click", () =>
+        withButtonLoading(button, () => catalogActions[button.dataset.catalogAction]?.())));
+    $$(".catalog-kind-button").forEach((button) =>
+      button.addEventListener("click", () => {
+        catalogKind = button.dataset.catalogKind === "buyer_reference"
+          ? "buyer_reference"
+          : "code";
+        syncCatalogKind();
+        clearCatalogResult();
+        hideCatalogResults();
+        $(".catalog-query")?.focus();
+      }));
+    $(".catalog-results-list").addEventListener("click", (event) => {
+      const row = event.target.closest("[data-result-code]");
+      if (row) openCatalogResultCode(row);
+    });
     $$("[data-module-action]").forEach((button) =>
       button.addEventListener("click", () => moduleActions[button.dataset.moduleAction]?.()));
     $(".module-list").addEventListener("click", (event) => {
@@ -1074,10 +1218,13 @@
       if (event.target === event.currentTarget) closeModuleModal();
     });
     $(".generic-module-open").addEventListener("click", openModule);
-    $(".catalog-code").addEventListener("keydown", (event) => { if (event.key === "Enter") catalogActions["code-find"](); });
-    $(".catalog-buyer-reference").addEventListener("keydown", (event) => { if (event.key === "Enter") catalogActions["buyer-find"](); });
+    $(".catalog-query").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      withButtonLoading($('[data-catalog-action="find"]'), () => catalogActions["find"]());
+    });
     $(".catalog-category").addEventListener("change", () => {
       clearCatalogPreparation();
+      hideCatalogResults();
       $(".catalog-folder-search").value = "";
       $(".module-modal-status").textContent = "";
       syncCatalogStepButtons();
@@ -1091,8 +1238,10 @@
     $(".catalog-folder-list").addEventListener(
       "click", handleCatalogFolderClick
     );
-    $(".catalog-code").addEventListener("input", clearCatalogResult);
-    $(".catalog-buyer-reference").addEventListener("input", clearCatalogResult);
+    $(".catalog-query").addEventListener("input", () => {
+      clearCatalogResult();
+      hideCatalogResults();
+    });
     $(".search-box input").addEventListener("input", (event) => filterModules(event.target.value));
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && $(".module-overlay").classList.contains("module-open")) closeModuleModal();
@@ -1297,18 +1446,27 @@
       }
     });
     $(".update-banner-button").addEventListener("click", (event) => installUpdate(event.currentTarget));
-    $$(".seg-button").forEach((button) =>
+    $$("[data-theme-choice]").forEach((button) =>
       button.addEventListener("click", () => {
         applyTheme(button.dataset.themeChoice);
         api()?.set_theme?.(button.dataset.themeChoice);
       }));
+    // Giao diện "Tự động": bám theo hệ điều hành, cập nhật ngay khi OS đổi theme.
+    if (window.matchMedia) {
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      const onSystemThemeChange = () => {
+        if (catalogThemeChoice === "system") {
+          document.documentElement.dataset.theme = resolveTheme("system");
+        }
+      };
+      if (media.addEventListener) media.addEventListener("change", onSystemThemeChange);
+      else if (media.addListener) media.addListener(onSystemThemeChange);
+    }
 
-    $$(".activity-tabs button").forEach((button) => button.addEventListener("click", () => {
-      $$(".activity-tabs button").forEach((item) =>
-        item.setAttribute("aria-pressed", String(item === button)));
-      $$("[data-activity-view]").forEach((view) =>
-        view.hidden = view.dataset.activityView !== button.dataset.activityTab);
-    }));
+    $$(".activity-tabs button").forEach((button) =>
+      button.addEventListener("click", () => selectActivityTab(button.dataset.activityTab)));
+    bindTablistKeys($(".activity-tabs"), (tab) => selectActivityTab(tab.dataset.activityTab));
+    bindTablistKeys($(".settings-tabs"), (tab) => selectSettingsTab(tab.dataset.settingsTab));
     $(".history-refresh-button").addEventListener("click", refreshJobs);
     $(".job-history").addEventListener("click", async (event) => {
       const button = event.target.closest("[data-job-action]");

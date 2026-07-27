@@ -67,18 +67,20 @@ def test_index_html_has_contract_hooks():
         'class="module-list"',
         'data-catalog-action="refresh-folders"',
         'data-catalog-action="browse"',
-        'data-catalog-action="code-find"',
-        'data-catalog-action="code-bom"',
-        'data-catalog-action="code-costsheet"',
-        'data-catalog-action="buyer-bom"',
+        'data-catalog-action="find"',
+        'data-catalog-action="bom"',
+        'data-catalog-action="costsheet"',
+        'data-catalog-kind="code"',
+        'data-catalog-kind="buyer_reference"',
         'class="catalog-folder-search"',
         'class="catalog-folder-list"',
-        'class="catalog-code"',
-        'class="catalog-buyer-reference"',
+        'class="catalog-query"',
+        'class="catalog-results-list"',
         'class="user-input"',
         'class="save-button settings-save-button"',
         'class="catalog-log"',
         'data-theme-choice="dark"',
+        'data-theme-choice="system"',
         'src="panel.js"',
     ]:
         assert hook in html, hook
@@ -90,20 +92,14 @@ def test_catalog_search_and_destinations_are_direct_actions():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert "Tìm trong Master" in html
     assert 'class="catalog-destination-step"' not in html
-    for action in (
-        "code-find",
-        "code-costsheet",
-        "code-bom",
-        "buyer-find",
-        "buyer-costsheet",
-        "buyer-bom",
-    ):
+    for action in ("find", "costsheet", "bom"):
         tag = html[html.index(f'data-catalog-action="{action}"') :]
         tag = tag[: tag.index(">")]
         assert "disabled" not in tag
     assert 'class="catalog-folder-search"' in html
     assert 'class="catalog-folder-list"' in html
     assert 'class="catalog-browse-button"' in html
+    assert 'class="catalog-results-list"' in html
 
 
 def test_catalog_folder_picker_is_searchable_and_hides_technical_copy():
