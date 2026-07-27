@@ -220,6 +220,7 @@ jobs:
             cập nhật tự động đã được ký số, giới hạn file được thay và có rollback.
 
             Điểm chính:
+            - Panel và thông báo giữ đúng bố cục trên Windows Scale 100–200% và nhiều màn hình.
             - Catalog Apparel tự nhận diện cây Group/Folder theo tài khoản.
             - Cây Catalog chỉ scan lần đầu, được dùng lại sau khi mở lại app; Refresh mới ép scan lại.
             - Group, Folder và Master đều có thể đặt làm vị trí mặc định.

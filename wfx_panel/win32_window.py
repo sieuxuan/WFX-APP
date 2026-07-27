@@ -22,6 +22,66 @@ BUBBLE_WINDOW_TITLE = "WFX Smart Bubble"
 NOTIFICATION_WIDTH = 232
 NOTIFICATION_HEIGHT = 88
 COMPACT_EDGE_MARGIN = 12
+DEFAULT_DPI = 96
+
+
+def _scale_logical_size(
+    width: int,
+    height: int,
+    dpi: int | None,
+) -> tuple[int, int]:
+    """Đổi logical pixels của WebView thành physical pixels của Win32."""
+    safe_dpi = int(dpi or DEFAULT_DPI)
+    if safe_dpi <= 0:
+        safe_dpi = DEFAULT_DPI
+    scale = safe_dpi / DEFAULT_DPI
+    return (
+        max(1, round(int(width) * scale)),
+        max(1, round(int(height) * scale)),
+    )
+
+
+def _unscale_physical_size(
+    width: int,
+    height: int,
+    dpi: int | None,
+) -> tuple[int, int]:
+    """Đổi physical pixels về logical pixels cho fallback pywebview."""
+    safe_dpi = int(dpi or DEFAULT_DPI)
+    if safe_dpi <= 0:
+        safe_dpi = DEFAULT_DPI
+    scale = DEFAULT_DPI / safe_dpi
+    return (
+        max(1, round(int(width) * scale)),
+        max(1, round(int(height) * scale)),
+    )
+
+
+def _window_dpi_by_title(title: str) -> int:
+    """DPI của màn hình chứa cửa sổ; luôn fallback 96 an toàn."""
+    if os.name != "nt":
+        return DEFAULT_DPI
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hwnd = _find_window_hwnd(title)
+        get_window_dpi = getattr(user32, "GetDpiForWindow", None)
+        if hwnd and get_window_dpi is not None:
+            get_window_dpi.argtypes = [wintypes.HWND]
+            get_window_dpi.restype = wintypes.UINT
+            dpi = int(get_window_dpi(wintypes.HWND(hwnd)))
+            if dpi > 0:
+                return dpi
+        get_system_dpi = getattr(user32, "GetDpiForSystem", None)
+        if get_system_dpi is not None:
+            dpi = int(get_system_dpi())
+            if dpi > 0:
+                return dpi
+    except Exception:
+        pass
+    return DEFAULT_DPI
 
 
 def _native_window_text(user32, hwnd) -> str:
@@ -495,6 +555,8 @@ def _native_notification_visibility(
     visible: bool,
     x: int = 0,
     y: int = 0,
+    width: int = NOTIFICATION_WIDTH,
+    height: int = NOTIFICATION_HEIGHT,
 ) -> bool:
     """Hiện toast không lấy focus và không tạo thêm icon taskbar."""
     if os.name != "nt":
@@ -540,8 +602,8 @@ def _native_notification_visibility(
                 wintypes.HWND(-1),
                 int(x),
                 int(y),
-                NOTIFICATION_WIDTH,
-                NOTIFICATION_HEIGHT,
+                max(1, int(width)),
+                max(1, int(height)),
                 0x0010 | 0x0020 | 0x0040,  # NOACTIVATE | FRAMECHANGED | SHOW
             )
         )

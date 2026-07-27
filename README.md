@@ -1,4 +1,4 @@
-## WFX Smart 1.0.9
+## WFX Smart 1.0.10
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -56,10 +56,10 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Smart-v1.0.9-win64.zip` kèm checksum `.sha256` và chữ ký
+Gói phát hành: `WFX-Smart-v1.0.10-win64.zip` kèm checksum `.sha256` và chữ ký
 detached `.sha256.p7s`.
 
-Nâng cấp từ 1.0.8 trở xuống cần giải nén 1.0.9 vào một thư mục riêng đúng một
+Nâng cấp từ 1.0.8 trở xuống cần giải nén 1.0.10 vào một thư mục riêng đúng một
 lần. Prefix gói mới cố ý không kích hoạt updater cũ vốn có thể xóa cả thư mục
 chứa EXE. Từ 1.0.9 trở đi, cập nhật tự động dùng chuỗi xác minh và rollback mới.
 

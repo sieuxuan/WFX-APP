@@ -375,6 +375,11 @@ def test_desktop_webview_width_does_not_trigger_single_column_layout():
     css = (UI / "style.css").read_text(encoding="utf-8")
     assert "@media (max-width: 430px)" not in css
     assert "@media (max-width: 360px)" in css
+    assert (
+        ".module-grid { display: grid; "
+        "grid-template-columns: repeat(2, minmax(0, 1fr));"
+    ) in css
+    assert ".module-grid { grid-template-columns: 1fr; }" not in css
 
 
 def test_windows_10_webview_css_avoids_new_color_mix_dependency():
