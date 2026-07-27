@@ -11,6 +11,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -182,7 +183,7 @@ def schedule_update(
     _version_tuple(version)
     package_url = _safe_release_url(str(state.get("package_url") or ""))
     checksum_url = _safe_release_url(str(state.get("checksum_url") or ""))
-    target_exe = Path(executable or os.sys.executable).resolve()
+    target_exe = Path(executable or sys.executable).resolve()
     install_dir = target_exe.parent
     pid = int(current_pid or os.getpid())
 
