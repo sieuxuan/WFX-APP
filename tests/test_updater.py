@@ -156,10 +156,7 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert "$ownedItems = @('WFX-Panel.exe', '_internal')" in content
     assert "$allowedRemovePaths" in content
     assert "ReparsePoint" in content
-    assert "Assert-TrustedExecutable $newExe.FullName" in content
-    assert "Assert-TrustedExecutable $targetExe" in content
-    assert "SignatureStatus]::UnknownError" in content
-    assert "$signature.TimeStamperCertificate" in content
+    assert "Get-AuthenticodeSignature" not in content
     assert "if ($installStarted)" in content
     assert "UPDATE_FAILED" in content
     assert content.count("Safe-Remove $workDir") == 1
@@ -196,7 +193,7 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
         outside.write_text("sentinel", encoding="utf-8")
         function_start = content.index("function Safe-Remove")
         function_end = content.index(
-            "function Assert-TrustedExecutable",
+            "function Download-WithUi",
             function_start,
         )
         safe_remove_function = content[function_start:function_end]
