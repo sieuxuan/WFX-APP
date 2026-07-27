@@ -7,7 +7,7 @@ from wfx_panel import updater
 
 
 def release_payload(version: str = "1.1.0") -> dict:
-    package = f"WFX-Panel-v{version}-win64.zip"
+    package = f"WFX-Smart-v{version}-win64.zip"
     base = f"https://github.com/sieuxuan/WFX-APP/releases/download/v{version}"
     return {
         "id": 110,
@@ -31,7 +31,7 @@ def release_payload(version: str = "1.1.0") -> dict:
 
 
 def update_state(version: str = "1.1.0") -> dict:
-    package = f"WFX-Panel-v{version}-win64.zip"
+    package = f"WFX-Smart-v{version}-win64.zip"
     package_url = (
         f"https://github.com/sieuxuan/WFX-APP/releases/download/v{version}/{package}"
     )
@@ -59,7 +59,7 @@ def test_check_for_updates_reports_release_in_plain_language(monkeypatch):
     assert result["notice_id"] == "110"
     assert "Phiên bản 1.1.0" in result["message"]
     assert "commit" not in result["message"].lower()
-    assert result["package_url"].endswith("WFX-Panel-v1.1.0-win64.zip")
+    assert result["package_url"].endswith("WFX-Smart-v1.1.0-win64.zip")
     assert result["checksum_url"].endswith(".zip.sha256")
     assert result["signature_url"].endswith(".zip.sha256.p7s")
 
@@ -93,6 +93,24 @@ def test_release_without_checksum_is_not_offered(monkeypatch):
     assert "tự thử lại" in result["message"]
 
 
+def test_legacy_package_name_does_not_trigger_the_unsafe_old_update_path(
+    monkeypatch,
+):
+    payload = release_payload("1.1.0")
+    for asset in payload["assets"]:
+        asset["name"] = asset["name"].replace("WFX-Smart-", "WFX-Panel-")
+        asset["browser_download_url"] = asset["browser_download_url"].replace(
+            "WFX-Smart-",
+            "WFX-Panel-",
+        )
+    monkeypatch.setattr(updater, "_load_latest_release", lambda: payload)
+
+    result = updater.check_for_updates()
+
+    assert result["code"] == "UPDATE_CHECK_FAILED"
+    assert result["can_update"] is False
+
+
 def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path):
     local_data = tmp_path / "local"
     install_dir = tmp_path / "WFX-Panel"
@@ -122,6 +140,8 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert "DownloadFile" in content
     assert "Get-FileHash" in content
     assert "SignedCms" in content
+    assert "$signedCms.CheckSignature($true)" in content
+    assert "$signedCms.CheckSignature($false)" not in content
     assert "$expectedSigner" in content
     assert "Expand-Archive" in content
     assert "UPDATE_INSTALLED" in content
@@ -138,6 +158,8 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert "ReparsePoint" in content
     assert "Assert-TrustedExecutable $newExe.FullName" in content
     assert "Assert-TrustedExecutable $targetExe" in content
+    assert "SignatureStatus]::UnknownError" in content
+    assert "$signature.TimeStamperCertificate" in content
     assert "if ($installStarted)" in content
     assert "UPDATE_FAILED" in content
     assert content.count("Safe-Remove $workDir") == 1

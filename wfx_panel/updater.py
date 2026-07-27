@@ -27,9 +27,10 @@ REPOSITORY = "sieuxuan/WFX-APP"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 REQUEST_TIMEOUT_SECONDS = 20
 ASSET_PATTERN = re.compile(
-    r"^WFX-Panel-v(?P<version>\d+\.\d+\.\d+)-win64\.zip$",
+    r"^WFX-Smart-v(?P<version>\d+\.\d+\.\d+)-win64\.zip$",
     re.IGNORECASE,
 )
+PACKAGE_PREFIX = "WFX-Smart"
 EXPECTED_EXECUTABLE_NAME = "WFX-Panel.exe"
 OWNED_INSTALL_ITEMS = (EXPECTED_EXECUTABLE_NAME, "_internal")
 
@@ -74,7 +75,7 @@ def _validate_asset_urls(
     checksum_url: str,
     signature_url: str,
 ) -> None:
-    package_name = f"WFX-Panel-v{version}-win64.zip"
+    package_name = f"{PACKAGE_PREFIX}-v{version}-win64.zip"
     expected = (
         package_name,
         package_name + ".sha256",
@@ -96,7 +97,7 @@ def _release_assets(release: dict[str, Any]) -> tuple[str, str, str, str]:
     if not isinstance(assets, list):
         raise ValueError("Bản phát hành chưa có gói cài đặt.")
 
-    package_name = f"WFX-Panel-v{version}-win64.zip"
+    package_name = f"{PACKAGE_PREFIX}-v{version}-win64.zip"
     checksum_name = package_name + ".sha256"
     signature_name = checksum_name + ".p7s"
     by_name = {
@@ -388,9 +389,6 @@ function Safe-Remove([string]$path) {{
 
 function Assert-TrustedExecutable([string]$path) {{
   $signature = Get-AuthenticodeSignature -LiteralPath $path
-  if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {{
-    throw "WFX-Panel.exe không có chữ ký Authenticode hợp lệ."
-  }}
   if (-not $signature.SignerCertificate) {{
     throw "Không đọc được certificate ký WFX-Panel.exe."
   }}
@@ -399,6 +397,19 @@ function Assert-TrustedExecutable([string]$path) {{
   ).ToUpperInvariant()
   if ($thumbprint -ne $expectedSigner) {{
     throw "WFX-Panel.exe không đúng nhà phát hành WFX Smart."
+  }}
+  # Self-signed certificate hiện UnknownError trên máy chưa cài publisher root.
+  # HashMismatch/NotSigned và mọi trạng thái khác vẫn bị từ chối. Toàn bộ EXE
+  # đồng thời nằm trong ZIP đã được CMS ký, nên pin này không phải TOFU.
+  $acceptableStatuses = @(
+    [System.Management.Automation.SignatureStatus]::Valid,
+    [System.Management.Automation.SignatureStatus]::UnknownError
+  )
+  if ($acceptableStatuses -notcontains $signature.Status) {{
+    throw "WFX-Panel.exe có chữ ký Authenticode lỗi: $($signature.Status)."
+  }}
+  if (-not $signature.TimeStamperCertificate) {{
+    throw "WFX-Panel.exe thiếu timestamp tin cậy."
   }}
 }}
 
@@ -457,7 +468,9 @@ function Perform-Update {{
       $true
     )
     $signedCms.Decode([System.IO.File]::ReadAllBytes($signaturePath))
-    $signedCms.CheckSignature($false)
+    # Certificate riêng được xác thực bằng chữ ký toán học + thumbprint ghim
+    # trong app. Không dựa vào CA store của máy người dùng.
+    $signedCms.CheckSignature($true)
     if ($signedCms.SignerInfos.Count -ne 1) {{
       throw 'Chữ ký checksum không có đúng một nhà phát hành.'
     }}
