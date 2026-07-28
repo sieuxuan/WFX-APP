@@ -1,4 +1,4 @@
-# WFX Smart 1.0.13
+# WFX Smart 1.0.14
 
 WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
 dùng của WorldFashionExchange (WFX). App chạy bằng pywebview, điều khiển một
@@ -85,14 +85,14 @@ Test tích hợp WFX thật sử dụng tài khoản trong `.env`:
 
 ```powershell
 $env:WFX_LIVE_TEST = "1"
-python -m pytest tests/test_wfx_live.py -v
+python -m pytest tests/test_wfx_live.py tests/test_wfx_live_module_contexts.py -v
 ```
 
 Test không được in credential hoặc nội dung tìm kiếm ra output.
 
 ## Release và cập nhật
 
-Gói phát hành có dạng `WFX-Smart-v1.0.13-win64.zip`, kèm checksum `.sha256` và
+Gói phát hành có dạng `WFX-Smart-v1.0.14-win64.zip`, kèm checksum `.sha256` và
 chữ ký detached `.sha256.p7s`.
 
 GitHub Actions cần hai secrets:

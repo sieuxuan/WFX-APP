@@ -147,6 +147,8 @@ def test_n8n_workflow_uses_current_normalizer_without_raw_payload():
         "error_title",
         "suggestion",
         "const redact",
+        "safeMessage",
+        "message: safeMessage",
     ):
         assert hook in code
     assert "raw_payload" not in code
@@ -157,3 +159,5 @@ def test_n8n_workflow_uses_current_normalizer_without_raw_payload():
     )
     assert "raw_payload" not in standalone
     assert "redactAutomationText" in standalone
+    assert "const safeMessage" in standalone
+    assert "message: safeMessage" in standalone

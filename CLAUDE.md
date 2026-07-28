@@ -82,7 +82,12 @@ Các workflow riêng hiện có:
   thiếu mapping.
 - Code node n8n chuẩn nằm ở `n8n/wfx-app-normalize-code.js`; workflow import
   hoàn chỉnh nằm ở `n8n/wfx-app-webhook.json`. Hai file phải cùng trả
-  `notification_text` và không giữ `raw_payload`.
+  `notification_text`, không giữ `raw_payload`, và trường `message` của lỗi
+  automation cũng phải là bản đã redaction.
+- Buyer/Supplier chỉ được resolve lại frame cùng PartyType với flow ban đầu.
+  Search tất cả Supplier Category phải tiếp tục khi một Category lỗi, báo rõ
+  kết quả một phần và đếm tổng trước khi giới hạn danh sách hiển thị.
+- Crash log phải sanitize exception/stack trước khi ghi xuống ổ đĩa.
 
 ## Mục tiêu
 

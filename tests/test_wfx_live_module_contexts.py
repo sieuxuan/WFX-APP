@@ -11,6 +11,7 @@ from playwright.sync_api import sync_playwright
 
 import login
 from wfx_panel import constants, module_controllers, prefs
+from wfx_panel.automation import directory
 
 pytestmark = pytest.mark.skipif(
     os.getenv("WFX_LIVE_TEST") != "1",
@@ -38,6 +39,28 @@ def _clear_visible_filter(selectors: tuple[str, ...]) -> None:
                         candidate.fill("")
                         candidate.dispatch_event("change")
                         return
+
+
+def _clear_company_filter(expected_kind: str) -> None:
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(login.CDP_URL)
+        page = next(
+            page
+            for context in browser.contexts
+            for page in context.pages
+            if "/wfx/default.aspx" in page.url.lower()
+        )
+        frame = directory._company_search_frame(
+            page,
+            expected_kind,
+            timeout_s=2,
+        )
+        if frame is None:
+            return
+        field = frame.locator("#txtCompanyName")
+        if field.is_visible() and field.is_enabled():
+            field.fill("")
+            field.dispatch_event("change")
 
 
 def _open(module_id: str) -> dict:
@@ -123,3 +146,69 @@ def test_search_uses_only_the_current_module_list():
             'input[id*="Invoice" i]',
         )
     )
+
+
+def test_buyer_and_supplier_keep_their_own_company_frame():
+    account = prefs.load_account()
+    session = login.run(
+        account["user_id"],
+        account["password"],
+        login.COMPANY_ID,
+        lambda _line: None,
+    )
+    assert session["ok"], session["code"]
+
+    supplier = constants.MODULE_BY_ID["0005_0010_1290"]
+    opened_supplier = login.open_supplier_category(
+        supplier["xpath"],
+        "Apparel",
+        constants.CATEGORIES["Apparel"],
+        lambda _line: None,
+    )
+    assert opened_supplier["ok"], opened_supplier["code"]
+    supplier_result = login.find_supplier_in_category(
+        supplier["xpath"],
+        "Apparel",
+        constants.CATEGORIES["Apparel"],
+        SMOKE_QUERY,
+        lambda _line: None,
+    )
+    assert supplier_result["code"] == "SUPPLIER_NOT_FOUND"
+    _clear_company_filter("supplier")
+
+    buyer = constants.MODULE_BY_ID["0004_0010_1720"]
+    opened_buyer = login.open_module(
+        buyer["name"],
+        buyer["xpath"],
+        lambda _line: None,
+    )
+    assert opened_buyer["ok"], opened_buyer["code"]
+    buyer_result = login.find_and_open_buyer(
+        buyer["xpath"],
+        SMOKE_QUERY,
+        lambda _line: None,
+    )
+    assert buyer_result["code"] == "BUYER_NOT_FOUND"
+    _clear_company_filter("buyer")
+
+
+def test_supplier_search_visits_every_category():
+    account = prefs.load_account()
+    session = login.run(
+        account["user_id"],
+        account["password"],
+        login.COMPANY_ID,
+        lambda _line: None,
+    )
+    assert session["ok"], session["code"]
+
+    supplier = constants.MODULE_BY_ID["0005_0010_1290"]
+    result = login.find_supplier_across_categories(
+        supplier["xpath"],
+        constants.CATEGORIES,
+        SMOKE_QUERY,
+        lambda _line: None,
+    )
+    assert result["code"] == "SUPPLIER_NOT_FOUND", result
+    assert result["checked_categories"] == list(constants.CATEGORIES)
+    _clear_company_filter("supplier")

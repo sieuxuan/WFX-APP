@@ -16,6 +16,8 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from wfx_panel.log_bridge import sanitize_log_text
+
 LOG_NAME = "crash.log"
 MARKER_NAME = "wfx-running.json"
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -48,6 +50,19 @@ def _rotate(path: Path) -> None:
         pass
 
 
+def _sanitize_detail(value: Any) -> Any:
+    if isinstance(value, str):
+        return sanitize_log_text(value)
+    if isinstance(value, dict):
+        return {
+            str(key): _sanitize_detail(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_detail(item) for item in value]
+    return value
+
+
 def _append(base_dir: Path, event: str, **details: Any) -> None:
     base_dir = Path(base_dir)
     try:
@@ -56,7 +71,7 @@ def _append(base_dir: Path, event: str, **details: Any) -> None:
         with _LOCK:
             _rotate(path)
             payload = " ".join(
-                f"{key}={json.dumps(value, ensure_ascii=False)}"
+                f"{key}={json.dumps(_sanitize_detail(value), ensure_ascii=False)}"
                 for key, value in details.items()
                 if value not in (None, "")
             )
@@ -79,9 +94,11 @@ def _exception_text(
     exc_value: BaseException,
     exc_traceback: Any,
 ) -> str:
-    return "".join(
-        traceback.format_exception(exc_type, exc_value, exc_traceback)
-    )[-16_000:]
+    return sanitize_log_text(
+        "".join(
+            traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )[-16_000:]
+    )
 
 
 def dump_threads(event: str) -> None:

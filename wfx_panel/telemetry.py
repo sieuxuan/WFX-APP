@@ -263,6 +263,10 @@ ERROR_CODE_INFO.update(
             "Ô tìm Supplier chưa sẵn sàng",
             "Chờ Supplier Master tải xong rồi thử lại.",
         ),
+        "SUPPLIER_SEARCH_PARTIAL": (
+            "Chưa kiểm tra được toàn bộ Category Supplier",
+            "Thử lại để kiểm tra các Category bị lỗi hoặc mở từng Category riêng.",
+        ),
     }
 )
 

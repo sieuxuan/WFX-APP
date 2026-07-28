@@ -217,7 +217,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} nâng cấp Catalog, tải file và các workflow Admin/Supplier.
+            WFX Smart ${{ env.VERSION }} tăng độ ổn định cho Buyer/Supplier,
+            panel và hệ thống chẩn đoán.
 
             Cách cài:
             1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
@@ -234,6 +235,10 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
+            - Buyer/Supplier giữ đúng PartyType khi frame WFX reload, không đọc nhầm màn có cùng ô Company Name.
+            - Tìm Supplier tiếp tục qua Category lỗi, báo phần chưa kiểm tra và đếm tổng kết quả chính xác.
+            - Panel không tự thu nếu người dùng đã quay lại trước khi automation hoàn tất.
+            - Webhook n8n và crash log che dữ liệu nhạy cảm cả ở trường message/exception.
             - File đính kèm được quét đủ bốn mục Article, tải file lớn theo chunk, hiện toast và mở Explorer tại file đã lưu.
             - Company Setup đổi FOC ASN/GRN và Save ổn định qua các lần WFX thay frame.
             - Supplier List nhận diện đúng frame hiện tại, mở Master và tìm nhà cung cấp trên các Category.
