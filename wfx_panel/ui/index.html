@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260728-3">
 </head>
 <body>
   <aside class="panel" aria-label="WFX Smart Automation">
@@ -94,19 +94,22 @@
       </span>
     </footer>
 
-    <div class="module-overlay" aria-label="Module WFX" aria-hidden="true">
-      <section class="module-modal" role="dialog" aria-modal="true" aria-labelledby="module-modal-title">
-        <header class="module-modal-header">
+    <div class="module-page" aria-label="Chi tiết module WFX" aria-hidden="true" hidden>
+      <section class="module-page-content" aria-labelledby="module-page-title">
+        <header class="module-page-header">
+          <button class="module-back-button" type="button" aria-label="Quay lại danh sách module">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/><path d="M9 12h10"/></svg>
+            <span>Quay lại</span>
+          </button>
           <div class="module-modal-identity">
             <span class="module-modal-icon accent-cyan" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4.5 7.5h6l1.8 2H19.5v9h-15v-11Z"/><path d="m9 14 2 2 4-5"/></svg>
             </span>
             <div class="module-modal-heading">
-              <strong id="module-modal-title">Catalog</strong>
+              <strong id="module-page-title">Catalog</strong>
               <span class="module-modal-subtitle">Tìm style, mở Costing hoặc BOM.</span>
             </div>
           </div>
-          <button class="icon-button module-close-button" type="button" aria-label="Đóng module"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
         </header>
 
         <div class="catalog-workspace" data-module-view="catalog">
@@ -122,14 +125,18 @@
                   <option value="Trims">Trims</option>
                 </select>
               </label>
-              <button class="catalog-folder-refresh" type="button" data-catalog-action="refresh-folders" title="Quét lại folder Catalog" aria-label="Quét lại folder Catalog">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
-              </button>
             </div>
-            <div class="catalog-folder-field">
+            <button class="catalog-folder-summary" type="button" aria-expanded="false">
+              <span>Vị trí mặc định</span>
+              <strong class="catalog-folder-current">Mặc định (Master)</strong>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+            </button>
+            <div class="catalog-folder-field" hidden>
               <div class="catalog-folder-label">
-                <span>Vị trí mặc định</span>
-                <strong class="catalog-folder-current">Mặc định (Master)</strong>
+                <span>Chọn vị trí mặc định mới</span>
+                <button class="catalog-folder-refresh" type="button" data-catalog-action="refresh-folders" title="Quét lại folder Catalog" aria-label="Quét lại folder Catalog">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                </button>
               </div>
               <div class="catalog-folder-search-box">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
@@ -158,6 +165,7 @@
                 <button type="button" class="catalog-primary-action" data-catalog-action="find">Tìm</button>
                 <button type="button" class="catalog-secondary-action" data-catalog-action="costsheet">Costing</button>
                 <button type="button" class="catalog-secondary-action" data-catalog-action="bom">BOM</button>
+                <button type="button" class="catalog-secondary-action" data-catalog-action="files">File</button>
               </div>
             </div>
           </div>
@@ -219,13 +227,30 @@
           </div>
         </div>
 
+        <div class="special-module-workspace" data-module-view="company_setup" hidden>
+          <div class="workflow-choice-grid">
+            <button type="button" class="workflow-choice" data-module-action="company-list">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+              <span><strong>List</strong><small>Mở trang Company Setup hiện tại</small></span>
+            </button>
+            <button type="button" class="workflow-choice" data-module-action="company-toggle-foc">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12a7 7 0 0 1 12-5l2 2"/><path d="M19 5v4h-4M19 12a7 7 0 0 1-12 5l-2-2"/><path d="M5 19v-4h4"/></svg>
+              <span><strong>Đổi FOC</strong><small>Chuyển FOC giữa ASN và GRN rồi lưu</small></span>
+            </button>
+          </div>
+          <div class="company-foc-state" aria-live="polite" hidden>
+            <span>Trạng thái hiện tại</span>
+            <strong>Chưa kiểm tra</strong>
+          </div>
+        </div>
+
         <div class="generic-module-workspace" data-module-view="generic" hidden>
           <div class="generic-module-visual"><span class="generic-module-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 12h8M12 8v8"/></svg></span></div>
           <strong class="generic-module-title">Sẵn sàng mở trên WFX</strong>
           <p>Module sẽ được mở trong phiên trình duyệt automation hiện tại.</p>
           <button class="primary-button generic-module-open" type="button"><span>Mở module trên WFX</span></button>
         </div>
-        <div class="module-modal-status" aria-live="polite"></div>
+        <div class="module-page-status" aria-live="polite"></div>
       </section>
     </div>
 
@@ -238,11 +263,7 @@
             <button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
           </div>
           <div class="settings-tabs" role="tablist" aria-label="Nhóm cài đặt">
-            <button type="button" class="settings-tab" role="tab" data-settings-tab="account" aria-selected="true" tabindex="0">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
-              Tài khoản
-            </button>
-            <button type="button" class="settings-tab" role="tab" data-settings-tab="automation" aria-selected="false" tabindex="-1">
+            <button type="button" class="settings-tab" role="tab" data-settings-tab="automation" aria-selected="true" tabindex="0">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7V4m8 3V4M5 9h14v10H5V9Z"/><path d="m8 14 2 2 5-5"/></svg>
               Tự động hóa
             </button>
@@ -250,10 +271,14 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4Z"/><circle cx="7.5" cy="9" r=".8"/><circle cx="10" cy="6.5" r=".8"/></svg>
               Giao diện
             </button>
+            <button type="button" class="settings-tab" role="tab" data-settings-tab="account" aria-selected="false" tabindex="-1">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+              Tài khoản
+            </button>
           </div>
         </div>
 
-        <section class="settings-panel settings-account-panel" data-settings-panel="account">
+        <section class="settings-panel settings-account-panel" data-settings-panel="account" hidden>
           <div class="auth-prompt" hidden data-tone="warning" aria-live="assertive">
             <span class="auth-prompt-icon" aria-hidden="true">!</span>
             <div><strong class="auth-prompt-title">Cần thông tin đăng nhập</strong><p class="auth-prompt-message">Nhập tài khoản WFX để bắt đầu.</p></div>
@@ -274,7 +299,7 @@
           </button>
         </section>
 
-        <section class="settings-panel settings-automation-panel" data-settings-panel="automation" hidden>
+        <section class="settings-panel settings-automation-panel" data-settings-panel="automation">
           <div class="settings-section-heading"><span>Thao tác tự động</span><small>Điều chỉnh cách panel phối hợp với WFX và Windows</small></div>
           <div class="setting-row hotkey-row"><div><strong>Hotkey mở panel</strong><span>Bấm nút rồi nhấn tổ hợp mới</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
           <label class="setting-row toggle-row"><div><strong>Đóng panel sau khi mở module</strong><span>Tự thu thành icon để không che WFX</span></div><input class="close-module-input" type="checkbox" checked /><i></i></label>
@@ -345,6 +370,6 @@
       </div>
     </div>
   </aside>
-  <script src="panel.js"></script>
+  <script src="panel.js?v=20260728-4"></script>
 </body>
 </html>

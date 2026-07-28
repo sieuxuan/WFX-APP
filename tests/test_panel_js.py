@@ -12,8 +12,15 @@ def test_exposes_python_callable_globals():
 
 def test_wires_all_catalog_actions():
     # Khu tìm Catalog gộp về: 1 ô + segmented Style Code | Buyer Reference,
-    # rồi Tìm (primary) · Costing · BOM.
-    for action in ["refresh-folders", "browse", "find", "costsheet", "bom"]:
+    # rồi Tìm (primary) · Costing · BOM · File.
+    for action in [
+        "refresh-folders",
+        "browse",
+        "find",
+        "costsheet",
+        "bom",
+        "files",
+    ]:
         assert f'"{action}"' in JS
     assert "catalogKind" in JS
     assert "catalog-kind-button" in JS
@@ -63,7 +70,7 @@ def test_hotkey_can_focus_and_select_module_search():
     assert "window.wfxFocusModuleSearch = focusModuleSearch" in JS
     assert 'const input = $(".search-box input")' in JS
     assert "closeSettings();" in JS
-    assert "closeModuleModal();" in JS
+    assert "closeModulePage();" in JS
     assert "input.focus();" in JS
     assert "input.select();" in JS
 
@@ -125,17 +132,19 @@ def test_style_status_and_conditional_chrome_visibility_are_wired():
     assert "banner.hidden = alive === true" in JS
 
 
-def test_advanced_module_buttons_open_modal_before_wfx():
-    assert '["catalog", "sale_asn", "supplier", "buyer"].includes(module.kind)' in JS
-    assert "openModuleModal(button.dataset.moduleId)" in JS
-    assert "openModuleDirect(button.dataset.moduleId)" in JS
+def test_only_modules_with_workspaces_open_a_detail_page():
+    assert "openModulePage(button.dataset.moduleId)" in JS
+    assert 'module?.kind === "generic"' in JS
     assert 'data-module-view="catalog"' not in JS  # hook lives in HTML
     assert 'call("open_module", selectedModule.id)' in JS
 
 
-def test_generic_modules_still_open_directly():
-    assert 'if (module && ["catalog", "sale_asn", "supplier", "buyer"].includes(module.kind))' in JS
+def test_generic_modules_open_directly_from_the_card():
+    assert "async function openModuleDirect(moduleId)" in JS
     assert 'call("open_module", moduleId)' in JS
+    assert "openModuleDirect(button.dataset.moduleId)" in JS
+    assert "withButtonLoading(" in JS
+    assert '$(".generic-module-open").addEventListener("click", openModule)' in JS
 
 
 def test_special_module_workflows_are_wired():
@@ -144,6 +153,7 @@ def test_special_module_workflows_are_wired():
         "open_supplier_category",
         "find_supplier",
         "find_buyer",
+        "toggle_company_foc",
     ]:
         assert f'"{method}"' in JS
     for action in [
@@ -153,6 +163,8 @@ def test_special_module_workflows_are_wired():
         "supplier-find",
         "buyer-list",
         "buyer-find",
+        "company-list",
+        "company-toggle-foc",
     ]:
         assert f'"{action}"' in JS
 
@@ -161,6 +173,7 @@ def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
     assert 'runCatalogAction(catalogKind, $(".catalog-query").value)' in JS
     assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "costsheet"' in JS
     assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "bom"' in JS
+    assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "files"' in JS
     assert '"catalog_action"' in JS
     assert '"browse_catalog"' in JS
     assert "scanCatalogFolders(false)" in JS
@@ -248,6 +261,10 @@ def test_catalog_folder_picker_groups_and_searches_large_trees():
     assert 'CATALOG_DEFAULT_CATEGORY = "Apparel"' in JS
     assert 'category === CATALOG_DEFAULT_CATEGORY' in JS
     assert 'category !== CATALOG_DEFAULT_CATEGORY' in JS
+    assert "!supportsDefault || !catalogFolderEditorOpen" in JS
+    assert '$(".catalog-folder-summary").hidden = !supportsDefault' in JS
+    assert "if (catalogFolderEditorOpen) scanCatalogFolders(false)" in JS
+    assert '$(".catalog-browse-card").hidden' not in JS
     assert "if (catalogFolderScanning) return;" in JS
     assert "data-folder-retry" in JS
     assert 'button.matches("[data-folder-retry]")' in JS
@@ -274,7 +291,21 @@ def test_job_history_retry_and_screenshot_are_wired():
 def test_running_module_has_visible_progress_and_keeps_close_controls_enabled():
     assert "BUSY_MESSAGES" in JS
     assert '$(".operation-progress-text").textContent = message' in JS
-    assert 'element.matches(".close-button, .module-close-button")' in JS
+    assert 'element.matches(".close-button, .module-back-button")' in JS
+    assert '$$("button.is-loading")' in JS
+
+
+def test_catalog_file_results_are_downloadable_from_backend_tokens():
+    assert '"CATALOG_FILES_SCANNED"' in JS
+    assert "data-file-id" in JS
+    assert 'call("download_catalog_file", fileId)' in JS
+    assert "catalog-file-group-label" in JS
+    assert "previousSection" in JS
+    assert "file.uploaded_on" in JS
+    assert "file.uploaded_by" in JS
+    assert "file.comments" in JS
+    assert 'querySelectorAll(".catalog-file-row")' in JS
+    assert 'row.addEventListener("click", () => downloadCatalogFile(row))' in JS
 
 
 def test_auto_update_banner_uses_one_click_installer():
@@ -293,12 +324,14 @@ def test_panel_auto_hides_when_focus_leaves_the_app():
 
 
 def test_bubble_launcher_is_wired():
-    # Bubble là trang riêng: bấm → mở panel, giữ → kéo, chuột phải → menu.
+    # Bubble là trang riêng: bấm → mở panel, kéo ngay → di chuyển, phải → menu.
     assert "toggle_panel" in BUBBLE_JS
-    assert "begin_bubble_drag" in BUBBLE_JS
+    assert "save_bubble_position" in BUBBLE_JS
     assert "note_bubble_interaction" in BUBBLE_JS
     assert "bubble_context_menu" in BUBBLE_JS
-    assert "180" in BUBBLE_JS  # ngưỡng giữ để bắt đầu kéo
+    assert "DRAG_THRESHOLD = 4" in BUBBLE_JS
+    assert "Math.hypot" in BUBBLE_JS
+    assert "setTimeout" not in BUBBLE_JS
 
 
 def test_wfx_manual_button_is_wired_to_native_browser():

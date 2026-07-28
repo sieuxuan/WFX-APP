@@ -18,7 +18,7 @@
     { name: "Admin", accent: "amber", modules: [
       { name: "Org Structure", id: "0090_0001", icon: "OR", kind: "generic", description: "Mở cấu trúc tổ chức." },
       { name: "System Coding", id: "0090_0250", icon: "SC", kind: "generic", description: "Mở cấu hình mã hệ thống." },
-      { name: "Company Setup", id: "0090_0007", icon: "CO", kind: "generic", description: "Mở thiết lập công ty." },
+      { name: "Company Setup", id: "0090_0007", icon: "CO", kind: "company_setup", description: "Mở thiết lập công ty hoặc đổi nơi áp dụng FOC." },
       { name: "Buyer List", id: "0004_0010_1720", icon: "BU", kind: "buyer", description: "Mở Buyers List hoặc tìm và mở Buyer đầu tiên phù hợp." },
       { name: "Supplier List", id: "0005_0010_1290", icon: "SU", kind: "supplier", description: "Mở Supplier theo Category hoặc tìm Supplier trên mọi Category." },
     ]},
@@ -71,6 +71,7 @@
   let toastEnabled = true;
   let lastCatalogResult = null;
   let catalogKind = "code";
+  let catalogPendingDestination = null;
   let catalogThemeChoice = "light";
   let catalogDefaultFolder = null;
   const catalogFoldersByCategory = new Map();
@@ -80,10 +81,12 @@
   let catalogFolderScanning = false;
   let catalogFolderSaving = false;
   let catalogFolderScanGeneration = 0;
+  let catalogFolderEditorOpen = false;
   const MODULE_RUN_METHODS = new Set([
     "open_module", "prepare_catalog", "find_code", "find_buyer_reference",
     "open_catalog_destination", "browse_catalog", "catalog_action",
     "open_sale_asn_new", "open_supplier_category", "find_supplier", "find_buyer",
+    "toggle_company_foc",
   ]);
   const BUSY_MESSAGES = {
     open_module: "Đang mở module trên WFX…",
@@ -93,10 +96,12 @@
     find_code: "Đang tìm Style Code…",
     find_buyer_reference: "Đang tìm Buyer Reference…",
     open_catalog_destination: "Đang mở dữ liệu style…",
+    download_catalog_file: "Đang tải file đính kèm…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
     open_supplier_category: "Đang mở Supplier…",
     find_supplier: "Đang tìm Supplier…",
     find_buyer: "Đang tìm Buyer…",
+    toggle_company_foc: "Đang đổi và lưu cấu hình FOC…",
     switch_division: "Đang đổi Division…",
     login: "Đang đăng nhập WFX…",
   };
@@ -113,10 +118,12 @@
     find_code: "Tìm Style Code",
     find_buyer_reference: "Tìm Buyer Reference",
     open_catalog_destination: "Mở Costing / BOM",
+    download_catalog_file: "Tải file đính kèm",
     open_sale_asn_new: "Sale ASN mới",
     open_supplier_category: "Mở Supplier",
     find_supplier: "Tìm Supplier",
     find_buyer: "Tìm Buyer",
+    toggle_company_foc: "Đổi FOC Company Setup",
     switch_division: "Đổi Division",
   };
   const jobMethodLabel = (method) =>
@@ -155,6 +162,13 @@
   function setBusy(value, message = "Đang xử lý trên WFX…") {
     busy = value;
     document.body.classList.toggle("is-busy", value);
+    // Chỉ giữ một spinner tiến trình. Các nút có inline spinner được dọn ngay
+    // khi workflow dài bật thanh tiến trình, tránh nhiều vòng xoay cùng lúc
+    // trên máy WebView/GPU chậm.
+    if (value) {
+      $$("button.is-loading").forEach((button) =>
+        button.classList.remove("is-loading"));
+    }
     const progress = $(".operation-progress");
     if (progress) {
       progress.hidden = !value;
@@ -162,7 +176,7 @@
     }
     $$("button, select, input").forEach((element) => {
       if (element.closest(".settings-overlay")) return;
-      if (element.matches(".close-button, .module-close-button")) return;
+      if (element.matches(".close-button, .module-back-button")) return;
       element.disabled = value;
     });
     if (!value) {
@@ -178,7 +192,6 @@
     { el: () => feedbackOverlay(), openClass: "feedback-open" },
     { el: () => settingsOverlay(), openClass: "settings-open" },
     { el: () => $(".log-overlay"), openClass: "log-open" },
-    { el: () => $(".module-overlay"), openClass: "module-open" },
   ];
 
   function activeOverlay() {
@@ -222,14 +235,16 @@
 
   // #7 Không tự thu panel nếu người dùng đang có nội dung chưa lưu trong overlay.
   function hasPendingUserInput() {
-    const overlay = activeOverlay();
-    if (!overlay) return false;
-    return [...overlay.querySelectorAll(
+    const container = activeOverlay()
+      || (!$(".module-page")?.hidden ? $(".module-page") : null);
+    if (!container) return false;
+    return [...container.querySelectorAll(
       'input[type="text"], input[type="search"], input[type="password"], textarea'
     )].some((field) => field.value && field.value.trim() !== "");
   }
 
   let overlayReturnFocus = null;
+  let moduleReturnFocus = null;
 
   function focusModuleSearch() {
     if (settingsOverlay().classList.contains("credentials-required")) {
@@ -238,7 +253,7 @@
       return;
     }
     closeSettings();
-    closeModuleModal();
+    closeModulePage();
     $(".log-overlay").classList.remove("log-open");
     feedbackOverlay().classList.remove("feedback-open");
     const input = $(".search-box input");
@@ -251,9 +266,9 @@
     const status = $(".footer-status");
     status.dataset.tone = tone || "neutral";
     $(".footer-status-text").textContent = label || "";
-    const modalStatus = $(".module-modal-status");
-    if (modalStatus && $(".module-overlay").classList.contains("module-open")) {
-      modalStatus.textContent = label || "";
+    const pageStatus = $(".module-page-status");
+    if (pageStatus && !$(".module-page").hidden) {
+      pageStatus.textContent = label || "";
     }
   }
   window.wfxSetStatus = setStatus;
@@ -450,7 +465,7 @@
     }
   }
 
-  function openSettings(tabName = "account") {
+  function openSettings(tabName = "automation") {
     if (!settingsOverlay().classList.contains("settings-open")) {
       overlayReturnFocus = document.activeElement;
     }
@@ -521,14 +536,25 @@
 
   function clearCatalogPreparation() {
     clearCatalogResult();
+    catalogPendingDestination = null;
   }
 
   function syncCatalogStepButtons() {
     const category = $(".catalog-category")?.value || "";
     const supportsDefault = category === CATALOG_DEFAULT_CATEGORY;
     const scanned = catalogFoldersByCategory.has(category);
-    if ($(".catalog-browse-card")) {
-      $(".catalog-browse-card").hidden = !supportsDefault;
+    if ($(".catalog-folder-summary")) {
+      $(".catalog-folder-summary").hidden = !supportsDefault;
+      $(".catalog-folder-summary").disabled =
+        busy || catalogFolderScanning || catalogFolderSaving;
+      $(".catalog-folder-summary").setAttribute(
+        "aria-expanded",
+        String(supportsDefault && catalogFolderEditorOpen),
+      );
+    }
+    if ($(".catalog-folder-field")) {
+      $(".catalog-folder-field").hidden =
+        !supportsDefault || !catalogFolderEditorOpen;
     }
     if ($(".catalog-folder-search")) {
       $(".catalog-folder-search").disabled =
@@ -557,8 +583,15 @@
     }
     if ($(".catalog-browse-button")) {
       $(".catalog-browse-button").disabled =
-        busy || catalogFolderScanning || catalogFolderSaving
-          || !supportsDefault || !scanned;
+        busy || catalogFolderScanning || catalogFolderSaving;
+      if (!supportsDefault) {
+        $(".catalog-browse-label").textContent = `Mở ${category}`;
+      } else if (!scanned) {
+        $(".catalog-browse-label").textContent =
+          catalogDefaultFolder?.node_id
+            ? "Mở folder mặc định"
+            : "Mở Master";
+      }
     }
     if ($(".catalog-folder-refresh")) {
       $(".catalog-folder-refresh").disabled =
@@ -661,7 +694,8 @@
       hasCredentials = result.has_credentials === true;
     }
     if (result.style_status) setStyleStatus(result.style_status);
-    if (result.code === "RESULT_OPENED" && result.article_code) {
+    if (["RESULT_OPENED", "CATALOG_FILES_SCANNED"].includes(result.code)
+        && result.article_code) {
       rememberCatalogResult(result);
     } else if ([
       "NO_RESULTS", "MULTIPLE_RESULTS", "CATALOG_RESULT_REQUIRED",
@@ -669,11 +703,16 @@
     ].includes(result.code)) {
       clearCatalogResult();
     }
-    if (["MULTIPLE_RESULTS", "NO_RESULTS", "RESULT_OPENED"].includes(result.code)) {
+    if ([
+      "MULTIPLE_RESULTS", "NO_RESULTS", "RESULT_OPENED",
+      "CATALOG_FILES_SCANNED",
+    ].includes(result.code)) {
       renderCatalogResults(result);
     }
     if (result.default_folder !== undefined) {
       catalogDefaultFolder = result.default_folder;
+      $(".catalog-folder-current").textContent =
+        catalogDefaultFolder?.path_label || "Mặc định (Master)";
     }
     if (result.admin_access !== undefined) {
       setAdminAccess(
@@ -754,57 +793,62 @@
     if (result && result.jobs) renderJobs(result.jobs);
   }
 
-  function openModuleModal(moduleId) {
+  function openModulePage(moduleId) {
     const module = allModules().find((item) => item.id === moduleId);
     if (!module) return;
-    if (!$(".module-overlay").classList.contains("module-open")) {
-      overlayReturnFocus = document.activeElement;
+    if ($(".module-page").hidden) {
+      moduleReturnFocus = document.activeElement;
     }
     selectedModule = module;
     const icon = $(".module-modal-icon");
     icon.className = `module-modal-icon accent-${module.accent}`;
     icon.innerHTML = moduleIconSvg(module.icon);
-    $("#module-modal-title").textContent = module.name;
+    $("#module-page-title").textContent = module.name;
     $(".module-modal-subtitle").textContent =
       module.description || "Mở màn hình WFX.";
     $$('[data-module-view]').forEach((view) => {
       view.hidden = view.dataset.moduleView !== module.kind;
     });
     $(".generic-module-icon").innerHTML = moduleIconSvg(module.icon);
-    $(".module-modal-status").textContent = "";
-    const overlay = $(".module-overlay");
-    overlay.classList.add("module-open");
-    overlay.setAttribute("aria-hidden", "false");
+    $(".module-page-status").textContent = "";
+    const page = $(".module-page");
+    $(".panel-body").hidden = true;
+    page.hidden = false;
+    page.setAttribute("aria-hidden", "false");
     const focusTarget = {
       catalog: ".catalog-query",
       sale_asn: '[data-module-action="sale-asn-list"]',
       supplier: ".supplier-category",
       buyer: '[data-module-action="buyer-list"]',
+      company_setup: '[data-module-action="company-list"]',
       generic: ".generic-module-open",
     }[module.kind] || ".generic-module-open";
     setTimeout(() => $(focusTarget)?.focus(), 0);
     if (module.kind === "catalog") {
+      catalogFolderEditorOpen = false;
       syncCatalogKind();
       hideCatalogResults();
       syncCatalogStepButtons();
-      if ($(".catalog-category").value === CATALOG_DEFAULT_CATEGORY) {
-        setTimeout(() => scanCatalogFolders(false), 0);
-      }
     }
   }
 
-  function closeModuleModal() {
-    const overlay = $(".module-overlay");
-    overlay.classList.remove("module-open");
-    overlay.setAttribute("aria-hidden", "true");
-    overlayReturnFocus?.focus?.();
-    overlayReturnFocus = null;
+  function closeModulePage() {
+    const page = $(".module-page");
+    if (page.hidden) return;
+    page.hidden = true;
+    page.setAttribute("aria-hidden", "true");
+    $(".panel-body").hidden = false;
+    moduleReturnFocus?.focus?.();
+    moduleReturnFocus = null;
   }
 
   function dismissAfterSuccessfulModule(result) {
     // MULTIPLE_RESULTS tuy ok=true nhưng người dùng còn phải chọn 1 Code trong
     // danh sách ngay trên panel — không được tự thu panel lúc này.
-    if (result && result.code === "MULTIPLE_RESULTS") return;
+    if (result && [
+      "MULTIPLE_RESULTS",
+      "CATALOG_FILES_SCANNED",
+    ].includes(result.code)) return;
     if (result && result.ok && closeAfterModule) {
       window.setTimeout(() => api()?.hide_panel?.(), 120);
     }
@@ -819,6 +863,7 @@
   async function openModuleDirect(moduleId) {
     const result = await call("open_module", moduleId);
     dismissAfterSuccessfulModule(result);
+    return result;
   }
 
   async function runSelectedModuleAction(method, ...args) {
@@ -834,6 +879,15 @@
     "supplier-find": () => runSelectedModuleAction("find_supplier", $(".supplier-query").value.trim()),
     "buyer-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "buyer-find": () => runSelectedModuleAction("find_buyer", $(".buyer-query").value.trim()),
+    "company-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "company-toggle-foc": async () => {
+      const result = await runSelectedModuleAction("toggle_company_foc");
+      if (result?.foc_mode) {
+        $(".company-foc-state").hidden = false;
+        $(".company-foc-state strong").textContent = result.foc_mode;
+      }
+      return result;
+    },
   };
 
   function masterFolder(category) {
@@ -1069,6 +1123,8 @@
       if (!result?.ok) {
         catalogSelectedNodeId = previous;
         renderCatalogFolderList();
+      } else {
+        catalogFolderEditorOpen = false;
       }
     } finally {
       catalogFolderSaving = false;
@@ -1100,7 +1156,7 @@
       syncCatalogStepButtons();
       return;
     }
-    // Modal có thể đóng/mở lại trong lúc lần scan đầu còn chạy. Không tạo
+    // Màn chi tiết có thể đóng/mở lại trong lúc lần scan đầu còn chạy. Không tạo
     // thêm workflow CDP song song; kết quả đầu tiên sẽ tự render khi xong.
     if (catalogFolderScanning) return;
     if (!force && catalogFoldersByCategory.has(category)) {
@@ -1116,7 +1172,7 @@
     $(".catalog-folder-list").innerHTML =
       '<div class="catalog-folder-empty">Đang tải danh sách…</div>';
     $(".catalog-folder-list").setAttribute("aria-busy", "true");
-    $(".module-modal-status").textContent = "Đang tải folder…";
+    $(".module-page-status").textContent = "Đang tải folder…";
     syncCatalogStepButtons();
     const result = await callQuiet(
       "scan_catalog_folders",
@@ -1131,7 +1187,7 @@
         catalogDefaultFolder = result.default_folder;
       }
       renderCatalogFolders(category, result.folders, catalogDefaultFolder);
-      $(".module-modal-status").textContent =
+      $(".module-page-status").textContent =
         "Chọn folder hoặc group bạn thường dùng.";
     } else {
       $(".catalog-folder-list").innerHTML =
@@ -1139,7 +1195,7 @@
         + '<br><button class="catalog-folder-retry" type="button" '
         + 'data-folder-retry>Thử tải lại</button></div>';
       $(".catalog-folder-list").setAttribute("aria-busy", "false");
-      $(".module-modal-status").textContent =
+      $(".module-page-status").textContent =
         result?.message || "Chưa tải được folder Catalog.";
       syncCatalogStepButtons();
     }
@@ -1153,7 +1209,7 @@
     );
     if (result) {
       handleResult(result);
-      $(".module-modal-status").textContent = result.message || "";
+      $(".module-page-status").textContent = result.message || "";
     }
     return result;
   }
@@ -1173,13 +1229,18 @@
     }
     clearCatalogResult();
     hideCatalogResults();
-    return runSelectedModuleAction(
+    catalogPendingDestination = destination;
+    const result = await runSelectedModuleAction(
       "catalog_action",
       $(".catalog-category").value,
       filterKind,
       value,
       destination,
     );
+    if (result?.code !== "MULTIPLE_RESULTS") {
+      catalogPendingDestination = null;
+    }
+    return result;
   }
 
   function syncCatalogKind() {
@@ -1200,6 +1261,7 @@
     const wrap = $(".catalog-results");
     if (!wrap) return;
     wrap.hidden = true;
+    $(".catalog-results-title").textContent = "Kết quả";
     $(".catalog-results-list").innerHTML = "";
     $(".catalog-results-count").textContent = "";
   }
@@ -1212,6 +1274,7 @@
     if (!wrap || !list) return;
     if (result.code === "MULTIPLE_RESULTS"
         && Array.isArray(result.styles) && result.styles.length) {
+      $(".catalog-results-title").textContent = "Chọn Style Code";
       $(".catalog-results-count").textContent = `${result.styles.length} Code`;
       list.innerHTML = result.styles.map((style) => {
         const code = String(style.code || "");
@@ -1227,7 +1290,48 @@
         </button>`;
       }).join("");
       wrap.hidden = false;
+    } else if (result.code === "CATALOG_FILES_SCANNED"
+        && Array.isArray(result.files)) {
+      $(".catalog-results-title").textContent = "File đính kèm";
+      $(".catalog-results-count").textContent = `${result.files.length} file`;
+      let previousSection = "";
+      list.innerHTML = result.files.length
+        ? result.files.map((file) => {
+          const section = String(file.section || "File");
+          const sectionHeading = section !== previousSection
+            ? `<div class="catalog-file-group-label" role="presentation">${
+              escapeHtml(section)
+            }</div>`
+            : "";
+          previousSection = section;
+          const meta = [
+            file.uploaded_on ? `Ngày: ${escapeHtml(file.uploaded_on)}` : "",
+            file.uploaded_by ? `Bởi: ${escapeHtml(file.uploaded_by)}` : "",
+          ].filter(Boolean).join(" · ");
+          const comments = file.comments
+            ? `<small>Ghi chú: ${escapeHtml(file.comments)}</small>`
+            : "";
+          return `${sectionHeading}<button type="button"
+            class="catalog-result-row catalog-file-row" role="option"
+            data-file-id="${escapeHtml(file.file_id)}">
+            <span class="catalog-file-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+            </span>
+            <span class="catalog-file-copy">
+              <strong title="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</strong>
+              ${meta ? `<small>${meta}</small>` : ""}
+              ${comments}
+            </span>
+          </button>`;
+        }).join("")
+        : '<div class="catalog-results-empty">'
+          + 'Không có file đính kèm trong bốn mục đã kiểm tra.</div>';
+      list.querySelectorAll(".catalog-file-row").forEach((row) => {
+        row.addEventListener("click", () => downloadCatalogFile(row));
+      });
+      wrap.hidden = false;
     } else if (result.code === "NO_RESULTS") {
+      $(".catalog-results-title").textContent = "Kết quả";
       $(".catalog-results-count").textContent = "";
       list.innerHTML = '<div class="catalog-results-empty">Không tìm thấy kết quả.'
         + ' Kiểm tra lại nội dung, hoặc đổi giữa Style Code và Buyer Reference.</div>';
@@ -1244,7 +1348,20 @@
     catalogKind = "code";
     syncCatalogKind();
     // Mở đúng Code đã chọn: lọc lại grid Master đã chuẩn bị bằng chính Code này.
-    await withButtonLoading(row, () => runCatalogAction("code", code));
+    const destination = catalogPendingDestination;
+    await withButtonLoading(
+      row,
+      () => runCatalogAction("code", code, destination),
+    );
+  }
+
+  async function downloadCatalogFile(row) {
+    const fileId = String(row?.dataset.fileId || "");
+    if (!fileId) return;
+    await withButtonLoading(
+      row,
+      () => call("download_catalog_file", fileId),
+    );
   }
 
   const catalogActions = {
@@ -1256,6 +1373,9 @@
     ),
     "bom": () => runCatalogAction(
       catalogKind, $(".catalog-query").value, "bom"
+    ),
+    "files": () => runCatalogAction(
+      catalogKind, $(".catalog-query").value, "files"
     ),
   };
 
@@ -1332,6 +1452,7 @@
           : "code";
         syncCatalogKind();
         clearCatalogResult();
+        catalogPendingDestination = null;
         hideCatalogResults();
         $(".catalog-query")?.focus();
       }));
@@ -1347,15 +1468,18 @@
       const button = event.target.closest(".module-button");
       if (!button) return;
       const module = allModules().find(
-        (item) => item.id === button.dataset.moduleId
+        (item) => item.id === button.dataset.moduleId,
       );
-      if (module && ["catalog", "sale_asn", "supplier", "buyer"].includes(module.kind)) {
-        openModuleModal(button.dataset.moduleId);
-      } else {
-        openModuleDirect(button.dataset.moduleId);
+      if (module?.kind === "generic") {
+        withButtonLoading(
+          button,
+          () => openModuleDirect(button.dataset.moduleId),
+        );
+        return;
       }
+      openModulePage(button.dataset.moduleId);
     });
-    $(".module-close-button").addEventListener("click", closeModuleModal);
+    $(".module-back-button").addEventListener("click", closeModulePage);
     $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["supplier-find"](); });
     $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["buyer-find"](); });
     // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble.
@@ -1368,9 +1492,6 @@
       window.setTimeout(() => api()?.request_panel_hide?.(), 130);
     });
     window.addEventListener("keydown", trapOverlayFocus, true);
-    $(".module-overlay").addEventListener("mousedown", (event) => {
-      if (event.target === event.currentTarget) closeModuleModal();
-    });
     $(".generic-module-open").addEventListener("click", openModule);
     $(".catalog-query").addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
@@ -1379,12 +1500,16 @@
     $(".catalog-category").addEventListener("change", () => {
       clearCatalogPreparation();
       hideCatalogResults();
+      catalogFolderEditorOpen = false;
       $(".catalog-folder-search").value = "";
-      $(".module-modal-status").textContent = "";
+      $(".module-page-status").textContent = "";
       syncCatalogStepButtons();
-      if ($(".catalog-category").value === CATALOG_DEFAULT_CATEGORY) {
-        scanCatalogFolders(false);
-      }
+    });
+    $(".catalog-folder-summary").addEventListener("click", () => {
+      if ($(".catalog-category").value !== CATALOG_DEFAULT_CATEGORY) return;
+      catalogFolderEditorOpen = !catalogFolderEditorOpen;
+      syncCatalogStepButtons();
+      if (catalogFolderEditorOpen) scanCatalogFolders(false);
     });
     $(".catalog-folder-search").addEventListener(
       "input", renderCatalogFolderList
@@ -1394,17 +1519,18 @@
     );
     $(".catalog-query").addEventListener("input", () => {
       clearCatalogResult();
+      catalogPendingDestination = null;
       hideCatalogResults();
     });
     $(".search-box input").addEventListener("input", (event) => filterModules(event.target.value));
     window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && $(".module-overlay").classList.contains("module-open")) closeModuleModal();
+      if (event.key === "Escape" && !$(".module-page").hidden) closeModulePage();
       if (event.key === "Escape" && feedbackOverlay().classList.contains("feedback-open")) feedbackOverlay().classList.remove("feedback-open");
       if (event.key === "Escape" && settingsOverlay().classList.contains("settings-open")) closeSettings();
       if (event.key === "Escape" && $(".log-overlay").classList.contains("log-open")) $(".log-overlay").classList.remove("log-open");
     });
 
-    $(".settings-button").addEventListener("click", () => openSettings("account"));
+    $(".settings-button").addEventListener("click", () => openSettings("automation"));
     $(".settings-close-button").addEventListener("click", closeSettings);
     settingsOverlay().addEventListener("mousedown", (event) => {
       if (
@@ -1704,6 +1830,8 @@
       state.focus_chrome_on_module !== false;
     $(".always-on-top-input").checked = state.always_on_top !== false;
     catalogDefaultFolder = state.catalog_default_folder || null;
+    $(".catalog-folder-current").textContent =
+      catalogDefaultFolder?.path_label || "Mặc định (Master)";
     if (
       catalogDefaultFolder?.category_name
       && [...$(".catalog-category").options].some(

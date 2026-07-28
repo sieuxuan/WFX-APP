@@ -55,6 +55,9 @@ from wfx_panel.automation.browser import (  # noqa: F401
     start_chrome,
 )
 from wfx_panel.automation.catalog import (  # noqa: F401
+    ARTICLE_FILE_TAB_INDEXES,
+    _attachment_url,
+    _available_download_path,
     _catalog_folder_nodes,
     _catalog_grid_frame,
     _catalog_left_frame,
@@ -63,6 +66,7 @@ from wfx_panel.automation.catalog import (  # noqa: F401
     _open_article_destination,
     _select_catalog_category_on_page,
     _show_catalog_floating_filter,
+    download_catalog_file,
     filter_and_open_catalog_code,
     find_in_open_catalog,
     open_catalog_destination,
@@ -70,6 +74,7 @@ from wfx_panel.automation.catalog import (  # noqa: F401
     open_catalog_master,
     prepare_catalog_master,
     quick_find_catalog,
+    scan_catalog_files,
     scan_catalog_folders,
     set_catalog_category,
 )
@@ -94,6 +99,7 @@ from wfx_panel.automation.modules import (  # noqa: F401
     open_module,
     open_module_with_floating_filter,
     open_sale_asn_new,
+    toggle_company_foc,
 )
 from wfx_panel.automation.session import (  # noqa: F401
     _division_for_text,
@@ -111,6 +117,7 @@ from wfx_panel.automation.session import (  # noqa: F401
 
 __all__ = [
     'Any',
+    'ARTICLE_FILE_TAB_INDEXES',
     'Browser',
     'BrowserExecutable',
     'CATALOG_XPATH',
@@ -133,7 +140,9 @@ __all__ = [
     '_MODULE_GRID_STATE_JS',
     '_actionable_master',
     '_active_wfx_page',
+    '_attachment_url',
     '_attach_dialog_handler',
+    '_available_download_path',
     '_catalog_folder_nodes',
     '_catalog_grid_frame',
     '_catalog_left_frame',
@@ -177,6 +186,7 @@ __all__ = [
     'check_session',
     'dataclass',
     'detect_browser',
+    'download_catalog_file',
     'filter_and_open_catalog_code',
     'find_in_open_catalog',
     'find_and_open_buyer',
@@ -196,11 +206,13 @@ __all__ = [
     'quick_find_catalog',
     'run',
     'scan_catalog_folders',
+    'scan_catalog_files',
     'set_catalog_category',
     'shutil',
     'start_chrome',
     'subprocess',
     'switch_division',
+    'toggle_company_foc',
     'sync_playwright',
     'time',
     'urlopen',

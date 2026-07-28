@@ -71,6 +71,7 @@ def test_index_html_has_contract_hooks():
         'data-catalog-action="find"',
         'data-catalog-action="bom"',
         'data-catalog-action="costsheet"',
+        'data-catalog-action="files"',
         'data-catalog-kind="code"',
         'data-catalog-kind="buyer_reference"',
         'class="catalog-folder-search"',
@@ -82,7 +83,7 @@ def test_index_html_has_contract_hooks():
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js"',
+        'src="panel.js?v=20260728-4"',
     ]:
         assert hook in html, hook
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
@@ -93,7 +94,7 @@ def test_catalog_search_and_destinations_are_direct_actions():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert "Tìm trong Master" in html
     assert 'class="catalog-destination-step"' not in html
-    for action in ("find", "costsheet", "bom"):
+    for action in ("find", "costsheet", "bom", "files"):
         tag = html[html.index(f'data-catalog-action="{action}"') :]
         tag = tag[: tag.index(">")]
         assert "disabled" not in tag
@@ -112,24 +113,26 @@ def test_catalog_folder_picker_is_searchable_and_hides_technical_copy():
     assert "WFX Smart tự quét" not in html
 
 
-def test_module_modal_header_uses_name_and_description_only():
+def test_module_detail_page_header_uses_name_and_description_only():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    assert 'id="module-modal-title"' in html
+    assert 'id="module-page-title"' in html
+    assert 'class="module-back-button"' in html
     assert 'class="module-modal-subtitle"' in html
     assert 'class="module-modal-kicker"' not in html
     assert 'class="module-modal-description"' not in html
-    modal = html[html.index('class="module-modal"') :]
-    assert ">Operation<" not in modal
+    page = html[html.index('class="module-page"') :]
+    assert 'role="dialog"' not in page[: page.index('class="settings-overlay')]
+    assert ">Operation<" not in page
 
 
 def test_bubble_page_advertises_interactions():
     html = (UI / "bubble.html").read_text(encoding="utf-8")
-    assert 'class="bubble"' in html
-    assert 'src="bubble.js"' in html
-    button = html[html.index('class="bubble"') :]
+    assert 'class="bubble pywebview-drag-region"' in html
+    assert 'src="bubble.js?v=20260728-4"' in html
+    button = html[html.index('class="bubble pywebview-drag-region"') :]
     button = button[: button.index(">")]
     assert "chuột phải" in button  # menu tùy chọn
-    assert "kéo" in button  # giữ để kéo
+    assert "kéo" in button
 
 
 def test_bubble_restores_the_previous_launcher_size():
@@ -147,6 +150,22 @@ def test_bubble_restores_the_exact_main_launcher_visual():
     assert "width: 27px" in css
     assert "bubble-breathe" not in css
     assert "bubble-glow" not in html
+    assert "body {\n  margin: 0;" in css
+    assert "inset 0 0 0 1px rgba(255,255,255,.38)" in css
+    assert "transparent=True" not in Path(panel_app.__file__).read_text(
+        encoding="utf-8"
+    )
+    assert "shadow=False" in Path(panel_app.__file__).read_text(encoding="utf-8")
+
+
+def test_bubble_uses_antialiased_dwm_corners_not_pixel_region():
+    from wfx_panel import win32_window
+
+    source = Path(win32_window.__file__).read_text(encoding="utf-8")
+    assert "DWMWA_WINDOW_CORNER_PREFERENCE" in source
+    assert "DWMWCP_ROUNDSMALL" in source
+    assert "DWMWA_BORDER_COLOR" in source
+    assert "CreateRoundRectRgn" not in source
 
 
 def test_bubble_has_no_corner_status_dot():
@@ -277,6 +296,45 @@ def test_settings_are_split_into_three_focused_tabs_with_auth_prompt():
         'class="settings-sticky-header"',
     ]:
         assert hook in html
+    assert html.index('data-settings-tab="automation"') < html.index(
+        'data-settings-tab="appearance"'
+    )
+    assert html.index('data-settings-tab="appearance"') < html.index(
+        'data-settings-tab="account"'
+    )
+
+
+def test_settings_sheet_is_pinned_to_top_and_catalog_keeps_browse_card():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    js = (UI / "panel.js").read_text(encoding="utf-8")
+
+    assert ".settings-main-overlay { align-items: flex-start; }" in css
+    assert 'openSettings("automation")' in js
+    assert 'class="catalog-browse-card"' in html
+    assert "!supportsDefault || !catalogFolderEditorOpen" in js
+    assert 'class="catalog-folder-summary"' in html
+    assert '$(".catalog-browse-card").hidden' not in js
+
+
+def test_catalog_uses_one_outer_scroll_and_reduced_card_borders():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert (
+        ".catalog-results-list { display: flex; flex-direction: column; "
+        "gap: 3px; max-height: none; overflow: visible; }"
+    ) in css
+    assert (
+        ".catalog-browse-card { padding: 0 0 9px; border: 0; "
+        "border-bottom: 1px solid var(--border); background: transparent; }"
+    ) in css
+    assert ".catalog-workspace {\n      padding: 1px 2px 10px;\n      border: 0;" in css
+
+
+def test_panel_uses_crisp_windows_font_rendering():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert 'font-family: "Segoe UI", Tahoma, Arial, sans-serif;' in css
+    assert "-webkit-font-smoothing: auto; text-rendering: auto;" in css
+    assert "Segoe UI Variable Text" not in css
 
 
 def test_supporting_text_and_footer_use_readable_minimum_size():
@@ -323,14 +381,16 @@ def test_workspace_status_and_last_login_are_removed():
     assert 'class="health-login"' not in html
 
 
-def test_catalog_is_a_module_modal_not_a_fixed_dashboard_card():
+def test_catalog_is_a_module_detail_page_not_a_fixed_dashboard_card():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    assert 'class="module-overlay"' in html
+    assert 'class="module-page"' in html
+    assert 'aria-hidden="true" hidden' in html
+    assert 'class="module-overlay"' not in html
     assert 'data-module-view="catalog"' in html
     assert 'class="catalog-card"' not in html
 
 
-def test_sale_asn_supplier_and_buyer_workspaces_have_contract_hooks():
+def test_special_module_workspaces_have_contract_hooks():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
         'data-module-view="sale_asn"',
@@ -341,6 +401,9 @@ def test_sale_asn_supplier_and_buyer_workspaces_have_contract_hooks():
         'class="supplier-query"',
         'data-module-action="supplier-open"',
         'data-module-action="supplier-find"',
+        'data-module-view="company_setup"',
+        'data-module-action="company-list"',
+        'data-module-action="company-toggle-foc"',
         'data-module-view="buyer"',
         'class="buyer-query"',
         'data-module-action="buyer-list"',

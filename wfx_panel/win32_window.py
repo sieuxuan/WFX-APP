@@ -407,6 +407,13 @@ def _work_area_for_window_title(
     return _work_area_for_hwnd(_find_window_hwnd(title))
 
 
+def _work_area_for_window_title_any_state(
+    title: str,
+) -> tuple[int, int, int, int] | None:
+    """Work area theo title kể cả khi cửa sổ đang hidden."""
+    return _work_area_for_hwnd(_find_window_hwnd_any_state(title))
+
+
 def _set_process_window_bounds(
     process_id: int,
     x: int,
@@ -716,13 +723,12 @@ def _native_compact_context_choice(
         return None
 
 
-def _find_window_hwnd(title: str) -> int | None:
-    """HWND cửa sổ hiển thị của process này có đúng tiêu đề ``title``.
-
-    Dùng để cache HWND của bubble MỘT lần lúc bắt đầu kéo, rồi ``_move_hwnd``
-    thẳng vào HWND đó mỗi frame — không EnumWindows lại mỗi lần (nguyên nhân lag
-    khi kéo trước đây).
-    """
+def _find_window_hwnd_impl(
+    title: str,
+    *,
+    visible_only: bool,
+) -> int | None:
+    """Tìm HWND của process này theo title, có thể gồm cả cửa sổ đang ẩn."""
     if os.name != "nt" or not title:
         return None
     try:
@@ -741,7 +747,7 @@ def _find_window_hwnd(title: str) -> int | None:
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             if (
                 pid.value == os.getpid()
-                and user32.IsWindowVisible(hwnd)
+                and (not visible_only or user32.IsWindowVisible(hwnd))
                 and _native_window_text(user32, hwnd) == title
             ):
                 found.append(int(hwnd))
@@ -754,9 +760,38 @@ def _find_window_hwnd(title: str) -> int | None:
         return None
 
 
+def _find_window_hwnd(title: str) -> int | None:
+    """HWND cửa sổ hiển thị của process này có đúng tiêu đề ``title``.
+
+    Dùng để cache HWND của bubble MỘT lần lúc bắt đầu kéo, rồi ``_move_hwnd``
+    thẳng vào HWND đó mỗi frame — không EnumWindows lại mỗi lần (nguyên nhân lag
+    khi kéo trước đây).
+    """
+    return _find_window_hwnd_impl(title, visible_only=True)
+
+
+def _find_window_hwnd_any_state(title: str) -> int | None:
+    """HWND theo title kể cả khi hidden (dùng cho startup ẩn trong tray)."""
+    return _find_window_hwnd_impl(title, visible_only=False)
+
+
 def _window_rect_by_title(title: str) -> tuple[int, int, int, int] | None:
     """Rect (left, top, right, bottom) của cửa sổ có đúng tiêu đề ``title``."""
     hwnd = _find_window_hwnd(title)
+    return _window_rect_for_hwnd(hwnd)
+
+
+def _window_rect_by_title_any_state(
+    title: str,
+) -> tuple[int, int, int, int] | None:
+    """Rect theo title kể cả khi cửa sổ đang hidden."""
+    return _window_rect_for_hwnd(_find_window_hwnd_any_state(title))
+
+
+def _window_rect_for_hwnd(
+    hwnd: int | None,
+) -> tuple[int, int, int, int] | None:
+    """Rect (left, top, right, bottom) của một HWND đã xác định."""
     if hwnd is None:
         return None
     try:
@@ -811,15 +846,16 @@ def _set_bounds_by_title(
     width: int | None = None,
     height: int | None = None,
 ) -> bool:
-    """Đặt vị trí/kích thước cửa sổ theo tiêu đề (dùng cho bubble lúc khởi tạo)."""
-    hwnd = _find_window_hwnd(title)
+    """Đặt bounds theo title, kể cả hidden, mà không tự ý hiện cửa sổ."""
+    hwnd = _find_window_hwnd_any_state(title)
     if hwnd is None:
         return False
     try:
         import ctypes
         from ctypes import wintypes
 
-        flags = 0x0004 | 0x0040 | 0x0010  # NOZORDER | SHOWWINDOW | NOACTIVATE
+        # Không dùng SHOWWINDOW: helper này còn chạy khi start_hidden=True.
+        flags = 0x0004 | 0x0010 | 0x0020  # NOZORDER | NOACTIVATE | FRAMECHANGED
         if width is None or height is None:
             flags |= 0x0001  # NOSIZE
             width = 0
@@ -835,5 +871,48 @@ def _set_bounds_by_title(
                 flags,
             )
         )
+    except Exception:
+        return False
+
+
+def _set_smooth_corners_by_title(title: str) -> bool:
+    """Dùng DWM bo góc anti-aliased và bỏ viền native của bubble.
+
+    ``SetWindowRgn`` cắt theo pixel nguyên nên cạnh cong 48px nhìn răng cưa,
+    nhất là khi CSS còn có viền 1px. Windows 11 DWM render corner mượt theo
+    scale màn hình; Windows cũ chỉ bỏ qua an toàn và giữ cửa sổ vuông.
+    """
+    hwnd = _find_window_hwnd_any_state(title)
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        dwmapi = ctypes.windll.dwmapi
+        set_attribute = dwmapi.DwmSetWindowAttribute
+        set_attribute.argtypes = [
+            wintypes.HWND,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+        ]
+        set_attribute.restype = ctypes.c_long
+        handle = wintypes.HWND(int(hwnd))
+        corner = ctypes.c_int(3)  # DWMWCP_ROUNDSMALL
+        corner_result = set_attribute(
+            handle,
+            33,  # DWMWA_WINDOW_CORNER_PREFERENCE
+            ctypes.byref(corner),
+            ctypes.sizeof(corner),
+        )
+        border_color = wintypes.DWORD(0xFFFFFFFE)  # DWMWA_COLOR_NONE
+        set_attribute(
+            handle,
+            34,  # DWMWA_BORDER_COLOR
+            ctypes.byref(border_color),
+            ctypes.sizeof(border_color),
+        )
+        return int(corner_result) == 0
     except Exception:
         return False

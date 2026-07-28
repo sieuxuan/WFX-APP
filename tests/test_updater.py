@@ -149,6 +149,10 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert "$signedCms.CheckSignature($false)" not in content
     assert "$expectedSigner" in content
     assert "Expand-Archive" in content
+    assert "Safe-Remove $expandedDir" in content
+    assert content.index("Safe-Remove $expandedDir") < content.index(
+        "Expand-Archive -LiteralPath"
+    )
     assert "UPDATE_INSTALLED" in content
     assert "UPDATE_ROLLED_BACK" in content
     assert "Start-Process -FilePath $targetExe" in content

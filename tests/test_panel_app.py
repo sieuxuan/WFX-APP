@@ -31,9 +31,10 @@ def test_webview_uses_fresh_ui_cache():
     assert "webview.start(background, private_mode=True)" in source
     # Bubble là cửa sổ riêng, thường trực (chat-head).
     assert "url=str(BUBBLE_INDEX)" in source
-    # pywebview mặc định ép cửa sổ nhỏ thành khoảng 200×100 nếu không khai báo
-    # min_size; launcher 48px khi đó chỉ nằm giữa một khung xanh rất lớn.
-    assert "min_size=(BUBBLE_SIZE, BUBBLE_SIZE)" in source
+    # Khai báo min_size nhỏ để tránh mặc định 200×100 nhưng vẫn cho Win32 thu
+    # về đúng 48 physical px trên màn hình DPI 125/150%.
+    assert "min_size=(1, 1)" in source
+    assert "_enforce_bubble_native_bounds" in source
 
 
 def test_windows_build_excludes_unused_optional_gui_and_science_stacks():
@@ -160,6 +161,36 @@ def test_module_results_route_to_external_notification():
         (
             {"ok": True, "message": "xong"},
             {"method": "find_code", "elapsed": 0.2},
+        )
+    ]
+
+
+def test_download_result_opens_explorer_and_shows_toast(monkeypatch):
+    app = panel_app.PanelApp()
+    opened = []
+    sent = []
+    app.window = None
+    app._show_notification = lambda result, **context: sent.append(
+        (result, context)
+    )
+    monkeypatch.setattr(
+        panel_app,
+        "_reveal_downloaded_file",
+        lambda path: opened.append(path) or True,
+    )
+    result = {
+        "ok": True,
+        "message": "Đã tải jacket.pdf vào thư mục Downloads.",
+        "download_path": r"C:\Users\Admin\Downloads\jacket.pdf",
+    }
+
+    app._on_result("download_catalog_file", result, 2.5)
+
+    assert opened == [r"C:\Users\Admin\Downloads\jacket.pdf"]
+    assert sent == [
+        (
+            result,
+            {"method": "download_catalog_file", "elapsed": 2.5},
         )
     ]
 
@@ -341,12 +372,36 @@ def test_taskbar_activation_restores_bubble_and_opens_full_ui(monkeypatch):
         return {"ok": True}
 
     app.show_panel = show_panel
+    app._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
     monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
 
     app._open_panel_from_taskbar()
 
-    assert calls == ["restore", "bubble-show", "panel-show"]
+    assert calls == ["restore", "bubble-show", "bubble-size", "panel-show"]
     assert app._panel_visible is True
+
+
+def test_show_from_tray_repairs_hidden_bubble_before_opening_panel():
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+
+    class FakeBubble:
+        on_top = False
+
+        def show(self):
+            calls.append("bubble-show")
+
+    app.bubble_window = FakeBubble()
+    app._bubble_hidden = True
+    app._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
+    app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+
+    app.show_from_tray()
+
+    assert calls == ["bubble-show", "bubble-size", "panel-show"]
+    assert app._bubble_hidden is False
 
 
 def test_direct_bubble_click_does_not_double_toggle_from_taskbar(monkeypatch):
@@ -490,117 +545,42 @@ def test_notification_keeps_logical_size_at_150_percent_scale(monkeypatch):
     assert y == 500 - height - 8
 
 
-def test_hold_to_drag_starts_bubble_drag_thread(monkeypatch):
+def test_native_drag_saves_final_bubble_position(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    started = []
-
-    class FakeThread:
-        def __init__(self, *, target, args, daemon):
-            self.target = target
-            self.args = args
-            self.daemon = daemon
-
-        def is_alive(self):
-            return False
-
-        def start(self):
-            started.append((self.target, self.args, self.daemon))
-
-    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 4242)
-    monkeypatch.setattr(module, "_native_left_button_down", lambda: True)
-    monkeypatch.setattr(module, "_native_cursor_position", lambda: (800, 700))
-    monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (720, 690, 768, 738)
-    )
-    monkeypatch.setattr(module.threading, "Thread", FakeThread)
-
-    result = app.begin_bubble_drag()
-    assert result["code"] == "BUBBLE_DRAG_STARTED"
-    assert started == [
-        (
-            app._bubble_drag_loop,
-            (4242, (800, 700), (720, 690, 768, 738)),
-            True,
-        )
-    ]
-
-
-def test_bubble_drag_loop_moves_and_saves_without_snapping(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    app = module.PanelApp()
-    mouse_states = iter([True, False])
-    moved = []
     saved = []
 
-    monkeypatch.setattr(module, "_native_left_button_down", lambda: next(mouse_states))
-    monkeypatch.setattr(module, "_native_cursor_position", lambda: (850, 740))
     monkeypatch.setattr(
-        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
+        module,
+        "_window_rect_by_title",
+        lambda _title: (2160, 280, 2208, 328),
     )
     monkeypatch.setattr(
-        module, "_work_area_for_point", lambda _x, _y: (0, 0, 1920, 1080)
+        module,
+        "_work_area_for_window_title",
+        lambda _title: (1920, 0, 3840, 1080),
     )
-    monkeypatch.setattr(
-        module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
-    )
-    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(
         module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
     )
 
-    app._bubble_drag_loop(4242, (800, 700), (720, 690, 768, 738))
+    result = app.save_bubble_position()
 
-    # Cho đặt đâu cũng được → KHÔNG dính mép; icon nằm đúng chỗ thả (770, 730).
-    assert moved == [(770, 730)]
-    assert app._bubble_offset == (770, 730)
-    assert saved == [{"compact_offset_x": 770, "compact_offset_y": 730}]
+    assert result["code"] == "BUBBLE_POSITION_SAVED"
+    assert app._bubble_offset == (2160, 280)
+    assert saved == [{"compact_offset_x": 2160, "compact_offset_y": 280}]
 
 
-def test_bubble_drag_loop_keeps_icon_inside_screen_when_dragged_past_edge(
-    monkeypatch,
-):
+def test_native_drag_clamps_bubble_before_saving(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    mouse_states = iter([True, False])
-    moved = []
-
-    monkeypatch.setattr(module, "_native_left_button_down", lambda: next(mouse_states))
-    # Con trỏ nhảy ra ngoài mép phải-dưới màn hình.
-    monkeypatch.setattr(module, "_native_cursor_position", lambda: (5000, 5000))
-    monkeypatch.setattr(
-        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
-    )
-    monkeypatch.setattr(
-        module, "_work_area_for_point", lambda _x, _y: (0, 0, 1920, 1080)
-    )
-    monkeypatch.setattr(
-        module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
-    )
-    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
-
-    app._bubble_drag_loop(4242, (800, 700), (720, 690, 768, 738))
-
-    # Icon 48px không được vượt work area dù kéo ra ngoài màn hình.
-    for x, y in moved:
-        assert 0 <= x <= 1920 - 48
-        assert 0 <= y <= 1080 - 48
-
-
-def test_bubble_drag_loop_can_cross_to_another_monitor(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    app = module.PanelApp()
-    mouse_states = iter([True, False])
     moved = []
     saved = []
-
-    monkeypatch.setattr(module, "_native_left_button_down", lambda: next(mouse_states))
-    monkeypatch.setattr(module, "_native_cursor_position", lambda: (2200, 300))
+    monkeypatch.setattr(
+        module, "_window_rect_by_title", lambda _title: (1950, 1100, 1998, 1148)
+    )
     monkeypatch.setattr(
         module,
         "_work_area_for_window_title",
@@ -608,21 +588,24 @@ def test_bubble_drag_loop_can_cross_to_another_monitor(monkeypatch):
     )
     monkeypatch.setattr(
         module,
-        "_work_area_for_point",
-        lambda x, _y: (1920, 0, 3840, 1080) if x >= 1920 else (0, 0, 1920, 1080),
+        "_set_bounds_by_title",
+        lambda title, x, y, width, height: (
+            moved.append((title, x, y, width, height)) or True
+        ),
     )
-    monkeypatch.setattr(
-        module, "_move_hwnd", lambda _hwnd, x, y: moved.append((x, y)) or True
-    )
-    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(
         module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
     )
 
-    app._bubble_drag_loop(4242, (1800, 300), (1760, 280, 1808, 328))
+    result = app.save_bubble_position()
 
-    assert moved == [(2160, 280)]
-    assert saved == [{"compact_offset_x": 2160, "compact_offset_y": 280}]
+    assert result["ok"] is True
+    assert moved == [
+        (module.BUBBLE_WINDOW_TITLE, 1872, 1032, 48, 48)
+    ]
+    assert saved == [
+        {"compact_offset_x": 1872, "compact_offset_y": 1032}
+    ]
 
 
 def test_show_panel_shows_window_and_hide_panel_hides_it(monkeypatch):
@@ -882,12 +865,18 @@ def test_bubble_loaded_repairs_an_offscreen_saved_position(monkeypatch):
     app = module.PanelApp()
     moved = []
     saved = []
+    rects = iter(
+        [
+            (1950, 1100, 1998, 1148),
+            (1872, 1032, 1920, 1080),
+        ]
+    )
     monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (1950, 1100, 1998, 1148)
+        module, "_window_rect_by_title_any_state", lambda _title: next(rects)
     )
     monkeypatch.setattr(
         module,
-        "_work_area_for_window_title",
+        "_work_area_for_window_title_any_state",
         lambda _title: (0, 0, 1920, 1080),
     )
     monkeypatch.setattr(
@@ -896,6 +885,9 @@ def test_bubble_loaded_repairs_an_offscreen_saved_position(monkeypatch):
         lambda title, x, y, width, height: (
             moved.append((title, x, y, width, height)) or True
         ),
+    )
+    monkeypatch.setattr(
+        module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
     )
     monkeypatch.setattr(
         module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
@@ -925,13 +917,14 @@ def test_bubble_loaded_always_enforces_native_main_size(monkeypatch):
 
     app = module.PanelApp()
     moved = []
+    rects = iter([(100, 100, 172, 172), (100, 100, 148, 148)])
     # Mô phỏng WebView bị DPI scale thành 72×72 dù create_window nhận 48.
     monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (100, 100, 172, 172)
+        module, "_window_rect_by_title_any_state", lambda _title: next(rects)
     )
     monkeypatch.setattr(
         module,
-        "_work_area_for_window_title",
+        "_work_area_for_window_title_any_state",
         lambda _title: (0, 0, 1920, 1080),
     )
     monkeypatch.setattr(
@@ -940,6 +933,9 @@ def test_bubble_loaded_always_enforces_native_main_size(monkeypatch):
         lambda title, x, y, width, height: (
             moved.append((title, x, y, width, height)) or True
         ),
+    )
+    monkeypatch.setattr(
+        module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
     )
     monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
 
@@ -954,6 +950,28 @@ def test_bubble_loaded_always_enforces_native_main_size(monkeypatch):
             module.BUBBLE_SIZE,
         )
     ]
+
+
+def test_bubble_bounds_reject_false_success_until_rect_is_exact(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    monkeypatch.setattr(
+        module,
+        "_window_rect_by_title_any_state",
+        lambda _title: (100, 100, 220, 139),
+    )
+    monkeypatch.setattr(
+        module,
+        "_work_area_for_window_title_any_state",
+        lambda _title: (0, 0, 1920, 1080),
+    )
+    monkeypatch.setattr(module, "_set_bounds_by_title", lambda *_args: True)
+    monkeypatch.setattr(
+        module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
+    )
+
+    assert app._enforce_bubble_native_bounds() is False
 
 
 def test_bubble_context_menu_can_hide_to_tray(monkeypatch):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -27,20 +28,19 @@ from wfx_panel.win32_window import (
     _find_window_hwnd,
     _foreground_process_id,
     _foreground_window_hwnd,
-    _move_hwnd,
     _native_compact_context_choice,
-    _native_cursor_position,
-    _native_left_button_down,
     _native_notification_visibility,
     _scale_logical_size,
     _set_bounds_by_title,
     _set_process_window_bounds,
+    _set_smooth_corners_by_title,
     _unscale_physical_size,
     _window_dpi_by_title,
     _window_rect_by_title,
-    _work_area_for_point,
+    _window_rect_by_title_any_state,
     _work_area_for_process_window,
     _work_area_for_window_title,
+    _work_area_for_window_title_any_state,
 )
 
 HOTKEY = hotkey.DEFAULT
@@ -77,10 +77,12 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "find_code",
         "find_buyer_reference",
         "open_catalog_destination",
+        "download_catalog_file",
         "open_sale_asn_new",
         "open_supplier_category",
         "find_supplier",
         "find_buyer",
+        "toggle_company_foc",
     }
 )
 NOTIFICATION_ACTION_LABELS = {
@@ -91,11 +93,30 @@ NOTIFICATION_ACTION_LABELS = {
     "find_code": "Tìm Style Code",
     "find_buyer_reference": "Tìm Buyer Reference",
     "open_catalog_destination": "Catalog",
+    "download_catalog_file": "Tải file",
     "open_sale_asn_new": "Sale ASN",
     "open_supplier_category": "Supplier",
     "find_supplier": "Tìm Supplier",
     "find_buyer": "Tìm Buyer",
+    "toggle_company_foc": "Company Setup · FOC",
 }
+
+
+def _reveal_downloaded_file(value: object) -> bool:
+    """Mở Explorer và chọn đúng file vừa tải, không làm hỏng result flow."""
+    if os.name != "nt":
+        return False
+    try:
+        target = Path(str(value or "")).resolve()
+        if not target.is_file():
+            return False
+        subprocess.Popen(
+            ["explorer.exe", f"/select,{target}"],
+            close_fds=True,
+        )
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 class _WfxTrayIcon(pystray.Icon):
@@ -220,8 +241,8 @@ class _BubbleBridge:
     def toggle_panel(self) -> dict:
         return self._app.toggle_panel()
 
-    def begin_bubble_drag(self) -> dict:
-        return self._app.begin_bubble_drag()
+    def save_bubble_position(self) -> dict:
+        return self._app.save_bubble_position()
 
     def note_bubble_interaction(self) -> dict:
         return self._app.note_bubble_interaction()
@@ -258,7 +279,7 @@ class PanelApp:
             and preferences["compact_offset_y"] is not None
             else None
         )
-        self._bubble_drag_thread: threading.Thread | None = None
+        self._bubble_size_thread: threading.Thread | None = None
         self._bubble_direct_action_until = 0.0
         self._taskbar_focus_armed = False
         self._taskbar_opening = False
@@ -432,42 +453,6 @@ class PanelApp:
         self.hide_panel()
         return {"ok": True, "code": "PANEL_HIDDEN_ON_BLUR"}
 
-    def begin_bubble_drag(self) -> dict:
-        """Bắt đầu kéo bubble — cache HWND MỘT lần để vòng kéo không enum lại."""
-        if (
-            self._bubble_drag_thread is not None
-            and self._bubble_drag_thread.is_alive()
-        ):
-            return {"ok": True, "code": "BUBBLE_DRAG_STARTED"}
-        hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
-        cursor = _native_cursor_position()
-        rect = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
-        started = bool(
-            _native_left_button_down()
-            and hwnd is not None
-            and cursor is not None
-            and rect is not None
-        )
-        if started:
-            # Kéo bubble thì thu panel cho gọn.
-            if self._panel_visible:
-                self.hide_panel()
-            self._bubble_drag_thread = threading.Thread(
-                target=self._bubble_drag_loop,
-                args=(hwnd, cursor, rect),
-                daemon=True,
-            )
-            self._bubble_drag_thread.start()
-        return {
-            "ok": started,
-            "code": "BUBBLE_DRAG_STARTED" if started else "BUBBLE_DRAG_FAILED",
-            "message": (
-                "Đang di chuyển icon WFX."
-                if started
-                else "Không thể di chuyển icon WFX."
-            ),
-        }
-
     def note_bubble_interaction(self) -> dict:
         """Đánh dấu click/drag trực tiếp để monitor taskbar không toggle lần hai."""
         self._bubble_direct_action_until = (
@@ -475,39 +460,32 @@ class PanelApp:
         )
         return {"ok": True, "code": "BUBBLE_INTERACTION_NOTED"}
 
-    def _bubble_drag_loop(
-        self,
-        hwnd: int,
-        origin_cursor: tuple[int, int],
-        origin_rect: tuple[int, int, int, int],
-    ) -> None:
-        """Theo con trỏ, dời thẳng HWND đã cache (SetWindowPos rẻ, không enum
-        → hết lag). Cho đặt ở đâu cũng được, chỉ clamp để không lọt khỏi màn."""
-        width = origin_rect[2] - origin_rect[0]
-        height = origin_rect[3] - origin_rect[1]
-        fallback_area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
-        if fallback_area is None:
-            fallback_area = _work_area_for_process_window(os.getpid())
-        last: tuple[int, int] | None = None
-        while _native_left_button_down():
-            cursor = _native_cursor_position()
-            if cursor is None:
-                break
-            # Chọn work area theo chính con trỏ ở mỗi frame. Nếu giữ area của
-            # màn hình ban đầu, clamp sẽ chặn bubble vĩnh viễn ở mép monitor.
-            area = _work_area_for_point(cursor[0], cursor[1]) or fallback_area
-            target_x = origin_rect[0] + cursor[0] - origin_cursor[0]
-            target_y = origin_rect[1] + cursor[1] - origin_cursor[1]
-            target_x, target_y = _clamp_to_work_area(
-                target_x, target_y, width, height, area
+    def save_bubble_position(self) -> dict:
+        """Lưu vị trí sau native pywebview drag và giữ bubble trong màn hình."""
+        rect = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
+        area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+        if rect is None:
+            return {
+                "ok": False,
+                "code": "BUBBLE_POSITION_UNAVAILABLE",
+                "message": "Không đọc được vị trí icon WFX.",
+            }
+        x, y = _clamp_to_work_area(
+            rect[0], rect[1], BUBBLE_SIZE, BUBBLE_SIZE, area
+        )
+        if (x, y) != (rect[0], rect[1]):
+            _set_bounds_by_title(
+                BUBBLE_WINDOW_TITLE, x, y, BUBBLE_SIZE, BUBBLE_SIZE
             )
-            _move_hwnd(hwnd, target_x, target_y)
-            last = (target_x, target_y)
-            time.sleep(0.008)
-        if last is None:
-            return
-        self._bubble_offset = last
-        prefs.save_prefs(compact_offset_x=last[0], compact_offset_y=last[1])
+        self._bubble_offset = (x, y)
+        prefs.save_prefs(compact_offset_x=x, compact_offset_y=y)
+        return {
+            "ok": True,
+            "code": "BUBBLE_POSITION_SAVED",
+            "message": "Đã lưu vị trí icon WFX.",
+            "x": x,
+            "y": y,
+        }
 
     def bubble_context_menu(self) -> dict:
         """Menu bubble: always-on-top / ẩn xuống tray / thoát ứng dụng."""
@@ -554,6 +532,7 @@ class PanelApp:
                 self.bubble_window.on_top = self._always_on_top
             except Exception:
                 pass
+        self._schedule_bubble_native_bounds()
         self._bubble_hidden = False
         self.show_panel()
 
@@ -782,6 +761,9 @@ class PanelApp:
             except Exception:
                 pass
 
+        if method == "download_catalog_file" and result.get("ok"):
+            _reveal_downloaded_file(result.get("download_path"))
+
         if method in MODULE_NOTIFICATION_METHODS:
             self._show_notification(
                 result,
@@ -864,6 +846,7 @@ class PanelApp:
                     self.bubble_window.show()
                 except Exception:
                     pass
+            self._schedule_bubble_native_bounds()
             self.show_panel()
         finally:
             self._taskbar_opening = False
@@ -1023,23 +1006,66 @@ class PanelApp:
         x = max(WINDOW_MARGIN, screen_width - BUBBLE_SIZE - WINDOW_MARGIN)
         return x, 120
 
-    def _on_bubble_loaded(self) -> None:
-        """Giữ bubble đúng 48px native và tự chữa vị trí ngoài màn hình."""
-        rect = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
-        area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+    def _enforce_bubble_native_bounds(self) -> bool:
+        """Ép bubble về 48 physical px, kể cả khi start_hidden=True.
+
+        Không chỉ tin giá trị trả về của ``SetWindowPos``: WinForms có thể báo
+        thành công nhưng vẫn giữ minimum tracking size 120×39. Luôn đọc rect
+        sau cùng để scheduler biết còn phải retry.
+        """
+        rect = _window_rect_by_title_any_state(BUBBLE_WINDOW_TITLE)
+        area = _work_area_for_window_title_any_state(BUBBLE_WINDOW_TITLE)
         if rect is None or area is None:
-            return
+            return False
         x, y = _clamp_to_work_area(
             rect[0], rect[1], BUBBLE_SIZE, BUBBLE_SIZE, area
         )
         # create_window dùng logical pixels và có thể bị Windows DPI scale.
         # SetWindowPos lại bằng physical pixels để launcher không thành 72/96px.
-        _set_bounds_by_title(
+        resized = _set_bounds_by_title(
             BUBBLE_WINDOW_TITLE, x, y, BUBBLE_SIZE, BUBBLE_SIZE
         )
+        if not resized:
+            return False
+        # Cửa sổ opaque nhận hit-test ổn định; DWM bo góc anti-aliased mà
+        # không cần TransparencyKey/WS_EX_LAYERED hay region răng cưa.
+        _set_smooth_corners_by_title(BUBBLE_WINDOW_TITLE)
+        actual = _window_rect_by_title_any_state(BUBBLE_WINDOW_TITLE)
+        if (
+            actual is None
+            or actual[2] - actual[0] != BUBBLE_SIZE
+            or actual[3] - actual[1] != BUBBLE_SIZE
+        ):
+            return False
         if (x, y) != (rect[0], rect[1]):
             self._bubble_offset = (x, y)
             prefs.save_prefs(compact_offset_x=x, compact_offset_y=y)
+        return True
+
+    def _schedule_bubble_native_bounds(self) -> None:
+        """Ép lại kích thước sau cả load lẫn show từ trạng thái khởi động ẩn."""
+        if self._enforce_bubble_native_bounds():
+            return
+
+        def retry_native_size() -> None:
+            # Một số máy phát sự kiện loaded trước khi HWND tra được theo title.
+            # Mỗi loaded/show/restore được quyền tạo một lượt retry riêng để
+            # không mất tín hiệu đúng lúc thread cũ vừa hết hạn.
+            for _attempt in range(20):
+                time.sleep(0.1)
+                if self._enforce_bubble_native_bounds():
+                    return
+
+        self._bubble_size_thread = threading.Thread(
+            target=retry_native_size,
+            name="wfx-bubble-native-size",
+            daemon=True,
+        )
+        self._bubble_size_thread.start()
+
+    def _on_bubble_loaded(self) -> None:
+        """Giữ bubble đúng 48px native, kể cả khi WebView2 tạo HWND chậm."""
+        self._schedule_bubble_native_bounds()
 
     def run(self):
         if not ICON_PATH.exists():
@@ -1109,7 +1135,10 @@ class PanelApp:
             js_api=_BubbleBridge(self),
             width=BUBBLE_SIZE,
             height=BUBBLE_SIZE,
-            min_size=(BUBBLE_SIZE, BUBBLE_SIZE),
+            # Không để mặc định 200×100 của pywebview, đồng thời không dùng
+            # min_size=48 logical px vì Windows sẽ DPI-scale giới hạn đó thành
+            # 60/72px và chặn SetWindowPos thu bubble về 48 physical px.
+            min_size=(1, 1),
             x=bubble_x,
             y=bubble_y,
             resizable=False,
@@ -1118,6 +1147,9 @@ class PanelApp:
             on_top=True,
             hidden=self._start_hidden,
             background_color="#0f9fb2",
+            # Opaque là bắt buộc với WebView2: TransparencyKey khiến toàn bộ
+            # form bị hit-test xuyên xuống Chrome dù SVG vẫn nhìn thấy.
+            shadow=False,
         )
         self.bubble_window.events.loaded += self._on_bubble_loaded
         self.bubble_window.events.closing += self._on_bubble_closing

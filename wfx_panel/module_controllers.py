@@ -113,7 +113,8 @@ class SystemCodingModule(ModuleController):
 
 class CompanySetupModule(ModuleController):
     module_id = "0090_0007"
-    description = "Mở thiết lập công ty."
+    kind = "company_setup"
+    description = "Mở thiết lập công ty hoặc đổi nơi áp dụng FOC."
 
 
 class BuyerListModule(ModuleController):

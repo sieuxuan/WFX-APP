@@ -126,19 +126,29 @@ jobs:
             $zipPath = Join-Path $PWD $zipName
             $checksumPath = "$zipPath.sha256"
             $signaturePath = "$checksumPath.p7s"
+            $packageRootName = "WFX-Smart-v$version"
+            $packageStage = Join-Path $env:RUNNER_TEMP $packageRootName
+            if (Test-Path -LiteralPath $packageStage) {
+              Remove-Item -LiteralPath $packageStage -Recurse -Force
+            }
+            Copy-Item `
+              -LiteralPath (Join-Path $PWD "dist/WFX-Panel") `
+              -Destination $packageStage `
+              -Recurse
             # bsdtar của Windows runner nén cây PyInstaller nhanh và ổn định
-            # hơn Compress-Archive rất nhiều.
+            # hơn Compress-Archive rất nhiều. Bọc trong folder theo version để
+            # giải nén thủ công không đụng file rời/phiên bản cũ ở Downloads.
             & tar.exe -a -c -f $zipPath `
-              -C (Join-Path $PWD "dist/WFX-Panel") .
+              -C $env:RUNNER_TEMP $packageRootName
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $zipPath)) {
               throw "Không tạo được gói ZIP phát hành."
             }
             $archiveEntries = @(& tar.exe -tf $zipPath)
             if (
               $LASTEXITCODE -ne 0 -or
-              $archiveEntries -notcontains "./WFX-Panel.exe" -or
+              $archiveEntries -notcontains "$packageRootName/WFX-Panel.exe" -or
               -not ($archiveEntries | Where-Object {
-                $_ -like "./_internal/*"
+                $_ -like "$packageRootName/_internal/*"
               })
             ) {
               throw "Gói ZIP thiếu WFX-Panel.exe hoặc _internal."

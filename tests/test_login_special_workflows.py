@@ -49,6 +49,12 @@ def test_supplier_uses_exact_actionable_master_and_company_search():
     ]
     assert "img" not in actionable_block.casefold()
     assert 'frame.locator("#txtCompanyName")' in SOURCE
+    assert "def _supplier_category_frame" in SOURCE
+    assert '"wfxpartygroup" in str(frame.url' in SOURCE
+    assert 'page.frame(name="left")' not in SOURCE[
+        SOURCE.index("def _supplier_category_frame"):
+        SOURCE.index("def find_and_open_buyer")
+    ]
     assert "for category_name, category_value in categories.items()" in SOURCE
     assert '"SUPPLIER_FOUND"' in SOURCE
     assert '"SUPPLIER_NOT_FOUND"' in SOURCE
