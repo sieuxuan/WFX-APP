@@ -16,11 +16,11 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'WFX Smart'),
           StringStruct('FileDescription', 'WFX Smart Automation'),
-          StringStruct('FileVersion', '1.0.11'),
+          StringStruct('FileVersion', '1.0.12'),
           StringStruct('InternalName', 'WFX-Panel'),
           StringStruct('OriginalFilename', 'WFX-Panel.exe'),
           StringStruct('ProductName', 'WFX Smart'),
-          StringStruct('ProductVersion', '1.0.11'),
+          StringStruct('ProductVersion', '1.0.12'),
         ],
       ),
     ]),

@@ -218,13 +218,15 @@ jobs:
             theo ba bước trên. Gói mới cố ý không kích hoạt updater cũ để tránh
             nguy cơ updater đó xóa nhầm thư mục chứa ứng dụng.
 
-            **Nếu bản 1.0.9–1.0.10 báo không tìm thấy CMS assembly:** hãy cài
-            thủ công 1.0.11 một lần. Từ 1.0.11 trở đi, updater tương thích cả
-            Windows PowerShell 5.1 và PowerShell 7, đồng thời vẫn xác minh chữ ký,
-            giới hạn file được thay và có rollback.
+            **Nếu bản 1.0.9–1.0.11 báo lỗi CMS hoặc hash:** hãy cài thủ công
+            1.0.12 một lần. Từ 1.0.12 trở đi, updater tương thích cả Windows
+            PowerShell 5.1 và PowerShell 7, đồng thời vẫn xác minh chữ ký, giới
+            hạn file được thay và có rollback.
 
             Điểm chính:
-            - Sửa updater không nạp được CMS assembly trên Windows PowerShell 5.1.
+            - Sửa updater trên Windows PowerShell 5.1 và môi trường thiếu module hash.
+            - Thêm nút Sao chép lỗi để gửi nhanh chẩn đoán khi cập nhật thất bại.
+            - Named mutex bảo đảm chỉ một WFX Smart chạy, kể cả lúc nâng cấp từ bản cũ.
             - Panel và thông báo giữ đúng bố cục trên Windows Scale 100–200% và nhiều màn hình.
             - Catalog Apparel tự nhận diện cây Group/Folder theo tài khoản.
             - Cây Catalog chỉ scan lần đầu, được dùng lại sau khi mở lại app; Refresh mới ép scan lại.

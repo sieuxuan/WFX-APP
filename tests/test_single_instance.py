@@ -1,6 +1,8 @@
+import os
 import socket
 import threading
 import time
+import uuid
 
 import pytest
 
@@ -18,17 +20,22 @@ def port() -> int:
     return _free_port()
 
 
-def test_first_instance_acquires(port):
-    first = SingleInstance(lambda: None, port=port)
+@pytest.fixture
+def mutex_name() -> str:
+    return f"Local\\WFX-Smart-Test-{uuid.uuid4()}"
+
+
+def test_first_instance_acquires(port, mutex_name):
+    first = SingleInstance(lambda: None, port=port, mutex_name=mutex_name)
     try:
         assert first.acquire() is True
     finally:
         first.close()
 
 
-def test_second_instance_cannot_acquire(port):
-    first = SingleInstance(lambda: None, port=port)
-    second = SingleInstance(lambda: None, port=port)
+def test_second_instance_cannot_acquire(port, mutex_name):
+    first = SingleInstance(lambda: None, port=port, mutex_name=mutex_name)
+    second = SingleInstance(lambda: None, port=port, mutex_name=mutex_name)
     try:
         assert first.acquire() is True
         assert second.acquire() is False
@@ -37,10 +44,14 @@ def test_second_instance_cannot_acquire(port):
         first.close()
 
 
-def test_second_instance_activates_the_first(port):
+def test_second_instance_activates_the_first(port, mutex_name):
     activated = threading.Event()
-    first = SingleInstance(lambda: activated.set(), port=port)
-    second = SingleInstance(lambda: None, port=port)
+    first = SingleInstance(
+        lambda: activated.set(),
+        port=port,
+        mutex_name=mutex_name,
+    )
+    second = SingleInstance(lambda: None, port=port, mutex_name=mutex_name)
     try:
         assert first.acquire() is True
         assert second.acquire() is False
@@ -52,35 +63,71 @@ def test_second_instance_activates_the_first(port):
         first.close()
 
 
-def test_port_held_by_a_foreign_process_does_not_block_startup(port):
-    """Cổng bị chương trình khác chiếm KHÔNG được làm app từ chối khởi động.
+def test_new_mutex_instance_yields_to_legacy_socket_instance(port):
+    """1.0.12 không chạy chồng khi bản cũ chỉ giữ socket đang còn mở."""
+    activated = threading.Event()
+    legacy = SingleInstance(
+        lambda: activated.set(),
+        port=port,
+        mutex_name=f"Local\\WFX-Legacy-Test-{uuid.uuid4()}",
+    )
+    new_mutex_name = f"Local\\WFX-New-Test-{uuid.uuid4()}"
+    current = SingleInstance(
+        lambda: None,
+        port=port,
+        mutex_name=new_mutex_name,
+    )
+    try:
+        assert legacy.acquire() is True
+        assert current.acquire() is False
+        assert activated.wait(timeout=3) is True
 
-    Nếu chỉ dựa vào 'bind thất bại = đã có instance', bất kỳ phần mềm nào tình
-    cờ giữ cổng cũng khiến người dùng không mở được app và không hiểu vì sao.
-    Handshake token phân biệt 'đúng instance của ta' với 'ai đó lạ'.
-    """
+        # acquire() thất bại phải thả mutex mới tạo, không để khoá mồ côi.
+        probe = SingleInstance(
+            lambda: None,
+            port=_free_port(),
+            mutex_name=new_mutex_name,
+        )
+        try:
+            assert probe.acquire() is True
+        finally:
+            probe.close()
+    finally:
+        current.close()
+        legacy.close()
+
+
+def test_windows_mutex_still_allows_one_app_if_ipc_port_is_busy(
+    port,
+    mutex_name,
+):
+    """Trên Windows, cổng IPC bận không được làm mất khoá single-instance."""
     intruder = socket.socket()
     intruder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     intruder.bind(("127.0.0.1", port))
     intruder.listen(1)
 
-    instance = SingleInstance(lambda: None, port=port)
+    instance = SingleInstance(
+        lambda: None,
+        port=port,
+        mutex_name=mutex_name,
+    )
     try:
-        assert instance.acquire() is False
-        # Không phải instance của ta -> không ack -> caller được phép chạy tiếp.
-        assert instance.signal_existing() is False
+        assert instance.acquire() is (os.name == "nt")
+        if os.name != "nt":
+            assert instance.signal_existing() is False
     finally:
         instance.close()
         intruder.close()
 
 
-def test_close_releases_port_for_a_later_instance(port):
-    first = SingleInstance(lambda: None, port=port)
+def test_close_releases_port_for_a_later_instance(port, mutex_name):
+    first = SingleInstance(lambda: None, port=port, mutex_name=mutex_name)
     assert first.acquire() is True
     first.close()
     time.sleep(0.05)
 
-    second = SingleInstance(lambda: None, port=port)
+    second = SingleInstance(lambda: None, port=port, mutex_name=mutex_name)
     try:
         assert second.acquire() is True
     finally:

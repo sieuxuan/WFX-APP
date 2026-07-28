@@ -1,4 +1,4 @@
-## WFX Smart 1.0.11
+## WFX Smart 1.0.12
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -56,14 +56,14 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Smart-v1.0.11-win64.zip` kèm checksum `.sha256` và chữ ký
+Gói phát hành: `WFX-Smart-v1.0.12-win64.zip` kèm checksum `.sha256` và chữ ký
 detached `.sha256.p7s`.
 
-Nâng cấp từ 1.0.10 trở xuống cần giải nén 1.0.11 vào một thư mục riêng đúng một
+Nâng cấp từ 1.0.11 trở xuống cần giải nén 1.0.12 vào một thư mục riêng đúng một
 lần. Prefix gói mới cố ý không kích hoạt updater cũ vốn có thể xóa cả thư mục
-chứa EXE. Bản 1.0.9–1.0.10 cũng cần nâng cấp thủ công một lần trên máy chỉ có
-Windows PowerShell 5.1. Từ 1.0.11 trở đi, cập nhật tự động dùng chuỗi xác minh,
-rollback và loader CMS tương thích cả PowerShell 5.1 lẫn PowerShell 7.
+chứa EXE. Bản 1.0.9–1.0.11 cũng cần nâng cấp thủ công một lần nếu updater báo
+lỗi CMS hoặc hash. Từ 1.0.12 trở đi, cập nhật tự động dùng chuỗi xác minh,
+rollback và API .NET tương thích cả Windows PowerShell 5.1 lẫn PowerShell 7.
 
 Workflow release yêu cầu hai GitHub Actions secrets:
 
