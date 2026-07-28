@@ -217,7 +217,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} nâng cấp Catalog và độ ổn định của ứng dụng desktop.
+            WFX Smart ${{ env.VERSION }} nâng cấp Catalog, tải file và các workflow Admin/Supplier.
 
             Cách cài:
             1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
@@ -234,6 +234,10 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
+            - File đính kèm được quét đủ bốn mục Article, tải file lớn theo chunk, hiện toast và mở Explorer tại file đã lưu.
+            - Company Setup đổi FOC ASN/GRN và Save ổn định qua các lần WFX thay frame.
+            - Supplier List nhận diện đúng frame hiện tại, mở Master và tìm nhà cung cấp trên các Category.
+            - Bubble bo góc mượt, kéo trực tiếp; font và bố cục Catalog/File dễ đọc, không còn scroll lồng nhau.
             - Sửa updater trên Windows PowerShell 5.1 và môi trường thiếu module hash.
             - Thêm nút Sao chép lỗi để gửi nhanh chẩn đoán khi cập nhật thất bại.
             - Named mutex bảo đảm chỉ một WFX Smart chạy, kể cả lúc nâng cấp từ bản cũ.

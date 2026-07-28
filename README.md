@@ -1,4 +1,4 @@
-## WFX Smart 1.0.12
+## WFX Smart 1.0.13
 
 Chạy dev:
     python -m pip install -r requirements-dev.txt
@@ -56,7 +56,7 @@ Chạy dev:
 
 Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
 
-Gói phát hành: `WFX-Smart-v1.0.12-win64.zip` kèm checksum `.sha256` và chữ ký
+Gói phát hành: `WFX-Smart-v1.0.13-win64.zip` kèm checksum `.sha256` và chữ ký
 detached `.sha256.p7s`.
 
 Nâng cấp từ 1.0.11 trở xuống cần giải nén 1.0.12 vào một thư mục riêng đúng một
