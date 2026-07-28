@@ -1169,13 +1169,11 @@ class PanelApp:
 def main():
     app = PanelApp()
     lock = SingleInstance(app.activate)
-    if not lock.acquire() and lock.signal_existing():
-        # Đã có instance đang chạy: bật panel của nó lên rồi thoát im lặng.
+    if not lock.acquire():
+        # Đã có instance đang chạy: cố bật panel của nó lên rồi luôn thoát.
+        # Không chạy tiếp nếu IPC tạm lỗi, nếu không sẽ tạo instance thứ hai.
+        lock.signal_existing()
         return
-    # Nếu acquire() thất bại mà signal_existing() cũng thất bại: cổng bị một
-    # chương trình khác giữ (không trả đúng handshake). Không được chặn người
-    # dùng mở app vì lý do không liên quan — chạy tiếp, chấp nhận mất khả năng
-    # chặn trùng trong phiên này.
     app.lock = lock
     app.run()
 

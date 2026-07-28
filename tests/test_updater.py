@@ -138,7 +138,9 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     content = helper.read_text(encoding="utf-8-sig")
 
     assert "DownloadFile" in content
-    assert "Get-FileHash" in content
+    assert "function Get-Sha256" in content
+    assert "Get-FileHash" not in content
+    assert "[System.Security.Cryptography.SHA256]::Create()" in content
     assert "SignedCms" in content
     assert "function Import-CmsAssembly" in content
     assert "Add-Type -AssemblyName System.Security -ErrorAction Stop" in content
@@ -153,11 +155,16 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert "DownloadFileTaskAsync" in content
     assert "[System.Windows.Forms.Application]::DoEvents()" in content
     assert "$startTimer.Add_Tick" in content
+    assert '$btnCopyError.Text = "Sao chép lỗi"' in content
+    assert "[System.Windows.Forms.Clipboard]::SetText" in content
+    assert "$script:updateErrorReport" in content
+    assert '$btnCopyError.Text = "Đã sao chép"' in content
     assert "[System.Threading.Tasks.Task]::Run" not in content
     assert "git " not in content.lower()
     assert "Safe-Remove $installDir" not in content
     assert "$ownedItems = @('WFX-Panel.exe', '_internal')" in content
     assert "$allowedRemovePaths" in content
+    assert "[System.IO.Path]::GetFullPath(\n    $backupDir" in content
     assert "ReparsePoint" in content
     assert "Get-AuthenticodeSignature" not in content
     assert "if ($installStarted)" in content
@@ -228,6 +235,48 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
             assert compatible.returncode == 0, (
                 f"{shell}: {stderr or stdout}"
             )
+
+        # Hash helper không được phụ thuộc PSModulePath/Get-FileHash. Ép trống
+        # module path để mô phỏng tiến trình con kế thừa môi trường không chuẩn.
+        hash_function_start = content.index("function Get-Sha256")
+        hash_function_end = content.index(
+            "function Perform-Update",
+            hash_function_start,
+        )
+        hash_fixture = tmp_path / "sha256-fixture.bin"
+        hash_fixture.write_bytes(b"WFX Smart updater")
+        hash_harness = tmp_path / "sha256-test.ps1"
+        hash_harness.write_text(
+            "\n".join(
+                [
+                    "$ErrorActionPreference = 'Stop'",
+                    content[hash_function_start:hash_function_end],
+                    f"$actual = Get-Sha256 "
+                    f"{updater._ps_quote(hash_fixture)}",
+                    "if ($actual -ne "
+                    "'B16E8417DCFA641C84CECED46422AF17BE2D3472"
+                    "9E476AC95077219ABFE33AC8') { exit 2 }",
+                ]
+            ),
+            encoding="utf-8-sig",
+        )
+        hash_env = {**os.environ, "PSModulePath": ""}
+        for shell in ("powershell", "pwsh"):
+            hashed = real_popen(
+                [
+                    shell,
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-File",
+                    str(hash_harness),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=hash_env,
+            )
+            stdout, stderr = hashed.communicate(timeout=15)
+            assert hashed.returncode == 0, f"{shell}: {stderr or stdout}"
 
         # Chạy chính hàm xóa của helper trong sandbox: đường dẫn ngoài allowlist
         # phải bị chặn, còn đúng file app-owned mới được phép xóa.

@@ -284,6 +284,9 @@ $allowedRemovePaths = @(
   ).TrimEnd('\\'),
   [System.IO.Path]::GetFullPath(
     (Join-Path $installDir '_internal')
+  ).TrimEnd('\\'),
+  [System.IO.Path]::GetFullPath(
+    $backupDir
   ).TrimEnd('\\')
 )
 
@@ -336,6 +339,27 @@ $btnClose.ForeColor = [System.Drawing.Color]::White
 $btnClose.Visible = $false
 $btnClose.Add_Click({{ $form.Close() }})
 $form.Controls.Add($btnClose)
+
+$script:updateErrorReport = ''
+$btnCopyError = New-Object System.Windows.Forms.Button
+$btnCopyError.Location = New-Object System.Drawing.Point(208, 145)
+$btnCopyError.Size = New-Object System.Drawing.Size(124, 32)
+$btnCopyError.Text = "Sao chép lỗi"
+$btnCopyError.FlatStyle = "Flat"
+$btnCopyError.BackColor = [System.Drawing.Color]::FromArgb(45, 55, 72)
+$btnCopyError.ForeColor = [System.Drawing.Color]::White
+$btnCopyError.Visible = $false
+$btnCopyError.Add_Click({{
+  try {{
+    if (-not [string]::IsNullOrWhiteSpace($script:updateErrorReport)) {{
+      [System.Windows.Forms.Clipboard]::SetText($script:updateErrorReport)
+      $btnCopyError.Text = "Đã sao chép"
+    }}
+  }} catch {{
+    $btnCopyError.Text = "Không thể sao chép"
+  }}
+}})
+$form.Controls.Add($btnCopyError)
 
 function Update-UI([string]$text, [int]$percent = -1, [string]$tone = 'info') {{
   # Perform-Update chạy trên chính WinForms/PowerShell runspace. Cập nhật
@@ -418,6 +442,21 @@ function Import-CmsAssembly {{
   }}
 }}
 
+function Get-Sha256([string]$path) {{
+  # Không dùng cmdlet hash vì nó phụ thuộc module autoload/PSModulePath.
+  # API .NET bên dưới có sẵn cả trên Windows PowerShell 5.1 và PowerShell 7.
+  $stream = [System.IO.File]::OpenRead($path)
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {{
+    return (
+      [System.BitConverter]::ToString($sha256.ComputeHash($stream))
+    ).Replace('-', '')
+  }} finally {{
+    $sha256.Dispose()
+    $stream.Dispose()
+  }}
+}}
+
 function Perform-Update {{
   try {{
     Update-UI "Đang chờ ứng dụng chính đóng..." 5
@@ -474,7 +513,7 @@ function Perform-Update {{
     if ($expectedHash -notmatch '^[A-Fa-f0-9]{{64}}$') {{
       throw 'Tệp checksum SHA-256 không hợp lệ.'
     }}
-    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    $actualHash = Get-Sha256 $zipPath
     if ($actualHash.ToLowerInvariant() -ne $expectedHash.ToLowerInvariant()) {{
       throw 'Mã SHA-256 của gói tải về không trùng khớp.'
     }}
@@ -539,7 +578,14 @@ function Perform-Update {{
     $form.Close()
   }} catch {{
     $err = $_.Exception.Message
-    $_ | Out-String | Add-Content -LiteralPath $updateLog
+    $technicalDetail = $_ | Out-String
+    $technicalDetail | Add-Content -LiteralPath $updateLog
+    $script:updateErrorReport = @"
+WFX Smart updater v$version
+Lỗi: $err
+
+$technicalDetail
+"@.Trim()
     $recoveryMessage = 'Bản hiện tại chưa bị thay đổi.'
     if ($installStarted) {{
       $recoveryMessage = 'Đang khôi phục phiên bản cũ...'
@@ -582,6 +628,8 @@ function Perform-Update {{
       }}
     }}
     $btnClose.Visible = $true
+    $btnCopyError.Text = "Sao chép lỗi"
+    $btnCopyError.Visible = $true
     $progressBar.Visible = $false
     $form.Refresh()
   }} finally {{
