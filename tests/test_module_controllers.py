@@ -10,7 +10,7 @@ def test_every_module_has_its_own_controller_class():
     assert len(controller_types) == len(constants.MODULE_BY_ID)
 
 
-def test_catalog_controller_exposes_advanced_modal_kind():
+def test_catalog_controller_exposes_advanced_page_kind():
     controller = module_controllers.get("0003_6200")
     assert controller is not None
     manifest = controller.manifest()
@@ -55,7 +55,11 @@ def test_sample_and_sale_asn_list_enable_floating_filter():
     ]
 
 
-def test_special_module_manifests_expose_modal_kinds():
+def test_special_module_manifests_expose_page_kinds():
     assert module_controllers.get("0004_0070_0020").manifest()["kind"] == "sale_asn"
     assert module_controllers.get("0005_0010_1290").manifest()["kind"] == "supplier"
     assert module_controllers.get("0004_0010_1720").manifest()["kind"] == "buyer"
+    assert (
+        module_controllers.get("0090_0007").manifest()["kind"]
+        == "company_setup"
+    )

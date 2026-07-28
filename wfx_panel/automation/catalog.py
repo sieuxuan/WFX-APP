@@ -5,6 +5,12 @@ Tách nguyên văn từ login.py — không đổi logic.
 
 from __future__ import annotations
 
+import html
+import re
+import tempfile
+from pathlib import Path
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
+
 from wfx_panel.automation._common import (
     CATALOG_XPATH,
     COMPANY_ID,
@@ -29,6 +35,33 @@ from wfx_panel.automation.browser import (
     _start_persistent_chrome,
 )
 from wfx_panel.automation.session import _session_is_active, login
+
+ARTICLE_FILE_TAB_INDEXES = (5, 6, 8, 9)
+_ATTACHMENT_TABLE_SELECTOR = (
+    'table[id^="gridFileUploadDownload"][id$="_tblGridContent"]'
+)
+_ATTACHMENT_ROWS_JS = """table => [...table.querySelectorAll(
+    'tbody tr.trContent, tbody tr[rowid]'
+)].map(row => {
+    const text = selector => (
+        row.querySelector(selector)?.getAttribute('title')
+        || row.querySelector(selector)?.textContent
+        || ''
+    ).replace(/\\s+/g, ' ').trim();
+    const view = row.querySelector(
+        'td[id="ColView"] a[id="lnkView"], '
+        + 'a[id="lnkView"], a[onclick*="ViewAttachmentFile"]'
+    );
+    return {
+        row_id: row.getAttribute('rowid') || row.id || '',
+        file_name: text('[id="lblUserFileName"]'),
+        comments: text('[id="lblComments"]'),
+        uploaded_on: text('[id="lblUploadedOn"]'),
+        uploaded_by: text('[id="lblUploadedBY"]'),
+        href: view?.getAttribute('href') || '',
+        onclick: view?.getAttribute('onclick') || ''
+    };
+}).filter(row => row.file_name)"""
 
 
 def _catalog_left_frame(page: Page, previous_frame: Frame | None = None) -> Frame:
@@ -610,6 +643,619 @@ def open_catalog_destination(
             destination=destination,
         )
     finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def _article_page(
+    context: Any,
+    timeout_seconds: float = 20,
+) -> tuple[Page, Frame]:
+    """Chờ popup Article và frame điều hướng ``ArticleTop`` của style."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        for candidate in reversed(context.pages):
+            article_top = candidate.frame(name="ArticleTop")
+            if article_top is None:
+                continue
+            try:
+                article_top.locator("body").wait_for(
+                    state="attached",
+                    timeout=500,
+                )
+                return candidate, article_top
+            except PlaywrightError:
+                continue
+        time.sleep(0.2)
+    raise PlaywrightTimeoutError("Không tìm thấy popup ArticleTop của style.")
+
+
+def _article_file_tab(
+    page: Page,
+    article_top: Frame,
+    index: int,
+    timeout_seconds: float = 5,
+) -> tuple[Frame, Any, Any] | None:
+    """Resolve ``li`` và control có hành động bên trong sau mỗi lần đổi frame."""
+    selector = f'xpath=//*[@id="0"]/li[{index}]'
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        current_top = page.frame(name="ArticleTop")
+        frames = [
+            frame
+            for frame in (
+                current_top,
+                article_top,
+                *page.frames,
+            )
+            if frame is not None
+        ]
+        seen_frames: set[Any] = set()
+        for frame in frames:
+            if frame in seen_frames:
+                continue
+            seen_frames.add(frame)
+            try:
+                tab = frame.locator(selector)
+                if tab.count() > 0:
+                    tab = tab.first
+                    actionable = tab.locator(
+                        "a[onclick], button[onclick], a[href], "
+                        "button, [role='button'], [onclick]"
+                    )
+                    if actionable.count() > 0:
+                        return frame, tab, actionable.first
+                    if tab.get_attribute("onclick"):
+                        return frame, tab, tab
+            except PlaywrightError:
+                continue
+        page.wait_for_timeout(200)
+    return None
+
+
+def _mark_article_documents(page: Page) -> list[tuple[Frame, str]]:
+    """Đánh dấu document hiện tại để xác nhận click tab thật sự điều hướng."""
+    snapshots: list[tuple[Frame, str]] = []
+    for index, frame in enumerate(page.frames):
+        marker = f"article-file-{time.monotonic_ns()}-{index}"
+        try:
+            frame.evaluate(
+                "marker => { window.__wfxArticleFileMarker = marker; }",
+                marker,
+            )
+            snapshots.append((frame, marker))
+        except PlaywrightError:
+            continue
+    return snapshots
+
+
+def _article_documents_changed(
+    page: Page,
+    snapshots: list[tuple[Frame, str]],
+) -> bool:
+    current_frames = set(page.frames)
+    for frame, marker in snapshots:
+        if frame not in current_frames:
+            return True
+        try:
+            current = frame.evaluate(
+                "() => window.__wfxArticleFileMarker || ''"
+            )
+            if current != marker:
+                return True
+        except PlaywrightError:
+            return True
+    return False
+
+
+def _article_tab_selected(tab: Any) -> bool:
+    try:
+        return bool(
+            tab.evaluate(
+                """element => {
+                    const item = element.closest('li') || element;
+                    const state = [
+                        item.getAttribute('aria-selected') || '',
+                        item.getAttribute('aria-current') || '',
+                        item.className || '',
+                    ].join(' ').toLowerCase();
+                    return /(^|\\s)(true|active|current|selected)(\\s|$)/
+                        .test(state)
+                        || /(active|current|selected)/.test(state);
+                }"""
+            )
+        )
+    except PlaywrightError:
+        return False
+
+
+def _visible_attachment_tables(page: Page) -> list[dict[str, Any]]:
+    """Đọc các bảng file đang hiển thị trong mọi frame của popup Article."""
+    payload: list[dict[str, Any]] = []
+    for frame in page.frames:
+        try:
+            tables = frame.locator(_ATTACHMENT_TABLE_SELECTOR)
+            count = tables.count()
+        except PlaywrightError:
+            continue
+        for index in range(count):
+            table = tables.nth(index)
+            try:
+                if not table.is_visible():
+                    continue
+                payload.append(
+                    {
+                        "table_id": table.get_attribute("id") or "",
+                        "frame_url": frame.url,
+                        "rows": table.evaluate(_ATTACHMENT_ROWS_JS),
+                    }
+                )
+            except PlaywrightError:
+                continue
+    return payload
+
+
+def _attachment_url(row: dict[str, Any]) -> str:
+    """Lấy URL từ href hoặc ``ViewAttachmentFile(this, '...')``."""
+    href = html.unescape(str(row.get("href") or "")).strip()
+    onclick = html.unescape(str(row.get("onclick") or "")).strip()
+    raw = href
+    if not raw and onclick:
+        match = re.search(
+            r"ViewAttachmentFile\s*\(\s*this\s*,\s*(['\"])(.*?)\1",
+            onclick,
+            flags=re.IGNORECASE,
+        )
+        raw = match.group(2).strip() if match else ""
+    if not raw:
+        return ""
+    absolute = urljoin("https://prosports.worldfashionexchange.com/", raw)
+    parsed = urlsplit(absolute)
+    if parsed.scheme.casefold() != "https":
+        return ""
+    host = (parsed.hostname or "").casefold()
+    if host != "worldfashionexchange.com" and not host.endswith(
+        ".worldfashionexchange.com"
+    ):
+        return ""
+    normalized_path = quote(
+        re.sub(r"/{2,}", "/", parsed.path),
+        safe="/%:@-._~!$&'()*+,;=",
+    )
+    return urlunsplit(
+        (
+            "https",
+            parsed.netloc,
+            normalized_path,
+            parsed.query,
+            "",
+        )
+    )
+
+
+def _scan_article_file_tabs(
+    page: Page,
+    article_top: Frame,
+    log: Callable[[str], None],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Click bốn mục Article đã chỉ định và gom file đính kèm đang hiển thị."""
+    files: list[dict[str, Any]] = []
+    sections: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    for tab_index in ARTICLE_FILE_TAB_INDEXES:
+        resolved = _article_file_tab(page, article_top, tab_index)
+        if resolved is None:
+            _write_log(
+                log,
+                f"[ARTICLE FILE] Không tìm thấy mục li[{tab_index}], bỏ qua.",
+            )
+            sections.append(
+                {
+                    "index": tab_index,
+                    "name": f"Mục {tab_index}",
+                    "available": False,
+                    "file_count": 0,
+                }
+            )
+            continue
+
+        _frame, tab, action = resolved
+        try:
+            label = " ".join((tab.inner_text(timeout=1_000) or "").split())
+        except PlaywrightError:
+            label = ""
+        label = label or f"Mục {tab_index}"
+        before_ids = {
+            str(table.get("table_id") or "")
+            for table in _visible_attachment_tables(page)
+        }
+        document_snapshots = _mark_article_documents(page)
+        _write_log(
+            log,
+            f"[ARTICLE FILE] Đang kiểm tra {label} (li[{tab_index}])...",
+        )
+        try:
+            _click(action)
+        except PlaywrightError:
+            sections.append(
+                {
+                    "index": tab_index,
+                    "name": label,
+                    "available": False,
+                    "file_count": 0,
+                }
+            )
+            continue
+
+        started = time.monotonic()
+        deadline = started + 6
+        visible_tables: list[dict[str, Any]] = []
+        confirmed_at: float | None = None
+        while time.monotonic() < deadline:
+            visible_tables = _visible_attachment_tables(page)
+            current_ids = {
+                str(table.get("table_id") or "")
+                for table in visible_tables
+            }
+            current_tab = _article_file_tab(
+                page, article_top, tab_index, timeout_seconds=0.3
+            )
+            selected = bool(
+                current_tab and _article_tab_selected(current_tab[1])
+            )
+            changed = _article_documents_changed(
+                page, document_snapshots
+            ) or current_ids != before_ids
+            if confirmed_at is None and (selected or changed):
+                confirmed_at = time.monotonic()
+                _write_log(
+                    log,
+                    f"[ARTICLE FILE] Đã vào {label}.",
+                )
+            if (
+                confirmed_at is not None
+                and time.monotonic() - confirmed_at >= 0.8
+            ):
+                break
+            page.wait_for_timeout(250)
+
+        if confirmed_at is None:
+            _write_log(
+                log,
+                f"[ARTICLE FILE] Click {label} nhưng WFX không xác nhận chuyển mục.",
+            )
+            sections.append(
+                {
+                    "index": tab_index,
+                    "name": label,
+                    "available": False,
+                    "file_count": 0,
+                }
+            )
+            continue
+
+        section_count = 0
+        for table in visible_tables:
+            for raw_row in table.get("rows") or []:
+                if not isinstance(raw_row, dict):
+                    continue
+                download_url = _attachment_url(raw_row)
+                key = download_url.casefold()
+                if not download_url or key in seen_urls:
+                    continue
+                seen_urls.add(key)
+                section_count += 1
+                files.append(
+                    {
+                        "section": label,
+                        "section_index": tab_index,
+                        "table_id": str(table.get("table_id") or ""),
+                        "row_id": str(raw_row.get("row_id") or ""),
+                        "file_name": str(raw_row.get("file_name") or "").strip(),
+                        "comments": str(raw_row.get("comments") or "").strip(),
+                        "uploaded_on": str(
+                            raw_row.get("uploaded_on") or ""
+                        ).strip(),
+                        "uploaded_by": str(
+                            raw_row.get("uploaded_by") or ""
+                        ).strip(),
+                        "download_url": download_url,
+                    }
+                )
+        sections.append(
+            {
+                "index": tab_index,
+                "name": label,
+                "available": True,
+                "file_count": section_count,
+            }
+        )
+        _write_log(
+            log,
+            f"[ARTICLE FILE] {label}: {section_count} file.",
+        )
+    return files, sections
+
+
+def scan_catalog_files(
+    article_code: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Quét file ở các mục 5, 6, 8, 9 của popup style đang mở."""
+    article_code = str(article_code or "").strip()
+    if not article_code:
+        return _result(
+            False,
+            "CATALOG_RESULT_REQUIRED",
+            "Hãy tìm và mở một Style Code trước.",
+        )
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+        )
+
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
+            )
+        article, article_top = _article_page(browser.contexts[0])
+        article.bring_to_front()
+        files, sections = _scan_article_file_tabs(article, article_top, log)
+        available = sum(1 for section in sections if section["available"])
+        if available == 0:
+            return _result(
+                False,
+                "CATALOG_FILE_TABS_NOT_FOUND",
+                "Không tìm thấy bốn mục File trong popup style.",
+                article_code=article_code,
+                sections=sections,
+            )
+        message = (
+            f"Đã tìm thấy {len(files)} file đính kèm của style {article_code}."
+            if files
+            else f"Style {article_code} không có file đính kèm trong bốn mục."
+        )
+        return _result(
+            True,
+            "CATALOG_FILES_SCANNED",
+            message,
+            article_code=article_code,
+            files=files,
+            file_count=len(files),
+            sections=sections,
+        )
+    except PlaywrightTimeoutError:
+        return _result(
+            False,
+            "CATALOG_FILES_CONTEXT_EXPIRED",
+            "Style đang chọn không còn mở. Hãy bấm File để tìm lại.",
+            article_code=article_code,
+        )
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "CATALOG_FILES_SCAN_FAILED",
+            message,
+            article_code=article_code,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def _safe_attachment_name(value: str) -> str:
+    name = Path(str(value or "").replace("\\", "/")).name
+    name = re.sub(r'[\x00-\x1f<>:"/\\|?*]', "_", name).strip(" .")
+    if not name:
+        name = "wfx-attachment"
+    stem = Path(name).stem[:150].rstrip(" .")
+    suffix = Path(name).suffix[:20]
+    return (stem or "wfx-attachment") + suffix
+
+
+def _available_download_path(directory: Path, file_name: str) -> Path:
+    """Không ghi đè: file trùng tên được thêm ``(1)``, ``(2)``..."""
+    wanted = directory / _safe_attachment_name(file_name)
+    if not wanted.exists():
+        return wanted
+    for index in range(1, 10_000):
+        candidate = wanted.with_name(
+            f"{wanted.stem} ({index}){wanted.suffix}"
+        )
+        if not candidate.exists():
+            return candidate
+    raise OSError("Không tạo được tên file tải xuống không trùng.")
+
+
+_DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024
+_CONTENT_RANGE_RE = re.compile(
+    r"^bytes\s+(\d+)-(\d+)/(\d+|\*)$",
+    flags=re.IGNORECASE,
+)
+
+
+def _download_attachment_in_chunks(
+    request: Any,
+    download_url: str,
+    target_handle: Any,
+    log: Callable[[str], None],
+    *,
+    chunk_size: int = _DOWNLOAD_CHUNK_SIZE,
+) -> int:
+    """Tải file WFX theo Range để file lớn không timeout khi buffer một lần."""
+    offset = 0
+    total: int | None = None
+    last_logged_percent = -1
+
+    while total is None or offset < total:
+        end = offset + chunk_size - 1
+        if total is not None:
+            end = min(end, total - 1)
+        response = None
+        try:
+            response = request.get(
+                download_url,
+                headers={
+                    "Accept": "*/*",
+                    "Accept-Encoding": "identity",
+                    "Range": f"bytes={offset}-{end}",
+                },
+                timeout=60_000,
+                fail_on_status_code=False,
+            )
+            status = int(response.status)
+            body = response.body()
+
+            # Server nhỏ/không hỗ trợ Range: vẫn chấp nhận response đầy đủ.
+            if status == 200 and offset == 0:
+                if not body:
+                    raise RuntimeError("WFX trả về file rỗng.")
+                target_handle.write(body)
+                return len(body)
+
+            if status != 206:
+                raise RuntimeError(
+                    f"WFX trả về HTTP {status} khi tải file."
+                )
+            match = _CONTENT_RANGE_RE.match(
+                str(response.headers.get("content-range") or "").strip()
+            )
+            if match is None or match.group(3) == "*":
+                raise RuntimeError(
+                    "WFX không trả về Content-Range hợp lệ."
+                )
+            chunk_start = int(match.group(1))
+            chunk_end = int(match.group(2))
+            current_total = int(match.group(3))
+            expected_size = chunk_end - chunk_start + 1
+            if (
+                chunk_start != offset
+                or current_total <= 0
+                or len(body) != expected_size
+            ):
+                raise RuntimeError(
+                    "Dữ liệu file WFX trả về không đầy đủ."
+                )
+            if total is not None and total != current_total:
+                raise RuntimeError(
+                    "Kích thước file WFX thay đổi trong lúc tải."
+                )
+            total = current_total
+            target_handle.write(body)
+            offset += len(body)
+
+            percent = min(100, int(offset * 100 / total))
+            if percent == 100 or percent - last_logged_percent >= 20:
+                _write_log(
+                    log,
+                    f"[ARTICLE FILE] Đã tải {percent}%...",
+                )
+                last_logged_percent = percent
+        finally:
+            if response is not None:
+                try:
+                    response.dispose()
+                except PlaywrightError:
+                    pass
+
+    return offset
+
+
+def download_catalog_file(
+    file_info: dict[str, Any],
+    log: Callable[[str], None] = print,
+    download_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Tải file bằng cookie của BrowserContext và lưu an toàn vào Downloads."""
+    file_name = _safe_attachment_name(str(file_info.get("file_name") or ""))
+    download_url = _attachment_url(
+        {
+            "href": str(file_info.get("download_url") or ""),
+            "onclick": "",
+        }
+    )
+    if not download_url:
+        return _result(
+            False,
+            "CATALOG_FILE_URL_INVALID",
+            "Đường dẫn file không hợp lệ hoặc không thuộc WFX.",
+        )
+    if not _chrome_is_ready():
+        return _result(
+            False,
+            "CHROME_CLOSED",
+            "Chrome automation chưa được mở.",
+        )
+
+    playwright: Playwright | None = None
+    part_path: Path | None = None
+    try:
+        playwright = sync_playwright().start()
+        browser, page = _connect_to_chrome(playwright)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
+            )
+        _write_log(log, f"[ARTICLE FILE] Đang tải {file_name}...")
+        target_dir = Path(download_dir or (Path.home() / "Downloads"))
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = _available_download_path(target_dir, file_name)
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=f".{target.stem}-",
+            suffix=".wfx-part",
+            dir=target_dir,
+            delete=False,
+        ) as part:
+            part_path = Path(part.name)
+            file_size = _download_attachment_in_chunks(
+                browser.contexts[0].request,
+                download_url,
+                part,
+                log,
+            )
+        part_path.replace(target)
+        part_path = None
+        _write_log(log, f"[ARTICLE FILE] Đã lưu {target.name}.")
+        return _result(
+            True,
+            "CATALOG_FILE_DOWNLOADED",
+            f"Đã tải {target.name} vào thư mục Downloads.",
+            file_name=target.name,
+            download_path=str(target),
+            file_size=file_size,
+        )
+    except OSError as exc:
+        return _result(
+            False,
+            "CATALOG_FILE_SAVE_FAILED",
+            f"Không lưu được file: {exc}",
+        )
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "CATALOG_FILE_DOWNLOAD_FAILED", message)
+    finally:
+        if part_path is not None:
+            try:
+                part_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         if playwright is not None:
             playwright.stop()
 

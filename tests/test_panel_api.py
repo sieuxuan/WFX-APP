@@ -44,6 +44,17 @@ class FakeLogin:
         self.calls.append(("open_sale_asn_new", xpath))
         return {"ok": True, "code": "SALE_ASN_NEW_READY", "message": "ready"}
 
+    def toggle_company_foc(self, xpath, log=print):
+        self.calls.append(("toggle_company_foc", xpath))
+        return {
+            "ok": True,
+            "code": "COMPANY_FOC_CHANGED",
+            "message": "Đổi FOC thành công. Trạng thái hiện tại: FOC cho ASN.",
+            "foc_enabled": True,
+            "foc_mode": "FOC cho ASN",
+            "saved": True,
+        }
+
     def open_supplier_category(self, xpath, category_name, category_value, log=print):
         self.calls.append((
             "open_supplier_category", xpath, category_name, category_value
@@ -163,6 +174,54 @@ class FakeLogin:
             "message": destination,
             "article_code": article_code,
             "destination": destination,
+        }
+
+    def scan_catalog_files(self, article_code, log=print):
+        self.calls.append(("scan_catalog_files", article_code))
+        return {
+            "ok": True,
+            "code": "CATALOG_FILES_SCANNED",
+            "message": "1 file",
+            "article_code": article_code,
+            "file_count": 1,
+            "sections": [
+                {
+                    "index": 5,
+                    "name": "Techpack",
+                    "available": True,
+                    "file_count": 1,
+                }
+            ],
+            "files": [
+                {
+                    "section": "Techpack",
+                    "section_index": 5,
+                    "file_name": "jacket.pdf",
+                    "comments": "Final",
+                    "uploaded_on": "17 Jun 2024",
+                    "uploaded_by": "HR",
+                    "download_url": (
+                        "https://prosports.worldfashionexchange.com/"
+                        "Company/77400/Documents/jacket.pdf"
+                    ),
+                }
+            ],
+        }
+
+    def download_catalog_file(self, file_info, log=print):
+        self.calls.append(
+            (
+                "download_catalog_file",
+                file_info["file_name"],
+                file_info["download_url"],
+            )
+        )
+        return {
+            "ok": True,
+            "code": "CATALOG_FILE_DOWNLOADED",
+            "message": "downloaded",
+            "file_name": file_info["file_name"],
+            "download_path": f"C:/Downloads/{file_info['file_name']}",
         }
 
 
@@ -421,20 +480,74 @@ def test_account_change_clears_scanned_catalog_folder_cache(tmp_path):
     assert result["code"] == "CATALOG_FOLDER_NOT_SCANNED"
 
 
-def test_catalog_default_location_is_apparel_only(tmp_path):
+def test_catalog_default_location_is_apparel_only_but_other_category_opens(
+    tmp_path,
+):
     api, fake = make_api(tmp_path)
 
     scanned = api.scan_catalog_folders("Trims")
     saved = api.set_catalog_default_folder("Trims", "")
     browsed = api.browse_catalog("Trims")
 
-    for result in (scanned, saved, browsed):
+    for result in (scanned, saved):
         assert result["code"] == "CATALOG_DEFAULT_APPAREL_ONLY"
         assert "Apparel" in result["message"]
-    assert not any(
-        call[0] in {"scan_catalog_folders", "open_catalog_folder"}
-        for call in fake.calls
-    )
+    assert browsed["code"] == "CATALOG_FOLDER_OPENED"
+    assert ("open_catalog_folder", "Trims", "05", "") in fake.calls
+    assert not any(call[0] == "scan_catalog_folders" for call in fake.calls)
+
+
+def test_catalog_file_action_scans_four_sections_and_hides_download_url(
+    tmp_path,
+):
+    api, fake = make_api(tmp_path)
+
+    result = api.catalog_action("Apparel", "code", "ABC123", "files")
+
+    assert result["code"] == "CATALOG_FILES_SCANNED"
+    assert result["article_code"] == "ABC123"
+    assert result["files"][0]["file_name"] == "jacket.pdf"
+    assert result["files"][0]["section"] == "Techpack"
+    assert result["files"][0]["uploaded_on"] == "17 Jun 2024"
+    assert result["files"][0]["uploaded_by"] == "HR"
+    assert result["files"][0]["comments"] == "Final"
+    assert result["files"][0]["file_id"]
+    assert "download_url" not in result["files"][0]
+    assert fake.calls == [
+        ("prepare_catalog_master", "Apparel", "01"),
+        ("find_in_open_catalog", "Apparel", "code", "ABC123"),
+        ("scan_catalog_files", "ABC123"),
+    ]
+
+
+def test_catalog_file_download_resolves_backend_token(tmp_path):
+    api, fake = make_api(tmp_path)
+    scanned = api.catalog_action("Apparel", "code", "ABC123", "files")
+    fake.calls.clear()
+
+    result = api.download_catalog_file(scanned["files"][0]["file_id"])
+
+    assert result["code"] == "CATALOG_FILE_DOWNLOADED"
+    assert result["file_name"] == "jacket.pdf"
+    assert fake.calls == [
+        (
+            "download_catalog_file",
+            "jacket.pdf",
+            (
+                "https://prosports.worldfashionexchange.com/"
+                "Company/77400/Documents/jacket.pdf"
+            ),
+        )
+    ]
+
+
+def test_catalog_file_download_rejects_unknown_token(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.download_catalog_file("expired")
+
+    assert result["code"] == "CATALOG_FILE_EXPIRED"
+    assert fake.calls == []
 
 
 def test_open_module_builds_xpath(tmp_path):
@@ -893,6 +1006,35 @@ class AuthorizedAdminLogin(FakeLogin):
                 "0090_0250", "0004_0010_1720", "0005_0010_1290"
             ],
         }
+
+
+class CompanyAuthorizedLogin(FakeLogin):
+    def check_module_access(self, specs, log=print):
+        return {
+            "ok": True,
+            "code": "MODULE_ACCESS_CHECKED",
+            "accessible_module_ids": ["0090_0007"],
+        }
+
+
+def test_company_foc_toggle_is_permission_gated_and_delegated(tmp_path):
+    denied_api, denied_fake = make_api(tmp_path)
+    denied = denied_api.toggle_company_foc()
+    assert denied["code"] == "ADMIN_ACCESS_DENIED"
+    assert not any(
+        call[0] == "toggle_company_foc" for call in denied_fake.calls
+    )
+
+    fake = CompanyAuthorizedLogin()
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    changed = api.toggle_company_foc()
+    assert changed["code"] == "COMPANY_FOC_CHANGED"
+    assert changed["foc_mode"] == "FOC cho ASN"
+    assert changed["saved"] is True
+    assert (
+        "toggle_company_foc",
+        '//*[@id="0090_0007"]/a',
+    ) in fake.calls
 
 
 def test_supplier_category_and_find_delegate_with_all_categories(tmp_path):

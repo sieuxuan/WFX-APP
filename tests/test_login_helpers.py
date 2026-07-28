@@ -1,8 +1,11 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import login
-from wfx_panel.automation import browser, catalog, session
+from wfx_panel.automation import browser, catalog, modules, session
 
 
 def test_style_status_suffix_includes_both_grid_fields():
@@ -19,6 +22,206 @@ def test_style_status_suffix_includes_both_grid_fields():
 def test_style_status_suffix_handles_empty_cells():
     suffix = login._style_status_suffix({})
     assert suffix.count("—") == 2
+
+
+def test_article_file_tabs_match_requested_wfx_positions():
+    assert catalog.ARTICLE_FILE_TAB_INDEXES == (5, 6, 8, 9)
+
+
+def test_article_file_tabs_click_the_actionable_child_and_confirm_navigation():
+    source = (
+        Path(catalog.__file__).read_text(encoding="utf-8")
+    )
+    assert '"a[onclick], button[onclick], a[href], "' in source
+    assert "_mark_article_documents(page)" in source
+    assert "_article_documents_changed(" in source
+    assert "Click {label} nhưng WFX không xác nhận chuyển mục" in source
+    assert 'tab.evaluate("element => element.click()")' not in source
+
+
+def test_company_foc_uses_misc_settings_save_and_persistence_confirmation():
+    source = Path(modules.__file__).read_text(encoding="utf-8")
+    assert 'onclick*="CurrentTab=4"' in source
+    assert 'onclick*="CurrentItem=12"' in source
+    assert "#chkAllowToMarkFOCQtyOnRMPOASN" in source
+    assert 'td.clsBtnOff[title="Save"] a#lnkSave.clsNavLink' in source
+    assert "save_frame, save = _visible_locator_in_frames(" in source
+    assert '_mark_document(save_frame, "company-foc-save")' in source
+    assert 'frame.locator("a#lnkSave")' not in source
+    assert "_document_changed(current_frame, snapshot)" in source
+    assert 'method not in {"POST", "PUT", "PATCH"}' in source
+    assert '"FOC cho ASN" if wanted else "FOC cho GRN"' in source
+
+
+def test_visible_locator_reacquires_save_from_the_current_frame():
+    save = SimpleNamespace(is_visible=lambda: True)
+
+    class Matches:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+        def count(self):
+            return len(self.candidates)
+
+        def nth(self, index):
+            return self.candidates[index]
+
+    class Frame:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+        def locator(self, _selector):
+            return Matches(self.candidates)
+
+    stale = SimpleNamespace(is_visible=lambda: False)
+    page = SimpleNamespace(
+        frames=[Frame([stale]), Frame([save])],
+        wait_for_timeout=lambda _milliseconds: None,
+    )
+
+    frame, found = modules._visible_locator_in_frames(
+        page,
+        'td.clsBtnOff[title="Save"] a#lnkSave',
+        timeout_s=0.1,
+    )
+
+    assert frame is page.frames[1]
+    assert found is save
+
+
+def test_navigation_click_accepts_frame_detach_after_aspnet_navigation(
+    monkeypatch,
+):
+    def detached(_locator):
+        raise modules.PlaywrightError("Locator.click: Frame was detached")
+
+    monkeypatch.setattr(modules, "_click", detached)
+
+    modules._click_navigation_control(object())
+
+
+def test_navigation_click_does_not_hide_unrelated_errors(monkeypatch):
+    def failed(_locator):
+        raise modules.PlaywrightError("Element is disabled")
+
+    monkeypatch.setattr(modules, "_click", failed)
+
+    with pytest.raises(modules.PlaywrightError, match="disabled"):
+        modules._click_navigation_control(object())
+
+
+def test_attachment_url_is_parsed_and_normalized_from_wfx_onclick():
+    url = catalog._attachment_url(
+        {
+            "href": "",
+            "onclick": (
+                "xOnClick(this,event);if (!ViewAttachmentFile(this,"
+                "'https://prosports.worldfashionexchange.com///Company//"
+                "77400//Documents//jacket.pdf')) {return false;}"
+            ),
+        }
+    )
+
+    assert url == (
+        "https://prosports.worldfashionexchange.com/"
+        "Company/77400/Documents/jacket.pdf"
+    )
+
+
+def test_attachment_url_reads_view_column_and_encodes_spaces():
+    url = catalog._attachment_url(
+        {
+            "href": "",
+            "onclick": (
+                "xOnClick(this,event);if (!ViewAttachmentFile(this,"
+                "'https://prosports.worldfashionexchange.com///Company//"
+                "77400//Documents//638542294739583684_"
+                "1956-Men ripstop jacket.pdf')) {return false;}"
+            ),
+        }
+    )
+
+    assert url == (
+        "https://prosports.worldfashionexchange.com/Company/77400/Documents/"
+        "638542294739583684_1956-Men%20ripstop%20jacket.pdf"
+    )
+
+
+def test_attachment_url_rejects_non_wfx_host():
+    assert (
+        catalog._attachment_url(
+            {
+                "href": "https://example.com/file.pdf",
+                "onclick": "",
+            }
+        )
+        == ""
+    )
+
+
+def test_attachment_download_path_never_overwrites_existing_file(tmp_path):
+    existing = tmp_path / "jacket.pdf"
+    existing.write_bytes(b"first")
+
+    target = catalog._available_download_path(tmp_path, "jacket.pdf")
+
+    assert target.name == "jacket (1).pdf"
+    assert existing.read_bytes() == b"first"
+
+
+def test_attachment_download_uses_http_ranges_for_large_files(tmp_path):
+    payload = b"0123456789"
+
+    class Response:
+        def __init__(self, start, end):
+            self.status = 206
+            self._body = payload[start : end + 1]
+            self.headers = {
+                "content-range": (
+                    f"bytes {start}-{start + len(self._body) - 1}/"
+                    f"{len(payload)}"
+                )
+            }
+            self.disposed = False
+
+        def body(self):
+            return self._body
+
+        def dispose(self):
+            self.disposed = True
+
+    class Request:
+        def __init__(self):
+            self.ranges = []
+            self.responses = []
+
+        def get(self, _url, *, headers, **_kwargs):
+            value = headers["Range"]
+            self.ranges.append(value)
+            start, end = (
+                int(part)
+                for part in value.removeprefix("bytes=").split("-")
+            )
+            end = min(end, len(payload) - 1)
+            response = Response(start, end)
+            self.responses.append(response)
+            return response
+
+    request = Request()
+    target = tmp_path / "download.bin"
+    with target.open("wb") as handle:
+        size = catalog._download_attachment_in_chunks(
+            request,
+            "https://prosports.worldfashionexchange.com/file.bin",
+            handle,
+            lambda _line: None,
+            chunk_size=4,
+        )
+
+    assert size == len(payload)
+    assert target.read_bytes() == payload
+    assert request.ranges == ["bytes=0-3", "bytes=4-7", "bytes=8-9"]
+    assert all(response.disposed for response in request.responses)
 
 
 def test_detect_browser_accepts_edge_on_windows_layout(tmp_path, monkeypatch):

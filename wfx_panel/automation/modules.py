@@ -15,8 +15,10 @@ from wfx_panel.automation._common import (
     PlaywrightError,
     PlaywrightTimeoutError,
     _click,
+    _document_changed,
     _ensure_select_value,
     _first_visible,
+    _mark_document,
     _result,
     _wait_frame_with_selectors,
     _write_log,
@@ -347,5 +349,213 @@ def open_sale_asn_new(
         _write_log(log, message)
         return _result(False, "SALE_ASN_NEW_FAILED", message)
     finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def _visible_locator_in_frames(
+    page: Page,
+    selector: str,
+    timeout_s: float = 20,
+) -> tuple[Frame, Any]:
+    """Chờ một control WFX đang hiển thị, bất kể nó nằm trong frame nào."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for frame in page.frames:
+            try:
+                matches = frame.locator(selector)
+                for index in range(matches.count()):
+                    candidate = matches.nth(index)
+                    if candidate.is_visible():
+                        return frame, candidate
+            except PlaywrightError:
+                continue
+        page.wait_for_timeout(200)
+    raise PlaywrightTimeoutError(f"Không tìm thấy control: {selector}")
+
+
+def _click_navigation_control(locator: Any) -> None:
+    """Click control ASP.NET; frame detach ngay sau click là navigation thành công."""
+    try:
+        _click(locator)
+    except PlaywrightError as exc:
+        message = str(exc).casefold()
+        if not any(
+            marker in message
+            for marker in (
+                "frame was detached",
+                "execution context was destroyed",
+                "target page, context or browser has been closed",
+            )
+        ):
+            raise
+
+
+def toggle_company_foc(
+    xpath: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Đổi FOC giữa ASN/GRN trong Company Setup và xác nhận WFX đã lưu."""
+    checkbox_selector = "#chkAllowToMarkFOCQtyOnRMPOASN"
+    misc_selector = (
+        'a.clsDataLabel[onclick*="wfx_MyCompanySite.aspx"]'
+        '[onclick*="CurrentTab=4"][onclick*="CurrentItem=12"]'
+    )
+    save_selector = (
+        'td.clsBtnOff[title="Save"] a#lnkSave.clsNavLink, '
+        'a#lnkSave.clsNavLink[onclick*="ChangeAction"][onclick*="SAVE"]'
+    )
+    playwright: Playwright | None = None
+    response_handler: Callable[[Any], None] | None = None
+    page: Page | None = None
+    save_responses: list[dict[str, Any]] = []
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        _click_module_menu_on_page(page, "Company Setup", xpath, log)
+
+        _write_log(
+            log,
+            "[COMPANY SETUP] Đang mở 12. Miscellaneous Settings...",
+        )
+        _misc_frame, misc = _visible_locator_in_frames(
+            page, misc_selector, timeout_s=20
+        )
+        _click_navigation_control(misc)
+
+        frame, checkbox = _visible_locator_in_frames(
+            page, checkbox_selector, timeout_s=20
+        )
+        previous = checkbox.is_checked(timeout=2_000)
+        wanted = not previous
+        previous_mode = "FOC cho ASN" if previous else "FOC cho GRN"
+        wanted_mode = "FOC cho ASN" if wanted else "FOC cho GRN"
+        _write_log(
+            log,
+            f"[COMPANY SETUP] Đang đổi {previous_mode} → {wanted_mode}...",
+        )
+        checkbox.set_checked(wanted, timeout=4_000)
+        if checkbox.is_checked(timeout=2_000) != wanted:
+            raise PlaywrightTimeoutError(
+                "Checkbox Allow To Mark FOC Qty On RMPO ASN chưa đổi trạng thái."
+            )
+
+        def record_save_response(response: Any) -> None:
+            try:
+                method = str(response.request.method or "").upper()
+                if method not in {"POST", "PUT", "PATCH"}:
+                    return
+                url = str(response.url or "")
+                if "wfx_mycompanysite" not in url.casefold():
+                    return
+                save_responses.append(
+                    {
+                        "ok": bool(response.ok),
+                        "status": int(response.status),
+                        "url": url,
+                    }
+                )
+            except Exception:
+                return
+
+        response_handler = record_save_response
+        page.on("response", response_handler)
+        # set_checked có thể làm WFX thay document/frame. Không giữ lại `frame`
+        # cũ của checkbox: resolve lại đúng link Save đang hiển thị trên toàn
+        # bộ frame, gồm markup td.clsBtnOff mà trang Company Setup đang dùng.
+        save_frame, save = _visible_locator_in_frames(
+            page,
+            save_selector,
+            timeout_s=12,
+        )
+        snapshot = _mark_document(save_frame, "company-foc-save")
+        _write_log(log, "[COMPANY SETUP] Đang bấm Save...")
+        _click_navigation_control(save)
+
+        deadline = time.monotonic() + 25
+        confirmed = False
+        observed_state: bool | None = None
+        while time.monotonic() < deadline:
+            try:
+                current_frame, current_checkbox = _visible_locator_in_frames(
+                    page, checkbox_selector, timeout_s=1
+                )
+                observed_state = current_checkbox.is_checked(timeout=1_000)
+                document_saved = _document_changed(current_frame, snapshot)
+                request_saved = any(
+                    response.get("ok") for response in save_responses
+                )
+                if observed_state == wanted and (
+                    document_saved or request_saved
+                ):
+                    confirmed = True
+                    break
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+            page.wait_for_timeout(250)
+
+        if not confirmed:
+            failed_statuses = [
+                response["status"]
+                for response in save_responses
+                if not response.get("ok")
+            ]
+            detail = (
+                f" Server trả về HTTP {failed_statuses[-1]}."
+                if failed_statuses
+                else ""
+            )
+            return _result(
+                False,
+                "COMPANY_FOC_SAVE_NOT_CONFIRMED",
+                "Đã đổi checkbox nhưng chưa xác nhận được WFX lưu thành công."
+                + detail,
+                previous_foc_mode=previous_mode,
+                foc_mode=(
+                    "FOC cho ASN"
+                    if observed_state
+                    else "FOC cho GRN"
+                    if observed_state is False
+                    else previous_mode
+                ),
+                foc_enabled=observed_state,
+                saved=False,
+            )
+
+        _write_log(log, f"[COMPANY SETUP] Đã lưu thành công: {wanted_mode}.")
+        return _result(
+            True,
+            "COMPANY_FOC_CHANGED",
+            f"Đổi FOC thành công. Trạng thái hiện tại: {wanted_mode}.",
+            previous_foc_mode=previous_mode,
+            foc_mode=wanted_mode,
+            foc_enabled=wanted,
+            saved=True,
+        )
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Chrome automation chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message)
+    except PlaywrightTimeoutError as exc:
+        message = (
+            "Company Setup chưa sẵn sàng: "
+            f"{str(exc).splitlines()[0]}"
+        )
+        _write_log(log, message)
+        return _result(False, "COMPANY_FOC_NOT_READY", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "COMPANY_FOC_FAILED", message)
+    finally:
+        if page is not None and response_handler is not None:
+            try:
+                page.remove_listener("response", response_handler)
+            except Exception:
+                pass
         if playwright is not None:
             playwright.stop()

@@ -39,12 +39,15 @@ SESSION_OK = frozenset(
         "DIVISION_CHANGED",
         "DIVISION_ALREADY_ACTIVE",
         "CATALOG_DESTINATION_OPENED",
+        "CATALOG_FILES_SCANNED",
+        "CATALOG_FILE_DOWNLOADED",
         "CATALOG_FOLDER_OPENED",
         "CATALOG_FOLDER_FALLBACK",
         "CATALOG_FOLDERS_SCANNED",
         "CATALOG_FOLDERS_CACHED",
         "MODULE_FILTER_READY",
         "SALE_ASN_NEW_READY",
+        "COMPANY_FOC_CHANGED",
         "SUPPLIER_CATEGORY_READY",
         "SUPPLIER_FOUND",
         "SUPPLIER_NOT_FOUND",
@@ -83,6 +86,8 @@ NON_REPORTABLE_FAILURES = frozenset(
         "CATALOG_RESULT_REQUIRED",
         "CATALOG_RESULT_CHANGED",
         "CATALOG_RESULT_EXPIRED",
+        "CATALOG_FILES_CONTEXT_EXPIRED",
+        "CATALOG_FILE_EXPIRED",
         "CATALOG_PREPARE_REQUIRED",
         "CATALOG_SEARCH_CONTEXT_LOST",
         "CATALOG_FOLDER_STALE",
@@ -357,8 +362,10 @@ class PanelAPI:
                 "open_supplier_category",
                 "find_supplier",
                 "find_buyer",
+                "toggle_company_foc",
                 "switch_division",
                 "open_catalog_destination",
+                "download_catalog_file",
             }
             and hasattr(self._login, "capture_failure_screenshot")
         ):
@@ -516,6 +523,23 @@ class PanelAPI:
 
         return self._run("open_sale_asn_new", action)
 
+    def toggle_company_foc(self) -> dict:
+        def action() -> dict:
+            denied = self._admin_module_access_error("0090_0007")
+            if denied is not None:
+                return denied
+            company = constants.MODULE_BY_ID["0090_0007"]
+            toggler = getattr(self._login, "toggle_company_foc", None)
+            if not callable(toggler):
+                return {
+                    "ok": False,
+                    "code": "COMPANY_FOC_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ đổi FOC.",
+                }
+            return toggler(company["xpath"], self._log)
+
+        return self._run("toggle_company_foc", action)
+
     def open_supplier_category(self, category_name: str) -> dict:
         def action() -> dict:
             value = constants.CATEGORIES.get(category_name)
@@ -646,6 +670,9 @@ class PanelAPI:
         self, destination: str, article_code: str
     ) -> dict:
         return self._catalog.open_destination(destination, article_code)
+
+    def download_catalog_file(self, file_id: str) -> dict:
+        return self._catalog.download_file(file_id)
 
     # -- settings ----------------------------------------------------------
     def save_account(self, user_id: str, password: str) -> dict:
@@ -1038,6 +1065,10 @@ class PanelAPI:
             return self.open_catalog_destination(
                 str(request.get("destination") or ""),
                 str(request.get("article_code") or ""),
+            )
+        if method == "download_catalog_file":
+            return self.download_catalog_file(
+                str(request.get("file_id") or ""),
             )
         return {
             "ok": False,

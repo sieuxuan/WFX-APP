@@ -12,6 +12,7 @@ Hành vi giữ NGUYÊN so với bản cũ trong panel_api: cùng method_name cho
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 from wfx_panel import constants
@@ -28,18 +29,23 @@ class CatalogController:
         self.result: dict[str, str] | None = None
         self.prepared_category: str | None = None
         self.folder_cache: dict[str, list[dict]] = {}
+        # URL tải thật không đưa ra WebView. UI chỉ nhận token ngẫu nhiên và
+        # metadata; khi click tải, token được resolve lại trong process Python.
+        self.files: dict[str, dict] = {}
 
     # -- state hooks do panel gọi -----------------------------------------
     def reset_context(self) -> None:
         """Mất phiên / đổi Division / login lại: kết quả & Master cũ hết hiệu lực."""
         self.result = None
         self.prepared_category = None
+        self.files.clear()
 
     def reset_for_account_change(self) -> None:
         """Đổi tài khoản: cache cây folder theo user cũ cũng không còn dùng được."""
         self.folder_cache.clear()
         self.result = None
         self.prepared_category = None
+        self.files.clear()
 
     # -- helpers -----------------------------------------------------------
     def default_for_account(self) -> dict | None:
@@ -88,6 +94,48 @@ class CatalogController:
             return persisted
         return None
 
+    def _publish_file_scan(self, result: dict) -> dict:
+        """Giữ URL trong backend, chỉ trả token + metadata an toàn cho UI."""
+        if result.get("code") != "CATALOG_FILES_SCANNED":
+            return result
+        self.files.clear()
+        public_files: list[dict] = []
+        for raw in result.get("files") or []:
+            if not isinstance(raw, dict) or not raw.get("download_url"):
+                continue
+            file_id = uuid.uuid4().hex
+            stored = dict(raw)
+            stored["file_id"] = file_id
+            self.files[file_id] = stored
+            public_files.append(
+                {
+                    "file_id": file_id,
+                    "section": str(raw.get("section") or ""),
+                    "section_index": int(raw.get("section_index") or 0),
+                    "file_name": str(raw.get("file_name") or ""),
+                    "comments": str(raw.get("comments") or ""),
+                    "uploaded_on": str(raw.get("uploaded_on") or ""),
+                    "uploaded_by": str(raw.get("uploaded_by") or ""),
+                }
+            )
+        return {
+            **result,
+            "files": public_files,
+            "file_count": len(public_files),
+        }
+
+    def _scan_open_article_files(self, article_code: str) -> dict:
+        scanner = getattr(self._panel._login, "scan_catalog_files", None)
+        if not callable(scanner):
+            return {
+                "ok": False,
+                "code": "CATALOG_FILES_UNSUPPORTED",
+                "message": "Bản automation chưa hỗ trợ kiểm tra file style.",
+            }
+        return self._publish_file_scan(
+            scanner(article_code, self._panel._log)
+        )
+
     # -- workflows ---------------------------------------------------------
     def scan_folders(self, category_name: str, force: bool = False) -> dict:
         """Quét cây folder user được quyền xem, không mở Master."""
@@ -120,6 +168,7 @@ class CatalogController:
             # xoá mất Catalog đang chuẩn bị của workflow đang chạy.
             self.result = None
             self.prepared_category = None
+            self.files.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -264,20 +313,15 @@ class CatalogController:
         }
 
     def browse(self, category_name: str) -> dict:
-        """Mở folder mặc định để duyệt; không dùng cho Tìm/Costing/BOM."""
+        """Mở Category để duyệt; riêng Apparel dùng folder mặc định đã lưu."""
         panel = self._panel
-        if category_name != "Apparel":
-            return {
-                "ok": False,
-                "code": "CATALOG_DEFAULT_APPAREL_ONLY",
-                "message": "Vị trí mặc định chỉ áp dụng cho Apparel.",
-            }
 
         def action() -> dict:
             # Reset context sau khi giành run lock, không phải ở đầu method:
             # tránh xoá Catalog đang chuẩn bị khi lần gọi này bị ACTION_IN_PROGRESS.
             self.result = None
             self.prepared_category = None
+            self.files.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -292,7 +336,11 @@ class CatalogController:
                     "code": "CATALOG_FOLDER_OPEN_UNSUPPORTED",
                     "message": "Bản automation chưa hỗ trợ mở folder mặc định.",
                 }
-            saved = self.default_for_account()
+            saved = (
+                self.default_for_account()
+                if category_name == "Apparel"
+                else None
+            )
             node_id = (
                 str(saved.get("node_id") or "")
                 if saved and saved.get("category_name") == category_name
@@ -303,20 +351,29 @@ class CatalogController:
                 return result
 
             master = self._master_folder(category_name)
-            panel._prefs.save_prefs(
-                base_dir=panel._base_dir,
-                catalog_default_folder=master,
-            )
+            if category_name == "Apparel":
+                panel._prefs.save_prefs(
+                    base_dir=panel._base_dir,
+                    catalog_default_folder=master,
+                )
             fallback = opener(category_name, value, "", panel._log)
             if fallback.get("ok"):
                 return {
                     **fallback,
                     "code": "CATALOG_FOLDER_FALLBACK",
                     "message": (
-                        "Folder mặc định không còn tồn tại hoặc đã mất quyền. "
-                        "Đã chuyển về Master."
+                        (
+                            "Folder mặc định không còn tồn tại hoặc đã mất quyền. "
+                            "Đã chuyển về Master."
+                        )
+                        if category_name == "Apparel"
+                        else f"Đã mở Category {category_name}."
                     ),
-                    "default_folder": master,
+                    **(
+                        {"default_folder": master}
+                        if category_name == "Apparel"
+                        else {}
+                    ),
                 }
             return result
 
@@ -335,6 +392,7 @@ class CatalogController:
             # từ chối ACTION_IN_PROGRESS vì một workflow khác đang chạy.
             self.result = None
             self.prepared_category = None
+            self.files.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -375,6 +433,7 @@ class CatalogController:
         panel = self._panel
 
         def action() -> dict:
+            self.files.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -433,7 +492,7 @@ class CatalogController:
         query: str,
         destination: str | None = None,
     ) -> dict:
-        """Một nút cho Tìm/Costing/BOM, nhưng vẫn luôn tìm trong Master."""
+        """Một nút cho Tìm/Costing/BOM/File, luôn tìm trong Master."""
         panel = self._panel
         category_name = str(category_name or "")
         filter_kind = str(filter_kind or "").casefold()
@@ -481,27 +540,43 @@ class CatalogController:
                     "code": "QUERY_REQUIRED",
                     "message": "Vui lòng nhập nội dung cần tìm.",
                 }
-            if destination not in {None, "costsheet", "bom"}:
+            if destination not in {None, "costsheet", "bom", "files"}:
                 return {
                     "ok": False,
                     "code": "ARTICLE_DESTINATION_UNKNOWN",
-                    "message": "Chỉ hỗ trợ mở Costing hoặc BOM.",
+                    "message": "Chỉ hỗ trợ mở Costing, BOM hoặc File.",
                 }
-            if destination and category_name != "Apparel":
+            if destination in {"costsheet", "bom"} and category_name != "Apparel":
                 return {
                     "ok": False,
                     "code": "APPAREL_ONLY",
                     "message": "Costing và BOM chỉ hỗ trợ Category Apparel.",
                 }
+            if destination != "files":
+                self.files.clear()
 
             if destination and matches_current():
-                direct = panel._login.open_catalog_destination(
-                    self.result["article_code"],
-                    destination,
-                    panel._log,
+                direct = (
+                    self._scan_open_article_files(self.result["article_code"])
+                    if destination == "files"
+                    else panel._login.open_catalog_destination(
+                        self.result["article_code"],
+                        destination,
+                        panel._log,
+                    )
                 )
-                if direct.get("code") != "CATALOG_RESULT_EXPIRED":
-                    return direct
+                expired_codes = {
+                    "CATALOG_RESULT_EXPIRED",
+                    "CATALOG_FILES_CONTEXT_EXPIRED",
+                }
+                if direct.get("code") not in expired_codes:
+                    return {
+                        **direct,
+                        "article_code": self.result["article_code"],
+                        "category": category_name,
+                        "filter_kind": filter_kind,
+                        "query": query,
+                    }
                 self.result = None
 
             search: dict | None = None
@@ -552,10 +627,14 @@ class CatalogController:
             if search.get("code") != "RESULT_OPENED" or not destination:
                 return search
 
-            opened = panel._login.open_catalog_destination(
-                str(search["article_code"]),
-                destination,
-                panel._log,
+            opened = (
+                self._scan_open_article_files(str(search["article_code"]))
+                if destination == "files"
+                else panel._login.open_catalog_destination(
+                    str(search["article_code"]),
+                    destination,
+                    panel._log,
+                )
             )
             if opened.get("ok"):
                 return {
@@ -582,10 +661,43 @@ class CatalogController:
         if result.get("code") in {
             "CATALOG_SEARCH_CONTEXT_LOST",
             "CATALOG_RESULT_EXPIRED",
+            "CATALOG_FILES_CONTEXT_EXPIRED",
         }:
             self.prepared_category = None
             self.result = None
         return result
+
+    def download_file(self, file_id: str) -> dict:
+        """Tải một file đã quét; WebView không được tự truyền URL tùy ý."""
+        panel = self._panel
+        file_id = str(file_id or "").strip()
+
+        def action() -> dict:
+            file_info = self.files.get(file_id)
+            if file_info is None:
+                return {
+                    "ok": False,
+                    "code": "CATALOG_FILE_EXPIRED",
+                    "message": "Danh sách file đã hết hiệu lực. Hãy bấm File lại.",
+                }
+            downloader = getattr(panel._login, "download_catalog_file", None)
+            if not callable(downloader):
+                return {
+                    "ok": False,
+                    "code": "CATALOG_FILE_DOWNLOAD_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ tải file.",
+                }
+            result = downloader(file_info, panel._log)
+            if result.get("ok"):
+                result["file_id"] = file_id
+                result["section"] = str(file_info.get("section") or "")
+            return result
+
+        return panel._run(
+            "download_catalog_file",
+            action,
+            {"file_id": file_id},
+        )
 
     def open_destination(self, destination: str, article_code: str) -> dict:
         """Mở Costing/BOM từ kết quả tìm hiện tại, không search Catalog lại."""

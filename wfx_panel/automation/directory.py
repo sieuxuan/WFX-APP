@@ -21,7 +21,26 @@ from wfx_panel.automation._common import (
     sync_playwright,
     time,
 )
-from wfx_panel.automation.modules import _active_wfx_page, _click_module_menu_on_page
+from wfx_panel.automation.modules import (
+    _active_wfx_page,
+    _click_module_menu_on_page,
+    _click_navigation_control,
+)
+
+
+def _supplier_category_frame(page: Page) -> Frame | None:
+    """Tìm frame Supplier theo control thực tế; WFX hiện dùng name=body."""
+    fallback: Frame | None = None
+    for frame in page.frames:
+        try:
+            if frame.locator("#ddlCategory").count() == 0:
+                continue
+            if "wfxpartygroup" in str(frame.url or "").casefold():
+                return frame
+            fallback = fallback or frame
+        except PlaywrightError:
+            continue
+    return fallback
 
 
 def _wait_supplier_left(
@@ -31,7 +50,7 @@ def _wait_supplier_left(
 ) -> Frame:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        frame = page.frame(name="left")
+        frame = _supplier_category_frame(page)
         if frame is not None:
             try:
                 if (
@@ -54,15 +73,25 @@ def _select_supplier_category(
     frame = _wait_supplier_left(page, (None, ""), timeout_s=8)
     field = frame.locator("#ddlCategory")
     if field.input_value() != category_value:
-        field.dispatch_event("mousedown")
         field.locator(f'option[value="{category_value}"]').wait_for(
             state="attached", timeout=5_000
         )
         _write_log(log, f"[SUPPLIER] Đang chọn Category {category_name}...")
-        field.select_option(value=category_value, timeout=5_000)
+        try:
+            field.select_option(value=category_value, timeout=5_000)
+        except PlaywrightError as exc:
+            message = str(exc).casefold()
+            if not any(
+                marker in message
+                for marker in (
+                    "frame was detached",
+                    "execution context was destroyed",
+                )
+            ):
+                raise
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
-        current = page.frame(name="left")
+        current = _supplier_category_frame(page)
         try:
             if (
                 current is not None
@@ -117,7 +146,7 @@ def _open_supplier_master(
     deadline = time.monotonic() + timeout_s
     attempt = 0
     while time.monotonic() < deadline:
-        left = page.frame(name="left")
+        left = _supplier_category_frame(page)
         if left is None:
             page.wait_for_timeout(200)
             continue
@@ -128,7 +157,7 @@ def _open_supplier_master(
                 continue
             attempt += 1
             _write_log(log, f"[SUPPLIER] Click exact Master; attempt={attempt}")
-            master.evaluate("element => element.click()")
+            _click_navigation_control(master)
             company_frame = _company_search_frame(page, timeout_s=4.5)
             if company_frame is not None:
                 _write_log(log, "[SUPPLIER] Master và Company Name search đã sẵn sàng.")
@@ -146,7 +175,10 @@ def _open_supplier_category_on_page(
     category_value: str,
     log: Callable[[str], None],
 ) -> Frame:
-    old_left = _mark_document(page.frame(name="left"), "supplier-left")
+    old_left = _mark_document(
+        _supplier_category_frame(page),
+        "supplier-left",
+    )
     _click_module_menu_on_page(page, "Supplier List", module_xpath, log)
     _wait_supplier_left(page, old_left)
     _select_supplier_category(page, category_name, category_value, log)

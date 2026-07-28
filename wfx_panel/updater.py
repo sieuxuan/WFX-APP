@@ -287,6 +287,9 @@ $allowedRemovePaths = @(
   ).TrimEnd('\\'),
   [System.IO.Path]::GetFullPath(
     $backupDir
+  ).TrimEnd('\\'),
+  [System.IO.Path]::GetFullPath(
+    $expandedDir
   ).TrimEnd('\\')
 )
 
@@ -479,8 +482,6 @@ function Perform-Update {{
     ) {{
       throw 'Thư mục tạm updater không an toàn.'
     }}
-    New-Item -ItemType Directory -Path $expandedDir -Force | Out-Null
-
     Update-UI "Đang tải gói cập nhật WFX Smart v$version..."
     Download-WithUi $packageUrl $zipPath
     Download-WithUi $checksumUrl $checksumPath
@@ -519,6 +520,10 @@ function Perform-Update {{
     }}
 
     Update-UI "Đang giải nén gói cập nhật..." 70
+    # Destination phải thực sự rỗng. Không tạo sẵn rồi yêu cầu Expand-Archive
+    # ghi đè vì một số bản Windows PowerShell hiển thị lỗi "file đã tồn tại"
+    # dù đây là lần tải đầu của user.
+    Safe-Remove $expandedDir
     Expand-Archive -LiteralPath $zipPath -DestinationPath $expandedDir -Force
     $newExecutables = @(
       Get-ChildItem -LiteralPath $expandedDir -Filter 'WFX-Panel.exe' -Recurse

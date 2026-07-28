@@ -14,7 +14,11 @@ def test_release_workflow_signs_package_with_pinned_private_publisher():
     assert "Import-Certificate" not in source
     assert '$zipName = "WFX-Smart-v$version-win64.zip"' in source
     assert "tar.exe -a -c -f" in source
-    assert '$archiveEntries -notcontains "./WFX-Panel.exe"' in source
+    assert '$packageRootName = "WFX-Smart-v$version"' in source
+    assert (
+        '$archiveEntries -notcontains "$packageRootName/WFX-Panel.exe"'
+        in source
+    )
     assert "$verifyCms.CheckSignature($true)" in source
     assert "$actualCmsSigner -ne $expectedCmsSigner" in source
     assert 'Remove-Item `' in source

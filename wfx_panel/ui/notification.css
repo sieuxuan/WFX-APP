@@ -1,6 +1,8 @@
 :root {
   color-scheme: light;
-  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  -webkit-font-smoothing: auto;
+  text-rendering: auto;
   --surface: #f7fbfc;
   --border: rgba(23, 50, 61, .16);
   --text: #18323d;
