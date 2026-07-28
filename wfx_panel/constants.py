@@ -10,6 +10,14 @@ CATEGORIES = {
 }
 
 SALE_ASN_NEW_XPATH = '//*[@id="0004_0070_4340"]/a'
+SAMPLE_NEW_XPATH = (
+    '//a[@title="New Sample Order" '
+    'and contains(@href,"mnuSWNNewSampling")]'
+)
+USER_INDENT_XPATH = (
+    '//a[@title="User Indent List" '
+    'and contains(@href,"mnuIndentControlUserList")]'
+)
 
 DIVISIONS = {
     "woven": {
@@ -46,6 +54,12 @@ MODULE_GROUPS = [
             {"name": "Sale ASN", "id": "0004_0070_0020", "icon": "AS"},
             {"name": "RMPO List", "id": "0005_0050_0020", "icon": "RM"},
             {"name": "Indent List", "id": "0005_0080_0020", "icon": "IN"},
+            {
+                "name": "User Indent",
+                "id": "user_indent_list",
+                "icon": "UI",
+                "xpath": USER_INDENT_XPATH,
+            },
             {"name": "QA List", "id": "0063_0030_0020", "icon": "QA"},
         ],
     },
@@ -77,7 +91,12 @@ def xpath_for(module_id: str) -> str:
 
 
 MODULE_BY_ID = {
-    module["id"]: {**module, "group": group["name"], "accent": group["accent"], "xpath": xpath_for(module["id"])}
+    module["id"]: {
+        **module,
+        "group": group["name"],
+        "accent": group["accent"],
+        "xpath": module.get("xpath") or xpath_for(module["id"]),
+    }
     for group in MODULE_GROUPS
     for module in group["modules"]
 }

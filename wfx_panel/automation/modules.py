@@ -391,8 +391,442 @@ def _click_navigation_control(locator: Any) -> None:
             raise
 
 
-def toggle_company_foc(
+def _normalise_search_text(value: Any) -> str:
+    return " ".join(
+        "".join(
+            character if character.isalnum() else " "
+            for character in str(value or "").casefold()
+        ).split()
+    )
+
+
+def _visible_search_input(
+    frame: Frame,
+    selectors: tuple[str, ...],
+    aliases: tuple[str, ...],
+) -> Any | None:
+    normalised_aliases = tuple(_normalise_search_text(item) for item in aliases)
+    for selector in selectors:
+        try:
+            candidates = frame.locator(selector)
+            for index in range(candidates.count()):
+                candidate = candidates.nth(index)
+                if candidate.is_visible() and candidate.is_enabled():
+                    return candidate
+        except PlaywrightError:
+            continue
+
+    try:
+        inputs = frame.locator("input")
+        best: tuple[int, Any] | None = None
+        for index in range(inputs.count()):
+            candidate = inputs.nth(index)
+            if not candidate.is_visible() or not candidate.is_enabled():
+                continue
+            metadata = candidate.evaluate(
+                """element => {
+                    const header = element.closest(
+                        '.ag-header-cell, .tdSearch, th, td, label'
+                    );
+                    return [
+                        element.id,
+                        element.name,
+                        element.getAttribute('aria-label'),
+                        element.placeholder,
+                        header?.getAttribute('col-id'),
+                        header?.getAttribute('aria-label'),
+                        header?.innerText
+                    ].filter(Boolean).join(' ');
+                }"""
+            )
+            normalised = _normalise_search_text(metadata)
+            compact = normalised.replace(" ", "")
+            score = max(
+                (
+                    len(alias)
+                    for alias in normalised_aliases
+                    if alias in normalised
+                    or alias.replace(" ", "") in compact
+                ),
+                default=0,
+            )
+            if score and (best is None or score > best[0]):
+                best = (score, candidate)
+        return best[1] if best is not None else None
+    except PlaywrightError:
+        return None
+
+
+def _search_input_in_frames(
+    page: Page,
+    selectors: tuple[str, ...],
+    aliases: tuple[str, ...],
+    timeout_s: float = 25,
+) -> tuple[Frame, Any]:
+    """Resolve đúng ô filter theo selector thật, rồi mới fallback theo header."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for frame in page.frames:
+            candidate = _visible_search_input(frame, selectors, aliases)
+            if candidate is not None:
+                return frame, candidate
+        page.wait_for_timeout(200)
+    raise PlaywrightTimeoutError(
+        "Không tìm thấy ô search cho: " + ", ".join(aliases)
+    )
+
+
+def _search_input_in_frame(
+    page: Page,
+    frame: Frame,
+    selectors: tuple[str, ...],
+    aliases: tuple[str, ...],
+    timeout_s: float = 4,
+) -> Any:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        candidate = _visible_search_input(frame, selectors, aliases)
+        if candidate is not None:
+            return candidate
+        page.wait_for_timeout(200)
+    raise PlaywrightTimeoutError(
+        "Không tìm thấy ô search trong đúng màn List: "
+        + ", ".join(aliases)
+    )
+
+
+def _apply_module_search(
+    page: Page,
+    field: Any,
+    query: str,
+    label: str,
+    log: Callable[[str], None],
+) -> None:
+    field.fill("")
+    field.type(query, delay=25)
+    if field.input_value(timeout=1_000) != query:
+        raise PlaywrightTimeoutError(
+            f"WFX không xác nhận giá trị search {label}."
+        )
+    _write_log(log, f"[MODULE SEARCH] Đã nhập {label}: {query!r}")
+    try:
+        field.press("Enter", timeout=2_000)
+    except PlaywrightError:
+        pass
+    try:
+        field.dispatch_event("change")
+    except PlaywrightError:
+        pass
+
+    deadline = time.monotonic() + 15
+    stable_since = 0.0
+    while time.monotonic() < deadline:
+        loading = False
+        for frame in page.frames:
+            try:
+                overlays = frame.locator(
+                    ".ag-overlay-loading-wrapper, .ag-loading, "
+                    ".loading, .loader, [aria-busy='true']"
+                )
+                if any(
+                    overlays.nth(index).is_visible()
+                    for index in range(overlays.count())
+                ):
+                    loading = True
+                    break
+            except PlaywrightError:
+                continue
+        if loading:
+            stable_since = 0.0
+        elif stable_since <= 0:
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since >= 0.8:
+            return
+        page.wait_for_timeout(200)
+    raise PlaywrightTimeoutError(
+        f"Kết quả search {label} chưa ổn định."
+    )
+
+
+def _search_module_list(
+    module_name: str,
+    query: str,
+    label: str,
+    selectors: tuple[str, ...],
+    aliases: tuple[str, ...],
+    context_selectors: tuple[str, ...],
+    context_aliases: tuple[str, ...],
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    query = str(query or "").strip()
+    if not query:
+        return _result(
+            False,
+            "QUERY_REQUIRED",
+            f"Vui lòng nhập {label} cần tìm.",
+        )
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        try:
+            frame, _context_field = _search_input_in_frames(
+                page,
+                context_selectors,
+                context_aliases,
+                timeout_s=4,
+            )
+            field = _search_input_in_frame(
+                page,
+                frame,
+                selectors,
+                aliases,
+                timeout_s=4,
+            )
+        except PlaywrightTimeoutError:
+            message = (
+                f"Chưa thấy ô {label} trong {module_name}. "
+                "Hãy bấm List trước, chờ màn danh sách và Floating Filter "
+                "hiển thị rồi mới bấm Tìm."
+            )
+            _write_log(log, message)
+            return _result(
+                False,
+                "MODULE_LIST_NOT_OPEN",
+                message,
+                module=module_name,
+                filter_kind=label,
+            )
+        try:
+            _apply_module_search(page, field, query, label, log)
+        except PlaywrightTimeoutError as exc:
+            detail = str(exc).splitlines()[0]
+            message = (
+                f"Đã nhập {label} trong {module_name}, nhưng WFX chưa "
+                f"xác nhận kết quả: {detail}"
+            )
+            _write_log(log, message)
+            return _result(
+                False,
+                "MODULE_SEARCH_NOT_CONFIRMED",
+                message,
+                module=module_name,
+                filter_kind=label,
+            )
+        return _result(
+            True,
+            "MODULE_SEARCH_APPLIED",
+            f"Đã tìm {module_name} theo {label}: {query}.",
+            module=module_name,
+            filter_kind=label,
+        )
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Chrome automation chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message, module=module_name)
+    except Exception as exc:
+        detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = (
+            f"Không thể tìm theo {label} trong {module_name}: {detail}"
+        )
+        _write_log(log, message)
+        return _result(
+            False,
+            "MODULE_SEARCH_FAILED",
+            message,
+            module=module_name,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def search_oc_list(
+    _xpath: str,
+    filter_kind: str,
+    query: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    definitions = {
+        "oc_no": (
+            "OC No.",
+            ("#txtOCNO", 'input[name="txtOCNO"]'),
+            ("oc no", "proforma invoice num with order ref num"),
+        ),
+        "style": (
+            "Style",
+            ("#txtArticle", 'input[name="txtArticle"]'),
+            ("buyer style ref num", "style", "article"),
+        ),
+    }
+    if filter_kind not in definitions:
+        return _result(False, "INVALID_FILTER", "Kiểu tìm OC không hợp lệ.")
+    label, selectors, aliases = definitions[filter_kind]
+    return _search_module_list(
+        "OC List",
+        query,
+        label,
+        selectors,
+        aliases,
+        ("#txtOCNO", 'input[name="txtOCNO"]'),
+        ("proforma invoice num with order ref num", "oc no"),
+        log,
+    )
+
+
+def search_sample_list(
+    _xpath: str,
+    filter_kind: str,
+    query: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    definitions = {
+        "sample_no": (
+            "Sample Order No.",
+            (
+                "#txtSampleOrderNo",
+                "#txtSampleNo",
+                'input[aria-label*="Sample Order" i]',
+                'input[id*="SampleOrder" i]',
+            ),
+            ("sample order no", "sample order number", "sample no"),
+        ),
+        "style": (
+            "Style",
+            (
+                "#txtArticle",
+                'input[aria-label*="Style" i]',
+                'input[id*="Style" i]',
+                'input[id*="Article" i]',
+            ),
+            ("buyer style", "style", "article"),
+        ),
+        "created_by": (
+            "Created By",
+            (
+                'input[aria-label*="Created By" i]',
+                'input[id*="CreatedBy" i]',
+                'input[name*="CreatedBy" i]',
+            ),
+            ("created by", "createdby", "creator"),
+        ),
+    }
+    if filter_kind not in definitions:
+        return _result(False, "INVALID_FILTER", "Kiểu tìm Sample không hợp lệ.")
+    label, selectors, aliases = definitions[filter_kind]
+    return _search_module_list(
+        "Sample List",
+        query,
+        label,
+        selectors,
+        aliases,
+        (
+            "#txtSampleOrderNo",
+            "#txtSampleNo",
+            'input[aria-label*="Sample Order" i]',
+            'input[id*="SampleOrder" i]',
+        ),
+        ("sample order no", "sample order number", "sample no"),
+        log,
+    )
+
+
+def search_sale_asn_list(
+    _xpath: str,
+    filter_kind: str,
+    query: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    definitions = {
+        "invoice_no": (
+            "Invoice No.",
+            (
+                "#txtInvoiceNo",
+                'input[aria-label*="Invoice" i]',
+                'input[id*="Invoice" i]',
+            ),
+            ("invoice no", "invoice number", "invoice"),
+        ),
+        "style": (
+            "Style",
+            (
+                "#txtArticle",
+                'input[aria-label*="Style" i]',
+                'input[id*="Style" i]',
+                'input[id*="Article" i]',
+            ),
+            ("buyer style", "style", "article"),
+        ),
+    }
+    if filter_kind not in definitions:
+        return _result(False, "INVALID_FILTER", "Kiểu tìm Sale ASN không hợp lệ.")
+    label, selectors, aliases = definitions[filter_kind]
+    return _search_module_list(
+        "Sale ASN",
+        query,
+        label,
+        selectors,
+        aliases,
+        (
+            "#txtInvoiceNo",
+            'input[aria-label*="Invoice" i]',
+            'input[id*="Invoice" i]',
+        ),
+        ("invoice no", "invoice number", "invoice"),
+        log,
+    )
+
+
+def open_sample_new(
     xpath: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        _click_module_menu_on_page(page, "Sample > New", xpath, log)
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            for frame in page.frames:
+                url = str(frame.url or "").casefold()
+                if "wfxsr.aspx" in url and "action=new" in url:
+                    return _result(
+                        True,
+                        "SAMPLE_NEW_READY",
+                        "Đã mở New Sample Order.",
+                    )
+            page.wait_for_timeout(200)
+        raise PlaywrightTimeoutError(
+            "WFX chưa xác nhận màn New Sample Order."
+        )
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Chrome automation chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message)
+    except PlaywrightTimeoutError as exc:
+        message = f"Sample New chưa sẵn sàng: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "SAMPLE_NEW_NOT_READY", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        _write_log(log, message)
+        return _result(False, "SAMPLE_NEW_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def toggle_company_foc(
+    _xpath: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Đổi FOC giữa ASN/GRN trong Company Setup và xác nhận WFX đã lưu."""
@@ -412,15 +846,24 @@ def toggle_company_foc(
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
-        _click_module_menu_on_page(page, "Company Setup", xpath, log)
 
         _write_log(
             log,
             "[COMPANY SETUP] Đang mở 12. Miscellaneous Settings...",
         )
-        _misc_frame, misc = _visible_locator_in_frames(
-            page, misc_selector, timeout_s=20
-        )
+        try:
+            _misc_frame, misc = _visible_locator_in_frames(
+                page,
+                misc_selector,
+                timeout_s=4,
+            )
+        except PlaywrightTimeoutError:
+            return _result(
+                False,
+                "COMPANY_LIST_NOT_OPEN",
+                "Chưa thấy trang Company Setup. Hãy bấm List, "
+                "chờ trang tải xong rồi mới bấm Đổi FOC.",
+            )
         _click_navigation_control(misc)
 
         frame, checkbox = _visible_locator_in_frames(

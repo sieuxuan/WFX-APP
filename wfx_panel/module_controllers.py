@@ -45,12 +45,14 @@ class CatalogModule(ModuleController):
 
 class OCListModule(ModuleController):
     module_id = "0004_0050_0020"
-    description = "Theo dõi và mở danh sách Order Confirmation."
+    kind = "oc"
+    description = "Mở OC List hoặc tìm theo OC No. và Style."
 
 
 class SampleListModule(ModuleController):
     module_id = "0004_0056_4070"
-    description = "Tra cứu và thao tác danh sách sample."
+    kind = "sample"
+    description = "Mở Sample List, tìm Sample hoặc tạo Sample Order mới."
 
     def open(self, login_module: Any, log: Callable[[str], None]) -> dict:
         opener = getattr(login_module, "open_module_with_floating_filter", None)
@@ -79,6 +81,11 @@ class RMPOListModule(ModuleController):
 class IndentListModule(ModuleController):
     module_id = "0005_0080_0020"
     description = "Mở danh sách Indent."
+
+
+class UserIndentModule(ModuleController):
+    module_id = "user_indent_list"
+    description = "Mở User Indent List."
 
 
 class QAListModule(ModuleController):
@@ -136,6 +143,7 @@ CONTROLLER_TYPES = (
     SaleASNModule,
     RMPOListModule,
     IndentListModule,
+    UserIndentModule,
     QAListModule,
     AdvancePRListModule,
     SupplierInvoiceListModule,

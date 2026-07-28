@@ -88,6 +88,7 @@ from wfx_panel.automation.directory import (  # noqa: F401
     _wait_supplier_left,
     find_and_open_buyer,
     find_supplier_across_categories,
+    find_supplier_in_category,
     open_supplier_category,
 )
 from wfx_panel.automation.modules import (  # noqa: F401
@@ -99,6 +100,10 @@ from wfx_panel.automation.modules import (  # noqa: F401
     open_module,
     open_module_with_floating_filter,
     open_sale_asn_new,
+    open_sample_new,
+    search_oc_list,
+    search_sale_asn_list,
+    search_sample_list,
     toggle_company_foc,
 )
 from wfx_panel.automation.session import (  # noqa: F401
@@ -191,6 +196,7 @@ __all__ = [
     'find_in_open_catalog',
     'find_and_open_buyer',
     'find_supplier_across_categories',
+    'find_supplier_in_category',
     'get_division_state',
     'json',
     'login',
@@ -199,6 +205,7 @@ __all__ = [
     'open_catalog_master',
     'open_module',
     'open_module_with_floating_filter',
+    'open_sample_new',
     'open_sale_asn_new',
     'open_supplier_category',
     'os',
@@ -207,6 +214,9 @@ __all__ = [
     'run',
     'scan_catalog_folders',
     'scan_catalog_files',
+    'search_oc_list',
+    'search_sale_asn_list',
+    'search_sample_list',
     'set_catalog_category',
     'shutil',
     'start_chrome',

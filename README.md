@@ -1,97 +1,108 @@
-## WFX Smart 1.0.13
+# WFX Smart 1.0.13
 
-Chạy dev:
-    python -m pip install -r requirements-dev.txt
-    python -m playwright install chromium
-    python -m wfx_panel.panel_app
+WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
+dùng của WorldFashionExchange (WFX). App chạy bằng pywebview, điều khiển một
+Chromium browser hệ thống qua Playwright/CDP và không phải Chrome Extension.
 
-- Hotkey toàn cục mặc định Ctrl+Shift+X, có thể đổi trong Settings: ẩn/hiện
-  panel kể cả khi focus ở Chrome. Hotkey dùng global hook của thư viện
-  `keyboard`; nếu cửa sổ đang focus chạy quyền Administrator cao hơn app, hook có
-  thể không nhận phím — khi đó bấm icon launcher hoặc tray để mở panel.
-- Launcher vuông 48×48 luôn nổi; click để mở panel ngay cạnh launcher, giữ để
-  kéo và chuột phải để ẩn xuống system tray.
-- Panel tự thu khi click ra ngoài. Launcher, panel và thông báo luôn được giữ
-  trọn trong cùng màn hình, kể cả khi đặt sát góc, dùng nhiều màn hình hoặc đổi
-  DPI/bố cục màn hình.
-- Tài khoản lưu ở `.env`; mật khẩu được DPAPI mã hoá thành
-  `WFX_PASSWORD_ENC`. Bản Windows từ chối lưu nếu DPAPI không hoạt động;
-  theme/tuỳ chọn ở `prefs.json`.
-- Mọi automation có `runId`, lịch sử cục bộ, thời gian chạy, ảnh lỗi và nút
-  chạy lại cho tác vụ không chứa truy vấn nhạy cảm. Không lưu User ID/password,
-  Style Code hay nội dung tìm kiếm; lịch sử và ảnh lỗi tự xóa sau 7 ngày.
-- Khi tìm đúng một style Apparel, panel hiển thị thêm Season và Internal
-  CostSheet Status đọc trực tiếp từ Catalog Grid.
-- Cây Group/Folder của Catalog Apparel chỉ scan một lần cho mỗi tài khoản và
-  được dùng lại sau khi mở lại app; nút Refresh là thao tác duy nhất ép scan lại.
-- Khi automation đang chạy, panel hiển thị tiến trình rõ ràng, chặn workflow
-  chạy trùng nhưng vẫn cho phép đóng/thu giao diện; toast hiện chữ đồng bộ.
-- Click module chỉ mở modal trong app trước; Catalog có workflow riêng trong
-  modal. Các module chưa có workflow riêng sẽ mở thẳng WFX; controller riêng
-  vẫn được giữ để mở rộng sau.
-- Nếu chưa có browser automation, app có thể mở Chrome Stable/Beta/Dev/Canary,
-  Edge, Brave hoặc Chromium. Có thể đặt `WFX_CHROME_PATH` khi browser nằm ở
-  đường dẫn riêng. Nếu không có browser tương thích, UI hướng dẫn cài/cấu hình
-  thay vì crash.
-- Nút mở browser sẽ mở đúng Chromium browser automation rồi đăng nhập WFX ngay
-  bằng tài khoản đã lưu.
-- Settings có `Luôn trên cùng`; vị trí launcher được nhớ lại giữa các lần chạy
-  và tự sửa nếu màn hình đã lưu không còn tồn tại.
-- Ba nút Division `WOVEN`, `KNIT`, `PSSG` nằm trước Operation. App đọc
-  `#CompanyName` của WFX để highlight Division thật và chỉ báo thành công sau
-  khi WFX xác nhận đã chuyển.
-- Khi chưa có tài khoản hoặc WFX từ chối đăng nhập, tab Tài khoản tự mở để
-  người dùng nhập lại; Settings được chia thành Tài khoản, Tự động hóa và
-  Giao diện.
-- App tự kiểm tra GitHub Release Stable mỗi 4 giờ. Khi có bản mới, người dùng
-  chỉ cần bấm `Cập nhật ngay`; app xác minh chữ ký certificate của checksum,
-  kiểm tra SHA-256, chỉ thay `WFX-Panel.exe` và `_internal`, rồi tự mở lại.
-  Nếu cài lỗi, app rollback đúng hai thành phần này. Settings vẫn được giữ nguyên.
-- `app.py`, `start_app.bat` và executable đều mở cùng UI pywebview; UI Tkinter
-  cũ đã được loại bỏ.
+Xem danh sách đầy đủ dành cho người dùng tại
+[`docs/USER_FEATURES.md`](./docs/USER_FEATURES.md).
 
-## Đóng gói exe
+## Chức năng nổi bật
 
-    powershell -ExecutionPolicy Bypass -File build-panel.ps1
+- Mở panel bằng launcher nổi, system tray hoặc hotkey `Ctrl+Shift+X`.
+- Ghim module yêu thích lên đầu, trước ô tìm kiếm.
+- Nhớ màn hình đang làm; có setting `Trở về List sau khi thao tác`.
+- Đổi Division WOVEN/KNIT/PSSG và chỉ xác nhận khi WFX đổi thành công.
+- Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, Supplier List,
+  Buyer List và Company Setup.
+- Search chạy trên đúng List đã mở, không tải lại module. Nếu chưa mở List, app
+  hướng dẫn người dùng thay vì gửi lỗi webhook.
+- Lịch sử tác vụ, Run ID, ảnh lỗi cục bộ, retry có kiểm soát và Log kỹ thuật có
+  thể bôi đen/copy.
+- Webhook lỗi có mô tả tiếng Việt, hướng xử lý và context tài khoản; không gửi
+  password, cookie, URL WFX hoặc nội dung tìm kiếm.
+- Tự kiểm tra và cài GitHub Release có xác minh checksum/chữ ký và rollback.
 
-Kết quả: `dist/WFX-Panel/WFX-Panel.exe` (onedir).
+## Cách sử dụng nhanh
 
-Gói phát hành: `WFX-Smart-v1.0.13-win64.zip` kèm checksum `.sha256` và chữ ký
-detached `.sha256.p7s`.
+1. Mở WFX Smart và lưu User ID/password trong Settings.
+2. Bấm `Mở trình duyệt` để app mở browser automation và đăng nhập WFX.
+3. Chọn Division nếu cần.
+4. Chọn module. Với module có nhiều flow, bấm `List` trước rồi mới Search/New/
+   thao tác tiếp theo.
+5. Dùng ngôi sao để ghim module thường dùng.
 
-Nâng cấp từ 1.0.11 trở xuống cần giải nén 1.0.12 vào một thư mục riêng đúng một
-lần. Prefix gói mới cố ý không kích hoạt updater cũ vốn có thể xóa cả thư mục
-chứa EXE. Bản 1.0.9–1.0.11 cũng cần nâng cấp thủ công một lần nếu updater báo
-lỗi CMS hoặc hash. Từ 1.0.12 trở đi, cập nhật tự động dùng chuỗi xác minh,
-rollback và API .NET tương thích cả Windows PowerShell 5.1 lẫn PowerShell 7.
+Mật khẩu được DPAPI mã hóa thành `WFX_PASSWORD_ENC`. Bản Windows từ chối lưu
+mật khẩu nếu DPAPI không hoạt động. Settings của bản đóng gói nằm tại
+`%LOCALAPPDATA%\WFX-Panel`, tách khỏi thư mục cài đặt.
 
-Workflow release yêu cầu hai GitHub Actions secrets:
+## Chạy bản development
 
-- `WFX_SIGNING_CERTIFICATE_BASE64`: nội dung PFX đã base64.
-- `WFX_SIGNING_CERTIFICATE_PASSWORD`: mật khẩu PFX.
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m playwright install chromium
+python -m wfx_panel.panel_app
+```
 
-Workflow đóng thumbprint certificate vào executable và ký CMS cho checksum.
-Thiếu certificate sẽ fail release; bản chạy từ source không được phép tự cài
-update. EXE được giữ unsigned như 1.0.8 để không thay đổi trải nghiệm publisher
-của Windows; tính xác thực updater nằm ở chữ ký CMS ghim khóa của toàn bộ ZIP.
+Browser không được bundle trong ứng dụng. WFX Smart hỗ trợ Chrome Stable/Beta/
+Dev/Canary, Edge, Brave hoặc Chromium. Có thể đặt `WFX_CHROME_PATH` nếu browser
+nằm ở đường dẫn riêng.
 
-Certificate phát hành hiện là publisher certificate riêng được ghim thumbprint:
-updater xác minh chữ ký toán học và đúng public key trước khi thay file. Windows
-SmartScreen vẫn có thể đánh giá file tải từ Internet như bản 1.0.8; chỉ
-certificate Code Signing từ CA công cộng hoặc Microsoft Store mới thay đổi tín
-hiệu publisher của Windows.
+## Kiến trúc chính
 
-- Windows 11 có sẵn WebView2 trong phần lớn bản cài.
-- Windows 10 cần Microsoft Edge WebView2 Runtime. Edge hiện đại thường đã cài
-  runtime này; nếu UI không mở, cài/cập nhật WebView2 Runtime.
-- Automation không bundle Chromium; nó dùng một Chromium browser hệ thống qua
-  CDP như `login.py`.
-- Settings của bản đóng gói nằm tại `%LOCALAPPDATA%\WFX-Panel`, tách khỏi
-  `dist`, nên build/update/rollback không xóa tài khoản hoặc tùy chọn cũ.
+- `wfx_panel/automation/`: Playwright/CDP và các workflow WFX.
+- `wfx_panel/panel_api.py`: bridge giữa UI và automation.
+- `wfx_panel/catalog_controller.py`: state/context của Catalog.
+- `wfx_panel/panel_app.py`: pywebview, launcher, tray và hotkey.
+- `wfx_panel/ui/`: HTML/CSS/JavaScript của panel.
+- `wfx_panel/telemetry.py`: webhook, outbox và redaction dữ liệu nhạy cảm.
+- `n8n/`: Code node và workflow webhook có thể import.
+- `CLAUDE.md`: đặc tả kỹ thuật chuẩn bắt buộc.
 
-Test tích hợp WFX thật bằng tài khoản trong `.env`:
+## Đóng gói EXE
 
-    $env:WFX_LIVE_TEST = "1"
-    python -m pytest tests/test_wfx_live.py -v
+```powershell
+powershell -ExecutionPolicy Bypass -File build-panel.ps1
+```
 
-Test không in credential hoặc Code ra output.
+Kết quả:
+
+```text
+dist/WFX-Panel/WFX-Panel.exe
+```
+
+Đây là bản `onedir`; cần giữ cả `WFX-Panel.exe` và thư mục `_internal`.
+
+## Kiểm thử
+
+```powershell
+python -m pytest
+ruff check .
+node --check wfx_panel/ui/panel.js
+```
+
+Test tích hợp WFX thật sử dụng tài khoản trong `.env`:
+
+```powershell
+$env:WFX_LIVE_TEST = "1"
+python -m pytest tests/test_wfx_live.py -v
+```
+
+Test không được in credential hoặc nội dung tìm kiếm ra output.
+
+## Release và cập nhật
+
+Gói phát hành có dạng `WFX-Smart-v1.0.13-win64.zip`, kèm checksum `.sha256` và
+chữ ký detached `.sha256.p7s`.
+
+GitHub Actions cần hai secrets:
+
+- `WFX_SIGNING_CERTIFICATE_BASE64`
+- `WFX_SIGNING_CERTIFICATE_PASSWORD`
+
+Updater xác minh chữ ký certificate đã ghim, SHA-256 và chỉ thay
+`WFX-Panel.exe` cùng `_internal`. Nếu cài lỗi, app rollback hai thành phần này
+và giữ nguyên tài khoản/settings.
+
+Windows 11 thường có sẵn WebView2. Windows 10 cần Microsoft Edge WebView2
+Runtime nếu UI không mở.

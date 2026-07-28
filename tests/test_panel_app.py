@@ -195,6 +195,20 @@ def test_download_result_opens_explorer_and_shows_toast(monkeypatch):
     ]
 
 
+def test_reveal_downloaded_excel_opens_exact_parent_folder(tmp_path, monkeypatch):
+    target = tmp_path / "Costing Report.xlsx"
+    target.write_bytes(b"xlsx")
+    opened = []
+    monkeypatch.setattr(
+        panel_app.os,
+        "startfile",
+        lambda path: opened.append(Path(path)),
+    )
+
+    assert panel_app._reveal_downloaded_file(target) is True
+    assert opened == [target.parent.resolve()]
+
+
 def test_notification_shows_full_action_detail_without_resizing_webview(
     monkeypatch,
 ):
@@ -351,20 +365,11 @@ def test_activate_shows_panel_and_fronts_window(monkeypatch):
     assert app._panel_visible is True
 
 
-def test_taskbar_activation_restores_bubble_and_opens_full_ui(monkeypatch):
+def test_taskbar_activation_opens_full_ui_without_winforms_restore(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
     calls = []
-
-    class FakeBubble:
-        def restore(self):
-            calls.append("restore")
-
-        def show(self):
-            calls.append("bubble-show")
-
-    app.bubble_window = FakeBubble()
 
     def show_panel():
         calls.append("panel-show")
@@ -377,7 +382,7 @@ def test_taskbar_activation_restores_bubble_and_opens_full_ui(monkeypatch):
 
     app._open_panel_from_taskbar()
 
-    assert calls == ["restore", "bubble-show", "bubble-size", "panel-show"]
+    assert calls == ["bubble-size", "panel-show"]
     assert app._panel_visible is True
 
 
@@ -421,6 +426,23 @@ def test_direct_bubble_click_does_not_double_toggle_from_taskbar(monkeypatch):
     assert calls == ["panel-show"]
 
 
+def test_bubble_pointer_interaction_blocks_taskbar_until_mouseup(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    times = iter([100.0, 100.1, 100.2, 100.3])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
+    app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+
+    app.begin_bubble_interaction()
+    app._open_panel_from_taskbar()
+    app.end_bubble_interaction()
+
+    assert calls == []
+    assert app._bubble_pointer_down is False
+
+
 def test_taskbar_minimize_and_restore_events_open_panel(monkeypatch):
     import wfx_panel.panel_app as module
 
@@ -459,6 +481,32 @@ def test_taskbar_foreground_transition_opens_only_for_bubble(monkeypatch):
         module, "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
     monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 4242)
+    app._open_panel_from_taskbar = lambda: calls.append("open")
+
+    app._taskbar_activation_loop()
+
+    assert calls == ["open"]
+
+
+def test_taskbar_foreground_transition_accepts_main_panel_hwnd(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    waits = iter([False, False, True])
+    process_ids = iter([99999, os.getpid()])
+    foreground_windows = iter([111, 5151])
+    calls = []
+
+    monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
+    monkeypatch.setattr(module, "_foreground_process_id", lambda: next(process_ids))
+    monkeypatch.setattr(
+        module, "_foreground_window_hwnd", lambda: next(foreground_windows)
+    )
+    monkeypatch.setattr(
+        module,
+        "_find_window_hwnd",
+        lambda title: 4242 if title == module.BUBBLE_WINDOW_TITLE else 5151,
+    )
     app._open_panel_from_taskbar = lambda: calls.append("open")
 
     app._taskbar_activation_loop()

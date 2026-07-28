@@ -83,11 +83,24 @@ def test_index_html_has_contract_hooks():
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js?v=20260728-4"',
+        'src="panel.js?v=20260728-9"',
     ]:
         assert hook in html, hook
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
     assert 'class="compact-launcher"' not in html
+
+
+def test_status_is_only_in_footer_and_log_can_be_selected():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert 'class="footer-status-text"' in html
+    assert "module-page-status" not in html
+    log_style = css[
+        css.index(".catalog-log {") : css.index(".feedback-diagnostics")
+    ]
+    assert "-webkit-user-select: text" in log_style
+    assert "user-select: text" in log_style
+    assert "cursor: text" in log_style
 
 
 def test_catalog_search_and_destinations_are_direct_actions():
@@ -128,7 +141,7 @@ def test_module_detail_page_header_uses_name_and_description_only():
 def test_bubble_page_advertises_interactions():
     html = (UI / "bubble.html").read_text(encoding="utf-8")
     assert 'class="bubble pywebview-drag-region"' in html
-    assert 'src="bubble.js?v=20260728-4"' in html
+    assert 'src="bubble.js?v=20260728-5"' in html
     button = html[html.index('class="bubble pywebview-drag-region"') :]
     button = button[: button.index(">")]
     assert "chuột phải" in button  # menu tùy chọn
@@ -254,12 +267,37 @@ def test_division_switcher_precedes_operation_and_has_three_choices():
         assert removed not in html
 
 
-def test_catalog_modal_uses_svg_icon_instead_of_ca_text():
+def test_module_page_header_is_compact_with_clear_back_icon():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    icon = html[html.index('class="module-modal-icon') :]
-    icon = icon[: icon.index("</span>")]
-    assert "<svg" in icon
-    assert ">CA<" not in icon
+    header = html[html.index('class="module-page-header"') :]
+    header = header[: header.index("</header>")]
+    assert "<svg" in header
+    assert 'd="m15 18-6-6 6-6"' in header
+    assert 'class="module-modal-icon' not in html
+
+
+def test_favorites_are_before_module_search_and_setting_defaults_to_remember():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert html.index('class="favorites-section"') < html.index(
+        'class="search-box"'
+    )
+    assert 'class="module-favorite-button"' not in html
+    assert 'class="return-list-input" type="checkbox"' in html
+    favorite_button = css[
+        css.index(".module-favorite-button {") : css.index(
+            ".module-favorite-button:hover"
+        )
+    ]
+    favorites_list = css[
+        css.index(".favorites-list {") : css.index(
+            ".favorites-list .module-button"
+        )
+    ]
+    assert "place-items: center" in favorite_button
+    assert "transform: translateY(-50%)" in favorite_button
+    assert "overflow" not in favorites_list
+    assert "max-height" not in favorites_list
 
 
 def test_external_notification_and_generic_svg_icon_are_present():
@@ -393,12 +431,24 @@ def test_catalog_is_a_module_detail_page_not_a_fixed_dashboard_card():
 def test_special_module_workspaces_have_contract_hooks():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
+        'data-module-view="oc"',
+        'data-module-action="oc-list"',
+        'data-module-action="oc-search"',
+        'class="oc-query"',
+        'data-module-view="sample"',
+        'data-module-action="sample-list"',
+        'data-module-action="sample-new"',
+        'data-module-action="sample-search"',
+        'class="sample-query"',
         'data-module-view="sale_asn"',
         'data-module-action="sale-asn-list"',
         'data-module-action="sale-asn-new"',
+        'data-module-action="sale-asn-search"',
+        'class="sale-asn-query"',
         'data-module-view="supplier"',
         'class="supplier-category"',
         'class="supplier-query"',
+        'data-module-action="supplier-list"',
         'data-module-action="supplier-open"',
         'data-module-action="supplier-find"',
         'data-module-view="company_setup"',
