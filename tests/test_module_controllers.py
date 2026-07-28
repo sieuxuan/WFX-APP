@@ -56,6 +56,8 @@ def test_sample_and_sale_asn_list_enable_floating_filter():
 
 
 def test_special_module_manifests_expose_page_kinds():
+    assert module_controllers.get("0004_0050_0020").manifest()["kind"] == "oc"
+    assert module_controllers.get("0004_0056_4070").manifest()["kind"] == "sample"
     assert module_controllers.get("0004_0070_0020").manifest()["kind"] == "sale_asn"
     assert module_controllers.get("0005_0010_1290").manifest()["kind"] == "supplier"
     assert module_controllers.get("0004_0010_1720").manifest()["kind"] == "buyer"
@@ -63,3 +65,5 @@ def test_special_module_manifests_expose_page_kinds():
         module_controllers.get("0090_0007").manifest()["kind"]
         == "company_setup"
     )
+    user_indent = module_controllers.get("user_indent_list").manifest()
+    assert user_indent["xpath"] == constants.USER_INDENT_XPATH

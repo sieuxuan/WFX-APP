@@ -46,6 +46,8 @@ SESSION_OK = frozenset(
         "CATALOG_FOLDERS_SCANNED",
         "CATALOG_FOLDERS_CACHED",
         "MODULE_FILTER_READY",
+        "MODULE_SEARCH_APPLIED",
+        "SAMPLE_NEW_READY",
         "SALE_ASN_NEW_READY",
         "COMPANY_FOC_CHANGED",
         "SUPPLIER_CATEGORY_READY",
@@ -95,6 +97,14 @@ NON_REPORTABLE_FAILURES = frozenset(
         "CATALOG_FOLDER_INVALID",
         "CATALOG_FOLDER_SCAN_IN_PROGRESS",
         "CATALOG_SCAN_ACCOUNT_CHANGED",
+        "QUERY_REQUIRED",
+        "INVALID_FILTER",
+        "APPAREL_ONLY",
+        "CODE_REQUIRED",
+        "CODE_NOT_FOUND",
+        "MODULE_LIST_NOT_OPEN",
+        "BUYER_LIST_NOT_OPEN",
+        "COMPANY_LIST_NOT_OPEN",
         "ACTION_IN_PROGRESS",
         "ARTICLE_DESTINATION_UNKNOWN",
         "HOTKEY_INVALID",
@@ -173,6 +183,18 @@ class PanelAPI:
     def _account(self) -> dict:
         return self._prefs.load_account(base_dir=self._base_dir)
 
+    def _telemetry_account_context(self) -> dict:
+        account = self._account()
+        return {
+            "user_id": str(account.get("user_id") or "").strip(),
+            "company_id": str(
+                getattr(self._login, "COMPANY_ID", "") or ""
+            ).strip(),
+            "division_key": self._current_division or "",
+            "division_label": self._division_label or "",
+            "division_name": self._division_name or "",
+        }
+
     def _admin_state(self) -> dict:
         preferences = self._prefs.load_prefs(base_dir=self._base_dir)
         allowed = self._admin_access is True and bool(self._admin_module_ids)
@@ -232,6 +254,10 @@ class PanelAPI:
             ),
             "theme": preferences["theme"],
             "close_after_module": preferences["close_after_module"],
+            "return_to_list_after_action": preferences[
+                "return_to_list_after_action"
+            ],
+            "favorite_module_ids": preferences["favorite_module_ids"],
             "hotkey": preferences["hotkey"],
             "hotkey_label": preferences["hotkey_label"],
             "autostart": preferences["autostart"],
@@ -359,8 +385,13 @@ class PanelAPI:
                 "find_code",
                 "find_buyer_reference",
                 "open_sale_asn_new",
+                "open_sample_new",
+                "search_oc",
+                "search_sample",
+                "search_sale_asn",
                 "open_supplier_category",
                 "find_supplier",
+                "find_supplier_in_category",
                 "find_buyer",
                 "toggle_company_foc",
                 "switch_division",
@@ -400,6 +431,10 @@ class PanelAPI:
         )
         code = str(result.get("code") or "UNKNOWN")
         if not result.get("ok") and code not in NON_REPORTABLE_FAILURES:
+            error_context = telemetry.automation_error_context(
+                method_name,
+                result,
+            )
             telemetry.enqueue(
                 self._base_dir,
                 {
@@ -409,6 +444,8 @@ class PanelAPI:
                     "code": code,
                     "run_id": run_id,
                     "elapsed_ms": int(elapsed * 1000),
+                    **error_context,
+                    "account": self._telemetry_account_context(),
                     **telemetry.system_summary(),
                 },
             )
@@ -523,6 +560,75 @@ class PanelAPI:
 
         return self._run("open_sale_asn_new", action)
 
+    def search_oc(
+        self,
+        filter_kind: str,
+        query: str,
+    ) -> dict:
+        oc = constants.MODULE_BY_ID["0004_0050_0020"]
+        return self._run(
+            "search_oc",
+            lambda: self._login.search_oc_list(
+                oc["xpath"],
+                str(filter_kind or ""),
+                str(query or "").strip(),
+                self._log,
+            ),
+            {
+                "filter_kind": str(filter_kind or ""),
+                "query": str(query or "").strip(),
+            },
+        )
+
+    def search_sample(
+        self,
+        filter_kind: str,
+        query: str,
+    ) -> dict:
+        sample = constants.MODULE_BY_ID["0004_0056_4070"]
+        return self._run(
+            "search_sample",
+            lambda: self._login.search_sample_list(
+                sample["xpath"],
+                str(filter_kind or ""),
+                str(query or "").strip(),
+                self._log,
+            ),
+            {
+                "filter_kind": str(filter_kind or ""),
+                "query": str(query or "").strip(),
+            },
+        )
+
+    def open_sample_new(self) -> dict:
+        return self._run(
+            "open_sample_new",
+            lambda: self._login.open_sample_new(
+                constants.SAMPLE_NEW_XPATH,
+                self._log,
+            ),
+        )
+
+    def search_sale_asn(
+        self,
+        filter_kind: str,
+        query: str,
+    ) -> dict:
+        sale_asn = constants.MODULE_BY_ID["0004_0070_0020"]
+        return self._run(
+            "search_sale_asn",
+            lambda: self._login.search_sale_asn_list(
+                sale_asn["xpath"],
+                str(filter_kind or ""),
+                str(query or "").strip(),
+                self._log,
+            ),
+            {
+                "filter_kind": str(filter_kind or ""),
+                "query": str(query or "").strip(),
+            },
+        )
+
     def toggle_company_foc(self) -> dict:
         def action() -> dict:
             denied = self._admin_module_access_error("0090_0007")
@@ -583,6 +689,40 @@ class PanelAPI:
             "find_supplier",
             action,
             {"query": str(query or "").strip()},
+        )
+
+    def find_supplier_in_category(
+        self,
+        category_name: str,
+        query: str,
+    ) -> dict:
+        def action() -> dict:
+            value = constants.CATEGORIES.get(category_name)
+            if value is None:
+                return {
+                    "ok": False,
+                    "code": "CATEGORY_UNKNOWN",
+                    "message": f"Category lạ: {category_name}",
+                }
+            denied = self._admin_module_access_error("0005_0010_1290")
+            if denied is not None:
+                return denied
+            supplier = constants.MODULE_BY_ID["0005_0010_1290"]
+            return self._login.find_supplier_in_category(
+                supplier["xpath"],
+                category_name,
+                value,
+                str(query or "").strip(),
+                self._log,
+            )
+
+        return self._run(
+            "find_supplier_in_category",
+            action,
+            {
+                "category_name": category_name,
+                "query": str(query or "").strip(),
+            },
         )
 
     def find_buyer(self, query: str) -> dict:
@@ -731,6 +871,54 @@ class PanelAPI:
         saved = self._prefs.save_prefs(base_dir=self._base_dir, close_after_module=bool(value))
         return {"ok": True, "code": "PREF_SAVED", "message": "Đã lưu",
                 "close_after_module": saved["close_after_module"]}
+
+    def set_return_to_list_after_action(self, enabled: bool) -> dict:
+        saved = self._prefs.save_prefs(
+            base_dir=self._base_dir,
+            return_to_list_after_action=bool(enabled),
+        )
+        return {
+            "ok": True,
+            "code": "PREF_SAVED",
+            "message": (
+                "Sau khi thao tác xong, app sẽ trở về List."
+                if saved["return_to_list_after_action"]
+                else "App sẽ nhớ màn module đang làm."
+            ),
+            "return_to_list_after_action": saved[
+                "return_to_list_after_action"
+            ],
+        }
+
+    def set_module_favorite(self, module_id: str, favorite: bool) -> dict:
+        module_id = str(module_id or "").strip()
+        if module_id not in constants.MODULE_BY_ID:
+            return {
+                "ok": False,
+                "code": "MODULE_UNKNOWN",
+                "message": "Không tìm thấy module để ghim.",
+            }
+        preferences = self._prefs.load_prefs(base_dir=self._base_dir)
+        ids = list(preferences["favorite_module_ids"])
+        if favorite and module_id not in ids:
+            ids.append(module_id)
+        elif not favorite:
+            ids = [value for value in ids if value != module_id]
+        saved = self._prefs.save_prefs(
+            base_dir=self._base_dir,
+            favorite_module_ids=ids,
+        )
+        module_name = constants.MODULE_BY_ID[module_id]["name"]
+        return {
+            "ok": True,
+            "code": "MODULE_FAVORITE_SAVED",
+            "message": (
+                f"Đã ghim {module_name} lên đầu."
+                if favorite
+                else f"Đã bỏ ghim {module_name}."
+            ),
+            "favorite_module_ids": saved["favorite_module_ids"],
+        }
 
     def set_hotkey(self, spec: str | dict) -> dict:
         try:
@@ -916,6 +1104,7 @@ class PanelAPI:
             "kind": kind,
             "message": message,
             "app_version": APP_VERSION,
+            "account": self._telemetry_account_context(),
         }
         if include_diagnostics:
             recent = job_history.list_jobs(self._base_dir, 5)

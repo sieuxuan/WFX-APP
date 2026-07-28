@@ -40,13 +40,11 @@ def test_module_cards_do_not_repeat_group_or_workflow_subtitles():
     assert "Workflow nâng cao" not in JS
 
 
-def test_close_after_module_pref_is_consulted_after_open_module():
-    # Finding C: the toggle was persisted/restored but never read anywhere.
-    # Sau khi mở module, backend tự chọn: thu thành launcher nếu đang bám
-    # browser, hoặc ẩn xuống tray nếu không bám.
-    assert "closeAfterModule" in JS
-    assert "result.ok && closeAfterModule" in JS
-    assert "api()?.hide_panel?.()" in JS
+def test_return_to_list_is_opt_in_and_current_module_is_preserved():
+    assert "returnToListAfterAction = false" in JS
+    assert "result.ok && returnToListAfterAction" in JS
+    assert "set_return_to_list_after_action" in JS
+    assert 'if (!$(".module-page").hidden)' in JS
 
 
 def test_completed_module_actions_use_external_notifications():
@@ -70,9 +68,16 @@ def test_hotkey_can_focus_and_select_module_search():
     assert "window.wfxFocusModuleSearch = focusModuleSearch" in JS
     assert 'const input = $(".search-box input")' in JS
     assert "closeSettings();" in JS
-    assert "closeModulePage();" in JS
+    assert 'if (!$(".module-page").hidden)' in JS
     assert "input.focus();" in JS
     assert "input.select();" in JS
+
+
+def test_module_favorites_are_persisted_and_rendered_before_search():
+    assert "favoriteModuleIds" in JS
+    assert "toggleModuleFavorite" in JS
+    assert "set_module_favorite" in JS
+    assert 'class="module-favorite-button"' in JS
 
 
 def test_module_cards_render_svg_icons_instead_of_letter_codes():
@@ -150,16 +155,28 @@ def test_generic_modules_open_directly_from_the_card():
 def test_special_module_workflows_are_wired():
     for method in [
         "open_sale_asn_new",
+        "open_sample_new",
+        "search_oc",
+        "search_sample",
+        "search_sale_asn",
         "open_supplier_category",
         "find_supplier",
+        "find_supplier_in_category",
         "find_buyer",
         "toggle_company_foc",
     ]:
         assert f'"{method}"' in JS
     for action in [
+        "oc-list",
+        "oc-search",
+        "sample-list",
+        "sample-new",
+        "sample-search",
         "sale-asn-list",
         "sale-asn-new",
+        "sale-asn-search",
         "supplier-open",
+        "supplier-list",
         "supplier-find",
         "buyer-list",
         "buyer-find",
@@ -167,6 +184,9 @@ def test_special_module_workflows_are_wired():
         "company-toggle-foc",
     ]:
         assert f'"{action}"' in JS
+    assert '"supplier-list": () => selectedModule && call("open_module"' in JS
+    assert '"find_supplier_in_category"' in JS
+    assert '$(".supplier-category").value' in JS
 
 
 def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
@@ -225,9 +245,19 @@ def test_overlays_trap_focus_and_restore_it():
     assert 'addEventListener("keydown", trapOverlayFocus, true)' in JS
 
 
-def test_autohide_keeps_panel_when_input_pending():
-    assert "hasPendingUserInput" in JS
-    assert "if (busy) return;" in JS
+def test_autohide_remembers_busy_blur_and_hides_when_idle():
+    assert "hidePanelWhenIdle = true" in JS
+    assert "if (hidePanelWhenIdle)" in JS
+    assert "hasPendingUserInput" not in JS
+
+
+def test_status_only_renders_in_footer_and_log_text_is_appendable():
+    assert 'const status = $(".footer-status")' in JS
+    assert "module-page-status" not in JS
+    assert "pre.append(document.createTextNode(" in JS
+    assert "selectionInLog" in JS
+    assert "followLatest" in JS
+    assert "if (followLatest) pre.scrollTop = pre.scrollHeight" in JS
 
 
 def test_listboxes_support_arrow_key_navigation():
@@ -317,10 +347,10 @@ def test_auto_update_banner_uses_one_click_installer():
 
 
 def test_panel_auto_hides_when_focus_leaves_the_app():
-    # Click ra ngoài (blur) → panel tự thu về bubble; bỏ qua khi đang bận.
+    # Click ra ngoài (blur) → panel tự thu; nếu đang bận thì thu ngay khi xong.
     assert 'window.addEventListener("blur"' in JS
     assert "request_panel_hide" in JS
-    assert "if (busy) return;" in JS
+    assert "hidePanelWhenIdle = true" in JS
 
 
 def test_bubble_launcher_is_wired():
@@ -328,6 +358,8 @@ def test_bubble_launcher_is_wired():
     assert "toggle_panel" in BUBBLE_JS
     assert "save_bubble_position" in BUBBLE_JS
     assert "note_bubble_interaction" in BUBBLE_JS
+    assert "begin_bubble_interaction" in BUBBLE_JS
+    assert "end_bubble_interaction" in BUBBLE_JS
     assert "bubble_context_menu" in BUBBLE_JS
     assert "DRAG_THRESHOLD = 4" in BUBBLE_JS
     assert "Math.hypot" in BUBBLE_JS

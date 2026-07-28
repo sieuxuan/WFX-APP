@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260728-3">
+  <link rel="stylesheet" href="style.css?v=20260728-6">
 </head>
 <body>
   <aside class="panel" aria-label="WFX Smart Automation">
@@ -71,6 +71,14 @@
         </div>
       </section>
 
+      <section class="favorites-section" aria-label="Module yêu thích" hidden>
+        <div class="favorites-heading">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg>
+          <span>Yêu thích</span>
+        </div>
+        <div class="favorites-list"></div>
+      </section>
+
       <label class="search-box">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
         <input type="search" aria-label="Tìm module" placeholder="Tìm nhanh module..." autocomplete="off" />
@@ -102,9 +110,6 @@
             <span>Quay lại</span>
           </button>
           <div class="module-modal-identity">
-            <span class="module-modal-icon accent-cyan" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M4.5 7.5h6l1.8 2H19.5v9h-15v-11Z"/><path d="m9 14 2 2 4-5"/></svg>
-            </span>
             <div class="module-modal-heading">
               <strong id="module-page-title">Catalog</strong>
               <span class="module-modal-subtitle">Tìm style, mở Costing hoặc BOM.</span>
@@ -183,6 +188,47 @@
           </div>
         </div>
 
+        <div class="special-module-workspace" data-module-view="oc" hidden>
+          <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="oc-list">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+            <span><strong>List</strong><small>Mở OC List hiện tại</small></span>
+          </button>
+          <div class="module-search-block">
+            <div class="segmented module-filter-kind" role="group" aria-label="Tìm OC theo">
+              <button type="button" class="seg-button module-filter-button" data-filter-group="oc" data-filter-kind="oc_no" aria-pressed="true">OC No.</button>
+              <button type="button" class="seg-button module-filter-button" data-filter-group="oc" data-filter-kind="style" aria-pressed="false">Style</button>
+            </div>
+            <div class="module-query-row">
+              <input class="oc-query" type="text" autocomplete="off" placeholder="Nhập OC No." aria-label="Nội dung tìm OC" />
+              <button type="button" class="special-primary-button" data-module-action="oc-search">Tìm</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="special-module-workspace" data-module-view="sample" hidden>
+          <div class="workflow-choice-grid">
+            <button type="button" class="workflow-choice" data-module-action="sample-list">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+              <span><strong>List</strong><small>Mở danh sách và bật Floating Filter</small></span>
+            </button>
+            <button type="button" class="workflow-choice" data-module-action="sample-new">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <span><strong>New</strong><small>Mở New Sample Order</small></span>
+            </button>
+          </div>
+          <div class="module-search-block">
+            <div class="segmented module-filter-kind module-filter-kind-three" role="group" aria-label="Tìm Sample theo">
+              <button type="button" class="seg-button module-filter-button" data-filter-group="sample" data-filter-kind="sample_no" aria-pressed="true">Sample Order No.</button>
+              <button type="button" class="seg-button module-filter-button" data-filter-group="sample" data-filter-kind="style" aria-pressed="false">Style</button>
+              <button type="button" class="seg-button module-filter-button" data-filter-group="sample" data-filter-kind="created_by" aria-pressed="false">Created By</button>
+            </div>
+            <div class="module-query-row">
+              <input class="sample-query" type="text" autocomplete="off" placeholder="Nhập Sample Order No." aria-label="Nội dung tìm Sample" />
+              <button type="button" class="special-primary-button" data-module-action="sample-search">Tìm</button>
+            </div>
+          </div>
+        </div>
+
         <div class="special-module-workspace" data-module-view="sale_asn" hidden>
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="sale-asn-list">
@@ -194,11 +240,25 @@
               <span><strong>New</strong><small>With GDN · Buyer Order Dispatch</small></span>
             </button>
           </div>
+          <div class="module-search-block">
+            <div class="segmented module-filter-kind" role="group" aria-label="Tìm Sale ASN theo">
+              <button type="button" class="seg-button module-filter-button" data-filter-group="sale_asn" data-filter-kind="invoice_no" aria-pressed="true">Invoice No.</button>
+              <button type="button" class="seg-button module-filter-button" data-filter-group="sale_asn" data-filter-kind="style" aria-pressed="false">Style</button>
+            </div>
+            <div class="module-query-row">
+              <input class="sale-asn-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Nội dung tìm Sale ASN" />
+              <button type="button" class="special-primary-button" data-module-action="sale-asn-search">Tìm</button>
+            </div>
+          </div>
         </div>
 
         <div class="special-module-workspace" data-module-view="supplier" hidden>
+          <div class="special-section supplier-list-step">
+            <span class="supplier-step-copy"><strong>1. Mở Supplier List</strong><small>Chỉ cần mở một lần trước khi đổi Category.</small></span>
+            <button type="button" class="special-primary-button" data-module-action="supplier-list">Mở List</button>
+          </div>
           <div class="special-section">
-            <label><span>Category</span>
+            <label><span>2. Category</span>
               <select class="supplier-category">
                 <option value="Apparel">Apparel</option>
                 <option value="Fixed Asset">Fixed Asset</option>
@@ -208,10 +268,10 @@
                 <option value="Trims">Trims</option>
               </select>
             </label>
-            <button type="button" class="special-primary-button" data-module-action="supplier-open">Mở Category · Master</button>
+            <button type="button" class="special-primary-button" data-module-action="supplier-open">Đổi Category · mở Master</button>
           </div>
           <div class="special-section special-search-section">
-            <label><span>Find Supplier</span><input class="supplier-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
+            <label><span>3. Tìm tên công ty</span><input class="supplier-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
             <button type="button" class="special-primary-button" data-module-action="supplier-find">Tìm tất cả Category</button>
           </div>
         </div>
@@ -250,7 +310,6 @@
           <p>Module sẽ được mở trong phiên trình duyệt automation hiện tại.</p>
           <button class="primary-button generic-module-open" type="button"><span>Mở module trên WFX</span></button>
         </div>
-        <div class="module-page-status" aria-live="polite"></div>
       </section>
     </div>
 
@@ -302,7 +361,7 @@
         <section class="settings-panel settings-automation-panel" data-settings-panel="automation">
           <div class="settings-section-heading"><span>Thao tác tự động</span><small>Điều chỉnh cách panel phối hợp với WFX và Windows</small></div>
           <div class="setting-row hotkey-row"><div><strong>Hotkey mở panel</strong><span>Bấm nút rồi nhấn tổ hợp mới</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
-          <label class="setting-row toggle-row"><div><strong>Đóng panel sau khi mở module</strong><span>Tự thu thành icon để không che WFX</span></div><input class="close-module-input" type="checkbox" checked /><i></i></label>
+          <label class="setting-row toggle-row"><div><strong>Trở về List sau khi thao tác</strong><span>Tắt để nhớ màn đang làm và tiếp tục ở lần mở sau</span></div><input class="return-list-input" type="checkbox" /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Đưa Chrome lên khi chạy module</strong><span>Mặc định chuyển ngay sang cửa sổ WFX</span></div><input class="focus-chrome-input" type="checkbox" checked /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Khởi động cùng Windows</strong><span>Sẵn sàng ngay khi bạn đăng nhập máy</span></div><input class="autostart-input" type="checkbox" /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Mở ẩn trong tray</strong><span>Khởi động yên lặng, gọi bằng hotkey</span></div><input class="start-hidden-input" type="checkbox" /><i></i></label>
@@ -370,6 +429,6 @@
       </div>
     </div>
   </aside>
-  <script src="panel.js?v=20260728-4"></script>
+  <script src="panel.js?v=20260728-9"></script>
 </body>
 </html>

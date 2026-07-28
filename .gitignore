@@ -8,3 +8,5 @@ __pycache__/
 # PyInstaller build output (wfx_panel/wfx-panel.spec itself IS source, keep it)
 /build/
 /dist/
+/build-next/
+/dist-next/

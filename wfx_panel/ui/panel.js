@@ -3,11 +3,12 @@
   let MODULE_GROUPS = [
     { name: "Operation", accent: "cyan", modules: [
       { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm style, kiểm tra Season/CostSheet và mở BOM hoặc Costsheet." },
-      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "generic", description: "Theo dõi và mở danh sách Order Confirmation." },
-      { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "generic", description: "Tra cứu và thao tác danh sách sample." },
+      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở OC List hoặc tìm theo OC No. và Style." },
+      { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
       { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn." },
       { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "generic", description: "Theo dõi đơn mua nguyên phụ liệu." },
       { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "generic", description: "Mở danh sách Indent." },
+      { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "generic", description: "Mở User Indent List." },
       { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "generic", description: "Mở danh sách kiểm tra chất lượng." },
     ]},
     { name: "Finance", accent: "violet", modules: [
@@ -39,6 +40,7 @@
     AS: '<path d="M3 6h11v11H3V6Z"/><path d="M14 10h4l3 3v4h-7v-7Z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
     RM: '<path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/><path d="m9 14 2 2 4-4"/>',
     IN: '<path d="M4 5h16v14H4V5Z"/><path d="M4 14h4l2 3h4l2-3h4"/><path d="M12 3v8m0 0-3-3m3 3 3-3"/>',
+    UI: '<path d="M5 4h14v16H5V4Z"/><circle cx="9" cy="10" r="2"/><path d="M6.5 16a2.5 2.5 0 0 1 5 0M14 9h3M14 13h3"/>',
     QA: '<path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-5"/>',
     PR: '<path d="M4 7h16v11H4V7Z"/><path d="M7 7V5h8v2M15 12h5"/><path d="m17 10 3 2-3 2"/>',
     SI: '<path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
@@ -58,7 +60,9 @@
   // của các automation (login + grid settle + filter + mở đích ~ trên phút).
   const CALL_WATCHDOG_MS = 180000;
   let busy = false;
-  let closeAfterModule = true;
+  let hidePanelWhenIdle = false;
+  let returnToListAfterAction = false;
+  let favoriteModuleIds = new Set();
   let hotkeyLabel = "Ctrl + Shift + X";
   let selectedModule = null;
   let jobs = [];
@@ -82,10 +86,17 @@
   let catalogFolderSaving = false;
   let catalogFolderScanGeneration = 0;
   let catalogFolderEditorOpen = false;
+  const moduleFilterKinds = {
+    oc: "oc_no",
+    sample: "sample_no",
+    sale_asn: "invoice_no",
+  };
   const MODULE_RUN_METHODS = new Set([
     "open_module", "prepare_catalog", "find_code", "find_buyer_reference",
     "open_catalog_destination", "browse_catalog", "catalog_action",
-    "open_sale_asn_new", "open_supplier_category", "find_supplier", "find_buyer",
+    "open_sale_asn_new", "open_sample_new", "search_oc", "search_sample",
+    "search_sale_asn", "open_supplier_category", "find_supplier",
+    "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
   ]);
   const BUSY_MESSAGES = {
@@ -98,8 +109,13 @@
     open_catalog_destination: "Đang mở dữ liệu style…",
     download_catalog_file: "Đang tải file đính kèm…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
+    open_sample_new: "Đang mở Sample Order mới…",
+    search_oc: "Đang tìm OC…",
+    search_sample: "Đang tìm Sample…",
+    search_sale_asn: "Đang tìm Sale ASN…",
     open_supplier_category: "Đang mở Supplier…",
     find_supplier: "Đang tìm Supplier…",
+    find_supplier_in_category: "Đang tìm Supplier trong Category…",
     find_buyer: "Đang tìm Buyer…",
     toggle_company_foc: "Đang đổi và lưu cấu hình FOC…",
     switch_division: "Đang đổi Division…",
@@ -120,8 +136,13 @@
     open_catalog_destination: "Mở Costing / BOM",
     download_catalog_file: "Tải file đính kèm",
     open_sale_asn_new: "Sale ASN mới",
+    open_sample_new: "Sample Order mới",
+    search_oc: "Tìm OC",
+    search_sample: "Tìm Sample",
+    search_sale_asn: "Tìm Sale ASN",
     open_supplier_category: "Mở Supplier",
     find_supplier: "Tìm Supplier",
+    find_supplier_in_category: "Tìm Supplier theo Category",
     find_buyer: "Tìm Buyer",
     toggle_company_foc: "Đổi FOC Company Setup",
     switch_division: "Đổi Division",
@@ -143,20 +164,65 @@
     });
   }
 
+  function moduleCard(module, group) {
+    const isFavorite = favoriteModuleIds.has(module.id);
+    const search = `${module.name} ${group.name} ${
+      module.description || ""
+    }`.toLowerCase();
+    return `
+      <div class="module-card" data-module-card="${escapeHtml(module.id)}">
+        <button class="module-button module--${escapeHtml(module.kind || "generic")} module--${escapeHtml(group.name.toLowerCase())}" type="button"
+          data-module-id="${escapeHtml(module.id)}"
+          data-search="${escapeHtml(search)}">
+          <span class="module-icon accent-${escapeHtml(group.accent)}">${moduleIconSvg(module.icon)}</span>
+          <span class="module-copy"><span class="module-name">${escapeHtml(module.name)}</span></span>
+        </button>
+        <button class="module-favorite-button" type="button"
+          data-favorite-module-id="${escapeHtml(module.id)}"
+          aria-label="${isFavorite ? "Bỏ ghim" : "Ghim"} ${escapeHtml(module.name)}"
+          aria-pressed="${String(isFavorite)}"
+          title="${isFavorite ? "Bỏ khỏi Yêu thích" : "Ghim lên đầu"}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg>
+        </button>
+      </div>`;
+  }
+
   function buildModules() {
     $(".module-list").innerHTML = visibleModuleGroups().map((group) => `
       <section class="module-group" data-group="${escapeHtml(group.name)}">
         <div class="group-heading"><span class="group-accent accent-${escapeHtml(group.accent)}"></span><span>${escapeHtml(group.name)}</span><span class="group-count">${group.modules.length}</span></div>
-        <div class="module-grid">${group.modules.map((module) => `
-          <button class="module-button module--${escapeHtml(module.kind || "generic")} module--${escapeHtml(group.name.toLowerCase())}" type="button"
-            data-module-id="${escapeHtml(module.id)}"
-            data-search="${escapeHtml(`${module.name} ${group.name} ${module.description || ""}`.toLowerCase())}">
-            <span class="module-icon accent-${escapeHtml(group.accent)}">${moduleIconSvg(module.icon)}</span>
-            <span class="module-copy"><span class="module-name">${escapeHtml(module.name)}</span></span>
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5-5 5"/></svg>
-          </button>`).join("")}</div>
+        <div class="module-grid">${group.modules.map(
+          (module) => moduleCard(module, group)
+        ).join("")}</div>
       </section>`).join("");
+    const modulesById = new Map(
+      allModules().map((module) => [module.id, module]),
+    );
+    const favorites = [...favoriteModuleIds]
+      .map((moduleId) => modulesById.get(moduleId))
+      .filter(Boolean);
+    $(".favorites-list").innerHTML = favorites.map((module) =>
+      moduleCard(module, { name: module.group, accent: module.accent })
+    ).join("");
+    $(".favorites-section").hidden = favorites.length === 0;
     filterModules($(".search-box input")?.value || "");
+  }
+
+  async function toggleModuleFavorite(moduleId) {
+    if (!moduleId) return;
+    const wanted = !favoriteModuleIds.has(moduleId);
+    const result = await callQuiet("set_module_favorite", moduleId, wanted);
+    if (!result?.ok) {
+      setStatus("error", result?.message || "Không lưu được module yêu thích.");
+      return;
+    }
+    favoriteModuleIds = new Set(
+      Array.isArray(result.favorite_module_ids)
+        ? result.favorite_module_ids.map(String)
+        : [],
+    );
+    buildModules();
+    setStatus("success", result.message || "Đã cập nhật module yêu thích.");
   }
 
   function setBusy(value, message = "Đang xử lý trên WFX…") {
@@ -233,16 +299,6 @@
     }
   }
 
-  // #7 Không tự thu panel nếu người dùng đang có nội dung chưa lưu trong overlay.
-  function hasPendingUserInput() {
-    const container = activeOverlay()
-      || (!$(".module-page")?.hidden ? $(".module-page") : null);
-    if (!container) return false;
-    return [...container.querySelectorAll(
-      'input[type="text"], input[type="search"], input[type="password"], textarea'
-    )].some((field) => field.value && field.value.trim() !== "");
-  }
-
   let overlayReturnFocus = null;
   let moduleReturnFocus = null;
 
@@ -253,9 +309,22 @@
       return;
     }
     closeSettings();
-    closeModulePage();
     $(".log-overlay").classList.remove("log-open");
     feedbackOverlay().classList.remove("feedback-open");
+    if (!$(".module-page").hidden) {
+      const focusTarget = {
+        catalog: ".catalog-query",
+        oc: ".oc-query",
+        sample: ".sample-query",
+        sale_asn: '[data-module-action="sale-asn-list"]',
+        supplier: ".supplier-query",
+        buyer: ".buyer-query",
+        company_setup: '[data-module-action="company-list"]',
+        generic: ".generic-module-open",
+      }[selectedModule?.kind] || ".module-back-button";
+      $(focusTarget)?.focus();
+      return;
+    }
     const input = $(".search-box input");
     input.focus();
     input.select();
@@ -266,10 +335,6 @@
     const status = $(".footer-status");
     status.dataset.tone = tone || "neutral";
     $(".footer-status-text").textContent = label || "";
-    const pageStatus = $(".module-page-status");
-    if (pageStatus && !$(".module-page").hidden) {
-      pageStatus.textContent = label || "";
-    }
   }
   window.wfxSetStatus = setStatus;
 
@@ -350,9 +415,26 @@
 
   function pushLog(line) {
     const pre = $(".catalog-log");
-    const current = pre.textContent === "Chưa có nhật ký hệ thống." ? "" : pre.textContent;
-    pre.textContent = (current ? `${current}\n` : "") + line;
-    pre.scrollTop = pre.scrollHeight;
+    const selection = window.getSelection?.();
+    const selectionInLog = Boolean(
+      selection
+      && !selection.isCollapsed
+      && (
+        pre.contains(selection.anchorNode)
+        || pre.contains(selection.focusNode)
+      ),
+    );
+    const followLatest = (
+      pre.scrollHeight - pre.scrollTop - pre.clientHeight <= 28
+      && !selectionInLog
+    );
+    if (pre.textContent === "Chưa có nhật ký hệ thống.") {
+      pre.textContent = "";
+    }
+    pre.append(document.createTextNode(
+      `${pre.textContent ? "\n" : ""}${line}`,
+    ));
+    if (followLatest) pre.scrollTop = pre.scrollHeight;
     if (/(?:ERROR|FAILED|TIMEOUT)/i.test(line) && !$(".log-overlay").classList.contains("log-open")) {
       $(".log-button").classList.add("has-alert");
     }
@@ -775,6 +857,10 @@
     } finally {
       window.clearTimeout(watchdog);
       setBusy(false);
+      if (hidePanelWhenIdle) {
+        hidePanelWhenIdle = false;
+        window.setTimeout(() => api()?.request_panel_hide?.(), 60);
+      }
     }
   }
 
@@ -800,9 +886,6 @@
       moduleReturnFocus = document.activeElement;
     }
     selectedModule = module;
-    const icon = $(".module-modal-icon");
-    icon.className = `module-modal-icon accent-${module.accent}`;
-    icon.innerHTML = moduleIconSvg(module.icon);
     $("#module-page-title").textContent = module.name;
     $(".module-modal-subtitle").textContent =
       module.description || "Mở màn hình WFX.";
@@ -810,13 +893,14 @@
       view.hidden = view.dataset.moduleView !== module.kind;
     });
     $(".generic-module-icon").innerHTML = moduleIconSvg(module.icon);
-    $(".module-page-status").textContent = "";
     const page = $(".module-page");
     $(".panel-body").hidden = true;
     page.hidden = false;
     page.setAttribute("aria-hidden", "false");
     const focusTarget = {
       catalog: ".catalog-query",
+      oc: ".oc-query",
+      sample: ".sample-query",
       sale_asn: '[data-module-action="sale-asn-list"]',
       supplier: ".supplier-category",
       buyer: '[data-module-action="buyer-list"]',
@@ -849,8 +933,8 @@
       "MULTIPLE_RESULTS",
       "CATALOG_FILES_SCANNED",
     ].includes(result.code)) return;
-    if (result && result.ok && closeAfterModule) {
-      window.setTimeout(() => api()?.hide_panel?.(), 120);
+    if (result && result.ok && returnToListAfterAction) {
+      closeModulePage();
     }
   }
 
@@ -872,11 +956,66 @@
     return result;
   }
 
+  const moduleFilterPlaceholders = {
+    oc: {
+      oc_no: "Nhập OC No.",
+      style: "Nhập Style",
+    },
+    sample: {
+      sample_no: "Nhập Sample Order No.",
+      style: "Nhập Style",
+      created_by: "Nhập Created By",
+    },
+    sale_asn: {
+      invoice_no: "Nhập Invoice No.",
+      style: "Nhập Style",
+    },
+  };
+
+  function setModuleFilterKind(group, kind) {
+    if (!moduleFilterPlaceholders[group]?.[kind]) return;
+    moduleFilterKinds[group] = kind;
+    $$(`.module-filter-button[data-filter-group="${group}"]`).forEach(
+      (button) => button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.filterKind === kind),
+      ),
+    );
+    const input = $(`.${group.replace("_", "-")}-query`);
+    if (input) {
+      input.placeholder = moduleFilterPlaceholders[group][kind];
+      input.focus();
+    }
+  }
+
   const moduleActions = {
+    "oc-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "oc-search": () => runSelectedModuleAction(
+      "search_oc",
+      moduleFilterKinds.oc,
+      $(".oc-query").value.trim(),
+    ),
+    "sample-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "sample-new": () => runSelectedModuleAction("open_sample_new"),
+    "sample-search": () => runSelectedModuleAction(
+      "search_sample",
+      moduleFilterKinds.sample,
+      $(".sample-query").value.trim(),
+    ),
     "sale-asn-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "sale-asn-new": () => runSelectedModuleAction("open_sale_asn_new"),
-    "supplier-open": () => runSelectedModuleAction("open_supplier_category", $(".supplier-category").value),
-    "supplier-find": () => runSelectedModuleAction("find_supplier", $(".supplier-query").value.trim()),
+    "sale-asn-search": () => runSelectedModuleAction(
+      "search_sale_asn",
+      moduleFilterKinds.sale_asn,
+      $(".sale-asn-query").value.trim(),
+    ),
+    // Supplier là luồng 3 bước; giữ panel mở để người dùng tiếp tục bước kế.
+    "supplier-list": () => selectedModule && call("open_module", selectedModule.id),
+    "supplier-open": () => call("open_supplier_category", $(".supplier-category").value),
+    "supplier-find": () => runSelectedModuleAction(
+      "find_supplier",
+      $(".supplier-query").value.trim(),
+    ),
     "buyer-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "buyer-find": () => runSelectedModuleAction("find_buyer", $(".buyer-query").value.trim()),
     "company-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
@@ -1172,7 +1311,7 @@
     $(".catalog-folder-list").innerHTML =
       '<div class="catalog-folder-empty">Đang tải danh sách…</div>';
     $(".catalog-folder-list").setAttribute("aria-busy", "true");
-    $(".module-page-status").textContent = "Đang tải folder…";
+    setStatus("neutral", "Đang tải folder…");
     syncCatalogStepButtons();
     const result = await callQuiet(
       "scan_catalog_folders",
@@ -1187,16 +1326,17 @@
         catalogDefaultFolder = result.default_folder;
       }
       renderCatalogFolders(category, result.folders, catalogDefaultFolder);
-      $(".module-page-status").textContent =
-        "Chọn folder hoặc group bạn thường dùng.";
+      setStatus("success", "Chọn folder hoặc group bạn thường dùng.");
     } else {
       $(".catalog-folder-list").innerHTML =
         '<div class="catalog-folder-empty">Chưa tải được folder.'
         + '<br><button class="catalog-folder-retry" type="button" '
         + 'data-folder-retry>Thử tải lại</button></div>';
       $(".catalog-folder-list").setAttribute("aria-busy", "false");
-      $(".module-page-status").textContent =
-        result?.message || "Chưa tải được folder Catalog.";
+      setStatus(
+        "error",
+        result?.message || "Chưa tải được folder Catalog.",
+      );
       syncCatalogStepButtons();
     }
   }
@@ -1209,7 +1349,6 @@
     );
     if (result) {
       handleResult(result);
-      $(".module-page-status").textContent = result.message || "";
     }
     return result;
   }
@@ -1384,9 +1523,10 @@
     let visibleTotal = 0;
     $$(".module-group").forEach((group) => {
       let visible = 0;
-      group.querySelectorAll(".module-button").forEach((button) => {
+      group.querySelectorAll(".module-card").forEach((card) => {
+        const button = card.querySelector(".module-button");
         const match = !normalized || button.dataset.search.includes(normalized);
-        button.hidden = !match;
+        card.hidden = !match;
         if (match) visible += 1;
       });
       group.hidden = visible === 0;
@@ -1464,7 +1604,37 @@
     bindListboxKeys($(".catalog-folder-list"));
     $$("[data-module-action]").forEach((button) =>
       button.addEventListener("click", () => moduleActions[button.dataset.moduleAction]?.()));
+    $$(".module-filter-button").forEach((button) =>
+      button.addEventListener("click", () => setModuleFilterKind(
+        button.dataset.filterGroup,
+        button.dataset.filterKind,
+      )));
     $(".module-list").addEventListener("click", (event) => {
+      const favorite = event.target.closest(".module-favorite-button");
+      if (favorite) {
+        toggleModuleFavorite(favorite.dataset.favoriteModuleId);
+        return;
+      }
+      const button = event.target.closest(".module-button");
+      if (!button) return;
+      const module = allModules().find(
+        (item) => item.id === button.dataset.moduleId,
+      );
+      if (module?.kind === "generic") {
+        withButtonLoading(
+          button,
+          () => openModuleDirect(button.dataset.moduleId),
+        );
+        return;
+      }
+      openModulePage(button.dataset.moduleId);
+    });
+    $(".favorites-list").addEventListener("click", (event) => {
+      const favorite = event.target.closest(".module-favorite-button");
+      if (favorite) {
+        toggleModuleFavorite(favorite.dataset.favoriteModuleId);
+        return;
+      }
       const button = event.target.closest(".module-button");
       if (!button) return;
       const module = allModules().find(
@@ -1480,15 +1650,19 @@
       openModulePage(button.dataset.moduleId);
     });
     $(".module-back-button").addEventListener("click", closeModulePage);
+    $(".oc-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["oc-search"](); });
+    $(".sample-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["sample-search"](); });
+    $(".sale-asn-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["sale-asn-search"](); });
     $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["supplier-find"](); });
     $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["buyer-find"](); });
     // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble.
     // Bỏ qua khi đang chạy module (busy) để panel không biến mất giữa chừng;
     // backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.
     window.addEventListener("blur", () => {
-      if (busy) return;
-      // Đang gõ dở Style Code/góp ý/tài khoản mà lỡ click sang WFX thì giữ panel.
-      if (hasPendingUserInput()) return;
+      if (busy) {
+        hidePanelWhenIdle = true;
+        return;
+      }
       window.setTimeout(() => api()?.request_panel_hide?.(), 130);
     });
     window.addEventListener("keydown", trapOverlayFocus, true);
@@ -1502,7 +1676,6 @@
       hideCatalogResults();
       catalogFolderEditorOpen = false;
       $(".catalog-folder-search").value = "";
-      $(".module-page-status").textContent = "";
       syncCatalogStepButtons();
     });
     $(".catalog-folder-summary").addEventListener("click", () => {
@@ -1646,9 +1819,17 @@
           result.division_name
         );
       }));
-    $(".close-module-input").addEventListener("change", (event) => {
-      closeAfterModule = event.target.checked;
-      api()?.set_close_after_module?.(closeAfterModule);
+    $(".return-list-input").addEventListener("change", async (event) => {
+      returnToListAfterAction = event.target.checked;
+      const result = await callQuiet(
+        "set_return_to_list_after_action",
+        returnToListAfterAction,
+      );
+      if (result?.return_to_list_after_action !== undefined) {
+        returnToListAfterAction =
+          result.return_to_list_after_action === true;
+        event.target.checked = returnToListAfterAction;
+      }
     });
     const hotkeyButton = $(".hotkey-button");
     hotkeyButton.addEventListener("click", () => {
@@ -1816,8 +1997,15 @@
     setAccount(state.user_id);
     hasCredentials = state.has_credentials === true;
     applyTheme(state.theme);
-    closeAfterModule = state.close_after_module !== false;
-    $(".close-module-input").checked = closeAfterModule;
+    returnToListAfterAction =
+      state.return_to_list_after_action === true;
+    $(".return-list-input").checked = returnToListAfterAction;
+    favoriteModuleIds = new Set(
+      Array.isArray(state.favorite_module_ids)
+        ? state.favorite_module_ids.map(String)
+        : [],
+    );
+    buildModules();
     if (state.hotkey_label) {
       hotkeyLabel = state.hotkey_label;
       resetHotkeyButton();

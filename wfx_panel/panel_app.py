@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import threading
 import time
@@ -13,10 +12,11 @@ import pystray
 import webview
 from PIL import Image
 
-from wfx_panel import hotkey, prefs, status, updater
+from wfx_panel import crash_log, hotkey, prefs, status, updater
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
+from wfx_panel.version import APP_VERSION
 from wfx_panel.win32_window import (
     BUBBLE_WINDOW_TITLE,
     MAIN_WINDOW_TITLE,
@@ -30,6 +30,7 @@ from wfx_panel.win32_window import (
     _foreground_window_hwnd,
     _native_compact_context_choice,
     _native_notification_visibility,
+    _native_window_visibility,
     _scale_logical_size,
     _set_bounds_by_title,
     _set_process_window_bounds,
@@ -79,8 +80,13 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "open_catalog_destination",
         "download_catalog_file",
         "open_sale_asn_new",
+        "open_sample_new",
+        "search_oc",
+        "search_sample",
+        "search_sale_asn",
         "open_supplier_category",
         "find_supplier",
+        "find_supplier_in_category",
         "find_buyer",
         "toggle_company_foc",
     }
@@ -95,25 +101,27 @@ NOTIFICATION_ACTION_LABELS = {
     "open_catalog_destination": "Catalog",
     "download_catalog_file": "Tải file",
     "open_sale_asn_new": "Sale ASN",
+    "open_sample_new": "Sample",
+    "search_oc": "Tìm OC",
+    "search_sample": "Tìm Sample",
+    "search_sale_asn": "Tìm Sale ASN",
     "open_supplier_category": "Supplier",
     "find_supplier": "Tìm Supplier",
+    "find_supplier_in_category": "Tìm Supplier",
     "find_buyer": "Tìm Buyer",
     "toggle_company_foc": "Company Setup · FOC",
 }
 
 
 def _reveal_downloaded_file(value: object) -> bool:
-    """Mở Explorer và chọn đúng file vừa tải, không làm hỏng result flow."""
+    """Mở chính xác thư mục chứa file vừa tải, không phụ thuộc phần mở rộng."""
     if os.name != "nt":
         return False
     try:
         target = Path(str(value or "")).resolve()
         if not target.is_file():
             return False
-        subprocess.Popen(
-            ["explorer.exe", f"/select,{target}"],
-            close_fds=True,
-        )
+        os.startfile(target.parent)  # type: ignore[attr-defined]
         return True
     except (OSError, ValueError):
         return False
@@ -247,6 +255,12 @@ class _BubbleBridge:
     def note_bubble_interaction(self) -> dict:
         return self._app.note_bubble_interaction()
 
+    def begin_bubble_interaction(self) -> dict:
+        return self._app.begin_bubble_interaction()
+
+    def end_bubble_interaction(self) -> dict:
+        return self._app.end_bubble_interaction()
+
     def bubble_context_menu(self) -> dict:
         return self._app.bubble_context_menu()
 
@@ -281,6 +295,8 @@ class PanelApp:
         )
         self._bubble_size_thread: threading.Thread | None = None
         self._bubble_direct_action_until = 0.0
+        self._bubble_pointer_down = False
+        self._bubble_pointer_started = 0.0
         self._taskbar_focus_armed = False
         self._taskbar_opening = False
         self._notification_ready = threading.Event()
@@ -334,7 +350,11 @@ class PanelApp:
             pass
 
     def hide_panel(self):
-        if self.window is not None and self._panel_visible:
+        if (
+            self.window is not None
+            and self._panel_visible
+            and not _native_window_visibility(MAIN_WINDOW_TITLE, False)
+        ):
             try:
                 self.window.hide()
             except Exception:
@@ -351,19 +371,29 @@ class PanelApp:
             }
         try:
             if not self._panel_visible:
-                try:
-                    self.window.show()
-                except Exception:
-                    pass
+                if not _native_window_visibility(
+                    MAIN_WINDOW_TITLE,
+                    True,
+                    on_top=self._always_on_top,
+                ):
+                    try:
+                        self.window.show()
+                    except Exception:
+                        pass
                 self._panel_visible = True
             # Đặt bounds sau khi show để Win32 chắc chắn thấy HWND panel và
             # dùng cùng hệ toạ độ physical với bubble (quan trọng khi DPI khác
             # nhau giữa hai màn hình).
             self._position_panel_beside_bubble()
-            try:
-                self.window.on_top = self._always_on_top
-            except Exception:
-                pass
+            if not _native_window_visibility(
+                MAIN_WINDOW_TITLE,
+                True,
+                on_top=self._always_on_top,
+            ):
+                try:
+                    self.window.on_top = self._always_on_top
+                except Exception:
+                    pass
             _bring_process_window_to_front(on_top=self._always_on_top)
             self._focus_module_search()
             return {
@@ -460,6 +490,34 @@ class PanelApp:
         )
         return {"ok": True, "code": "BUBBLE_INTERACTION_NOTED"}
 
+    def begin_bubble_interaction(self) -> dict:
+        """Giữ taskbar monitor đứng yên trong suốt thao tác click/kéo."""
+        self._bubble_pointer_down = True
+        self._bubble_pointer_started = time.monotonic()
+        self._taskbar_focus_armed = False
+        crash_log.record("BUBBLE_INTERACTION_BEGIN")
+        return {"ok": True, "code": "BUBBLE_INTERACTION_STARTED"}
+
+    def end_bubble_interaction(self) -> dict:
+        self._bubble_pointer_down = False
+        self._bubble_pointer_started = 0.0
+        self._bubble_direct_action_until = (
+            time.monotonic() + BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS
+        )
+        crash_log.record("BUBBLE_INTERACTION_END")
+        return {"ok": True, "code": "BUBBLE_INTERACTION_ENDED"}
+
+    def _bubble_interaction_active(self) -> bool:
+        if not self._bubble_pointer_down:
+            return False
+        # Fail-safe nếu WebView2 nuốt mouseup/blur trong một native move-loop.
+        if time.monotonic() - self._bubble_pointer_started <= 30.0:
+            return True
+        self._bubble_pointer_down = False
+        self._bubble_pointer_started = 0.0
+        crash_log.record("BUBBLE_INTERACTION_TIMEOUT")
+        return False
+
     def save_bubble_position(self) -> dict:
         """Lưu vị trí sau native pywebview drag và giữ bubble trong màn hình."""
         rect = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
@@ -526,7 +584,14 @@ class PanelApp:
 
     def show_from_tray(self) -> None:
         """Bật lại bubble (và mở panel) từ khay hệ thống."""
-        if self.bubble_window is not None:
+        if (
+            self.bubble_window is not None
+            and not _native_window_visibility(
+                BUBBLE_WINDOW_TITLE,
+                True,
+                on_top=self._always_on_top,
+            )
+        ):
             try:
                 self.bubble_window.show()
                 self.bubble_window.on_top = self._always_on_top
@@ -665,6 +730,15 @@ class PanelApp:
             path_label = str(folder.get("path_label") or "").strip()
             if path_label:
                 details.append(path_label)
+        categories = result.get("categories")
+        if isinstance(categories, list) and categories:
+            details.append(
+                "Category: "
+                + ", ".join(str(value) for value in categories[:3])
+                + ("…" if len(categories) > 3 else "")
+            )
+        elif result.get("category"):
+            details.append(f"Category: {result['category']}")
         if elapsed is not None:
             details.append(
                 "< 1 giây"
@@ -719,8 +793,15 @@ class PanelApp:
 
     def _apply_always_on_top(self, enabled: bool) -> None:
         self._always_on_top = bool(enabled)
-        for window in (self.window, self.bubble_window):
-            if window is not None:
+        for title, window in (
+            (MAIN_WINDOW_TITLE, self.window),
+            (BUBBLE_WINDOW_TITLE, self.bubble_window),
+        ):
+            if window is not None and not _native_window_visibility(
+                    title,
+                    True,
+                    on_top=self._always_on_top,
+                ):
                 try:
                     window.on_top = self._always_on_top
                 except Exception:
@@ -835,21 +916,28 @@ class PanelApp:
         if (
             self._taskbar_opening
             or self._bubble_hidden
+            or self._bubble_interaction_active()
             or time.monotonic() < self._bubble_direct_action_until
         ):
             return
         self._taskbar_opening = True
+        crash_log.record("TASKBAR_OPEN_BEGIN")
+        completed = threading.Event()
+        threading.Thread(
+            target=crash_log.watch_for_hang,
+            args=(completed, "TASKBAR_OPEN_HANG"),
+            daemon=True,
+        ).start()
         try:
-            if self.bubble_window is not None:
-                try:
-                    self.bubble_window.restore()
-                    self.bubble_window.show()
-                except Exception:
-                    pass
+            # Bubble đang visible vì _bubble_hidden đã được guard ở trên.
+            # Không gọi restore/show qua WinForms Invoke từ thread monitor:
+            # thao tác đó từng gây AppHangB1 khi trùng native drag/input-loop.
             self._schedule_bubble_native_bounds()
             self.show_panel()
         finally:
+            completed.set()
             self._taskbar_opening = False
+            crash_log.record("TASKBAR_OPEN_END")
 
     def _on_bubble_taskbar_event(self) -> None:
         # Callback GUI phải trả nhanh; restore/show có thể phát event lồng nhau.
@@ -864,16 +952,31 @@ class PanelApp:
                 foreground_pid = _foreground_process_id()
                 foreground_hwnd = _foreground_window_hwnd()
                 bubble_hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
+                panel_hwnd = _find_window_hwnd(MAIN_WINDOW_TITLE)
                 if foreground_pid is not None and foreground_pid != os.getpid():
                     self._taskbar_focus_armed = True
                 elif (
                     foreground_pid == os.getpid()
-                    and foreground_hwnd is not None
-                    and foreground_hwnd == bubble_hwnd
+                    and foreground_hwnd in {bubble_hwnd, panel_hwnd}
                     and self._taskbar_focus_armed
                 ):
                     self._taskbar_focus_armed = False
-                    self._open_panel_from_taskbar()
+                    if self._bubble_interaction_active():
+                        crash_log.record(
+                            "TASKBAR_OPEN_SUPPRESSED_FOR_BUBBLE",
+                            foreground_hwnd=foreground_hwnd,
+                            bubble_hwnd=bubble_hwnd,
+                        )
+                    else:
+                        # Windows có thể đưa HWND panel/WebView con lên foreground,
+                        # không nhất thiết đúng top-level HWND của bubble.
+                        crash_log.record(
+                            "TASKBAR_ACTIVATED",
+                            foreground_hwnd=foreground_hwnd,
+                            bubble_hwnd=bubble_hwnd,
+                            panel_hwnd=panel_hwnd,
+                        )
+                        self._open_panel_from_taskbar()
                 elif foreground_pid == os.getpid():
                     # Menu pystray cũng thuộc process này. Huỷ trạng thái chờ để
                     # đóng menu tray không bị hiểu nhầm thành click taskbar.
@@ -979,6 +1082,7 @@ class PanelApp:
 
     def quit(self):
         self._quitting = True
+        crash_log.clean_shutdown("user_exit")
         self._stop_status.set()
         try:
             keyboard.remove_hotkey(self._hotkey)
@@ -1199,15 +1303,26 @@ class PanelApp:
 
 
 def main():
+    crash_log.install(prefs.DATA_DIR, app_version=APP_VERSION)
     app = PanelApp()
     lock = SingleInstance(app.activate)
     if not lock.acquire():
         # Đã có instance đang chạy: cố bật panel của nó lên rồi luôn thoát.
         # Không chạy tiếp nếu IPC tạm lỗi, nếu không sẽ tạo instance thứ hai.
         lock.signal_existing()
+        crash_log.clean_shutdown("secondary_instance")
         return
     app.lock = lock
-    app.run()
+    try:
+        app.run()
+    except BaseException as error:
+        crash_log.record(
+            "MAIN_LOOP_EXCEPTION",
+            exception=f"{type(error).__name__}: {error}",
+        )
+        raise
+    else:
+        crash_log.clean_shutdown("main_loop_returned")
 
 
 if __name__ == "__main__":

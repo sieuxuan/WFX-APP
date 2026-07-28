@@ -366,9 +366,25 @@ def load_prefs(base_dir: Path | None = None) -> dict:
     panel_offset_x = optional_int("panel_offset_x")
     panel_offset_y = optional_int("panel_offset_y")
     theme = data.get("theme")
+    favorite_module_ids: list[str] = []
+    stored_favorites = data.get("favorite_module_ids", [])
+    if not isinstance(stored_favorites, list):
+        stored_favorites = []
+    for value in stored_favorites:
+        module_id = str(value or "").strip()
+        if module_id and module_id not in favorite_module_ids:
+            favorite_module_ids.append(module_id)
+        if len(favorite_module_ids) >= 50:
+            break
     return {
         "theme": theme if theme in {"light", "dark", "system"} else "light",
         "close_after_module": data.get("close_after_module", True) is not False,
+        # Key mới có chủ đích, không kế thừa close_after_module cũ: mặc định
+        # phải giữ nguyên màn module để người dùng mở panel và làm tiếp.
+        "return_to_list_after_action": data.get(
+            "return_to_list_after_action", False
+        ) is True,
+        "favorite_module_ids": favorite_module_ids,
         "hotkey": stored_hotkey,
         "hotkey_label": hotkey_spec.format_label(stored_hotkey),
         "autostart": data.get("autostart", False) is True,
@@ -400,6 +416,8 @@ def save_prefs(
     *,
     theme: str | None = None,
     close_after_module: bool | None = None,
+    return_to_list_after_action: bool | None = None,
+    favorite_module_ids: list[str] | None = None,
     hotkey_label: str | None = None,
     hotkey: str | None = None,
     autostart: bool | None = None,
@@ -422,6 +440,19 @@ def save_prefs(
         current["theme"] = theme if theme in {"light", "dark", "system"} else "light"
     if close_after_module is not None:
         current["close_after_module"] = bool(close_after_module)
+    if return_to_list_after_action is not None:
+        current["return_to_list_after_action"] = bool(
+            return_to_list_after_action
+        )
+    if favorite_module_ids is not None:
+        cleaned: list[str] = []
+        for value in favorite_module_ids:
+            module_id = str(value or "").strip()
+            if module_id and module_id not in cleaned:
+                cleaned.append(module_id)
+            if len(cleaned) >= 50:
+                break
+        current["favorite_module_ids"] = cleaned
     if hotkey is not None:
         current["hotkey"] = hotkey_spec.normalize(hotkey)
         current["hotkey_label"] = hotkey_spec.format_label(current["hotkey"])

@@ -20,6 +20,70 @@ Bản đồ nhanh:
 - `wfx_panel/panel_app.py` — pywebview + tray + hotkey toàn cục + lớp win32.
 - `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
 
+## Trạng thái sản phẩm hiện tại
+
+WFX Smart là panel automation desktop cho người dùng WFX. Danh sách chức năng
+dành cho người dùng nằm tại [`docs/USER_FEATURES.md`](./docs/USER_FEATURES.md);
+`README.md` là hướng dẫn cài/chạy/build ngắn gọn. Khi thay đổi hành vi sản phẩm,
+phải cập nhật cả ba tài liệu nếu nội dung liên quan.
+
+### Hành vi giao diện
+
+- Launcher 48×48 mở panel; hotkey mặc định là `Ctrl+Shift+X`.
+- Panel tự thu khi mất focus. Nếu automation đang chạy, panel chờ tác vụ kết
+  thúc rồi mới thu.
+- Mặc định app nhớ đúng màn module người dùng đang làm. Setting `Trở về List
+  sau khi thao tác` cho phép đổi sang hành vi quay về danh sách module.
+- Module được ghim bằng nút ngôi sao sẽ nằm trong `Yêu thích` trước ô tìm kiếm.
+  Khu vực này không có scrollbar riêng.
+- Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
+  trong màn module.
+- `Log kỹ thuật` cho phép bôi đen/copy. Log mới chỉ tự cuộn khi người dùng đang
+  ở gần cuối và không chọn văn bản.
+
+### Quy tắc flow List → thao tác
+
+Mỗi nút trong module là một flow riêng:
+
+1. `List` mở đúng màn danh sách và, nếu cần, bật Floating Filter.
+2. `Search`, `New`, `Đổi FOC` hoặc thao tác tiếp theo chỉ dùng màn hiện tại.
+3. Search không được tự click lại menu module hoặc reload List.
+4. Trước khi điền, automation phải xác nhận context riêng của module trong cùng
+   frame. Không được dùng chỉ `#txtArticle` hoặc `#txtCompanyName`, vì OC/Sample/
+   Sale ASN và Buyer/Supplier có selector trùng nhau.
+5. Nếu chưa mở đúng List, trả code `*_LIST_NOT_OPEN` với hướng dẫn bấm List.
+   Đây là lỗi trình tự người dùng, không gửi webhook.
+
+Các workflow riêng hiện có:
+
+- Catalog: Category/folder, Master, Style Code/Buyer Reference, Costing, BOM,
+  file đính kèm.
+- OC List: tìm theo OC No. hoặc Style.
+- Sample List: List + Floating Filter, tìm theo Sample Order No./Style/
+  Created By, và New Sample Order.
+- Sale ASN: List + Floating Filter, tìm theo Invoice No./Style, và New.
+- Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
+- Buyer List: tìm trên đúng Buyer List đang mở rồi mở Edit đầu tiên.
+- Company Setup: mở List riêng rồi đổi/lưu nơi áp dụng FOC.
+- Các module generic gồm RMPO List, Indent List, User Indent, QA List và nhóm
+  Finance/Admin theo quyền tài khoản.
+
+### Webhook và quyền riêng tư
+
+- Lỗi automation gửi `method_label`, `error_title`, `error_detail`,
+  `suggestion`, mã kỹ thuật, Run ID và context tài khoản gồm User ID, Company,
+  Division.
+- Không gửi password, cookie, SessionID, LoginID, URL WFX đầy đủ hoặc nội dung
+  tìm kiếm. Mọi mô tả lỗi phải qua `redact_telemetry_text`.
+- Lỗi nhập liệu/trình tự như thiếu query, chưa mở List, không có kết quả hoặc
+  filter không hợp lệ phải nằm trong `NON_REPORTABLE_FAILURES`.
+- Mỗi error code có khả năng gửi phải có mô tả và hướng xử lý trong
+  `telemetry.ERROR_CODE_INFO`; test phải bảo đảm không còn code reportable bị
+  thiếu mapping.
+- Code node n8n chuẩn nằm ở `n8n/wfx-app-normalize-code.js`; workflow import
+  hoàn chỉnh nằm ở `n8n/wfx-app-webhook.json`. Hai file phải cùng trả
+  `notification_text` và không giữ `raw_payload`.
+
 ## Mục tiêu
 
 File này là đặc tả hành vi bắt buộc cho lớp automation Catalog trong

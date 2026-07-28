@@ -1,6 +1,7 @@
+import json
 import threading
 
-from wfx_panel import prefs
+from wfx_panel import constants, prefs
 from wfx_panel.panel_api import PanelAPI
 
 
@@ -44,6 +45,22 @@ class FakeLogin:
         self.calls.append(("open_sale_asn_new", xpath))
         return {"ok": True, "code": "SALE_ASN_NEW_READY", "message": "ready"}
 
+    def search_oc_list(self, xpath, filter_kind, query, log=print):
+        self.calls.append(("search_oc", xpath, filter_kind, query))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def search_sample_list(self, xpath, filter_kind, query, log=print):
+        self.calls.append(("search_sample", xpath, filter_kind, query))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def open_sample_new(self, xpath, log=print):
+        self.calls.append(("open_sample_new", xpath))
+        return {"ok": True, "code": "SAMPLE_NEW_READY", "message": "ready"}
+
+    def search_sale_asn_list(self, xpath, filter_kind, query, log=print):
+        self.calls.append(("search_sale_asn", xpath, filter_kind, query))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
     def toggle_company_foc(self, xpath, log=print):
         self.calls.append(("toggle_company_foc", xpath))
         return {
@@ -63,6 +80,18 @@ class FakeLogin:
 
     def find_supplier_across_categories(self, xpath, categories, query, log=print):
         self.calls.append(("find_supplier", xpath, dict(categories), query))
+        return {"ok": True, "code": "SUPPLIER_FOUND", "message": "found"}
+
+    def find_supplier_in_category(
+        self, xpath, category_name, category_value, query, log=print
+    ):
+        self.calls.append((
+            "find_supplier_in_category",
+            xpath,
+            category_name,
+            category_value,
+            query,
+        ))
         return {"ok": True, "code": "SUPPLIER_FOUND", "message": "found"}
 
     def find_and_open_buyer(self, xpath, query, log=print):
@@ -832,6 +861,19 @@ def test_toggle_prefs_persist(tmp_path):
     assert loaded["toast_enabled"] is False
 
 
+def test_return_to_list_and_module_favorites_persist(tmp_path):
+    api, _ = make_api(tmp_path)
+    assert api.get_initial_state()["return_to_list_after_action"] is False
+    result = api.set_return_to_list_after_action(True)
+    assert result["return_to_list_after_action"] is True
+
+    pinned = api.set_module_favorite("0003_6200", True)
+    assert pinned["favorite_module_ids"] == ["0003_6200"]
+    assert api.get_initial_state()["favorite_module_ids"] == ["0003_6200"]
+    unpinned = api.set_module_favorite("0003_6200", False)
+    assert unpinned["favorite_module_ids"] == []
+
+
 def test_focus_chrome_on_module_defaults_on_and_persists(tmp_path):
     api, _ = make_api(tmp_path)
     assert api.get_initial_state()["focus_chrome_on_module"] is True
@@ -849,6 +891,8 @@ def test_initial_state_exposes_new_fields(tmp_path):
         "autostart",
         "start_hidden",
         "toast_enabled",
+        "return_to_list_after_action",
+        "favorite_module_ids",
         "focus_chrome_on_module",
         "chrome_alive",
         "session_active",
@@ -970,6 +1014,37 @@ def test_failed_automation_records_local_screenshot(tmp_path):
     assert "password" not in str(job).lower()
 
 
+def test_failed_automation_webhook_contains_human_readable_context(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("wfx_panel.telemetry.DEFAULT_WEBHOOK_URL", "")
+
+    class FailingLogin(FakeLogin):
+        def open_module(self, module_name, xpath, log=print):
+            return {
+                "ok": False,
+                "code": "MODULE_FAILED",
+                "message": "PlaywrightError: frame WFX đã đổi.",
+                "module": module_name,
+            }
+
+    api = PanelAPI(
+        login_module=FailingLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+    result = api.open_module("0063_0030_0020")
+    assert result["ok"] is False
+    payload = json.loads(
+        (tmp_path / "telemetry-outbox.json").read_text(encoding="utf-8")
+    )[0]
+    assert payload["method_label"] == "Mở module"
+    assert payload["error_title"] == "Không thể thao tác module QA List"
+    assert "frame WFX đã đổi" in payload["message"]
+    assert payload["suggestion"]
+
+
 def test_failed_division_switch_records_local_screenshot(tmp_path):
     class FailingDivisionLogin(FakeLogin):
         def switch_division(self, division_key, log=print):
@@ -1037,6 +1112,33 @@ def test_company_foc_toggle_is_permission_gated_and_delegated(tmp_path):
     ) in fake.calls
 
 
+def test_oc_sample_and_sale_asn_workflows_delegate(tmp_path):
+    api, fake = make_api(tmp_path)
+    assert api.search_oc("oc_no", " OC-12 ")["ok"] is True
+    assert api.search_sample("created_by", " Alice ")["ok"] is True
+    assert api.open_sample_new()["code"] == "SAMPLE_NEW_READY"
+    assert api.search_sale_asn("invoice_no", " INV-9 ")["ok"] is True
+    assert (
+        "search_oc",
+        '//*[@id="0004_0050_0020"]/a',
+        "oc_no",
+        "OC-12",
+    ) in fake.calls
+    assert (
+        "search_sample",
+        '//*[@id="0004_0056_4070"]/a',
+        "created_by",
+        "Alice",
+    ) in fake.calls
+    assert ("open_sample_new", constants.SAMPLE_NEW_XPATH) in fake.calls
+    assert (
+        "search_sale_asn",
+        '//*[@id="0004_0070_0020"]/a',
+        "invoice_no",
+        "INV-9",
+    ) in fake.calls
+
+
 def test_supplier_category_and_find_delegate_with_all_categories(tmp_path):
     fake = AuthorizedAdminLogin()
     api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
@@ -1065,6 +1167,22 @@ def test_supplier_category_and_find_delegate_with_all_categories(tmp_path):
     assert call[3] == "Acme"
 
 
+def test_supplier_find_uses_only_selected_category(tmp_path):
+    fake = AuthorizedAdminLogin()
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+
+    result = api.find_supplier_in_category("Trims", "  Acme  ")
+
+    assert result["code"] == "SUPPLIER_FOUND"
+    assert (
+        "find_supplier_in_category",
+        '//*[@id="0005_0010_1290"]/a',
+        "Trims",
+        "05",
+        "Acme",
+    ) in fake.calls
+
+
 def test_find_buyer_uses_current_buyer_list_and_trimmed_query(tmp_path):
     fake = AuthorizedAdminLogin()
     api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
@@ -1081,9 +1199,11 @@ def test_supplier_and_buyer_workflows_preserve_admin_access_gate(tmp_path):
     api, fake = make_api(tmp_path)
     assert api.open_supplier_category("Apparel")["code"] == "ADMIN_ACCESS_DENIED"
     assert api.find_supplier("Acme")["code"] == "ADMIN_ACCESS_DENIED"
+    assert api.find_supplier_in_category("Apparel", "Acme")["code"] == "ADMIN_ACCESS_DENIED"
     assert api.find_buyer("BirdDogs")["code"] == "ADMIN_ACCESS_DENIED"
     assert not any(call[0] in {
-        "open_supplier_category", "find_supplier", "find_buyer"
+        "open_supplier_category", "find_supplier", "find_supplier_in_category",
+        "find_buyer"
     } for call in fake.calls)
 
 
@@ -1121,7 +1241,12 @@ def test_admin_login_exposes_only_authorized_modules(tmp_path):
 
 def test_feedback_queues_without_exposing_webhook(tmp_path, monkeypatch):
     monkeypatch.delenv("WFX_ERROR_WEBHOOK_URL", raising=False)
+    monkeypatch.setattr("wfx_panel.telemetry.DEFAULT_WEBHOOK_URL", "")
+    prefs.save_account("report-user", "private-password", base_dir=tmp_path)
     api, _ = make_api(tmp_path)
+    api._current_division = "woven"
+    api._division_label = "WOVEN"
+    api._division_name = "PRO SPORTS - WOVEN HANOI"
     result = api.submit_feedback("bug", "Nút Catalog không phản hồi", True)
     assert result["ok"] is True
     assert result["code"] == "FEEDBACK_QUEUED"
@@ -1129,3 +1254,7 @@ def test_feedback_queues_without_exposing_webhook(tmp_path, monkeypatch):
     assert "webhook" not in result
     outbox = (tmp_path / "telemetry-outbox.json").read_text(encoding="utf-8")
     assert "Nút Catalog không phản hồi" in outbox
+    assert "report-user" in outbox
+    assert '"company_id": "psh"' in outbox
+    assert "PRO SPORTS - WOVEN HANOI" in outbox
+    assert "private-password" not in outbox

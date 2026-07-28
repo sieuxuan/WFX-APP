@@ -29,18 +29,20 @@ from wfx_panel.automation.modules import (
 
 
 def _supplier_category_frame(page: Page) -> Frame | None:
-    """Tìm frame Supplier theo control thực tế; WFX hiện dùng name=body."""
-    fallback: Frame | None = None
+    """Tìm đúng frame Supplier; không nhầm #ddlCategory của Catalog."""
     for frame in page.frames:
         try:
             if frame.locator("#ddlCategory").count() == 0:
                 continue
-            if "wfxpartygroup" in str(frame.url or "").casefold():
+            url = str(frame.url or "").casefold()
+            if "wfxpartygroup" in url and "partytype=2" in url:
                 return frame
-            fallback = fallback or frame
+            title = str(frame.evaluate("() => document.title || ''"))
+            if "supplier" in title.casefold():
+                return frame
         except PlaywrightError:
             continue
-    return fallback
+    return None
 
 
 def _wait_supplier_left(
@@ -61,7 +63,7 @@ def _wait_supplier_left(
             except PlaywrightError:
                 pass
         page.wait_for_timeout(200)
-    raise PlaywrightTimeoutError("Không tìm thấy frame left của Supplier List.")
+    raise PlaywrightTimeoutError("Không tìm thấy frame Supplier List.")
 
 
 def _select_supplier_category(
@@ -73,6 +75,9 @@ def _select_supplier_category(
     frame = _wait_supplier_left(page, (None, ""), timeout_s=8)
     field = frame.locator("#ddlCategory")
     if field.input_value() != category_value:
+        # WFX chỉ nạp đủ 6 option khi dropdown nhận mousedown.
+        # Trước đó DOM thường chỉ có [Select] + Apparel.
+        field.dispatch_event("mousedown")
         field.locator(f'option[value="{category_value}"]').wait_for(
             state="attached", timeout=5_000
         )
@@ -138,6 +143,49 @@ def _company_search_frame(page: Page, timeout_s: float = 4) -> Frame | None:
     return None
 
 
+def _buyer_search_frame(page: Page, timeout_s: float = 4) -> Frame | None:
+    """Chỉ nhận frame Buyer, không dùng nhầm Supplier cùng #txtCompanyName."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for frame in page.frames:
+            try:
+                if frame.locator("#txtCompanyName").count() == 0:
+                    continue
+                marker = str(
+                    frame.evaluate(
+                        """() => {
+                            const partyType = [...document.querySelectorAll(
+                                'input, select'
+                            )].filter(element => /party.?type/i.test(
+                                `${element.id} ${element.name}`
+                            )).map(element => element.value).join(' ');
+                            const heading = document.querySelector(
+                                'h1, h2, .page-title, .clsPageTitle, '
+                                + 'td.clsPageTitle'
+                            )?.textContent || '';
+                            return [
+                                location.href,
+                                document.title,
+                                partyType,
+                                heading
+                            ].join(' ');
+                        }"""
+                    )
+                ).casefold()
+                if "partytype=2" in marker or "supplier" in marker:
+                    continue
+                if (
+                    "partytype=1" in marker
+                    or "party type 1" in marker
+                    or "buyer" in marker
+                ):
+                    return frame
+            except PlaywrightError:
+                continue
+        page.wait_for_timeout(200)
+    return None
+
+
 def _open_supplier_master(
     page: Page,
     log: Callable[[str], None],
@@ -175,12 +223,16 @@ def _open_supplier_category_on_page(
     category_value: str,
     log: Callable[[str], None],
 ) -> Frame:
-    old_left = _mark_document(
-        _supplier_category_frame(page),
-        "supplier-left",
-    )
-    _click_module_menu_on_page(page, "Supplier List", module_xpath, log)
-    _wait_supplier_left(page, old_left)
+    current = _supplier_category_frame(page)
+    if current is None:
+        old_left = _mark_document(None, "supplier-left")
+        _click_module_menu_on_page(page, "Supplier List", module_xpath, log)
+        _wait_supplier_left(page, old_left)
+    else:
+        _write_log(
+            log,
+            "[SUPPLIER] Supplier List đã mở; chuyển Category trực tiếp.",
+        )
     _select_supplier_category(page, category_name, category_value, log)
     return _open_supplier_master(page, log)
 
@@ -279,6 +331,7 @@ def find_supplier_across_categories(
         return _result(False, "QUERY_REQUIRED", "Vui lòng nhập tên Supplier cần tìm.")
     playwright: Playwright | None = None
     checked: list[str] = []
+    found_by_category: list[dict[str, Any]] = []
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
@@ -289,37 +342,175 @@ def find_supplier_across_categories(
                 page, module_xpath, category_name, category_value, log
             )
             _frame, state = _filter_company_rows(page, frame, query, log)
-            matches = [row["company"] for row in state["rows"] if row["matches"]]
-            if matches:
-                return _result(
-                    True,
-                    "SUPPLIER_FOUND",
-                    f"Đã tìm thấy Supplier trong Category {category_name}. Giữ màn hình để bạn kiểm tra.",
-                    category=category_name,
-                    matches=matches[:10],
-                    checked_categories=checked,
+            matches = list(
+                dict.fromkeys(
+                    row["company"]
+                    for row in state["rows"]
+                    if row["matches"]
                 )
+            )
+            if matches:
+                found_by_category.append(
+                    {
+                        "category": category_name,
+                        "matches": matches[:10],
+                    }
+                )
+                _write_log(
+                    log,
+                    f"[SUPPLIER FIND] {category_name}: "
+                    f"{len(matches)} kết quả.",
+                )
+        if found_by_category:
+            first = found_by_category[0]
+            first_category = str(first["category"])
+            # Sau khi đã quét đủ mọi Category, đưa WFX về kết quả đầu tiên để
+            # người dùng có thể kiểm tra ngay, thay vì bị bỏ lại ở Category cuối.
+            if checked[-1] != first_category:
+                try:
+                    first_frame = _open_supplier_category_on_page(
+                        page,
+                        module_xpath,
+                        first_category,
+                        categories[first_category],
+                        log,
+                    )
+                    _filter_company_rows(page, first_frame, query, log)
+                except (PlaywrightError, PlaywrightTimeoutError) as exc:
+                    _write_log(
+                        log,
+                        "[SUPPLIER FIND] Đã tổng hợp đủ kết quả nhưng không "
+                        f"đưa được WFX về Category đầu tiên: {exc}",
+                    )
+            category_names = [
+                str(item["category"]) for item in found_by_category
+            ]
+            total_matches = sum(
+                len(item["matches"]) for item in found_by_category
+            )
+            return _result(
+                True,
+                "SUPPLIER_FOUND",
+                f"Đã tìm thấy {total_matches} kết quả trong "
+                f"{len(found_by_category)} Category: "
+                f"{', '.join(category_names)}. "
+                f"Đang hiển thị kết quả ở {first_category}.",
+                category=first_category,
+                categories=category_names,
+                matches=first["matches"],
+                matches_by_category=found_by_category,
+                checked_categories=checked,
+            )
         return _result(
             False,
             "SUPPLIER_NOT_FOUND",
-            f"Không tìm thấy Supplier chứa: {query}.",
+            f"Không tìm thấy Supplier chứa “{query}” trong "
+            f"{len(checked)} Category.",
             checked_categories=checked,
         )
     except RuntimeError as exc:
         code = str(exc)
-        message = "Chrome automation chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        message = (
+            "Chrome automation chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
         return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
-        return _result(False, "SUPPLIER_SEARCH_NOT_READY", str(exc).splitlines()[0], checked_categories=checked)
+        return _result(
+            False,
+            "SUPPLIER_SEARCH_NOT_READY",
+            str(exc).splitlines()[0],
+            checked_categories=checked,
+        )
     except Exception as exc:
-        return _result(False, "SUPPLIER_SEARCH_FAILED", f"{type(exc).__name__}: {str(exc).splitlines()[0]}", checked_categories=checked)
+        return _result(
+            False,
+            "SUPPLIER_SEARCH_FAILED",
+            f"{type(exc).__name__}: {str(exc).splitlines()[0]}",
+            checked_categories=checked,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def find_supplier_in_category(
+    module_xpath: str,
+    category_name: str,
+    category_value: str,
+    query: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Mở/đổi Category một lần rồi tìm Supplier ngay trong Category đó."""
+    query = query.strip()
+    if not query:
+        return _result(
+            False,
+            "QUERY_REQUIRED",
+            "Vui lòng nhập tên Supplier cần tìm.",
+        )
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        frame = _open_supplier_category_on_page(
+            page,
+            module_xpath,
+            category_name,
+            category_value,
+            log,
+        )
+        _frame, state = _filter_company_rows(page, frame, query, log)
+        matches = [
+            row["company"]
+            for row in state["rows"]
+            if row["matches"]
+        ]
+        if not matches:
+            return _result(
+                False,
+                "SUPPLIER_NOT_FOUND",
+                f"Không tìm thấy Supplier trong {category_name}: {query}.",
+                category=category_name,
+            )
+        return _result(
+            True,
+            "SUPPLIER_FOUND",
+            f"Đã tìm thấy Supplier trong Category {category_name}.",
+            category=category_name,
+            matches=matches[:10],
+            checked_categories=[category_name],
+        )
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Chrome automation chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message)
+    except PlaywrightTimeoutError as exc:
+        return _result(
+            False,
+            "SUPPLIER_SEARCH_NOT_READY",
+            str(exc).splitlines()[0],
+            category=category_name,
+        )
+    except Exception as exc:
+        return _result(
+            False,
+            "SUPPLIER_SEARCH_FAILED",
+            f"{type(exc).__name__}: {str(exc).splitlines()[0]}",
+            category=category_name,
+        )
     finally:
         if playwright is not None:
             playwright.stop()
 
 
 def find_and_open_buyer(
-    module_xpath: str,
+    _module_xpath: str,
     query: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
@@ -330,10 +521,14 @@ def find_and_open_buyer(
     try:
         playwright = sync_playwright().start()
         browser, page = _active_wfx_page(playwright, log)
-        _click_module_menu_on_page(page, "Buyer List", module_xpath, log)
-        frame = _company_search_frame(page, timeout_s=20)
+        frame = _buyer_search_frame(page, timeout_s=4)
         if frame is None:
-            raise PlaywrightTimeoutError("Không tìm thấy #txtCompanyName của Buyer List.")
+            return _result(
+                False,
+                "BUYER_LIST_NOT_OPEN",
+                "Chưa thấy ô tìm Buyer. Hãy bấm Buyers List, "
+                "chờ danh sách tải xong rồi mới bấm Tìm.",
+            )
         frame, state = _filter_company_rows(page, frame, query, log)
         matches = [row["company"] for row in state["rows"] if row["matches"]]
         if not matches:

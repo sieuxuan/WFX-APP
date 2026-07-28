@@ -775,6 +775,41 @@ def _find_window_hwnd_any_state(title: str) -> int | None:
     return _find_window_hwnd_impl(title, visible_only=False)
 
 
+def _native_window_visibility(
+    title: str,
+    visible: bool,
+    *,
+    on_top: bool | None = None,
+) -> bool:
+    """Hiện/ẩn top-level HWND trực tiếp, tránh WinForms Invoke bị deadlock."""
+    hwnd = _find_window_hwnd_any_state(title)
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        native = wintypes.HWND(int(hwnd))
+        if not visible:
+            user32.ShowWindow(native, 0)  # SW_HIDE
+            return not bool(user32.IsWindowVisible(native))
+        user32.ShowWindow(native, 9 if user32.IsIconic(native) else 5)
+        if on_top is not None:
+            user32.SetWindowPos(
+                native,
+                wintypes.HWND(-1 if on_top else -2),
+                0,
+                0,
+                0,
+                0,
+                0x0001 | 0x0002 | 0x0040,  # NOSIZE | NOMOVE | SHOW
+            )
+        return bool(user32.IsWindowVisible(native))
+    except Exception:
+        return False
+
+
 def _window_rect_by_title(title: str) -> tuple[int, int, int, int] | None:
     """Rect (left, top, right, bottom) của cửa sổ có đúng tiêu đề ``title``."""
     hwnd = _find_window_hwnd(title)
