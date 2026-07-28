@@ -140,6 +140,9 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert "DownloadFile" in content
     assert "Get-FileHash" in content
     assert "SignedCms" in content
+    assert "function Import-CmsAssembly" in content
+    assert "Add-Type -AssemblyName System.Security -ErrorAction Stop" in content
+    assert "Import-CmsAssembly" in content
     assert "$signedCms.CheckSignature($true)" in content
     assert "$signedCms.CheckSignature($false)" not in content
     assert "$expectedSigner" in content
@@ -186,6 +189,45 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
         )
         stdout, stderr = parsed.communicate(timeout=15)
         assert parsed.returncode == 0, stderr or stdout
+
+        # Chạy đúng loader CMS bằng cả Windows PowerShell 5.1 và PowerShell 7.
+        # Bản 5.1 không có assembly Pkcs riêng, nên bắt buộc đi qua fallback
+        # System.Security nhưng vẫn phải resolve được SignedCms.
+        cms_function_start = content.index("function Import-CmsAssembly")
+        cms_function_end = content.index(
+            "function Perform-Update",
+            cms_function_start,
+        )
+        cms_loader = tmp_path / "cms-loader-test.ps1"
+        cms_loader.write_text(
+            "\n".join(
+                [
+                    "$ErrorActionPreference = 'Stop'",
+                    content[cms_function_start:cms_function_end],
+                    "Import-CmsAssembly",
+                    "if (-not ('System.Security.Cryptography.Pkcs.SignedCms' "
+                    "-as [type])) { exit 2 }",
+                ]
+            ),
+            encoding="utf-8-sig",
+        )
+        for shell in ("powershell", "pwsh"):
+            compatible = real_popen(
+                [
+                    shell,
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-File",
+                    str(cms_loader),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = compatible.communicate(timeout=15)
+            assert compatible.returncode == 0, (
+                f"{shell}: {stderr or stdout}"
+            )
 
         # Chạy chính hàm xóa của helper trong sandbox: đường dẫn ngoài allowlist
         # phải bị chặn, còn đúng file app-owned mới được phép xóa.
