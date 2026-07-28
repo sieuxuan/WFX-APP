@@ -215,11 +215,16 @@ jobs:
             3. Mở **WFX-Panel.exe**.
 
             **Lưu ý khi nâng cấp từ 1.0.8 trở xuống:** hãy cài thủ công một lần
-            theo ba bước trên. Gói 1.0.9 cố ý không kích hoạt updater cũ để tránh
-            nguy cơ updater đó xóa nhầm thư mục chứa ứng dụng. Từ 1.0.9 trở đi,
-            cập nhật tự động đã được ký số, giới hạn file được thay và có rollback.
+            theo ba bước trên. Gói mới cố ý không kích hoạt updater cũ để tránh
+            nguy cơ updater đó xóa nhầm thư mục chứa ứng dụng.
+
+            **Nếu bản 1.0.9–1.0.10 báo không tìm thấy CMS assembly:** hãy cài
+            thủ công 1.0.11 một lần. Từ 1.0.11 trở đi, updater tương thích cả
+            Windows PowerShell 5.1 và PowerShell 7, đồng thời vẫn xác minh chữ ký,
+            giới hạn file được thay và có rollback.
 
             Điểm chính:
+            - Sửa updater không nạp được CMS assembly trên Windows PowerShell 5.1.
             - Panel và thông báo giữ đúng bố cục trên Windows Scale 100–200% và nhiều màn hình.
             - Catalog Apparel tự nhận diện cây Group/Folder theo tài khoản.
             - Cây Catalog chỉ scan lần đầu, được dùng lại sau khi mở lại app; Refresh mới ép scan lại.

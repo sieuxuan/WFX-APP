@@ -403,6 +403,21 @@ function Download-WithUi([string]$url, [string]$path) {{
   }}
 }}
 
+function Import-CmsAssembly {{
+  # Windows PowerShell 5.1 cung cấp SignedCms trong System.Security.dll,
+  # còn PowerShell 7/.NET mới tách thành System.Security.Cryptography.Pkcs.
+  try {{
+    Add-Type `
+      -AssemblyName System.Security.Cryptography.Pkcs `
+      -ErrorAction Stop
+  }} catch {{
+    Add-Type -AssemblyName System.Security -ErrorAction Stop
+  }}
+  if (-not ('System.Security.Cryptography.Pkcs.SignedCms' -as [type])) {{
+    throw 'Máy này không hỗ trợ xác minh chữ ký CMS của bản cập nhật.'
+  }}
+}}
+
 function Perform-Update {{
   try {{
     Update-UI "Đang chờ ứng dụng chính đóng..." 5
@@ -433,7 +448,7 @@ function Perform-Update {{
     Download-WithUi $signatureUrl $signaturePath
 
     Update-UI "Đang xác minh chữ ký nhà phát hành..." 45
-    Add-Type -AssemblyName System.Security.Cryptography.Pkcs
+    Import-CmsAssembly
     $signedContent = [System.Security.Cryptography.Pkcs.ContentInfo]::new(
       [System.IO.File]::ReadAllBytes($checksumPath)
     )
