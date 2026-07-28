@@ -1665,6 +1665,11 @@
       }
       window.setTimeout(() => api()?.request_panel_hide?.(), 130);
     });
+    // Nếu người dùng quay lại panel trước khi automation kết thúc thì ý định
+    // hiện tại là tiếp tục dùng panel; hủy yêu cầu thu đã ghi nhận lúc blur.
+    window.addEventListener("focus", () => {
+      hidePanelWhenIdle = false;
+    });
     window.addEventListener("keydown", trapOverlayFocus, true);
     $(".generic-module-open").addEventListener("click", openModule);
     $(".catalog-query").addEventListener("keydown", (event) => {

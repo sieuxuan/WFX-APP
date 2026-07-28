@@ -103,6 +103,8 @@ List trước và không gửi đây là lỗi hệ thống.
   - Textiles/Fabric.
   - Trims.
 - App báo Category nào có Supplier phù hợp.
+- Nếu một Category tạm thời lỗi, app tiếp tục tìm các Category còn lại và báo
+  rõ phần chưa kiểm tra được.
 
 ## 11. Buyer List
 

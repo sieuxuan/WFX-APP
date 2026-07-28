@@ -83,7 +83,7 @@ def test_index_html_has_contract_hooks():
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js?v=20260728-9"',
+        'src="panel.js?v=20260728-10"',
     ]:
         assert hook in html, hook
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.

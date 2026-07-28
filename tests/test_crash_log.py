@@ -16,7 +16,7 @@ def test_crash_log_detects_previous_unclean_exit(tmp_path, monkeypatch):
     original_thread_hook = threading.excepthook
 
     try:
-        path = crash_log.install(tmp_path, app_version="1.0.13")
+        path = crash_log.install(tmp_path, app_version="1.0.14")
         text = path.read_text(encoding="utf-8")
         assert "PREVIOUS_UNCLEAN_EXIT" in text
         assert "PROCESS_STARTED" in text
@@ -27,3 +27,20 @@ def test_crash_log_detects_previous_unclean_exit(tmp_path, monkeypatch):
         sys.excepthook = original_sys_hook
         threading.excepthook = original_thread_hook
         crash_log._BASE_DIR = None
+
+
+def test_crash_log_redacts_secrets_queries_and_url_queries(tmp_path):
+    crash_log._append(
+        tmp_path,
+        "UNHANDLED_PROCESS_EXCEPTION",
+        exception=(
+            "RuntimeError: password=SECRET query='STYLE-99' "
+            "https://wfx.test/list?SessionID=ABC"
+        ),
+    )
+
+    text = (tmp_path / crash_log.LOG_NAME).read_text(encoding="utf-8")
+    assert "SECRET" not in text
+    assert "STYLE-99" not in text
+    assert "SessionID=ABC" not in text
+    assert "REDACTED" in text

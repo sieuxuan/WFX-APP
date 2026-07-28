@@ -248,6 +248,9 @@ def test_overlays_trap_focus_and_restore_it():
 def test_autohide_remembers_busy_blur_and_hides_when_idle():
     assert "hidePanelWhenIdle = true" in JS
     assert "if (hidePanelWhenIdle)" in JS
+    assert 'window.addEventListener("focus"' in JS
+    focus_block = JS[JS.index('window.addEventListener("focus"') :]
+    assert "hidePanelWhenIdle = false" in focus_block[:250]
     assert "hasPendingUserInput" not in JS
 
 

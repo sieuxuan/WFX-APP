@@ -64,6 +64,10 @@ const errorCodes = {
     title: 'Floating Filter chưa sẵn sàng',
     suggestion: 'Chờ danh sách tải xong, bật Floating Filter rồi thử lại.',
   },
+  SUPPLIER_SEARCH_PARTIAL: {
+    title: 'Chưa kiểm tra được toàn bộ Category Supplier',
+    suggestion: 'Thử lại hoặc mở từng Category bị lỗi để kiểm tra riêng.',
+  },
   PANEL_ERROR: {
     title: 'Ứng dụng gặp lỗi khi chạy tác vụ',
     suggestion: 'Mở Log kỹ thuật và dùng Run ID để đối chiếu.',
@@ -104,6 +108,9 @@ const errorDetail = String(
       || 'Automation không trả về mô tả chi tiết.',
   ),
 );
+const safeMessage = eventType === 'automation_error'
+  ? errorDetail
+  : String(source.message || '');
 const suggestion = String(
   source.suggestion
     || mappedError.suggestion
@@ -152,7 +159,7 @@ return [{
     event_type: eventType,
     event_label: eventLabel,
     kind: source.kind || '',
-    message: source.message || '',
+    message: safeMessage,
     app_version: source.app_version || '',
     method,
     method_label: methodLabel,
