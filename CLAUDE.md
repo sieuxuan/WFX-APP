@@ -101,7 +101,8 @@ Mỗi nút trong module là một flow riêng:
 - Bubble phải có fallback Win32 bắt chuột phải, không chỉ dựa vào sự kiện
   `contextmenu` của WebView. Menu chuột phải là tool-window pywebview riêng;
   không dùng `TrackPopupMenu` đồng bộ từ worker/WebView thread vì Windows có thể
-  dismiss ngay. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
+  dismiss ngay. Poll loop phải bỏ qua click mở menu, sau đó tự đóng menu khi
+  người dùng click ra ngoài. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
 - Chỉ một Playwright driver/CDP connection được tồn tại trong app; tự nhả sau
   60 giây idle và runtime phải shutdown khi người dùng thoát.
 
@@ -186,7 +187,7 @@ Vì vậy có hai lỗi độc lập:
 ```text
 HOME
   -> click Catalog
-  -> NEW_LEFT_FRAME
+  -> NEW_CATALOG_TREE_FRAME
   -> CATEGORY_CONFIRMED
   -> click exact actionable "Master"
   -> nếu left document reload: reacquire left rồi click lại exact Master
@@ -208,8 +209,13 @@ Không được nhảy state. Mode `prepare` chỉ thành công tại `FILTER_VI
 
 ### Mở Master
 
-- Trước khi click Catalog, snapshot document của frame `left` và Catalog Grid cũ.
-- Sau khi click Catalog, chỉ dùng frame `left` có `#ddlCategory` thuộc document mới.
+- Trước khi click Catalog, snapshot document của frame cây (thường tên `left`) và
+  Catalog Grid cũ.
+- Sau khi click Catalog, nhận diện frame cây mới theo `#ddlCategory`; ưu tiên
+  nhưng không phụ thuộc cứng vào tên `left`.
+- Nếu sau 3 giây trang trung gian `wfx_BaseSetting.aspx` chưa tạo frame cây, lấy
+  `RedirURL` từ link menu, chỉ chấp nhận URL cùng origin và đích
+  `WFX_CatalogMain.aspx`, rồi điều hướng frame `body` trực tiếp tới URL đó.
 - Chỉ click node có text chuẩn hóa đúng bằng `Master` và có action trực tiếp
   (`onclick`, `a`, `button`, hoặc `role=button`).
 - Ưu tiên đúng node `span[onclick]` như log; không click `img` collapse và không click

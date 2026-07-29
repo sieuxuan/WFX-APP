@@ -38,6 +38,7 @@ from wfx_panel.win32_window import (
     _find_window_hwnd,
     _foreground_process_id,
     _foreground_window_hwnd,
+    _mouse_buttons_state_over_hwnd,
     _native_notification_visibility,
     _native_popup_visibility,
     _native_window_visibility,
@@ -689,11 +690,31 @@ class PanelApp:
         }
 
     def _bubble_context_menu_loop(self) -> None:
-        """Fallback Win32: bắt chuột phải kể cả WebView nuốt contextmenu."""
+        """Bắt chuột phải và đóng menu khi click ra ngoài bằng một poll loop."""
         bubble_hwnd: int | None = None
+        menu_hwnd: int | None = None
+        menu_input_released = False
         was_down = False
         armed = False
         while not self._stop_status.wait(BUBBLE_CONTEXT_POLL_SECONDS):
+            if self._bubble_menu_visible:
+                if menu_hwnd is None:
+                    menu_hwnd = _find_window_hwnd(BUBBLE_MENU_TITLE)
+                if menu_hwnd is not None:
+                    menu_down, menu_over = _mouse_buttons_state_over_hwnd(menu_hwnd)
+                    if not menu_input_released:
+                        # Bỏ qua chính click vừa mở menu. Chỉ arm sau khi mọi
+                        # nút đã nhả, tránh menu tự đóng ngay trên một số máy.
+                        menu_input_released = not menu_down
+                    elif menu_down and not menu_over:
+                        crash_log.record("BUBBLE_CONTEXT_MENU_OUTSIDE_DISMISS")
+                        self.dismiss_bubble_menu()
+                        menu_hwnd = None
+                        menu_input_released = False
+            else:
+                menu_hwnd = None
+                menu_input_released = False
+
             if bubble_hwnd is None:
                 bubble_hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
                 if bubble_hwnd is None:

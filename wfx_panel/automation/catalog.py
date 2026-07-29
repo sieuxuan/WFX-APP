@@ -9,7 +9,7 @@ import html
 import re
 import tempfile
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, quote, urljoin, urlsplit, urlunsplit
 
 from wfx_panel.automation._common import (
     CATALOG_XPATH,
@@ -66,19 +66,96 @@ _ATTACHMENT_ROWS_JS = """table => [...table.querySelectorAll(
 }).filter(row => row.file_name)"""
 
 
-def _catalog_left_frame(page: Page, previous_frame: Frame | None = None) -> Frame:
-    """Chờ và trả về frame left của màn Catalog."""
-    deadline = time.monotonic() + 10
+def _catalog_tree_frame_now(page: Page) -> Frame | None:
+    """Tìm frame cây Catalog theo nội dung, không phụ thuộc tên ``left``."""
+    named_left = page.frame(name="left")
+    candidates = ([named_left] if named_left is not None else []) + list(page.frames)
+    seen: set[int] = set()
+    for frame in candidates:
+        identity = id(frame)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        try:
+            if frame.locator("#ddlCategory").count() > 0:
+                return frame
+        except PlaywrightError:
+            continue
+    return None
+
+
+def _catalog_left_frame(
+    page: Page,
+    previous_frame: Frame | None = None,
+    timeout_s: float = 10,
+) -> Frame:
+    """Chờ frame cây Catalog; hỗ trợ cả WFX đổi tên frame ``left``."""
+    deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        frame = page.frame(name="left")
+        frame = _catalog_tree_frame_now(page)
         if frame is not None and frame != previous_frame:
-            try:
-                if frame.locator("#ddlCategory").count() > 0:
-                    return frame
-            except PlaywrightError:
-                pass
+            return frame
         _wait(page, 250)
     raise PlaywrightTimeoutError("Không tìm thấy frame left hoặc #ddlCategory của Catalog.")
+
+
+def _catalog_direct_url(page: Page, catalog: Any) -> str | None:
+    """Lấy URL Catalog đích từ RedirURL và chỉ chấp nhận cùng WFX origin."""
+    try:
+        href = str(catalog.get_attribute("href") or "").strip()
+    except PlaywrightError:
+        return None
+    if not href:
+        return None
+    wrapper_url = urljoin(page.url, href)
+    redirect_values = parse_qs(urlsplit(wrapper_url).query).get("RedirURL", [])
+    if not redirect_values:
+        return None
+    direct_url = urljoin(wrapper_url, redirect_values[0])
+    page_parts = urlsplit(page.url)
+    direct_parts = urlsplit(direct_url)
+    if (
+        direct_parts.scheme.casefold() != page_parts.scheme.casefold()
+        or direct_parts.netloc.casefold() != page_parts.netloc.casefold()
+        or not direct_parts.path.casefold().endswith("/wfx_catalogmain.aspx")
+    ):
+        return None
+    return direct_url
+
+
+def _open_catalog_menu_on_page(
+    page: Page,
+    catalog: Any,
+    log: Callable[[str], None],
+    previous_frame: Frame | None = None,
+) -> Frame:
+    """Mở Catalog; bỏ qua BaseSetting nếu endpoint trung gian bị treo."""
+    direct_url = _catalog_direct_url(page, catalog)
+    _click(catalog)
+    try:
+        return _catalog_left_frame(
+            page,
+            previous_frame=previous_frame,
+            timeout_s=3,
+        )
+    except PlaywrightTimeoutError:
+        if direct_url is None:
+            raise
+
+    body_element = page.locator(
+        'frame[name="body"], iframe[name="body"]'
+    ).first
+    body_element.wait_for(state="attached", timeout=3_000)
+    _write_log(
+        log,
+        "[CATALOG] Menu phản hồi chậm; đang mở trực tiếp trang Catalog...",
+    )
+    body_element.evaluate("(element, url) => { element.src = url; }", direct_url)
+    return _catalog_left_frame(
+        page,
+        previous_frame=previous_frame,
+        timeout_s=12,
+    )
 
 
 def _click_catalog_master(
@@ -171,7 +248,7 @@ def _select_catalog_category_on_page(
 
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
-        current_frame = page.frame(name="left")
+        current_frame = _catalog_tree_frame_now(page)
         if current_frame is not None:
             try:
                 if (
@@ -193,11 +270,16 @@ def _open_catalog_tree_on_page(
     log: Callable[[str], None],
 ) -> Frame:
     """Mở cây Catalog và chọn Category, nhưng không tự click Master."""
-    previous_left = page.frame(name="left")
+    previous_left = _catalog_tree_frame_now(page)
     catalog = page.locator(f"xpath={CATALOG_XPATH}")
     catalog.wait_for(state="attached", timeout=8_000)
     _write_log(log, "[CATALOG] Đang mở cây thư mục...")
-    _click(catalog)
+    _open_catalog_menu_on_page(
+        page,
+        catalog,
+        log,
+        previous_frame=previous_left,
+    )
     _select_catalog_category_on_page(
         page,
         category_name,
@@ -274,7 +356,7 @@ def _wait_catalog_folder_selected(
 ) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        frame = page.frame(name="left")
+        frame = _catalog_tree_frame_now(page)
         if frame is not None:
             try:
                 selected = frame.locator(
@@ -1584,7 +1666,7 @@ def quick_find_catalog(
             login(page, user_id.strip(), password, company_id)
             _write_log(log, "[SESSION] Tự đăng nhập thành công.")
 
-        previous_left = page.frame(name="left")
+        previous_left = _catalog_tree_frame_now(page)
         previous_grid = next(
             (f for f in page.frames if "wfxcataloglist" in f.url.lower()),
             None,
@@ -1592,7 +1674,12 @@ def quick_find_catalog(
         _write_log(log, "[QUICK SEARCH] Đang mở Catalog...")
         catalog = page.locator(f"xpath={CATALOG_XPATH}")
         catalog.wait_for(state="attached", timeout=8_000)
-        _click(catalog)
+        _open_catalog_menu_on_page(
+            page,
+            catalog,
+            log,
+            previous_frame=previous_left,
+        )
 
         _select_catalog_category_on_page(
             page,
@@ -1686,7 +1773,7 @@ def set_catalog_category(
         deadline = time.monotonic() + 8
         selected_value = ""
         while time.monotonic() < deadline:
-            current_frame = page.frame(name="left")
+            current_frame = _catalog_tree_frame_now(page)
             if current_frame is not None:
                 try:
                     selected_value = current_frame.locator("#ddlCategory").input_value(

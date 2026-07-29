@@ -10,7 +10,8 @@ lập trình.
 - Click launcher để mở panel ngay bên cạnh.
 - Kéo launcher đến vị trí thuận tiện; app nhớ vị trí cho lần mở sau.
 - Chuột phải launcher để chọn **Ẩn xuống taskbar** hoặc **Thu vào system tray**;
-  thoát hoàn toàn vẫn thực hiện từ menu icon trong system tray.
+  click ra ngoài hoặc nhấn `Esc` để đóng menu; thoát hoàn toàn vẫn thực hiện từ
+  menu icon trong system tray.
 - System alert nghiệp vụ của WFX được giữ hiển thị trên Chrome để người dùng đọc
   và xác nhận, không còn bị automation chấp nhận ngay lập tức.
 - Bubble có lớp bắt chuột phải Win32 dự phòng khi WebView nuốt sự kiện. Menu là
@@ -74,6 +75,8 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 - Chọn vị trí mặc định trong cây Group/Folder của Apparel.
 - Cache cây folder theo tài khoản để không phải scan lại mỗi lần mở app.
 - Mở Master hoặc folder đã chọn.
+- Nếu trang trung gian của menu phản hồi chậm, app tự mở Catalog đích; frame cây
+  được nhận diện theo ô Category nên vẫn hoạt động khi WFX đổi tên frame.
 - Tìm theo:
   - Style Code.
   - Buyer Reference.
