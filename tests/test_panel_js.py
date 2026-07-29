@@ -60,7 +60,11 @@ def test_completed_module_actions_use_external_notifications():
         "catalog_action",
     ]:
         assert f'"{method}"' in JS
-    assert "await api()?.focus_automation_browser?.()" in JS
+    call_block = JS[JS.index("async function call("):JS.index("function openModulePage")]
+    assert "const pending = bridge[method](...args);" in call_block
+    assert "focus_automation_browser" in call_block
+    assert call_block.index("const pending") < call_block.index("focus_automation_browser")
+    assert "await api()?.focus_automation_browser?.()" not in call_block
     assert "showToast(" not in JS
 
 
@@ -78,6 +82,24 @@ def test_module_favorites_are_persisted_and_rendered_before_search():
     assert "toggleModuleFavorite" in JS
     assert "set_module_favorite" in JS
     assert 'class="module-favorite-button"' in JS
+    assert "!favoriteModuleIds.has(module.id)" in JS
+    assert '$$(".favorites-list .module-button").filter' in JS
+
+
+def test_account_view_distinguishes_connected_session_from_editing():
+    assert "accountEditing" in JS
+    assert "syncAccountView" in JS
+    assert 'const connected = sessionActive === true' in JS
+    assert '$(".account-change-button").addEventListener("click"' in JS
+    assert "accountEditing = false" in JS
+
+
+def test_feedback_is_validated_and_counted_before_submit():
+    assert "function updateFeedbackState()" in JS
+    assert "value.trim().length >= 5" in JS
+    assert "feedbackSubmitting || !valid" in JS
+    assert '$(".feedback-message").addEventListener("input", updateFeedbackState)' in JS
+    assert "if (message.length < 5 || feedbackSubmitting) return" in JS
 
 
 def test_module_cards_render_svg_icons_instead_of_letter_codes():
@@ -131,6 +153,33 @@ def test_hotkey_update_does_not_reference_removed_label():
     assert "resetHotkeyButton();" in JS
 
 
+def test_bootstrap_has_single_normal_render_and_delayed_fallback():
+    bootstrap = JS[JS.index("window.wfxBootstrap"):JS.index("function init()")]
+    assert "bootstrapReceived = true" in bootstrap
+    assert bootstrap.count("buildModules();") == 1
+    assert "if (bootstrapReceived) return" in JS
+    assert "}, 600);" in JS
+    assert '{ once: true }' in JS
+
+
+def test_short_motion_feedback_is_wired_to_views_and_busy_state():
+    for hook in (
+        "function replayMotion",
+        'replayMotion(progress, "operation-enter")',
+        'replayMotion(page, "view-enter")',
+        'replayMotion(panelBody, "view-enter")',
+        '"is-action-source"',
+    ):
+        assert hook in JS
+
+
+def test_footer_stop_requests_safe_backend_cancellation():
+    assert '$(".stop-action-button").addEventListener("click", stopCurrentAction)' in JS
+    assert 'callQuiet("cancel_current_action")' in JS
+    assert 'result.code === "ACTION_CANCELLED"' in JS
+    assert 'stopButton.hidden = !value' in JS
+
+
 def test_style_status_and_conditional_chrome_visibility_are_wired():
     assert "wfxSetStyleStatus" in JS
     assert "style.internal_costsheet_status" in JS
@@ -159,6 +208,9 @@ def test_special_module_workflows_are_wired():
         "search_oc",
         "search_sample",
         "search_sale_asn",
+        "search_rmpo",
+        "search_indent",
+        "open_module_new",
         "open_supplier_category",
         "find_supplier",
         "find_supplier_in_category",
@@ -175,6 +227,12 @@ def test_special_module_workflows_are_wired():
         "sale-asn-list",
         "sale-asn-new",
         "sale-asn-search",
+        "rmpo-list",
+        "rmpo-search",
+        "indent-list",
+        "indent-search",
+        "list-new-list",
+        "list-new-new",
         "supplier-open",
         "supplier-list",
         "supplier-find",
@@ -213,7 +271,7 @@ def test_multiple_results_are_selectable_in_panel():
 
 def test_action_buttons_show_inline_spinner():
     assert "withButtonLoading" in JS
-    assert 'classList.add("is-loading")' in JS
+    assert 'classList.add("is-loading", "is-action-source")' in JS
 
 
 def test_bridge_calls_have_a_watchdog_against_hangs():

@@ -17,6 +17,7 @@ from wfx_panel.automation._common import (
     _document_changed,
     _mark_document,
     _result,
+    _wait,
     _write_log,
     sync_playwright,
     time,
@@ -62,7 +63,7 @@ def _wait_supplier_left(
                     return frame
             except PlaywrightError:
                 pass
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError("Không tìm thấy frame Supplier List.")
 
 
@@ -108,7 +109,7 @@ def _select_supplier_category(
                 return changed
         except PlaywrightError:
             pass
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(f"WFX không xác nhận Category {category_name}.")
 
 
@@ -189,7 +190,7 @@ def _company_search_frame(
                     return frame
             except PlaywrightError:
                 continue
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     return None
 
 
@@ -252,12 +253,12 @@ def _open_supplier_master(
     while time.monotonic() < deadline:
         left = _supplier_category_frame(page)
         if left is None:
-            page.wait_for_timeout(200)
+            _wait(page, 200)
             continue
         try:
             master = _actionable_master(left)
             if master is None:
-                page.wait_for_timeout(200)
+                _wait(page, 200)
                 continue
             attempt += 1
             _write_log(log, f"[SUPPLIER] Click exact Master; attempt={attempt}")
@@ -288,10 +289,10 @@ def _open_supplier_master(
                         return company_frame
                 else:
                     stable_since = 0.0
-                page.wait_for_timeout(200)
+                _wait(page, 200)
         except PlaywrightError:
             pass
-        page.wait_for_timeout(250)
+        _wait(page, 250)
     raise PlaywrightTimeoutError("Không mở được Supplier > Master.")
 
 
@@ -397,7 +398,7 @@ def _filter_company_rows(
                     timeout_s=2,
                 )
                 if replacement is None:
-                    page.wait_for_timeout(200)
+                    _wait(page, 200)
                     continue
                 current = replacement
             last = current.evaluate(_COMPANY_ROWS_JS, {"query": query})
@@ -420,7 +421,7 @@ def _filter_company_rows(
             )
             if replacement is not None:
                 current = replacement
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(
         f"Kết quả Company Name chưa ổn định: {last}"
     )
@@ -748,7 +749,7 @@ def find_and_open_buyer(
             except PlaywrightError:
                 confirmed = True
                 break
-            page.wait_for_timeout(250)
+            _wait(page, 250)
         if not confirmed:
             return _result(False, "BUYER_EDIT_NOT_CONFIRMED", "WFX chưa xác nhận màn Edit Buyer.")
         return _result(

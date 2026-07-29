@@ -8,6 +8,11 @@ from wfx_panel.panel_api import NON_REPORTABLE_FAILURES
 
 def test_default_feedback_webhook_is_configured(tmp_path, monkeypatch):
     monkeypatch.delenv("WFX_ERROR_WEBHOOK_URL", raising=False)
+    monkeypatch.setattr(
+        telemetry,
+        "DEFAULT_WEBHOOK_URL",
+        "https://n8n.itx.io.vn/webhook/wfx-app",
+    )
 
     assert telemetry.webhook_url(tmp_path) == (
         "https://n8n.itx.io.vn/webhook/wfx-app"
@@ -35,6 +40,41 @@ def test_submit_delivers_when_hidden_webhook_is_configured(
     assert result["delivery"] == "sent"
     assert delivered[0][0].endswith("/private")
     assert not (tmp_path / "telemetry-outbox.json").exists()
+
+
+def test_async_flush_honors_captured_disabled_endpoint(
+    tmp_path,
+    monkeypatch,
+):
+    telemetry.enqueue(
+        tmp_path,
+        {
+            "event_type": "automation_error",
+            "message": "payload test không được gửi",
+        },
+    )
+    monkeypatch.delenv("WFX_ERROR_WEBHOOK_URL", raising=False)
+    monkeypatch.setattr(telemetry, "DEFAULT_WEBHOOK_URL", "")
+    captured_endpoint = telemetry.webhook_url(tmp_path)
+    assert captured_endpoint == ""
+
+    delivered = []
+    monkeypatch.setattr(
+        telemetry,
+        "DEFAULT_WEBHOOK_URL",
+        "https://n8n.example.test/production",
+    )
+    monkeypatch.setattr(
+        telemetry,
+        "_post",
+        lambda url, event, timeout=5.0: delivered.append((url, event)),
+    )
+    result = telemetry.flush(tmp_path, captured_endpoint)
+
+    assert result["code"] == "WEBHOOK_NOT_CONFIGURED"
+    assert result["sent"] == 0
+    assert result["queued"] == 1
+    assert delivered == []
 
 
 def test_automatic_error_payload_can_omit_sensitive_business_data(tmp_path):
@@ -85,6 +125,43 @@ def test_module_failed_context_names_the_affected_module():
     )
     assert context["error_title"] == "Không thể thao tác module QA List"
     assert context["error_detail"] == "PlaywrightError: frame đã đổi."
+
+
+def test_blank_search_error_is_enriched_from_safe_request_context():
+    context = telemetry.automation_error_context(
+        "search_oc",
+        {
+            "code": "MODULE_SEARCH_NOT_READY",
+            "message": "",
+        },
+        {
+            "filter_kind": "oc_no",
+            "query": "must-not-appear",
+        },
+    )
+    assert context["module"] == "OC List"
+    assert context["filter_kind"] == "OC No."
+    assert "Không tìm thấy ô OC No. trong OC List" in context["error_detail"]
+    assert "must-not-appear" not in json.dumps(context)
+    assert "không trả về mô tả" not in context["error_detail"]
+
+
+def test_blank_open_module_and_division_errors_name_the_operation():
+    module_context = telemetry.automation_error_context(
+        "open_module",
+        {"code": "MODULE_NOT_FOUND", "message": ""},
+        {"module_id": "0063_0030_0020"},
+    )
+    assert module_context["module"] == "QA List"
+    assert "Không thể mở QA List" in module_context["error_detail"]
+
+    division_context = telemetry.automation_error_context(
+        "switch_division",
+        {"code": "DIVISION_CHANGE_FAILED", "message": ""},
+        {"division_key": "knit"},
+    )
+    assert "Division KNIT" in division_context["error_detail"]
+    assert "DIVISION_CHANGE_FAILED" in division_context["error_detail"]
 
 
 def test_every_reportable_failure_code_has_a_human_description():
@@ -157,7 +234,11 @@ def test_n8n_workflow_uses_current_normalizer_without_raw_payload():
     standalone = (root / "n8n" / "wfx-app-normalize-code.js").read_text(
         encoding="utf-8"
     )
+    assert code == standalone
     assert "raw_payload" not in standalone
     assert "redactAutomationText" in standalone
+    assert "const methodContexts" in standalone
+    assert "const fallbackErrorDetail" in standalone
+    assert "Automation không trả về mô tả chi tiết." not in standalone
     assert "const safeMessage" in standalone
     assert "message: safeMessage" in standalone

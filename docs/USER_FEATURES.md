@@ -11,8 +11,12 @@ lập trình.
 - Chuột phải launcher để ẩn xuống system tray.
 - Hotkey mặc định `Ctrl+Shift+X` để ẩn/hiện panel khi đang làm trên WFX.
 - Tùy chọn `Luôn trên cùng` giữ panel phía trên các cửa sổ khác.
+- Bản EXE mặc định khởi động cùng Windows. Có thể tắt `Khởi động cùng Windows`
+  trong Settings; app sẽ nhớ lựa chọn này.
 - Panel tự thu khi click ra ngoài. Nếu tác vụ đang chạy, panel chờ hoàn tất rồi
   mới thu.
+- Chuyển giữa danh sách/module và thanh tiến trình có chuyển động ngắn để dễ
+  theo dõi; app tự hạn chế animation khi Windows bật chế độ giảm chuyển động.
 
 ## 2. Cá nhân hóa danh sách module
 
@@ -20,6 +24,8 @@ lập trình.
 - Bấm ngôi sao ở cuối module để thêm/bỏ khỏi `Yêu thích`.
 - Module yêu thích được ghim ở đầu panel, trước ô Search.
 - Khu vực Yêu thích không có thanh cuộn riêng.
+- Module đã ghim không lặp lại trong nhóm module bên dưới; favorite cuối cùng ở
+  hàng lẻ được mở rộng để không để khoảng trống.
 - App mặc định nhớ đúng màn module và nội dung người dùng đang làm.
 - Bật `Trở về List sau khi thao tác` nếu muốn tự quay về danh sách module sau
   mỗi tác vụ.
@@ -27,6 +33,8 @@ lập trình.
 ## 3. Tài khoản và trình duyệt WFX
 
 - Lưu User ID/password trong tab Tài khoản.
+- Khi phiên WFX đã kết nối, tab Tài khoản chỉ hiện User ID và nút `Đổi tài
+  khoản`; form mật khẩu chỉ xuất hiện khi đổi tài khoản hoặc cần đăng nhập lại.
 - Password được Windows DPAPI mã hóa trên chính máy đang sử dụng.
 - Nút `Mở trình duyệt` mở Chromium browser automation và đăng nhập WFX bằng tài
   khoản đã lưu.
@@ -36,6 +44,7 @@ lập trình.
 ## 4. Division
 
 - Chuyển nhanh giữa `WOVEN`, `KNIT` và `PSSG`.
+- Bộ chọn Division được thu gọn để dành thêm không gian cho danh sách module.
 - App đọc Division thật từ WFX và highlight lựa chọn hiện tại.
 - Chỉ báo thành công sau khi WFX xác nhận đã chuyển Division.
 
@@ -49,6 +58,8 @@ Các nút `List`, `Search`, `New` và nút thao tác khác là các bước riê
 
 Search không tải lại List. Nếu người dùng chưa mở đúng List, app sẽ nhắc bấm
 List trước và không gửi đây là lỗi hệ thống.
+Khi bấm thao tác, nút vừa chọn được đánh dấu và automation bắt đầu ngay trong
+lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa các bước.
 
 ## 6. Catalog
 
@@ -123,16 +134,21 @@ List trước và không gửi đây là lỗi hệ thống.
 
 Nhóm Operation:
 
-- RMPO List.
-- Indent List.
-- User Indent.
-- QA List.
+- RMPO List: mở List và lọc đồng thời theo Supplier, RMPO No. hoặc cả hai.
+- Indent List: mở List và lọc đồng thời theo Supplier, Article, Indent No.,
+  Style; có thể nhập một hoặc nhiều điều kiện.
+- User Indent: có cùng bộ lọc kết hợp như Indent List.
+- QA List: mở List hoặc bấm `New` để tạo QA Request trên đúng màn đang mở.
 
 Nhóm Finance:
 
-- Advance PR List.
+- Advance PR List: mở List hoặc bấm `New` để tạo Advance Payment Request.
 - Supplier Inv List.
-- Expense Inv List.
+- Expense Inv List: mở List hoặc bấm `New` để tạo Expense Invoice.
+
+Với RMPO và hai màn Indent, bấm `List` trước. Nút `Tìm` chỉ điền các ô search
+trên màn hiện tại, không mở lại menu. Các ô không nhập được xóa để kết quả phản
+ánh đúng tổ hợp điều kiện đang thấy trên panel.
 
 Nhóm Admin hiển thị theo quyền của tài khoản:
 
@@ -152,16 +168,28 @@ Nhóm Admin hiển thị theo quyền của tài khoản:
 - Lỗi automation có thể lưu ảnh chụp cục bộ để kiểm tra.
 - `Log kỹ thuật` cho phép bôi đen và copy.
 - Khi người dùng đang chọn nội dung log, log mới không ép cuộn xuống cuối.
+- Khi tác vụ đang chạy, nút `Stop` xuất hiện ngay trên dòng trạng thái cuối
+  panel. App sẽ dừng ở bước kiểm tra an toàn kế tiếp; nếu WFX đang Save, app chờ
+  Save được xác nhận rồi mới kết thúc flow.
+- App dùng chung một kết nối Playwright/Chrome giữa các thao tác và giới hạn số
+  tiến trình renderer để chạy ổn hơn trên máy RAM 8 GB. Nếu không có thao tác
+  trong 1 phút, app tự nhả driver nền nhưng vẫn giữ Chrome và phiên đăng nhập.
 
 ## 15. Góp ý và báo lỗi
 
 - Gửi báo lỗi hoặc góp ý tính năng từ panel.
+- Nút gửi chỉ bật khi mô tả có ít nhất 5 ký tự; bộ đếm hiển thị giới hạn 2.000
+  ký tự.
 - Báo lỗi automation gửi:
   - Tên tác vụ dễ hiểu.
   - Mô tả lỗi.
   - Hướng xử lý.
   - Mã kỹ thuật và Run ID.
   - User ID, Company và Division để hỗ trợ.
+- Nếu WFX lỗi trước khi automation tạo được message, app vẫn ghi rõ module,
+  trường tìm hoặc Division đích dựa trên metadata không nhạy cảm.
+- Báo cáo nền dùng đúng endpoint tại thời điểm lỗi xảy ra; dữ liệu test khi
+  reporting bị tắt không thể bị gửi trễ lên webhook thật.
 - Không gửi password, cookie, SessionID, LoginID, URL WFX đầy đủ hoặc nội dung
   tìm kiếm.
 - Các lỗi thao tác như chưa bấm List, thiếu nội dung tìm hoặc không có kết quả

@@ -1268,3 +1268,61 @@ def test_update_notification_is_automatic_but_only_once_per_release(monkeypatch)
     assert len(notices) == 1
     assert "Cập nhật ngay" in notices[0][0]
     assert saved == [{"last_update_notice": "release-110"}]
+
+
+def test_packaged_startup_syncs_default_autostart(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    calls = []
+    monkeypatch.setattr(module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(module.prefs, "load_prefs", lambda: {"autostart": True})
+    monkeypatch.setattr(
+        module.autostart,
+        "sync",
+        lambda enabled: calls.append(enabled) or True,
+    )
+    monkeypatch.setattr(
+        module.prefs,
+        "save_prefs",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    assert module._sync_packaged_autostart() is True
+    assert calls == [True]
+
+
+def test_source_startup_never_registers_python_as_autostart(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    monkeypatch.delattr(module.sys, "frozen", raising=False)
+    monkeypatch.setattr(
+        module.autostart,
+        "sync",
+        lambda _enabled: (_ for _ in ()).throw(AssertionError("must not sync")),
+    )
+    assert module._sync_packaged_autostart() is None
+
+
+def test_packaged_autostart_failure_is_reflected_in_preferences(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    saved = []
+    monkeypatch.setattr(module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(module.prefs, "load_prefs", lambda: {"autostart": True})
+    monkeypatch.setattr(module.autostart, "sync", lambda _enabled: False)
+    monkeypatch.setattr(
+        module.prefs,
+        "save_prefs",
+        lambda **kwargs: saved.append(kwargs),
+    )
+
+    assert module._sync_packaged_autostart() is False
+    assert saved == [{"autostart": False}]
+
+
+def test_webview_processes_are_capped_for_low_memory_machines():
+    import wfx_panel.panel_app as module
+
+    arguments = module.os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]
+    assert "--renderer-process-limit=3" in arguments
+    assert "--process-per-site" in arguments

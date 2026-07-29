@@ -23,7 +23,9 @@ from wfx_panel.automation._common import (
     PlaywrightTimeoutError,
     _click,
     _result,
+    _sleep,
     _style_status_suffix,
+    _wait,
     _write_log,
     sync_playwright,
     time,
@@ -75,7 +77,7 @@ def _catalog_left_frame(page: Page, previous_frame: Frame | None = None) -> Fram
                     return frame
             except PlaywrightError:
                 pass
-        page.wait_for_timeout(250)
+        _wait(page, 250)
     raise PlaywrightTimeoutError("Không tìm thấy frame left hoặc #ddlCategory của Catalog.")
 
 
@@ -99,7 +101,7 @@ def _click_catalog_master(
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             last_error = exc
             old_frame = None
-            page.wait_for_timeout(250)
+            _wait(page, 250)
     raise PlaywrightTimeoutError(f"Không click được Master: {last_error}")
 
 
@@ -114,7 +116,7 @@ def _catalog_grid_frame(page: Page, previous_frame: Frame | None = None) -> Fram
                         return frame
                 except PlaywrightError:
                     pass
-        page.wait_for_timeout(250)
+        _wait(page, 250)
     raise PlaywrightTimeoutError("Không tìm thấy AG Grid của Catalog.")
 
 
@@ -141,7 +143,7 @@ def _show_catalog_floating_filter(
             last_error = exc
             # Angular/WFX có thể thay frame một lần nữa sau khi Master load.
             excluded_frame = None
-            page.wait_for_timeout(300)
+            _wait(page, 300)
     raise PlaywrightTimeoutError(f"Floating Filter chưa sẵn sàng: {last_error}")
 
 
@@ -180,7 +182,7 @@ def _select_catalog_category_on_page(
                     return
             except PlaywrightError:
                 pass
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(f"WFX không xác nhận Category {category_name}.")
 
 
@@ -282,7 +284,7 @@ def _wait_catalog_folder_selected(
                     return True
             except PlaywrightError:
                 pass
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     return False
 
 
@@ -323,7 +325,7 @@ def _filter_grid_and_maybe_open(
             "FILTER_VALUE_NOT_CONFIRMED",
             f"WFX chưa xác nhận giá trị {label}.",
         )
-    grid.wait_for_timeout(1_000)
+    _wait(grid, 1_000)
 
     root = grid.locator(".ag-root-wrapper").first
     read_rows_js = """(root, args) => {
@@ -425,7 +427,7 @@ def _filter_grid_and_maybe_open(
         else:
             stable_key = key
             stable_since = time.monotonic()
-        grid.wait_for_timeout(200)
+        _wait(grid, 200)
     else:
         return _result(
             False,
@@ -569,7 +571,7 @@ def _open_article_destination(
         if not slow_notice_written and time.monotonic() - started >= 15:
             _write_log(log, "[ARTICLE] WFX đang tải chậm, tiếp tục chờ ArticleTop...")
             slow_notice_written = True
-        time.sleep(0.25)
+        _sleep(0.25)
     raise PlaywrightTimeoutError(f"Không tìm thấy nút {label} trong ArticleTop.")
 
 
@@ -666,7 +668,7 @@ def _article_page(
                 return candidate, article_top
             except PlaywrightError:
                 continue
-        time.sleep(0.2)
+        _sleep(0.2)
     raise PlaywrightTimeoutError("Không tìm thấy popup ArticleTop của style.")
 
 
@@ -709,7 +711,7 @@ def _article_file_tab(
                         return frame, tab, tab
             except PlaywrightError:
                 continue
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     return None
 
 
@@ -918,7 +920,7 @@ def _scan_article_file_tabs(
                 and time.monotonic() - confirmed_at >= 0.8
             ):
                 break
-            page.wait_for_timeout(250)
+            _wait(page, 250)
 
         if confirmed_at is None:
             _write_log(
@@ -1613,7 +1615,7 @@ def quick_find_catalog(
             _write_log(log, "[ARTICLE] Đang kết nối lại để nhận popup Article...")
             playwright.stop()
             playwright = None
-            time.sleep(0.8)
+            _sleep(0.8)
             playwright = sync_playwright().start()
             browser_after_popup, _main_page = _connect_to_chrome(playwright)
             destination_label = _open_article_destination(
@@ -1694,7 +1696,7 @@ def set_catalog_category(
                         break
                 except PlaywrightTimeoutError:
                     pass
-            page.wait_for_timeout(200)
+            _wait(page, 200)
         if selected_value != category_value:
             raise PlaywrightTimeoutError(
                 f"WFX không xác nhận Category value={category_value}."
@@ -1781,7 +1783,7 @@ def filter_and_open_catalog_code(
         _write_log(log, f"[CODE] Đang lọc chính xác: {article_code}")
         code_input.fill(article_code, timeout=3_000)
         # AG Grid debounce trước khi áp dụng floating filter.
-        grid.wait_for_timeout(1_000)
+        _wait(grid, 1_000)
 
         code_cells = grid.locator(
             '[role="gridcell"][col-id="lnkArticleCode"] input[type="button"]'
@@ -1809,7 +1811,7 @@ def filter_and_open_catalog_code(
             )
             if exact_target is not None and filter_applied:
                 break
-            grid.wait_for_timeout(300)
+            _wait(grid, 300)
 
         _write_log(log, f"[CODE] Kết quả grid: {codes if codes else 'không có'}")
         if exact_target is None:

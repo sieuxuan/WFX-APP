@@ -14,6 +14,8 @@ Bản đồ nhanh:
 
 - `wfx_panel/automation/` — lớp Playwright (login/session/catalog/directory/
   modules/browser). `login.py` chỉ còn shim re-export để tương thích ngược.
+- `wfx_panel/automation/runtime.py` — worker tuần tự duy nhất sở hữu Playwright
+  sync + CDP connection bền vững và cờ cancel theo checkpoint.
 - `wfx_panel/panel_api.py` — bridge `PanelAPI` giữa UI và automation.
 - `wfx_panel/catalog_controller.py` — toàn bộ luồng Catalog (browse/prepare/find/
   Costing/BOM + cây folder), tách khỏi `PanelAPI`.
@@ -30,14 +32,34 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 ### Hành vi giao diện
 
 - Launcher 48×48 mở panel; hotkey mặc định là `Ctrl+Shift+X`.
+- Bản EXE mặc định bật `Khởi động cùng Windows` cho cài đặt mới và đồng bộ
+  Windows Run key sau khi giữ được single-instance lock. Nếu người dùng đã tắt
+  thì phải giữ nguyên lựa chọn đó. Chạy source development không được tự đăng
+  ký Python/Pythonw vào startup.
 - Panel tự thu khi mất focus. Nếu automation đang chạy, panel chờ tác vụ kết
   thúc rồi mới thu.
+- Chuyển giữa List/module và thanh tiến trình dùng animation ngắn chỉ với
+  transform/opacity; phải tôn trọng `prefers-reduced-motion`. Nút vừa kích hoạt
+  giữ highlight trong khi tác vụ chạy để người dùng biết flow nào đang xử lý.
+- Bootstrap bình thường do `PanelApp._startup()` inject một lần; JavaScript chỉ
+  gọi `get_initial_state` sau 600 ms làm fallback nếu chưa nhận state, tránh đọc
+  prefs và render module trùng lúc mở app.
 - Mặc định app nhớ đúng màn module người dùng đang làm. Setting `Trở về List
   sau khi thao tác` cho phép đổi sang hành vi quay về danh sách module.
 - Module được ghim bằng nút ngôi sao sẽ nằm trong `Yêu thích` trước ô tìm kiếm.
-  Khu vực này không có scrollbar riêng.
+  Khu vực này không có scrollbar riêng; module đã ghim không lặp lại trong nhóm
+  bên dưới và favorite cuối cùng ở hàng lẻ chiếm trọn chiều ngang.
+- Tab Tài khoản ở trạng thái đã đăng nhập chỉ hiện kết nối hiện tại và nút `Đổi
+  tài khoản`; form User ID/password chỉ mở khi người dùng muốn đổi hoặc cần xác
+  thực lại.
+- Form góp ý chỉ cho gửi từ 5 ký tự và hiển thị bộ đếm trên giới hạn 2.000 ký tự.
+- Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
   trong màn module.
+- Khi automation đang chạy, footer hiện nút `Stop`. Nút chỉ đặt cờ hủy; flow
+  dừng ở checkpoint kế tiếp và trả `ACTION_CANCELLED`. Không đóng browser hoặc
+  Playwright để ép dừng. Đoạn click/chờ Save phải dùng `cancellation_deferred()`
+  để không trả trạng thái hủy khi WFX còn đang ghi dữ liệu.
 - `Log kỹ thuật` cho phép bôi đen/copy. Log mới chỉ tự cuộn khi người dùng đang
   ở gần cuối và không chọn văn bản.
 
@@ -53,6 +75,29 @@ Mỗi nút trong module là một flow riêng:
    Sale ASN và Buyer/Supplier có selector trùng nhau.
 5. Nếu chưa mở đúng List, trả code `*_LIST_NOT_OPEN` với hướng dẫn bấm List.
    Đây là lỗi trình tự người dùng, không gửi webhook.
+6. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
+   lên foreground chạy song song và không nằm trên critical path. Poll trạng
+   thái grid ở 150 ms, nhưng chỉ chấp nhận Floating Filter sau khi visible/enabled
+   ổn định ít nhất 0,5 giây và đúng context để vừa nhanh vừa tránh grid cũ.
+7. Mọi flow từ `PanelAPI._run()` chạy trên automation worker duy nhất. Các lời
+   gọi `sync_playwright().start()/stop()` trong workflow cũ chỉ là lease; runtime
+   giữ một Playwright process và cache một CDP Browser cho tới khi app thoát hoặc
+   browser disconnect. Sau 60 giây không có flow, runtime tự nhả driver/CDP
+   nhưng giữ Chrome ngoài và phiên đăng nhập; flow sau kết nối lại. Không dùng
+   object Playwright sync từ thread khác.
+8. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
+   không thêm cơ chế terminate/close page từ thread UI.
+
+### Giới hạn bộ nhớ
+
+- Chrome automation chạy `--process-per-site`, tối đa 4 renderer và tắt các
+  dịch vụ nền không cần cho WFX; không giới hạn V8 heap cứng vì grid lớn có thể
+  cần bộ nhớ đột biến.
+- WebView2 của panel/bubble/notification dùng tối đa 3 renderer qua
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. Dùng `setdefault` để cấu hình quản trị
+  viên vẫn có quyền override.
+- Chỉ một Playwright driver/CDP connection được tồn tại trong app; tự nhả sau
+  60 giây idle và runtime phải shutdown khi người dùng thoát.
 
 Các workflow riêng hiện có:
 
@@ -65,14 +110,30 @@ Các workflow riêng hiện có:
 - Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
 - Buyer List: tìm trên đúng Buyer List đang mở rồi mở Edit đầu tiên.
 - Company Setup: mở List riêng rồi đổi/lưu nơi áp dụng FOC.
-- Các module generic gồm RMPO List, Indent List, User Indent, QA List và nhóm
-  Finance/Admin theo quyền tài khoản.
+- RMPO List: tìm kết hợp theo Supplier và RMPO No. trên đúng grid
+  `gridRMPO`.
+- Indent List/User Indent: tìm kết hợp theo Supplier, Article, Indent No. và
+  Style trên đúng grid `gridMOLList`.
+- QA List, Advance PR List và Expense Inv List: List + New; New chỉ dùng control
+  của màn List hiện tại và phải xác nhận navigation.
+- Các module generic còn lại thuộc nhóm Finance/Admin theo quyền tài khoản.
 
 ### Webhook và quyền riêng tư
 
 - Lỗi automation gửi `method_label`, `error_title`, `error_detail`,
   `suggestion`, mã kỹ thuật, Run ID và context tài khoản gồm User ID, Company,
   Division.
+- Nếu `result.message`, `module` hoặc `filter_kind` bị trống, telemetry phải suy
+  ra mô tả cụ thể từ `method` và metadata request đã whitelist (`module_id`,
+  `filter_kind`, `division_key`); không dùng fallback chung chung kiểu
+  `Automation không trả về mô tả chi tiết`.
+- Background flush phải nhận endpoint đã resolve tại thời điểm lên lịch. Không
+  được resolve lại `DEFAULT_WEBHOOK_URL` bên trong thread chạy trễ, vì có thể
+  làm payload test bị gửi sang production sau khi monkeypatch/config được hoàn
+  nguyên.
+- Pytest phải có autouse fixture tắt `DEFAULT_WEBHOOK_URL` và xoá override
+  environment. Test giao nhận chỉ được bật endpoint giả; không test nào được
+  phép gọi webhook production.
 - Không gửi password, cookie, SessionID, LoginID, URL WFX đầy đủ hoặc nội dung
   tìm kiếm. Mọi mô tả lỗi phải qua `redact_telemetry_text`.
 - Lỗi nhập liệu/trình tự như thiếu query, chưa mở List, không có kết quả hoặc

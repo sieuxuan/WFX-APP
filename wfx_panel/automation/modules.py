@@ -20,6 +20,7 @@ from wfx_panel.automation._common import (
     _first_visible,
     _mark_document,
     _result,
+    _wait,
     _wait_frame_with_selectors,
     _write_log,
     sync_playwright,
@@ -34,6 +35,10 @@ from wfx_panel.automation.catalog import (
     _click_catalog_master,
     _show_catalog_floating_filter,
 )
+from wfx_panel.automation.runtime import cancellation_deferred
+
+MODULE_GRID_POLL_MS = 150
+MODULE_FILTER_VISIBLE_STABLE_SECONDS = 0.5
 
 
 def open_module(
@@ -214,7 +219,10 @@ def _show_module_floating_filter(
                     if last_state["filterVisible"]:
                         if filter_stable_since <= 0:
                             filter_stable_since = time.monotonic()
-                        if time.monotonic() - filter_stable_since < 0.9:
+                        if (
+                            time.monotonic() - filter_stable_since
+                            < MODULE_FILTER_VISIBLE_STABLE_SECONDS
+                        ):
                             continue
                         inputs = root.locator(
                             ".ag-floating-filter input, "
@@ -254,7 +262,7 @@ def _show_module_floating_filter(
                         button.evaluate("element => element.click()")
             except (PlaywrightError, PlaywrightTimeoutError) as exc:
                 last_error = exc
-        page.wait_for_timeout(250)
+        _wait(page, MODULE_GRID_POLL_MS)
     raise PlaywrightTimeoutError(
         "Show Floating Filter chưa sẵn sàng; "
         f"gridState={last_state}; lastError={last_error}"
@@ -370,7 +378,7 @@ def _visible_locator_in_frames(
                         return frame, candidate
             except PlaywrightError:
                 continue
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(f"Không tìm thấy control: {selector}")
 
 
@@ -470,7 +478,7 @@ def _search_input_in_frames(
             candidate = _visible_search_input(frame, selectors, aliases)
             if candidate is not None:
                 return frame, candidate
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(
         "Không tìm thấy ô search cho: " + ", ".join(aliases)
     )
@@ -488,7 +496,7 @@ def _search_input_in_frame(
         candidate = _visible_search_input(frame, selectors, aliases)
         if candidate is not None:
             return candidate
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(
         "Không tìm thấy ô search trong đúng màn List: "
         + ", ".join(aliases)
@@ -542,10 +550,195 @@ def _apply_module_search(
             stable_since = time.monotonic()
         elif time.monotonic() - stable_since >= 0.8:
             return
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(
         f"Kết quả search {label} chưa ổn định."
     )
+
+
+def _frame_with_visible_context(
+    page: Page,
+    context_selector: str,
+    timeout_s: float = 4,
+) -> Frame:
+    """Chỉ nhận frame có marker riêng của đúng màn List đang mở."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for frame in page.frames:
+            try:
+                context = frame.locator(context_selector)
+                if context.count() and context.first.is_visible():
+                    return frame
+            except PlaywrightError:
+                continue
+        _wait(page, 200)
+    raise PlaywrightTimeoutError(
+        f"Không tìm thấy context List: {context_selector}"
+    )
+
+
+def _wait_module_search_settled(
+    page: Page,
+    labels: list[str],
+) -> None:
+    deadline = time.monotonic() + 15
+    stable_since = 0.0
+    while time.monotonic() < deadline:
+        loading = False
+        for frame in page.frames:
+            try:
+                overlays = frame.locator(
+                    ".ag-overlay-loading-wrapper, .ag-loading, "
+                    ".loading, .loader, [aria-busy='true']"
+                )
+                if any(
+                    overlays.nth(index).is_visible()
+                    for index in range(overlays.count())
+                ):
+                    loading = True
+                    break
+            except PlaywrightError:
+                continue
+        if loading:
+            stable_since = 0.0
+        elif stable_since <= 0:
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since >= 0.8:
+            return
+        _wait(page, 200)
+    raise PlaywrightTimeoutError(
+        "Kết quả search chưa ổn định cho: " + ", ".join(labels)
+    )
+
+
+def _search_module_fields(
+    module_name: str,
+    values: dict[str, str],
+    definitions: dict[str, tuple[str, str]],
+    context_selector: str,
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    """Xóa và điền một nhóm filter trong cùng frame để hỗ trợ lọc kết hợp."""
+    cleaned = {
+        key: str(values.get(key) or "").strip()
+        for key in definitions
+    }
+    active = [key for key, value in cleaned.items() if value]
+    if not active:
+        labels = ", ".join(label for label, _selector in definitions.values())
+        return _result(
+            False,
+            "QUERY_REQUIRED",
+            f"Vui lòng nhập ít nhất một điều kiện: {labels}.",
+        )
+
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        try:
+            frame = _frame_with_visible_context(
+                page,
+                context_selector,
+                timeout_s=4,
+            )
+            fields: dict[str, Any] = {}
+            for key, (label, selector) in definitions.items():
+                field = frame.locator(selector)
+                if (
+                    not field.count()
+                    or not field.first.is_visible()
+                    or not field.first.is_enabled()
+                ):
+                    raise PlaywrightTimeoutError(
+                        f"Không tìm thấy ô {label} trong đúng màn List."
+                    )
+                fields[key] = field.first
+        except PlaywrightTimeoutError:
+            message = (
+                f"Chưa thấy các ô search trong {module_name}. "
+                "Hãy bấm List trước, chờ màn danh sách hiển thị rồi mới bấm Tìm."
+            )
+            _write_log(log, message)
+            return _result(
+                False,
+                "MODULE_LIST_NOT_OPEN",
+                message,
+                module=module_name,
+            )
+
+        for field in fields.values():
+            field.fill("")
+            try:
+                field.dispatch_event("change")
+            except PlaywrightError:
+                pass
+
+        last_field: Any | None = None
+        active_labels: list[str] = []
+        for key in active:
+            label, _selector = definitions[key]
+            field = fields[key]
+            field.type(cleaned[key], delay=25)
+            if field.input_value(timeout=1_000) != cleaned[key]:
+                raise PlaywrightTimeoutError(
+                    f"WFX không xác nhận giá trị search {label}."
+                )
+            active_labels.append(label)
+            last_field = field
+            _write_log(log, f"[MODULE SEARCH] Đã nhập {label}.")
+
+        if last_field is not None:
+            try:
+                last_field.press("Enter", timeout=2_000)
+            except PlaywrightError:
+                pass
+            try:
+                last_field.dispatch_event("change")
+            except PlaywrightError:
+                pass
+        _wait_module_search_settled(page, active_labels)
+        return _result(
+            True,
+            "MODULE_SEARCH_APPLIED",
+            f"Đã lọc {module_name} theo {', '.join(active_labels)}.",
+            module=module_name,
+            filter_kinds=active,
+        )
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Chrome automation chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message, module=module_name)
+    except PlaywrightTimeoutError as exc:
+        detail = str(exc).splitlines()[0]
+        message = (
+            f"Đã nhập filter trong {module_name}, nhưng WFX chưa xác nhận: "
+            f"{detail}"
+        )
+        _write_log(log, message)
+        return _result(
+            False,
+            "MODULE_SEARCH_NOT_CONFIRMED",
+            message,
+            module=module_name,
+        )
+    except Exception as exc:
+        detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"Không thể tìm trong {module_name}: {detail}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "MODULE_SEARCH_FAILED",
+            message,
+            module=module_name,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
 
 
 def _search_module_list(
@@ -781,6 +974,191 @@ def search_sale_asn_list(
     )
 
 
+def search_rmpo_list(
+    supplier: str,
+    order_no: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    return _search_module_fields(
+        "RMPO List",
+        {
+            "supplier": supplier,
+            "order_no": order_no,
+        },
+        {
+            "supplier": (
+                "Supplier",
+                "#gridRMPO_tblGridHeader_trSearch_td_colSupplier "
+                "input#txtSupplier",
+            ),
+            "order_no": (
+                "RMPO No.",
+                "#gridRMPO_tblGridHeader_trSearch_td_colOrderNo "
+                "input#txtOrderNo",
+            ),
+        },
+        "#gridRMPO_tblGridHeader_trSearch_td_colSupplier",
+        log,
+    )
+
+
+def search_indent_list(
+    module_name: str,
+    supplier: str,
+    article: str,
+    indent_no: str,
+    style: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    if module_name not in {"Indent List", "User Indent"}:
+        return _result(
+            False,
+            "INVALID_FILTER",
+            "Module Indent không hợp lệ.",
+        )
+    return _search_module_fields(
+        module_name,
+        {
+            "supplier": supplier,
+            "article": article,
+            "indent_no": indent_no,
+            "style": style,
+        },
+        {
+            "supplier": (
+                "Supplier",
+                "#gridMOLList_tblGridHeader_trSearch_td_ColSupplier "
+                "input#txtSupplier",
+            ),
+            "article": (
+                "Article",
+                "#gridMOLList_tblGridHeader_trSearch_td_ColArticle "
+                "input#txtArticle",
+            ),
+            "indent_no": (
+                "Indent No.",
+                "#gridMOLList_tblGridHeader_trSearch_td_ColIndentNo "
+                "input#txtIndentNo",
+            ),
+            "style": (
+                "Style",
+                "#gridMOLList_tblGridHeader_trSearch_td_ColStyle "
+                "input#txtStyle",
+            ),
+        },
+        "#gridMOLList_tblGridHeader_trSearch_td_ColIndentNo",
+        log,
+    )
+
+
+def open_module_new(
+    module_id: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    definitions = {
+        "0063_0030_0020": (
+            "QA List",
+            "div.clsPageTitleBarToolNew"
+            "[onclick*=\"titlebarQARequestList\"]",
+        ),
+        "0065_0880_0010_0020": (
+            "Advance PR List",
+            "a[href*=\"MenuName=mnuAdvancePaymentRequestNew\"]"
+            "[href*=\"WFXAdvancePaymentRequest.aspx?ARAPType=APR\"]",
+        ),
+        "0065_0880_0030_0020": (
+            "Expense Inv List",
+            "a[href*=\"MenuName=mnuExpenseInvoiceNew\"]"
+            "[href*=\"WFXExpenseInvoice.aspx?InvoiceType=Expense\"]",
+        ),
+    }
+    if module_id not in definitions:
+        return _result(
+            False,
+            "INVALID_FILTER",
+            "Module này không hỗ trợ thao tác New.",
+        )
+    module_name, selector = definitions[module_id]
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        browser, page = _active_wfx_page(playwright, log)
+        try:
+            frame = _frame_with_visible_context(page, selector, timeout_s=4)
+            target = frame.locator(selector).first
+        except PlaywrightTimeoutError:
+            message = (
+                f"Chưa thấy nút New trong {module_name}. "
+                "Hãy bấm List trước và chờ màn danh sách hiển thị."
+            )
+            _write_log(log, message)
+            return _result(
+                False,
+                "MODULE_LIST_NOT_OPEN",
+                message,
+                module=module_name,
+            )
+
+        snapshots = [
+            _mark_document(candidate, f"module-new-{index}")
+            for index, candidate in enumerate(page.frames)
+        ]
+        old_frames = {snapshot[0] for snapshot in snapshots}
+        page_count = len(browser.contexts[0].pages)
+        _write_log(log, f"[MODULE NEW] Đang mở New từ {module_name}.")
+        _click_navigation_control(target)
+
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if len(browser.contexts[0].pages) > page_count:
+                break
+            current_frames = list(page.frames)
+            if any(candidate not in old_frames for candidate in current_frames):
+                break
+            if any(
+                snapshot[0] in current_frames
+                and _document_changed(snapshot[0], snapshot)
+                for snapshot in snapshots
+                if snapshot[0] is not None
+            ):
+                break
+            _wait(page, 250)
+        else:
+            return _result(
+                False,
+                "MODULE_FAILED",
+                f"WFX chưa xác nhận màn New của {module_name}.",
+                module=module_name,
+            )
+        return _result(
+            True,
+            "MODULE_NEW_READY",
+            f"Đã mở New từ {module_name}.",
+            module=module_name,
+        )
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Chrome automation chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message, module=module_name)
+    except Exception as exc:
+        detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"Không thể mở New từ {module_name}: {detail}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "MODULE_FAILED",
+            message,
+            module=module_name,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
 def open_sample_new(
     xpath: str,
     log: Callable[[str], None] = print,
@@ -800,7 +1178,7 @@ def open_sample_new(
                         "SAMPLE_NEW_READY",
                         "Đã mở New Sample Order.",
                     )
-            page.wait_for_timeout(200)
+            _wait(page, 200)
         raise PlaywrightTimeoutError(
             "WFX chưa xác nhận màn New Sample Order."
         )
@@ -906,36 +1284,39 @@ def toggle_company_foc(
         # set_checked có thể làm WFX thay document/frame. Không giữ lại `frame`
         # cũ của checkbox: resolve lại đúng link Save đang hiển thị trên toàn
         # bộ frame, gồm markup td.clsBtnOff mà trang Company Setup đang dùng.
-        save_frame, save = _visible_locator_in_frames(
-            page,
-            save_selector,
-            timeout_s=12,
-        )
-        snapshot = _mark_document(save_frame, "company-foc-save")
-        _write_log(log, "[COMPANY SETUP] Đang bấm Save...")
-        _click_navigation_control(save)
+        # Từ lúc click Save đến khi xác nhận response/document là critical
+        # section: Stop được ghi nhận nhưng chỉ áp dụng sau bước lưu an toàn.
+        with cancellation_deferred():
+            save_frame, save = _visible_locator_in_frames(
+                page,
+                save_selector,
+                timeout_s=12,
+            )
+            snapshot = _mark_document(save_frame, "company-foc-save")
+            _write_log(log, "[COMPANY SETUP] Đang bấm Save...")
+            _click_navigation_control(save)
 
-        deadline = time.monotonic() + 25
-        confirmed = False
-        observed_state: bool | None = None
-        while time.monotonic() < deadline:
-            try:
-                current_frame, current_checkbox = _visible_locator_in_frames(
-                    page, checkbox_selector, timeout_s=1
-                )
-                observed_state = current_checkbox.is_checked(timeout=1_000)
-                document_saved = _document_changed(current_frame, snapshot)
-                request_saved = any(
-                    response.get("ok") for response in save_responses
-                )
-                if observed_state == wanted and (
-                    document_saved or request_saved
-                ):
-                    confirmed = True
-                    break
-            except (PlaywrightError, PlaywrightTimeoutError):
-                pass
-            page.wait_for_timeout(250)
+            deadline = time.monotonic() + 25
+            confirmed = False
+            observed_state: bool | None = None
+            while time.monotonic() < deadline:
+                try:
+                    current_frame, current_checkbox = _visible_locator_in_frames(
+                        page, checkbox_selector, timeout_s=1
+                    )
+                    observed_state = current_checkbox.is_checked(timeout=1_000)
+                    document_saved = _document_changed(current_frame, snapshot)
+                    request_saved = any(
+                        response.get("ok") for response in save_responses
+                    )
+                    if observed_state == wanted and (
+                        document_saved or request_saved
+                    ):
+                        confirmed = True
+                        break
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    pass
+                _wait(page, 250)
 
         if not confirmed:
             failed_statuses = [
