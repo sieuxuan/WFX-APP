@@ -96,6 +96,8 @@ Mỗi nút trong module là một flow riêng:
 - WebView2 của panel/bubble/notification dùng tối đa 3 renderer qua
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. Dùng `setdefault` để cấu hình quản trị
   viên vẫn có quyền override.
+- Bubble phải có fallback Win32 bắt chuột phải, không chỉ dựa vào sự kiện
+  `contextmenu` của WebView. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
 - Chỉ một Playwright driver/CDP connection được tồn tại trong app; tự nhả sau
   60 giây idle và runtime phải shutdown khi người dùng thoát.
 

@@ -7,6 +7,20 @@
   let pressOrigin = null;
   let dragging = false;
   let suppressClick = false;
+  let menuRequested = false;
+
+  function requestContextMenu(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (menuRequested) return;
+    menuRequested = true;
+    resetDragState(true);
+    suppressClick = false;
+    api()?.note_bubble_interaction?.();
+    Promise.resolve(api()?.bubble_context_menu?.()).finally(() => {
+      menuRequested = false;
+    });
+  }
 
   function resetDragState(notifyBackend = false) {
     const hadInteraction = pressOrigin !== null;
@@ -17,6 +31,11 @@
   }
 
   bubble.addEventListener("mousedown", (event) => {
+    if (event.button === 2) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.button !== 0) return;
     api()?.begin_bubble_interaction?.();
     pressOrigin = { x: event.screenX, y: event.screenY };
@@ -40,6 +59,10 @@
   });
 
   window.addEventListener("mouseup", (event) => {
+    if (event.button === 2) {
+      requestContextMenu(event);
+      return;
+    }
     if (event.button !== 0 || !pressOrigin) return;
     const moved = dragging;
     resetDragState(true);
@@ -56,14 +79,7 @@
     api()?.toggle_panel?.();
   });
 
-  bubble.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    resetDragState(true);
-    suppressClick = false;
-    api()?.note_bubble_interaction?.();
-    api()?.bubble_context_menu?.();
-  });
+  bubble.addEventListener("contextmenu", requestContextMenu);
 
   window.addEventListener("blur", () => resetDragState(true));
   window.addEventListener("pointercancel", () => resetDragState(true));

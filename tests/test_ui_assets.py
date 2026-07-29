@@ -141,7 +141,7 @@ def test_module_detail_page_header_uses_name_and_description_only():
 def test_bubble_page_advertises_interactions():
     html = (UI / "bubble.html").read_text(encoding="utf-8")
     assert 'class="bubble pywebview-drag-region"' in html
-    assert 'src="bubble.js?v=20260728-5"' in html
+    assert 'src="bubble.js?v=20260729-6"' in html
     button = html[html.index('class="bubble pywebview-drag-region"') :]
     button = button[: button.index(">")]
     assert "chuột phải" in button  # menu tùy chọn
@@ -357,6 +357,13 @@ def test_ui_uses_short_compositor_motion_with_reduced_motion_fallback():
         "@media (prefers-reduced-motion: reduce)",
     ):
         assert hook in css
+
+
+def test_spinners_use_one_calm_cross_device_duration():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert "--spinner-duration: 1.25s" in css
+    assert css.count("var(--spinner-duration) linear infinite") == 3
+    assert "animation: spin .7s" not in css
 
 
 def test_settings_are_split_into_three_focused_tabs_with_auth_prompt():

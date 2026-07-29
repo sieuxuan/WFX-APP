@@ -96,6 +96,7 @@ body.compact-mode .compact-launcher .compact-mark {
       --toast-bg: #ffffff; --toast-text: #17323d; --toast-border: rgba(15,45,60,.14);
       --scrim: rgba(20,40,52,.42); --launcher-grad: linear-gradient(145deg,#12b4d0,#0f9fb2 62%,#16b89f);
       --launcher-ink: #ffffff; --glow: rgba(20,180,205,.16);
+      --spinner-duration: 1.25s;
     }
     :root[data-theme="dark"] {
       color-scheme: dark;
@@ -168,7 +169,7 @@ body.compact-mode .compact-launcher .compact-mark {
       border: 2px solid var(--accent-border);
       border-top-color: var(--accent-strong);
       border-radius: 50%;
-      animation: operation-spin 1.05s linear infinite;
+      animation: operation-spin var(--spinner-duration) linear infinite;
     }
     @keyframes operation-spin { to { transform: rotate(360deg); } }
     @keyframes operation-track {
@@ -209,7 +210,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .primary-button:active { transform: scale(.985); }
     .primary-button:disabled { cursor: wait; opacity: .78; }
     .primary-button svg { width: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .primary-button i { display: none; width: 14px; height: 14px; border: 2px solid rgba(5,32,42,.25); border-top-color: var(--accent-ink); border-radius: 50%; animation: spin .7s linear infinite; }
+    .primary-button i { display: none; width: 14px; height: 14px; border: 2px solid rgba(5,32,42,.25); border-top-color: var(--accent-ink); border-radius: 50%; animation: spin var(--spinner-duration) linear infinite; }
     .primary-button.is-loading svg { display: none; }
     .primary-button.is-loading i { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -384,7 +385,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .catalog-file-group-label:first-child { margin-top: 1px; }
     .catalog-results-empty { padding: 14px 8px; color: var(--text-3); font-size: 11.5px; line-height: 1.4; text-align: center; }
     button.is-loading { position: relative; color: transparent !important; opacity: 1 !important; pointer-events: none; }
-    button.is-loading::after { content: ""; position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid var(--accent-border); border-top-color: var(--accent-strong); border-radius: 50%; animation: wfx-btn-spin 1.05s linear infinite; }
+    button.is-loading::after { content: ""; position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid var(--accent-border); border-top-color: var(--accent-strong); border-radius: 50%; animation: wfx-btn-spin var(--spinner-duration) linear infinite; }
     button.is-action-source { border-color: var(--accent-border) !important; box-shadow: 0 0 0 2px var(--accent-soft); }
     @keyframes wfx-btn-spin { to { transform: rotate(360deg); } }
     .log-button { position: relative; }

@@ -424,6 +424,8 @@ def test_bubble_launcher_is_wired():
     assert "bubble_context_menu" in BUBBLE_JS
     assert "DRAG_THRESHOLD = 4" in BUBBLE_JS
     assert "Math.hypot" in BUBBLE_JS
+    assert "requestContextMenu" in BUBBLE_JS
+    assert "event.button === 2" in BUBBLE_JS
     assert "setTimeout" not in BUBBLE_JS
 
 

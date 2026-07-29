@@ -649,6 +649,41 @@ def _foreground_window_hwnd() -> int | None:
         return None
 
 
+def _right_mouse_state_over_hwnd(hwnd: int | None) -> tuple[bool, bool]:
+    """Trạng thái chuột phải và con trỏ có nằm trên HWND/child hay không."""
+    if os.name != "nt" or not hwnd:
+        return False, False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        if not user32.IsWindow(wintypes.HWND(hwnd)):
+            return False, False
+
+        class Point(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        point = Point()
+        if not user32.GetCursorPos(ctypes.byref(point)):
+            return False, False
+        user32.WindowFromPoint.restype = wintypes.HWND
+        target = user32.WindowFromPoint(point)
+        over = bool(
+            target
+            and (
+                int(target) == int(hwnd)
+                or user32.IsChild(wintypes.HWND(hwnd), target)
+            )
+        )
+        # High bit = đang giữ; low bit = đã bấm kể từ lần đọc trước. Giữ cả hai
+        # để không bỏ lỡ click rất nhanh giữa hai nhịp poll 40ms.
+        down = bool(user32.GetAsyncKeyState(0x02) & 0x8001)  # VK_RBUTTON
+        return down, over
+    except Exception:
+        return False, False
+
+
 def _native_compact_context_choice(
     _always_on_top: bool,
     title: str = MAIN_WINDOW_TITLE,
