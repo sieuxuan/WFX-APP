@@ -460,6 +460,114 @@ def test_catalog_destination_uses_existing_article_popup(monkeypatch):
     ]
 
 
+def test_detached_article_frame_refreshes_only_the_cdp_connection(monkeypatch):
+    calls = []
+
+    class DetachedTop:
+        def locator(self, _selector):
+            raise catalog.PlaywrightError("Frame was detached")
+
+    article_page = SimpleNamespace(
+        url="https://example.test/wfx/wfx_ArticleDetail.aspx",
+        frame=lambda name: DetachedTop() if name == "ArticleTop" else None,
+    )
+    stale_browser = SimpleNamespace(
+        contexts=[SimpleNamespace(pages=[article_page])]
+    )
+    refreshed_browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[])])
+    refreshed_page = object()
+    playwright = object()
+    page = object()
+
+    monkeypatch.setattr(
+        catalog,
+        "invalidate_browser",
+        lambda browser: calls.append(("invalidate", browser)),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda actual: (
+            calls.append(("connect", actual))
+            or (refreshed_browser, refreshed_page)
+        ),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_attach_dialog_handler",
+        lambda actual_page, _log: calls.append(("dialogs", actual_page)),
+    )
+
+    result = catalog._refresh_article_context(
+        playwright,
+        stale_browser,
+        page,
+        lambda _line: None,
+    )
+
+    assert result == (refreshed_browser, refreshed_page)
+    assert calls == [
+        ("invalidate", stale_browser),
+        ("connect", playwright),
+        ("dialogs", refreshed_page),
+    ]
+
+
+def test_healthy_article_frame_still_refreshes_before_popup_navigation(monkeypatch):
+    class HealthyBody:
+        def count(self):
+            return 1
+
+    article_page = SimpleNamespace(
+        url="https://example.test/wfx/wfx_ArticleDetail.aspx",
+        frame=lambda name: (
+            SimpleNamespace(locator=lambda _selector: HealthyBody())
+            if name == "ArticleTop"
+            else None
+        ),
+    )
+    browser_instance = SimpleNamespace(
+        contexts=[SimpleNamespace(pages=[article_page])]
+    )
+    page = object()
+    refreshed_browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[])])
+    refreshed_page = object()
+    calls = []
+    monkeypatch.setattr(
+        catalog,
+        "invalidate_browser",
+        lambda browser: calls.append(("invalidate", browser)),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda actual: (
+            calls.append(("connect", actual))
+            or (refreshed_browser, refreshed_page)
+        ),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_attach_dialog_handler",
+        lambda actual_page, _log: calls.append(("dialogs", actual_page)),
+    )
+
+    playwright = object()
+    result = catalog._refresh_article_context(
+        playwright,
+        browser_instance,
+        page,
+        lambda _line: None,
+    )
+
+    assert result == (refreshed_browser, refreshed_page)
+    assert calls == [
+        ("invalidate", browser_instance),
+        ("connect", playwright),
+        ("dialogs", refreshed_page),
+    ]
+
+
 def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch):
     calls = []
 
