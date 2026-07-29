@@ -13,6 +13,7 @@ Benchmark RAM/tốc độ của bản này nằm tại
 
 - Mở panel bằng launcher nổi, taskbar, system tray hoặc hotkey `Ctrl+Shift+X`;
   chuột phải launcher để chọn nơi thu gọn.
+- Launcher và menu tự scale theo DPI của từng màn hình, gồm màn 2K ở 125%.
 - Alert nghiệp vụ của WFX vẫn hiện trên Chrome và chờ người dùng xác nhận.
 - Bản EXE mặc định khởi động cùng Windows; người dùng có thể tắt trong Settings
   và lựa chọn này được giữ nguyên.

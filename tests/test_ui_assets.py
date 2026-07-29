@@ -148,6 +148,17 @@ def test_bubble_page_advertises_interactions():
     assert "kéo" in button
 
 
+def test_bubble_menu_has_two_real_actions_in_a_separate_window():
+    html = (UI / "bubble_menu.html").read_text(encoding="utf-8")
+    js = (UI / "bubble_menu.js").read_text(encoding="utf-8")
+    assert 'data-action="taskbar"' in html
+    assert 'data-action="tray"' in html
+    assert "Ẩn xuống taskbar" in html
+    assert "Thu vào system tray" in html
+    assert "api()?.choose?.(action)" in js
+    assert "api()?.dismiss?.()" in js
+
+
 def test_bubble_restores_the_previous_launcher_size():
     assert panel_app.BUBBLE_SIZE == 48
 
