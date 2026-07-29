@@ -104,7 +104,10 @@ Mỗi nút trong module là một flow riêng:
   dismiss ngay. Poll loop phải bỏ qua click mở menu, sau đó tự đóng menu khi
   người dùng click ra ngoài. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
 - Chỉ một Playwright driver/CDP connection được tồn tại trong app; tự nhả sau
-  60 giây idle và runtime phải shutdown khi người dùng thoát.
+  60 giây idle và runtime phải shutdown khi người dùng thoát. Riêng tại ranh
+  giới popup Article, giữ nguyên Playwright driver nhưng invalidate/reconnect
+  CDP một lần trước Costing, BOM hoặc File; WFX có thể detach `ArticleTop` ngay
+  sau khi click lại cùng style dù frame vừa kiểm tra vẫn còn đọc được.
 
 Các workflow riêng hiện có:
 

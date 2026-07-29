@@ -81,6 +81,8 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - Style Code.
   - Buyer Reference.
 - Khi chỉ có một Style Code, app tự mở Article.
+- Trước khi mở Costing, BOM hoặc File, app tự đồng bộ lại popup Article để
+  không dùng nhầm frame cũ khi WFX reload cùng một style.
 - Khi có nhiều kết quả, app giữ danh sách để người dùng chọn.
 - Hiển thị Season và Internal CostSheet Status khi đọc được từ grid.
 - Mở Costing.

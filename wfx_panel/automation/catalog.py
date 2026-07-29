@@ -35,6 +35,7 @@ from wfx_panel.automation.browser import (
     _chrome_is_ready,
     _connect_to_chrome,
     _start_persistent_chrome,
+    invalidate_browser,
 )
 from wfx_panel.automation.session import _session_is_active, login
 
@@ -657,6 +658,39 @@ def _open_article_destination(
     raise PlaywrightTimeoutError(f"Không tìm thấy nút {label} trong ArticleTop.")
 
 
+def _refresh_article_context(
+    playwright: Playwright,
+    browser: Any,
+    page: Page,
+    log: Callable[[str], None],
+) -> tuple[Any, Page]:
+    """Làm mới CDP tại ranh giới popup Article để tránh frame cache bị detach."""
+    context = (getattr(browser, "contexts", None) or [None])[0]
+    article_seen = False
+    for candidate in list(getattr(context, "pages", ()) or ()):
+        article_top = candidate.frame(name="ArticleTop")
+        if article_top is None:
+            if "wfx_articledetail" in str(candidate.url or "").casefold():
+                article_seen = True
+            continue
+        article_seen = True
+        # Không trả lại frame hiện tại dù đang đọc được: khi click lại cùng
+        # style, WFX detach ArticleTop ngay sau nhịp kiểm tra này.
+        break
+
+    if not article_seen:
+        return browser, page
+
+    _write_log(
+        log,
+        "[ARTICLE] Đang đồng bộ popup bằng kết nối CDP mới...",
+    )
+    invalidate_browser(browser)
+    refreshed_browser, refreshed_page = _connect_to_chrome(playwright)
+    _attach_dialog_handler(refreshed_page, log)
+    return refreshed_browser, refreshed_page
+
+
 def open_catalog_destination(
     article_code: str,
     destination: str,
@@ -694,6 +728,12 @@ def open_catalog_destination(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
+        browser, page = _refresh_article_context(
+            playwright,
+            browser,
+            page,
+            log,
+        )
         label = _open_article_destination(
             browser.contexts[0],
             destination,
@@ -1092,6 +1132,12 @@ def scan_catalog_files(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
+        browser, page = _refresh_article_context(
+            playwright,
+            browser,
+            page,
+            log,
+        )
         article, article_top = _article_page(browser.contexts[0])
         article.bring_to_front()
         files, sections = _scan_article_file_tabs(article, article_top, log)
