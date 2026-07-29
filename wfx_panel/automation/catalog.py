@@ -37,6 +37,7 @@ from wfx_panel.automation.browser import (
     _start_persistent_chrome,
     invalidate_browser,
 )
+from wfx_panel.automation.runtime import recycle_playwright
 from wfx_panel.automation.session import _session_is_active, login
 
 ARTICLE_FILE_TAB_INDEXES = (5, 6, 8, 9)
@@ -663,8 +664,8 @@ def _refresh_article_context(
     browser: Any,
     page: Page,
     log: Callable[[str], None],
-) -> tuple[Any, Page]:
-    """Làm mới CDP tại ranh giới popup Article để tránh frame cache bị detach."""
+) -> tuple[Any, Any, Page]:
+    """Tạo driver/CDP mới tại popup Article để lấy lại frame bị WFX detach."""
     context = (getattr(browser, "contexts", None) or [None])[0]
     article_seen = False
     for candidate in list(getattr(context, "pages", ()) or ()):
@@ -679,16 +680,17 @@ def _refresh_article_context(
         break
 
     if not article_seen:
-        return browser, page
+        return playwright, browser, page
 
     _write_log(
         log,
-        "[ARTICLE] Đang đồng bộ popup bằng kết nối CDP mới...",
+        "[ARTICLE] Đang đồng bộ popup bằng driver mới...",
     )
     invalidate_browser(browser)
+    playwright = recycle_playwright(playwright)
     refreshed_browser, refreshed_page = _connect_to_chrome(playwright)
     _attach_dialog_handler(refreshed_page, log)
-    return refreshed_browser, refreshed_page
+    return playwright, refreshed_browser, refreshed_page
 
 
 def open_catalog_destination(
@@ -728,7 +730,7 @@ def open_catalog_destination(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
-        browser, page = _refresh_article_context(
+        playwright, browser, page = _refresh_article_context(
             playwright,
             browser,
             page,
@@ -739,7 +741,11 @@ def open_catalog_destination(
             destination,
             [],
             log,
-            timeout_seconds=8,
+            # Popup Article có thể được WFX tái sử dụng rồi detach/attach lại
+            # ArticleTop sau khi search đã trả RESULT_OPENED. 8 giây không đủ
+            # trên phiên đang tải nhiều module; chờ đúng frame mới thay vì báo
+            # nhầm style hết hạn.
+            timeout_seconds=20,
         )
         return _result(
             True,
@@ -835,6 +841,39 @@ def _article_file_tab(
                 continue
         _wait(page, 200)
     return None
+
+
+def _ensure_article_techpack(
+    page: Page,
+    article_top: Frame,
+    log: Callable[[str], None],
+    timeout_seconds: float = 15,
+) -> Frame:
+    """Đưa popup về Techpack trước khi đọc File, kể cả vừa mở Costing/BOM."""
+    def techpack_ready() -> bool:
+        left = page.frame(name="ArticleLeft")
+        return bool(
+            left is not None
+            and "wfxarticletechpack" in str(left.url or "").casefold()
+        )
+
+    if techpack_ready():
+        return article_top
+
+    _write_log(log, "[ARTICLE FILE] Đang chuyển về Techpack...")
+    target = article_top.locator("#Versions")
+    target.wait_for(state="attached", timeout=3_000)
+    target.evaluate("element => element.click()")
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        current_top = page.frame(name="ArticleTop")
+        if current_top is not None and techpack_ready():
+            _write_log(log, "[ARTICLE FILE] Techpack đã sẵn sàng.")
+            return current_top
+        _wait(page, 200)
+    raise PlaywrightTimeoutError(
+        "Không thể chuyển popup Article về Techpack để đọc File."
+    )
 
 
 def _mark_article_documents(page: Page) -> list[tuple[Frame, str]]:
@@ -1132,7 +1171,7 @@ def scan_catalog_files(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
-        browser, page = _refresh_article_context(
+        playwright, browser, page = _refresh_article_context(
             playwright,
             browser,
             page,
@@ -1140,6 +1179,7 @@ def scan_catalog_files(
         )
         article, article_top = _article_page(browser.contexts[0])
         article.bring_to_front()
+        article_top = _ensure_article_techpack(article, article_top, log)
         files, sections = _scan_article_file_tabs(article, article_top, log)
         available = sum(1 for section in sections if section["available"])
         if available == 0:

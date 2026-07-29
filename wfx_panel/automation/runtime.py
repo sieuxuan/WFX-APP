@@ -170,6 +170,22 @@ class AutomationRuntime:
         if browser is None or browser is self._browser:
             self._browser = None
 
+    def recycle_playwright(
+        self,
+        playwright: Playwright | _PlaywrightLease,
+    ) -> Playwright | _PlaywrightLease:
+        """Tạo driver mới khi CDP cũ mất frame, không đóng Chrome ngoài."""
+        if threading.get_ident() != self._thread_id:
+            try:
+                playwright.stop()
+            except Exception:
+                pass
+            return _sync_playwright().start()
+        self._release_connections()
+        self.checkpoint()
+        self._playwright = _sync_playwright().start()
+        return _PlaywrightLease(self._playwright)
+
     def shutdown(self, timeout: float = 3.0) -> None:
         self.request_cancel()
         thread = self._thread
@@ -215,6 +231,12 @@ def connect_browser(playwright: Any, cdp_url: str) -> Browser:
 
 def invalidate_browser(browser: Browser | None = None) -> None:
     RUNTIME.invalidate_browser(browser)
+
+
+def recycle_playwright(
+    playwright: Playwright | _PlaywrightLease,
+) -> Playwright | _PlaywrightLease:
+    return RUNTIME.recycle_playwright(playwright)
 
 
 def shutdown() -> None:

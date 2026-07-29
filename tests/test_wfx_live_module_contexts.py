@@ -69,7 +69,7 @@ def _open(module_id: str) -> dict:
     return controller.open(login, lambda _line: None)
 
 
-def test_search_uses_only_the_current_module_list():
+def test_search_auto_opens_the_required_module_list():
     account = prefs.load_account()
     assert account["user_id"] and account["password"]
     session = login.run(
@@ -82,13 +82,14 @@ def test_search_uses_only_the_current_module_list():
 
     oc = constants.MODULE_BY_ID["0004_0050_0020"]
     assert _open("0004_0050_0020")["ok"]
-    wrong_sample = login.search_sample_list(
+    sample_from_oc = login.search_sample_list(
         constants.MODULE_BY_ID["0004_0056_4070"]["xpath"],
         "style",
         SMOKE_QUERY,
         lambda _line: None,
     )
-    assert wrong_sample["code"] == "MODULE_LIST_NOT_OPEN"
+    assert sample_from_oc["code"] == "MODULE_SEARCH_APPLIED"
+    _clear_visible_filter(("#txtArticle", 'input[id*="Article" i]'))
     oc_search = login.search_oc_list(
         oc["xpath"],
         "oc_no",
@@ -100,13 +101,16 @@ def test_search_uses_only_the_current_module_list():
 
     sample = constants.MODULE_BY_ID["0004_0056_4070"]
     assert _open("0004_0056_4070")["ok"]
-    wrong_sale = login.search_sale_asn_list(
+    sale_from_sample = login.search_sale_asn_list(
         constants.MODULE_BY_ID["0004_0070_0020"]["xpath"],
-        "style",
+        "buyer_order_ref",
         SMOKE_QUERY,
         lambda _line: None,
     )
-    assert wrong_sale["code"] == "MODULE_LIST_NOT_OPEN"
+    assert sale_from_sample["code"] == "MODULE_SEARCH_APPLIED"
+    _clear_visible_filter(
+        ('input[aria-label*="Buyer Order Ref/Oc Num" i]',)
+    )
     sample_search = login.search_sample_list(
         sample["xpath"],
         "sample_no",
@@ -125,13 +129,14 @@ def test_search_uses_only_the_current_module_list():
 
     sale = constants.MODULE_BY_ID["0004_0070_0020"]
     assert _open("0004_0070_0020")["ok"]
-    wrong_oc = login.search_oc_list(
+    oc_from_sale = login.search_oc_list(
         oc["xpath"],
         "style",
         SMOKE_QUERY,
         lambda _line: None,
     )
-    assert wrong_oc["code"] == "MODULE_LIST_NOT_OPEN"
+    assert oc_from_sale["code"] == "MODULE_SEARCH_APPLIED"
+    _clear_visible_filter(("#txtArticle", 'input[name="txtArticle"]'))
     sale_search = login.search_sale_asn_list(
         sale["xpath"],
         "invoice_no",

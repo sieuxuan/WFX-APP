@@ -58,14 +58,15 @@ lập trình.
 
 ## 5. Quy tắc sử dụng các workflow
 
-Các nút `List`, `Search`, `New` và nút thao tác khác là các bước riêng:
+Các nút `List`, `Search`, `New` và nút thao tác khác là các flow riêng:
 
-1. Bấm `List` để mở màn danh sách.
-2. Chờ List/Floating Filter tải xong.
-3. Nhập nội dung rồi bấm `Tìm`, hoặc chạy bước tiếp theo.
+1. Bấm `List` để chủ động mở màn danh sách.
+2. Hoặc nhập nội dung và bấm `Tìm` ngay; app tự mở đúng List, chờ
+   List/Floating Filter tải xong rồi áp dụng search.
+3. Với `New` và thao tác thay đổi dữ liệu, mở List trước để xác nhận đúng màn.
 
-Search không tải lại List. Nếu người dùng chưa mở đúng List, app sẽ nhắc bấm
-List trước và không gửi đây là lỗi hệ thống.
+Nếu đúng List đã mở, Search dùng lại màn hiện tại để nhanh hơn. Nếu đang ở màn
+khác, app tự điều hướng; không báo lỗi yêu cầu người dùng bấm List.
 Khi bấm thao tác, nút vừa chọn được đánh dấu và automation bắt đầu ngay trong
 lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa các bước.
 
@@ -92,7 +93,7 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 ## 7. OC List
 
 - `List`: mở OC List hiện tại.
-- `Search OC`: tìm trực tiếp trên List đã mở theo:
+- `Search OC`: tự mở List nếu cần rồi tìm theo:
   - OC No.
   - Style.
 - App chỉ áp dụng filter trên WFX, không sao chép danh sách kết quả về panel.
@@ -100,7 +101,7 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 ## 8. Sample List
 
 - `List`: mở Sample List và bật Floating Filter.
-- `Search Sample`: tìm trên List đã mở theo:
+- `Search Sample`: tự mở List nếu cần rồi tìm theo:
   - Sample Order No.
   - Style.
   - Created By.
@@ -109,9 +110,9 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 ## 9. Sale ASN
 
 - `List`: mở Sale ASN List và bật Floating Filter.
-- `Search`: tìm trên List đã mở theo:
+- `Search`: tự mở List nếu cần rồi tìm theo:
   - Invoice No.
-  - Style.
+  - Buyer Order Ref/OC No.
 - `New`: mở Sale ASN mới với `With GDN` và `Buyer Order Dispatch`.
 
 ## 10. Supplier List
@@ -132,7 +133,7 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 ## 11. Buyer List
 
 - Mở Buyers List.
-- Tìm theo tên hoặc một phần tên công ty trên đúng Buyer List đang mở.
+- Tự mở Buyer List nếu cần rồi tìm theo tên hoặc một phần tên công ty.
 - Mở Edit của Buyer đầu tiên phù hợp.
 - Không dùng nhầm Supplier List dù hai màn cùng có ô Company Name.
 
@@ -158,9 +159,10 @@ Nhóm Finance:
 - Supplier Inv List.
 - Expense Inv List: mở List hoặc bấm `New` để tạo Expense Invoice.
 
-Với RMPO và hai màn Indent, bấm `List` trước. Nút `Tìm` chỉ điền các ô search
-trên màn hiện tại, không mở lại menu. Các ô không nhập được xóa để kết quả phản
-ánh đúng tổ hợp điều kiện đang thấy trên panel.
+Với RMPO và hai màn Indent, có thể bấm `Tìm` ngay. App tự mở đúng List nếu cần
+và phân biệt `Indent List` với `User Indent` bằng context trang, dù hai màn dùng
+chung selector. Các ô không nhập được xóa để kết quả phản ánh đúng tổ hợp điều
+kiện đang thấy trên panel.
 
 Nhóm Admin hiển thị theo quyền của tài khoản:
 
@@ -204,8 +206,10 @@ Nhóm Admin hiển thị theo quyền của tài khoản:
   reporting bị tắt không thể bị gửi trễ lên webhook thật.
 - Không gửi password, cookie, SessionID, LoginID, URL WFX đầy đủ hoặc nội dung
   tìm kiếm.
-- Các lỗi thao tác như chưa bấm List, thiếu nội dung tìm hoặc không có kết quả
-  không được gửi thành lỗi hệ thống.
+- Search tự mở đúng List và Floating Filter khi cần; người dùng có thể nhập điều
+  kiện rồi bấm Tìm ngay, không cần bấm List trước.
+- Các lỗi nhập liệu như thiếu nội dung tìm hoặc không có kết quả không được gửi
+  thành lỗi hệ thống.
 
 ## 16. Cập nhật ứng dụng
 
