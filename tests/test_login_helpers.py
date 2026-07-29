@@ -24,8 +24,37 @@ def test_style_status_suffix_handles_empty_cells():
     assert suffix.count("—") == 2
 
 
+@pytest.mark.parametrize(
+    ("title", "module_name", "expected"),
+    [
+        ("Indent List", "Indent List", True),
+        ("User Indent List", "Indent List", False),
+        ("Indent List", "User Indent", False),
+        ("User Indent List", "User Indent", True),
+        ("Anything", "RMPO List", True),
+    ],
+)
+def test_shared_indent_grid_is_bound_to_the_page_title(
+    title,
+    module_name,
+    expected,
+):
+    title_locator = SimpleNamespace(
+        count=lambda: 1,
+        first=SimpleNamespace(text_content=lambda timeout: title),
+    )
+    frame = SimpleNamespace(locator=lambda selector: title_locator)
+    assert (
+        modules._frame_matches_module_context(frame, module_name)
+        is expected
+    )
+
+
 def test_article_file_tabs_match_requested_wfx_positions():
     assert catalog.ARTICLE_FILE_TAB_INDEXES == (5, 6, 8, 9)
+    source = Path(catalog.__file__).read_text(encoding="utf-8")
+    assert "def _ensure_article_techpack" in source
+    assert 'article_top.locator("#Versions")' in source
 
 
 def test_article_file_tabs_click_the_actionable_child_and_confirm_navigation():
@@ -455,12 +484,12 @@ def test_catalog_destination_uses_existing_article_popup(monkeypatch):
 
     assert result["code"] == "CATALOG_DESTINATION_OPENED"
     assert calls == [
-        ("destination", context, "bom", [], 8),
+        ("destination", context, "bom", [], 20),
         ("stop",),
     ]
 
 
-def test_detached_article_frame_refreshes_only_the_cdp_connection(monkeypatch):
+def test_detached_article_frame_recycles_driver_and_cdp(monkeypatch):
     calls = []
 
     class DetachedTop:
@@ -476,6 +505,7 @@ def test_detached_article_frame_refreshes_only_the_cdp_connection(monkeypatch):
     )
     refreshed_browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[])])
     refreshed_page = object()
+    refreshed_playwright = object()
     playwright = object()
     page = object()
 
@@ -483,6 +513,14 @@ def test_detached_article_frame_refreshes_only_the_cdp_connection(monkeypatch):
         catalog,
         "invalidate_browser",
         lambda browser: calls.append(("invalidate", browser)),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "recycle_playwright",
+        lambda actual: (
+            calls.append(("recycle", actual))
+            or refreshed_playwright
+        ),
     )
     monkeypatch.setattr(
         catalog,
@@ -505,10 +543,15 @@ def test_detached_article_frame_refreshes_only_the_cdp_connection(monkeypatch):
         lambda _line: None,
     )
 
-    assert result == (refreshed_browser, refreshed_page)
+    assert result == (
+        refreshed_playwright,
+        refreshed_browser,
+        refreshed_page,
+    )
     assert calls == [
         ("invalidate", stale_browser),
-        ("connect", playwright),
+        ("recycle", playwright),
+        ("connect", refreshed_playwright),
         ("dialogs", refreshed_page),
     ]
 
@@ -532,11 +575,20 @@ def test_healthy_article_frame_still_refreshes_before_popup_navigation(monkeypat
     page = object()
     refreshed_browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[])])
     refreshed_page = object()
+    refreshed_playwright = object()
     calls = []
     monkeypatch.setattr(
         catalog,
         "invalidate_browser",
         lambda browser: calls.append(("invalidate", browser)),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "recycle_playwright",
+        lambda actual: (
+            calls.append(("recycle", actual))
+            or refreshed_playwright
+        ),
     )
     monkeypatch.setattr(
         catalog,
@@ -560,10 +612,15 @@ def test_healthy_article_frame_still_refreshes_before_popup_navigation(monkeypat
         lambda _line: None,
     )
 
-    assert result == (refreshed_browser, refreshed_page)
+    assert result == (
+        refreshed_playwright,
+        refreshed_browser,
+        refreshed_page,
+    )
     assert calls == [
         ("invalidate", browser_instance),
-        ("connect", playwright),
+        ("recycle", playwright),
+        ("connect", refreshed_playwright),
         ("dialogs", refreshed_page),
     ]
 

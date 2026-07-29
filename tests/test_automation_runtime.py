@@ -61,6 +61,24 @@ def test_runtime_reuses_one_playwright_on_its_worker(monkeypatch):
     assert factory.instances[0].stop_calls == 1
 
 
+def test_runtime_recycles_playwright_without_starting_parallel_driver(monkeypatch):
+    factory = FakeFactory()
+    worker = runtime.AutomationRuntime()
+    monkeypatch.setattr(runtime, "_sync_playwright", lambda: factory)
+    try:
+        first = worker.execute(lambda: worker.playwright_start())
+        second = worker.execute(lambda: worker.recycle_playwright(first))
+
+        assert len(factory.instances) == 2
+        assert first._playwright is factory.instances[0]
+        assert second._playwright is factory.instances[1]
+        assert factory.instances[0].stop_calls == 1
+        assert factory.instances[1].stop_calls == 0
+    finally:
+        worker.shutdown()
+    assert factory.instances[1].stop_calls == 1
+
+
 def test_persistent_factory_keeps_sync_playwright_call_shape():
     assert runtime.sync_playwright() is runtime.sync_playwright
 

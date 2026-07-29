@@ -70,13 +70,17 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 Mỗi nút trong module là một flow riêng:
 
 1. `List` mở đúng màn danh sách và, nếu cần, bật Floating Filter.
-2. `Search`, `New`, `Đổi FOC` hoặc thao tác tiếp theo chỉ dùng màn hiện tại.
-3. Search không được tự click lại menu module hoặc reload List.
+2. `New`, `Đổi FOC` hoặc thao tác tiếp theo chỉ dùng màn hiện tại.
+3. `Search` ưu tiên đúng List hiện tại. Nếu List chưa mở hoặc context chưa sẵn
+   sàng, automation phải tự click đúng menu List, chờ grid/Floating Filter ổn
+   định rồi mới điền điều kiện; người dùng không cần bấm List trước.
 4. Trước khi điền, automation phải xác nhận context riêng của module trong cùng
    frame. Không được dùng chỉ `#txtArticle` hoặc `#txtCompanyName`, vì OC/Sample/
    Sale ASN và Buyer/Supplier có selector trùng nhau.
-5. Nếu chưa mở đúng List, trả code `*_LIST_NOT_OPEN` với hướng dẫn bấm List.
-   Đây là lỗi trình tự người dùng, không gửi webhook.
+5. Search không được trả `*_LIST_NOT_OPEN` hay hướng dẫn bấm List. Nếu đã tự mở
+   nhưng List/search vẫn không sẵn sàng, trả lỗi kỹ thuật cụ thể kèm trạng thái
+   tự mở thất bại. `*_LIST_NOT_OPEN` chỉ còn dùng cho các thao tác làm thay đổi
+   dữ liệu như New/Đổi FOC khi người dùng chưa mở đúng List.
 6. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
    lên foreground chạy song song và không nằm trên critical path. Poll trạng
    thái grid ở 150 ms, nhưng chỉ chấp nhận Floating Filter sau khi visible/enabled
@@ -105,9 +109,9 @@ Mỗi nút trong module là một flow riêng:
   người dùng click ra ngoài. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
 - Chỉ một Playwright driver/CDP connection được tồn tại trong app; tự nhả sau
   60 giây idle và runtime phải shutdown khi người dùng thoát. Riêng tại ranh
-  giới popup Article, giữ nguyên Playwright driver nhưng invalidate/reconnect
-  CDP một lần trước Costing, BOM hoặc File; WFX có thể detach `ArticleTop` ngay
-  sau khi click lại cùng style dù frame vừa kiểm tra vẫn còn đọc được.
+  giới popup Article, dừng driver cũ rồi tạo đúng một driver/CDP mới trước
+  Costing, BOM hoặc File nhưng không đóng Chrome; WFX có thể giữ page popup mà
+  không attach lại `ArticleTop` cho driver cũ sau khi click cùng style.
 
 Các workflow riêng hiện có:
 
@@ -116,9 +120,10 @@ Các workflow riêng hiện có:
 - OC List: tìm theo OC No. hoặc Style.
 - Sample List: List + Floating Filter, tìm theo Sample Order No./Style/
   Created By, và New Sample Order.
-- Sale ASN: List + Floating Filter, tìm theo Invoice No./Style, và New.
+- Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
+  No., và New.
 - Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
-- Buyer List: tìm trên đúng Buyer List đang mở rồi mở Edit đầu tiên.
+- Buyer List: tự mở đúng Buyer List khi cần rồi mở Edit đầu tiên.
 - Company Setup: mở List riêng rồi đổi/lưu nơi áp dụng FOC.
 - RMPO List: tìm kết hợp theo Supplier và RMPO No. trên đúng grid
   `gridRMPO`.

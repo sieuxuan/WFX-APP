@@ -672,9 +672,11 @@ class PanelAPI:
         supplier: str,
         order_no: str,
     ) -> dict:
+        rmpo = constants.MODULE_BY_ID["0005_0050_0020"]
         return self._run(
             "search_rmpo",
             lambda: self._login.search_rmpo_list(
+                rmpo["xpath"],
                 str(supplier or "").strip(),
                 str(order_no or "").strip(),
                 self._log,
@@ -700,11 +702,12 @@ class PanelAPI:
                 },
                 {"module_id": module_id},
             )
-        module_name = constants.MODULE_BY_ID[module_id]["name"]
+        module = constants.MODULE_BY_ID[module_id]
         return self._run(
             "search_indent",
             lambda: self._login.search_indent_list(
-                module_name,
+                module["xpath"],
+                module["name"],
                 str(supplier or "").strip(),
                 str(article or "").strip(),
                 str(indent_no or "").strip(),

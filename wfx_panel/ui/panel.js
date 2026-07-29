@@ -1085,7 +1085,7 @@
     },
     sale_asn: {
       invoice_no: "Nhập Invoice No.",
-      style: "Nhập Style",
+      buyer_order_ref: "Nhập Buyer Order Ref/OC No.",
     },
   };
 

@@ -668,7 +668,7 @@ def find_supplier_in_category(
 
 
 def find_and_open_buyer(
-    _module_xpath: str,
+    module_xpath: str,
     query: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
@@ -681,12 +681,21 @@ def find_and_open_buyer(
         browser, page = _active_wfx_page(playwright, log)
         frame = _buyer_search_frame(page, timeout_s=4)
         if frame is None:
-            return _result(
-                False,
-                "BUYER_LIST_NOT_OPEN",
-                "Chưa thấy ô tìm Buyer. Hãy bấm Buyers List, "
-                "chờ danh sách tải xong rồi mới bấm Tìm.",
+            _write_log(
+                log,
+                "[BUYER FIND] Buyer List chưa mở; đang tự mở List...",
             )
+            _click_module_menu_on_page(
+                page,
+                "Buyer List",
+                module_xpath,
+                log,
+            )
+            frame = _buyer_search_frame(page, timeout_s=30)
+            if frame is None:
+                raise PlaywrightTimeoutError(
+                    "Không tìm thấy ô Buyer sau khi app tự mở List."
+                )
         frame, state = _filter_company_rows(
             page,
             frame,

@@ -64,7 +64,7 @@ ERROR_CODE_INFO = {
     ),
     "MODULE_SEARCH_NOT_READY": (
         "Ô tìm kiếm của module chưa sẵn sàng",
-        "Bấm List, chờ danh sách tải xong rồi thử tìm lại.",
+        "App đã thử tự mở List; hãy chờ WFX ổn định rồi thử tìm lại.",
     ),
     "MODULE_SEARCH_NOT_CONFIRMED": (
         "WFX chưa xác nhận kết quả tìm kiếm",
@@ -76,7 +76,7 @@ ERROR_CODE_INFO = {
     ),
     "FLOATING_FILTER_NOT_READY": (
         "Floating Filter chưa sẵn sàng",
-        "Chờ danh sách tải xong, bật Floating Filter rồi thử lại.",
+        "App chưa chuẩn bị được bộ lọc tự động; hãy chờ WFX rồi thử lại.",
     ),
     "PANEL_ERROR": (
         "Ứng dụng gặp lỗi khi chạy tác vụ",
@@ -340,7 +340,8 @@ _FILTER_LABELS = {
     },
     "search_sale_asn": {
         "invoice_no": "Invoice No.",
-        "style": "Style",
+        "buyer_order_ref": "Buyer Order Ref/OC No.",
+        "style": "Buyer Order Ref/OC No.",
     },
 }
 _METHOD_DEFAULT_FILTERS = {
@@ -390,10 +391,11 @@ def _fallback_error_detail(
     if code in {"MODULE_SEARCH_NOT_READY", "MODULE_LIST_NOT_OPEN"}:
         target = f"ô {filter_kind}" if filter_kind else "ô tìm kiếm"
         location = f" trong {module}" if module else ""
-        return (
-            f"Không tìm thấy {target}{location}; màn List có thể chưa mở "
-            "hoặc chưa tải xong."
-        )
+        if code == "MODULE_SEARCH_NOT_READY":
+            return (
+                f"Không tìm thấy {target}{location} sau khi app tự mở List."
+            )
+        return f"Không tìm thấy {target}{location}; màn List chưa sẵn sàng."
     if code == "MODULE_SEARCH_NOT_CONFIRMED":
         target = f" theo {filter_kind}" if filter_kind else ""
         location = f" trong {module}" if module else ""

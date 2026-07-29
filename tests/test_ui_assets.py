@@ -502,6 +502,7 @@ def test_special_module_workspaces_have_contract_hooks():
         'data-module-action="sale-asn-new"',
         'data-module-action="sale-asn-search"',
         'class="sale-asn-query"',
+        'data-filter-kind="buyer_order_ref"',
         'data-module-view="supplier"',
         'class="supplier-category"',
         'class="supplier-query"',

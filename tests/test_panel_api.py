@@ -63,15 +63,16 @@ class FakeLogin:
         self.calls.append(("search_sale_asn", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
 
-    def search_rmpo_list(self, supplier, order_no, log=print):
-        self.calls.append(("search_rmpo", supplier, order_no))
+    def search_rmpo_list(self, xpath, supplier, order_no, log=print):
+        self.calls.append(("search_rmpo", xpath, supplier, order_no))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
 
     def search_indent_list(
-        self, module_name, supplier, article, indent_no, style, log=print
+        self, xpath, module_name, supplier, article, indent_no, style, log=print
     ):
         self.calls.append((
             "search_indent",
+            xpath,
             module_name,
             supplier,
             article,
@@ -1298,9 +1299,15 @@ def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):
     assert api.open_module_new("0065_0880_0010_0020")["ok"] is True
     assert api.open_module_new("0065_0880_0030_0020")["ok"] is True
 
-    assert ("search_rmpo", "Acme", "RM-42") in fake.calls
+    assert (
+        "search_rmpo",
+        constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
+        "Acme",
+        "RM-42",
+    ) in fake.calls
     assert (
         "search_indent",
+        constants.MODULE_BY_ID["0005_0080_0020"]["xpath"],
         "Indent List",
         "Acme",
         "ART-1",
@@ -1309,6 +1316,7 @@ def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):
     ) in fake.calls
     assert (
         "search_indent",
+        constants.MODULE_BY_ID["user_indent_list"]["xpath"],
         "User Indent",
         "",
         "ART-2",

@@ -26,8 +26,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup.
-- Search chạy trên đúng List đã mở, không tải lại module. Nếu chưa mở List, app
-  hướng dẫn người dùng thay vì gửi lỗi webhook.
+- Search ưu tiên đúng List đã mở; nếu chưa mở, app tự vào đúng List, chờ
+  grid/Floating Filter rồi mới tìm.
 - Flow module bắt đầu automation ngay trong lúc app đưa Chrome lên foreground;
   nhận diện Floating Filter phản hồi nhanh hơn nhưng vẫn xác nhận đúng grid.
 - Playwright/CDP được giữ trên một worker dùng chung giữa các flow, giảm thời
@@ -53,8 +53,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
    khoản chỉ hiện trạng thái và nút `Đổi tài khoản`.
 2. Bấm `Mở trình duyệt` để app mở browser automation và đăng nhập WFX.
 3. Chọn Division nếu cần.
-4. Chọn module. Với module có nhiều flow, bấm `List` trước rồi mới Search/New/
-   thao tác tiếp theo.
+4. Chọn module. Có thể Search ngay; app tự mở List khi cần. Với New/Đổi FOC,
+   bấm `List` trước để kiểm tra đúng màn hình.
 5. Dùng ngôi sao để ghim module thường dùng.
 
 Mật khẩu được DPAPI mã hóa thành `WFX_PASSWORD_ENC`. Bản Windows từ chối lưu

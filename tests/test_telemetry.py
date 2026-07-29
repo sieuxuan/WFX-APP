@@ -110,7 +110,7 @@ def test_automation_error_context_explains_generic_codes():
     assert context["method_label"] == "Tìm trong Sample List"
     assert context["error_title"] == "Ô tìm kiếm của module chưa sẵn sàng"
     assert "Không tìm thấy ô Created By" in context["message"]
-    assert "Bấm List" in context["suggestion"]
+    assert "tự mở List" in context["suggestion"]
     assert context["module"] == "Sample List"
 
 
@@ -141,7 +141,10 @@ def test_blank_search_error_is_enriched_from_safe_request_context():
     )
     assert context["module"] == "OC List"
     assert context["filter_kind"] == "OC No."
-    assert "Không tìm thấy ô OC No. trong OC List" in context["error_detail"]
+    assert (
+        "Không tìm thấy ô OC No. trong OC List sau khi app tự mở List"
+        in context["error_detail"]
+    )
     assert "must-not-appear" not in json.dumps(context)
     assert "không trả về mô tả" not in context["error_detail"]
 

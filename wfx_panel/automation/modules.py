@@ -520,8 +520,10 @@ def _apply_module_search(
     label: str,
     log: Callable[[str], None],
 ) -> None:
-    field.fill("")
-    field.type(query, delay=25)
+    # Floating Filter của một số màn (đặc biệt Sample) re-render input sau mỗi
+    # keyup. `type()` có thể tiếp tục gõ vào locator đã detach và chỉ giữ một
+    # phần giá trị; `fill()` phát input atomically rồi Enter/change kích search.
+    field.fill(query)
     if field.input_value(timeout=1_000) != query:
         raise PlaywrightTimeoutError(
             f"WFX không xác nhận giá trị search {label}."
@@ -569,6 +571,7 @@ def _apply_module_search(
 def _frame_with_visible_context(
     page: Page,
     context_selector: str,
+    module_name: str | None = None,
     timeout_s: float = 4,
 ) -> Frame:
     """Chỉ nhận frame có marker riêng của đúng màn List đang mở."""
@@ -577,7 +580,11 @@ def _frame_with_visible_context(
         for frame in page.frames:
             try:
                 context = frame.locator(context_selector)
-                if context.count() and context.first.is_visible():
+                if (
+                    context.count()
+                    and context.first.is_visible()
+                    and _frame_matches_module_context(frame, module_name)
+                ):
                     return frame
             except PlaywrightError:
                 continue
@@ -585,6 +592,27 @@ def _frame_with_visible_context(
     raise PlaywrightTimeoutError(
         f"Không tìm thấy context List: {context_selector}"
     )
+
+
+def _frame_matches_module_context(
+    frame: Frame,
+    module_name: str | None,
+) -> bool:
+    """Phân biệt các màn dùng chung toàn bộ selector, nhất là hai Indent List."""
+    if module_name not in {"Indent List", "User Indent"}:
+        return True
+    try:
+        titles = frame.locator("title")
+        title = (
+            _normalise_search_text(titles.first.text_content(timeout=500))
+            if titles.count()
+            else ""
+        )
+    except PlaywrightError:
+        return False
+    if module_name == "User Indent":
+        return "user indent" in title
+    return "indent list" in title and "user indent" not in title
 
 
 def _wait_module_search_settled(
@@ -623,6 +651,7 @@ def _wait_module_search_settled(
 
 def _search_module_fields(
     module_name: str,
+    xpath: str,
     values: dict[str, str],
     definitions: dict[str, tuple[str, str]],
     context_selector: str,
@@ -643,6 +672,7 @@ def _search_module_fields(
         )
 
     playwright: Playwright | None = None
+    search_started = False
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
@@ -650,34 +680,38 @@ def _search_module_fields(
             frame = _frame_with_visible_context(
                 page,
                 context_selector,
-                timeout_s=4,
+                module_name=module_name,
+                timeout_s=2,
             )
-            fields: dict[str, Any] = {}
-            for key, (label, selector) in definitions.items():
-                field = frame.locator(selector)
-                if (
-                    not field.count()
-                    or not field.first.is_visible()
-                    or not field.first.is_enabled()
-                ):
-                    raise PlaywrightTimeoutError(
-                        f"Không tìm thấy ô {label} trong đúng màn List."
-                    )
-                fields[key] = field.first
         except PlaywrightTimeoutError:
-            message = (
-                f"Chưa thấy các ô search trong {module_name}. "
-                "Hãy bấm List trước, chờ màn danh sách hiển thị rồi mới bấm Tìm."
+            _write_log(
+                log,
+                f"[MODULE SEARCH] {module_name} chưa mở; "
+                "đang tự mở List...",
             )
-            _write_log(log, message)
-            return _result(
-                False,
-                "MODULE_LIST_NOT_OPEN",
-                message,
-                module=module_name,
+            _click_module_menu_on_page(page, module_name, xpath, log)
+            frame = _frame_with_visible_context(
+                page,
+                context_selector,
+                module_name=module_name,
+                timeout_s=30,
             )
 
+        fields: dict[str, Any] = {}
+        for key, (label, selector) in definitions.items():
+            field = frame.locator(selector)
+            if (
+                not field.count()
+                or not field.first.is_visible()
+                or not field.first.is_enabled()
+            ):
+                raise PlaywrightTimeoutError(
+                    f"Không tìm thấy ô {label} trong đúng màn {module_name}."
+                )
+            fields[key] = field.first
+
         for field in fields.values():
+            search_started = True
             field.fill("")
             try:
                 field.dispatch_event("change")
@@ -725,14 +759,22 @@ def _search_module_fields(
         return _result(False, code, message, module=module_name)
     except PlaywrightTimeoutError as exc:
         detail = str(exc).splitlines()[0]
-        message = (
-            f"Đã nhập filter trong {module_name}, nhưng WFX chưa xác nhận: "
-            f"{detail}"
-        )
+        if search_started:
+            code = "MODULE_SEARCH_NOT_CONFIRMED"
+            message = (
+                f"Đã nhập filter trong {module_name}, nhưng WFX chưa xác nhận: "
+                f"{detail}"
+            )
+        else:
+            code = "MODULE_SEARCH_NOT_READY"
+            message = (
+                f"App đã tự mở {module_name}, nhưng các ô search chưa sẵn sàng: "
+                f"{detail}"
+            )
         _write_log(log, message)
         return _result(
             False,
-            "MODULE_SEARCH_NOT_CONFIRMED",
+            code,
             message,
             module=module_name,
         )
@@ -753,12 +795,15 @@ def _search_module_fields(
 
 def _search_module_list(
     module_name: str,
+    xpath: str,
     query: str,
     label: str,
     selectors: tuple[str, ...],
     aliases: tuple[str, ...],
     context_selectors: tuple[str, ...],
     context_aliases: tuple[str, ...],
+    module_field_selectors: tuple[str, ...],
+    requires_floating_filter: bool,
     log: Callable[[str], None],
 ) -> dict[str, Any]:
     query = str(query or "").strip()
@@ -777,29 +822,58 @@ def _search_module_list(
                 page,
                 context_selectors,
                 context_aliases,
-                timeout_s=4,
-            )
-            field = _search_input_in_frame(
-                page,
-                frame,
-                selectors,
-                aliases,
-                timeout_s=4,
+                timeout_s=2,
             )
         except PlaywrightTimeoutError:
-            message = (
-                f"Chưa thấy ô {label} trong {module_name}. "
-                "Hãy bấm List trước, chờ màn danh sách và Floating Filter "
-                "hiển thị rồi mới bấm Tìm."
+            _write_log(
+                log,
+                f"[MODULE SEARCH] {module_name} chưa sẵn sàng; "
+                "đang tự mở List...",
             )
-            _write_log(log, message)
-            return _result(
-                False,
-                "MODULE_LIST_NOT_OPEN",
-                message,
-                module=module_name,
-                filter_kind=label,
+            previous_grids = (
+                _mark_grid_roots(page) if requires_floating_filter else None
             )
+            _click_module_menu_on_page(page, module_name, xpath, log)
+            if requires_floating_filter:
+                _show_module_floating_filter(
+                    page,
+                    log,
+                    previous_grids,
+                )
+            frame, _context_field = _search_input_in_frames(
+                page,
+                context_selectors,
+                context_aliases,
+                timeout_s=30,
+            )
+
+        # OC/Sample/Sale chỉ chọn một kiểu filter mỗi lần. Xóa các filter còn
+        # lại để lần tìm trước không âm thầm kết hợp với lần tìm hiện tại.
+        for selector in dict.fromkeys(module_field_selectors):
+            try:
+                candidates = frame.locator(selector)
+                for index in range(candidates.count()):
+                    candidate = candidates.nth(index)
+                    if (
+                        candidate.is_visible()
+                        and candidate.is_enabled()
+                        and candidate.input_value(timeout=500)
+                    ):
+                        candidate.fill("")
+                        try:
+                            candidate.dispatch_event("change")
+                        except PlaywrightError:
+                            pass
+            except PlaywrightError:
+                continue
+        _wait(page, 250)
+        field = _search_input_in_frame(
+            page,
+            frame,
+            selectors,
+            aliases,
+            timeout_s=8,
+        )
         try:
             _apply_module_search(page, field, query, label, log)
         except PlaywrightTimeoutError as exc:
@@ -831,6 +905,20 @@ def _search_module_list(
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
         return _result(False, code, message, module=module_name)
+    except PlaywrightTimeoutError as exc:
+        detail = str(exc).splitlines()[0]
+        message = (
+            f"App đã tự mở {module_name}, nhưng ô {label} chưa sẵn sàng: "
+            f"{detail}"
+        )
+        _write_log(log, message)
+        return _result(
+            False,
+            "MODULE_SEARCH_NOT_READY",
+            message,
+            module=module_name,
+            filter_kind=label,
+        )
     except Exception as exc:
         detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
         message = (
@@ -849,7 +937,7 @@ def _search_module_list(
 
 
 def search_oc_list(
-    _xpath: str,
+    xpath: str,
     filter_kind: str,
     query: str,
     log: Callable[[str], None] = print,
@@ -871,18 +959,25 @@ def search_oc_list(
     label, selectors, aliases = definitions[filter_kind]
     return _search_module_list(
         "OC List",
+        xpath,
         query,
         label,
         selectors,
         aliases,
         ("#txtOCNO", 'input[name="txtOCNO"]'),
         ("proforma invoice num with order ref num", "oc no"),
+        tuple(
+            selector
+            for _label, selectors, _aliases in definitions.values()
+            for selector in selectors
+        ),
+        False,
         log,
     )
 
 
 def search_sample_list(
-    _xpath: str,
+    xpath: str,
     filter_kind: str,
     query: str,
     log: Callable[[str], None] = print,
@@ -923,6 +1018,7 @@ def search_sample_list(
     label, selectors, aliases = definitions[filter_kind]
     return _search_module_list(
         "Sample List",
+        xpath,
         query,
         label,
         selectors,
@@ -934,12 +1030,18 @@ def search_sample_list(
             'input[id*="SampleOrder" i]',
         ),
         ("sample order no", "sample order number", "sample no"),
+        tuple(
+            selector
+            for _label, selectors, _aliases in definitions.values()
+            for selector in selectors
+        ),
+        True,
         log,
     )
 
 
 def search_sale_asn_list(
-    _xpath: str,
+    xpath: str,
     filter_kind: str,
     query: str,
     log: Callable[[str], None] = print,
@@ -954,22 +1056,27 @@ def search_sale_asn_list(
             ),
             ("invoice no", "invoice number", "invoice"),
         ),
-        "style": (
-            "Style",
+        "buyer_order_ref": (
+            "Buyer Order Ref/OC No.",
             (
-                "#txtArticle",
-                'input[aria-label*="Style" i]',
-                'input[id*="Style" i]',
-                'input[id*="Article" i]',
+                'input[aria-label*="Buyer Order Ref/Oc Num" i]',
+                'input[aria-label*="Buyer Order Ref" i]',
             ),
-            ("buyer style", "style", "article"),
+            (
+                "buyer order ref oc num",
+                "buyer order ref",
+                "oc num",
+            ),
         ),
     }
+    # Tương thích job cũ trước khi UI đổi tên filter không tồn tại "Style".
+    definitions["style"] = definitions["buyer_order_ref"]
     if filter_kind not in definitions:
         return _result(False, "INVALID_FILTER", "Kiểu tìm Sale ASN không hợp lệ.")
     label, selectors, aliases = definitions[filter_kind]
     return _search_module_list(
         "Sale ASN",
+        xpath,
         query,
         label,
         selectors,
@@ -980,17 +1087,25 @@ def search_sale_asn_list(
             'input[id*="Invoice" i]',
         ),
         ("invoice no", "invoice number", "invoice"),
+        tuple(
+            selector
+            for _label, selectors, _aliases in definitions.values()
+            for selector in selectors
+        ),
+        True,
         log,
     )
 
 
 def search_rmpo_list(
+    xpath: str,
     supplier: str,
     order_no: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     return _search_module_fields(
         "RMPO List",
+        xpath,
         {
             "supplier": supplier,
             "order_no": order_no,
@@ -1013,6 +1128,7 @@ def search_rmpo_list(
 
 
 def search_indent_list(
+    xpath: str,
     module_name: str,
     supplier: str,
     article: str,
@@ -1028,6 +1144,7 @@ def search_indent_list(
         )
     return _search_module_fields(
         module_name,
+        xpath,
         {
             "supplier": supplier,
             "article": article,
@@ -1073,11 +1190,15 @@ def open_module_new(
         ),
         "0065_0880_0010_0020": (
             "Advance PR List",
+            "div.clsPageTitleBarToolNew"
+            "[onclick*=\"titlebarAdvancePaymentRequestList\"], "
             "a[href*=\"MenuName=mnuAdvancePaymentRequestNew\"]"
             "[href*=\"WFXAdvancePaymentRequest.aspx?ARAPType=APR\"]",
         ),
         "0065_0880_0030_0020": (
             "Expense Inv List",
+            "div.clsPageTitleBarToolNew"
+            "[onclick*=\"titlebarExpenseInvoiceList\"], "
             "a[href*=\"MenuName=mnuExpenseInvoiceNew\"]"
             "[href*=\"WFXExpenseInvoice.aspx?InvoiceType=Expense\"]",
         ),
@@ -1243,7 +1364,9 @@ def toggle_company_foc(
             _misc_frame, misc = _visible_locator_in_frames(
                 page,
                 misc_selector,
-                timeout_s=4,
+                # Company Setup thường cần 5–8 giây để render checklist sau
+                # khi List đã được click; timeout 4 giây báo nhầm chưa mở List.
+                timeout_s=15,
             )
         except PlaywrightTimeoutError:
             return _result(
