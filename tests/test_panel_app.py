@@ -1098,6 +1098,33 @@ def test_requested_taskbar_minimize_event_does_not_reopen_panel(monkeypatch):
     assert app._taskbar_minimize_requested is False
 
 
+def test_native_bubble_right_click_fallback_opens_menu(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    states = iter([(True, True), (False, True)])
+
+    class FakeStop:
+        count = 0
+
+        def wait(self, _seconds):
+            self.count += 1
+            return self.count > 2
+
+    app._stop_status = FakeStop()
+    app.note_bubble_interaction = lambda: calls.append("noted") or {"ok": True}
+    app.bubble_context_menu = lambda: calls.append("menu") or {"ok": True}
+    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 123)
+    monkeypatch.setattr(
+        module, "_right_mouse_state_over_hwnd", lambda _hwnd: next(states)
+    )
+
+    app._bubble_context_menu_loop()
+
+    assert calls == ["noted", "menu"]
+
+
 def test_tray_menu_has_commands_without_a_default_open_action(monkeypatch):
     import wfx_panel.panel_app as module
 
@@ -1239,6 +1266,7 @@ def test_bubble_and_notification_windows_are_created():
     assert "self.bubble_window.events.minimized += self._on_bubble_minimized" in source
     assert "self.bubble_window.events.restored += self._on_bubble_restored" in source
     assert "target=self._taskbar_activation_loop" in source
+    assert "target=self._bubble_context_menu_loop" in source
     # Panel tự thu khi mất focus qua kiểm tra foreground.
     assert "_foreground_process_id()" in source
 

@@ -40,6 +40,7 @@ from wfx_panel.win32_window import (
     _native_compact_context_choice,
     _native_notification_visibility,
     _native_window_visibility,
+    _right_mouse_state_over_hwnd,
     _scale_logical_size,
     _set_bounds_by_title,
     _set_process_window_bounds,
@@ -56,6 +57,7 @@ from wfx_panel.win32_window import (
 HOTKEY = hotkey.DEFAULT
 STATUS_POLL_SECONDS = 5
 TASKBAR_ACTIVATION_POLL_SECONDS = 0.25
+BUBBLE_CONTEXT_POLL_SECONDS = 0.04
 BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS = 0.75
 TRAY_RIGHT_BUTTON_UP = 0x0205  # WM_RBUTTONUP
 UPDATE_INITIAL_DELAY_SECONDS = 1
@@ -309,6 +311,7 @@ class PanelApp:
         self._taskbar_focus_armed = False
         self._taskbar_opening = False
         self._taskbar_minimize_requested = False
+        self._bubble_menu_lock = threading.Lock()
         self._notification_ready = threading.Event()
         self._notification_lock = threading.Lock()
         self._notification_generation = 0
@@ -557,23 +560,54 @@ class PanelApp:
 
     def bubble_context_menu(self) -> dict:
         """Menu bubble: thu xuống taskbar hoặc tiếp tục chạy trong tray."""
-        choice = _native_compact_context_choice(
-            self._always_on_top, BUBBLE_WINDOW_TITLE
-        )
-        if choice == "taskbar":
-            return self.minimize_to_taskbar()
-        if choice == "tray":
-            self.hide_to_tray()
+        if not self._bubble_menu_lock.acquire(blocking=False):
             return {
                 "ok": True,
-                "code": "HIDDEN_TO_TRAY",
-                "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
+                "code": "MENU_ALREADY_OPEN",
+                "message": "Menu bubble đang mở.",
             }
-        return {
-            "ok": True,
-            "code": "MENU_DISMISSED",
-            "message": "Đã đóng menu.",
-        }
+        try:
+            crash_log.record("BUBBLE_CONTEXT_MENU_OPEN")
+            choice = _native_compact_context_choice(
+                self._always_on_top, BUBBLE_WINDOW_TITLE
+            )
+            crash_log.record("BUBBLE_CONTEXT_MENU_CHOICE", choice=choice or "dismiss")
+            if choice == "taskbar":
+                return self.minimize_to_taskbar()
+            if choice == "tray":
+                self.hide_to_tray()
+                return {
+                    "ok": True,
+                    "code": "HIDDEN_TO_TRAY",
+                    "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
+                }
+            return {
+                "ok": True,
+                "code": "MENU_DISMISSED",
+                "message": "Đã đóng menu.",
+            }
+        finally:
+            self._bubble_menu_lock.release()
+
+    def _bubble_context_menu_loop(self) -> None:
+        """Fallback Win32: bắt chuột phải kể cả WebView nuốt contextmenu."""
+        bubble_hwnd: int | None = None
+        was_down = False
+        armed = False
+        while not self._stop_status.wait(BUBBLE_CONTEXT_POLL_SECONDS):
+            if bubble_hwnd is None:
+                bubble_hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
+                if bubble_hwnd is None:
+                    continue
+            down, over = _right_mouse_state_over_hwnd(bubble_hwnd)
+            if down and not was_down:
+                armed = over
+            elif not down and was_down:
+                if armed and over and not self._bubble_hidden:
+                    self.note_bubble_interaction()
+                    self.bubble_context_menu()
+                armed = False
+            was_down = down
 
     def minimize_to_taskbar(self) -> dict:
         """Thu bubble xuống taskbar; click taskbar sẽ mở lại toàn bộ UI."""
@@ -1339,6 +1373,11 @@ class PanelApp:
             threading.Thread(target=self._status_loop, daemon=True).start()
             threading.Thread(
                 target=self._taskbar_activation_loop, daemon=True
+            ).start()
+            threading.Thread(
+                target=self._bubble_context_menu_loop,
+                name="wfx-bubble-context-menu",
+                daemon=True,
             ).start()
             threading.Thread(target=self._update_loop, daemon=True).start()
             self._build_tray()

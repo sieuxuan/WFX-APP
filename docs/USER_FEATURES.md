@@ -12,6 +12,8 @@ lập trình.
   thoát hoàn toàn vẫn thực hiện từ menu icon trong system tray.
 - System alert nghiệp vụ của WFX được giữ hiển thị trên Chrome để người dùng đọc
   và xác nhận, không còn bị automation chấp nhận ngay lập tức.
+- Bubble có lớp bắt chuột phải Win32 dự phòng khi WebView nuốt sự kiện; spinner
+  dùng chung tốc độ 1,25 giây/vòng để hiển thị ổn định hơn giữa các thiết bị.
 - Hotkey mặc định `Ctrl+Shift+X` để ẩn/hiện panel khi đang làm trên WFX.
 - Tùy chọn `Luôn trên cùng` giữ panel phía trên các cửa sổ khác.
 - Bản EXE mặc định khởi động cùng Windows. Có thể tắt `Khởi động cùng Windows`
