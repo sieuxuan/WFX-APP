@@ -281,12 +281,57 @@ def _connect_to_chrome(playwright: Playwright) -> tuple[Browser, Page]:
 
 
 def _attach_dialog_handler(page: Page, log: Callable[[str], None]) -> None:
-    def accept_dialog(dialog: Any) -> None:
-        text = (dialog.message or "").strip().replace("\n", " ")
-        _write_log(log, f"Đã chấp nhận thông báo: {text[:100]}")
-        dialog.accept()
+    """Giữ alert WFX hiện trên Chrome để người dùng đọc và xác nhận.
 
-    page.on("dialog", accept_dialog)
+    Playwright tự dismiss dialog khi không có listener. Listener cũ lại accept
+    ngay lập tức, vì vậy system alert chỉ chớp hoặc hoàn toàn không nhìn thấy.
+    Chỉ gắn một listener tại một thời điểm; không gọi accept/dismiss để Chrome
+    giữ dialog native cho đến khi người dùng trực tiếp xử lý.
+    """
+    def attach_to(target: Page) -> None:
+        previous = getattr(target, "_wfx_dialog_handler", None)
+        if previous is not None:
+            try:
+                target.remove_listener("dialog", previous)
+            except Exception:
+                pass
+
+        def show_dialog(dialog: Any) -> None:
+            text = (dialog.message or "").strip().replace("\n", " ")
+            _write_log(
+                log,
+                "[WFX ALERT] Chrome đang chờ bạn xác nhận"
+                f"{f': {text[:100]}' if text else '.'}",
+            )
+            try:
+                dialog.page.bring_to_front()
+            except Exception:
+                pass
+
+        target.on("dialog", show_dialog)
+        try:
+            target._wfx_dialog_handler = show_dialog
+        except Exception:
+            pass
+
+    context = getattr(page, "context", None)
+    pages = list(getattr(context, "pages", ()) or ()) if context else []
+    for target in pages or [page]:
+        attach_to(target)
+
+    # Article Detail và các popup mở sau đó cũng phải giữ được alert.
+    if context is not None:
+        previous_page_handler = getattr(context, "_wfx_page_dialog_handler", None)
+        if previous_page_handler is not None:
+            try:
+                context.remove_listener("page", previous_page_handler)
+            except Exception:
+                pass
+        context.on("page", attach_to)
+        try:
+            context._wfx_page_dialog_handler = attach_to
+        except Exception:
+            pass
 
 
 def automation_browser_pid() -> int | None:

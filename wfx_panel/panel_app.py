@@ -308,6 +308,7 @@ class PanelApp:
         self._bubble_pointer_started = 0.0
         self._taskbar_focus_armed = False
         self._taskbar_opening = False
+        self._taskbar_minimize_requested = False
         self._notification_ready = threading.Event()
         self._notification_lock = threading.Lock()
         self._notification_generation = 0
@@ -555,30 +556,49 @@ class PanelApp:
         }
 
     def bubble_context_menu(self) -> dict:
-        """Menu bubble: always-on-top / ẩn xuống tray / thoát ứng dụng."""
+        """Menu bubble: thu xuống taskbar hoặc tiếp tục chạy trong tray."""
         choice = _native_compact_context_choice(
             self._always_on_top, BUBBLE_WINDOW_TITLE
         )
-        if choice == "hide":
+        if choice == "taskbar":
+            return self.minimize_to_taskbar()
+        if choice == "tray":
             self.hide_to_tray()
             return {
                 "ok": True,
                 "code": "HIDDEN_TO_TRAY",
                 "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
             }
-        if choice == "toggle_on_top":
-            return self.api.set_always_on_top(not self._always_on_top)
-        if choice == "exit":
-            self.quit()
-            return {
-                "ok": True,
-                "code": "APP_EXITING",
-                "message": "Đang thoát WFX Smart.",
-            }
         return {
             "ok": True,
             "code": "MENU_DISMISSED",
             "message": "Đã đóng menu.",
+        }
+
+    def minimize_to_taskbar(self) -> dict:
+        """Thu bubble xuống taskbar; click taskbar sẽ mở lại toàn bộ UI."""
+        self.hide_panel()
+        if self.bubble_window is None:
+            return {
+                "ok": False,
+                "code": "BUBBLE_NOT_READY",
+                "message": "Icon WFX chưa sẵn sàng để thu xuống taskbar.",
+            }
+        self._taskbar_minimize_requested = True
+        self._bubble_hidden = False
+        try:
+            self.bubble_window.minimize()
+        except Exception as error:
+            self._taskbar_minimize_requested = False
+            return {
+                "ok": False,
+                "code": "TASKBAR_MINIMIZE_FAILED",
+                "message": f"Không thu được WFX Smart xuống taskbar: {error}",
+            }
+        return {
+            "ok": True,
+            "code": "HIDDEN_TO_TASKBAR",
+            "message": "Đã thu WFX Smart xuống taskbar.",
         }
 
     def hide_to_tray(self) -> None:
@@ -948,6 +968,21 @@ class PanelApp:
             self._taskbar_opening = False
             crash_log.record("TASKBAR_OPEN_END")
 
+    def _on_bubble_minimized(self) -> None:
+        # Event minimized do chính menu bubble yêu cầu không được lập tức mở
+        # panel trở lại.
+        if self._taskbar_minimize_requested:
+            self._taskbar_minimize_requested = False
+            return
+        self._on_bubble_taskbar_event()
+
+    def _on_bubble_restored(self) -> None:
+        # Nếu backend không phát minimized, restored vẫn phải mở ngay từ lần
+        # click taskbar đầu tiên thay vì chỉ tiêu thụ cờ/debounce của menu cũ.
+        self._taskbar_minimize_requested = False
+        self._bubble_direct_action_until = 0.0
+        self._on_bubble_taskbar_event()
+
     def _on_bubble_taskbar_event(self) -> None:
         # Callback GUI phải trả nhanh; restore/show có thể phát event lồng nhau.
         threading.Thread(
@@ -1269,8 +1304,8 @@ class PanelApp:
         )
         self.bubble_window.events.loaded += self._on_bubble_loaded
         self.bubble_window.events.closing += self._on_bubble_closing
-        self.bubble_window.events.minimized += self._on_bubble_taskbar_event
-        self.bubble_window.events.restored += self._on_bubble_taskbar_event
+        self.bubble_window.events.minimized += self._on_bubble_minimized
+        self.bubble_window.events.restored += self._on_bubble_restored
 
         notification_x, notification_y = _notification_position()
         self.notification_window = webview.create_window(
