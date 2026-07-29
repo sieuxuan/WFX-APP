@@ -667,8 +667,11 @@ def _foreground_window_hwnd() -> int | None:
         return None
 
 
-def _right_mouse_state_over_hwnd(hwnd: int | None) -> tuple[bool, bool]:
-    """Trạng thái chuột phải và con trỏ có nằm trên HWND/child hay không."""
+def _mouse_state_over_hwnd(
+    hwnd: int | None,
+    virtual_keys: tuple[int, ...],
+) -> tuple[bool, bool]:
+    """Trạng thái các nút chuột và con trỏ có nằm trên HWND/child hay không."""
     if os.name != "nt" or not hwnd:
         return False, False
     try:
@@ -696,10 +699,23 @@ def _right_mouse_state_over_hwnd(hwnd: int | None) -> tuple[bool, bool]:
         )
         # High bit = đang giữ; low bit = đã bấm kể từ lần đọc trước. Giữ cả hai
         # để không bỏ lỡ click rất nhanh giữa hai nhịp poll 40ms.
-        down = bool(user32.GetAsyncKeyState(0x02) & 0x8001)  # VK_RBUTTON
+        down = any(
+            bool(user32.GetAsyncKeyState(key) & 0x8001)
+            for key in virtual_keys
+        )
         return down, over
     except Exception:
         return False, False
+
+
+def _right_mouse_state_over_hwnd(hwnd: int | None) -> tuple[bool, bool]:
+    """Trạng thái chuột phải và con trỏ có nằm trên HWND/child hay không."""
+    return _mouse_state_over_hwnd(hwnd, (0x02,))  # VK_RBUTTON
+
+
+def _mouse_buttons_state_over_hwnd(hwnd: int | None) -> tuple[bool, bool]:
+    """Trạng thái chuột trái/phải để đóng popup khi click ra ngoài."""
+    return _mouse_state_over_hwnd(hwnd, (0x01, 0x02))  # VK_LBUTTON / VK_RBUTTON
 
 
 def _native_compact_context_choice(

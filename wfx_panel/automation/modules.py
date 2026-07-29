@@ -32,7 +32,9 @@ from wfx_panel.automation.browser import (
     _connect_to_chrome,
 )
 from wfx_panel.automation.catalog import (
+    _catalog_tree_frame_now,
     _click_catalog_master,
+    _open_catalog_menu_on_page,
     _show_catalog_floating_filter,
 )
 from wfx_panel.automation.runtime import cancellation_deferred
@@ -61,7 +63,9 @@ def open_module(
         if login_form.is_visible(timeout=1_500):
             return _result(False, "NOT_LOGGED_IN", "Phiên chưa đăng nhập hoặc đã hết hạn.")
 
-        previous_left = page.frame(name="left") if module_name == "Catalog" else None
+        previous_left = (
+            _catalog_tree_frame_now(page) if module_name == "Catalog" else None
+        )
         previous_grid = (
             next((f for f in page.frames if "wfxcataloglist" in f.url.lower()), None)
             if module_name == "Catalog"
@@ -70,15 +74,21 @@ def open_module(
         target = page.locator(f"xpath={xpath}")
         target.wait_for(state="attached", timeout=8_000)
         _write_log(log, f"[MODULE] Đã tìm thấy {module_name}, đang click...")
-        _click(target)
 
         if module_name == "Catalog":
+            _open_catalog_menu_on_page(
+                page,
+                target,
+                log,
+                previous_frame=previous_left,
+            )
             _write_log(log, "[CATALOG] Đang chờ frame left...")
             _click_catalog_master(page, log, previous_frame=previous_left)
             _show_catalog_floating_filter(page, log, previous_frame=previous_grid)
             _write_log(log, "[CATALOG] Đã mở Master và Floating Filter")
             message = "Đã mở Catalog > Master và Floating Filter."
         else:
+            _click(target)
             _write_log(log, f"[MODULE] Đã mở: {module_name}")
             message = f"Đã mở {module_name}."
 

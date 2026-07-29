@@ -1150,6 +1150,92 @@ def test_native_bubble_right_click_fallback_opens_menu(monkeypatch):
     assert calls == ["noted", "menu"]
 
 
+def test_click_outside_dismisses_bubble_menu_after_opening_click_is_released(
+    monkeypatch,
+):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    app._bubble_menu_visible = True
+    menu_states = iter(
+        [
+            (True, False),   # click chuột phải vừa mở menu vẫn còn giữ
+            (False, False),  # đã nhả: bắt đầu lắng nghe click mới
+            (True, False),   # click tiếp theo ở ngoài menu
+        ]
+    )
+
+    class FakeStop:
+        count = 0
+
+        def wait(self, _seconds):
+            self.count += 1
+            return self.count > 3
+
+    app._stop_status = FakeStop()
+
+    def dismiss():
+        calls.append("dismiss")
+        app._bubble_menu_visible = False
+        return {"ok": True}
+
+    app.dismiss_bubble_menu = dismiss
+    monkeypatch.setattr(
+        module,
+        "_find_window_hwnd",
+        lambda title: 456 if title == module.BUBBLE_MENU_TITLE else 123,
+    )
+    monkeypatch.setattr(
+        module,
+        "_mouse_buttons_state_over_hwnd",
+        lambda _hwnd: next(menu_states),
+    )
+    monkeypatch.setattr(
+        module, "_right_mouse_state_over_hwnd", lambda _hwnd: (False, False)
+    )
+
+    app._bubble_context_menu_loop()
+
+    assert calls == ["dismiss"]
+
+
+def test_click_inside_does_not_dismiss_bubble_menu(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    app._bubble_menu_visible = True
+    menu_states = iter([(False, False), (True, True)])
+
+    class FakeStop:
+        count = 0
+
+        def wait(self, _seconds):
+            self.count += 1
+            return self.count > 2
+
+    app._stop_status = FakeStop()
+    app.dismiss_bubble_menu = lambda: calls.append("dismiss")
+    monkeypatch.setattr(
+        module,
+        "_find_window_hwnd",
+        lambda title: 456 if title == module.BUBBLE_MENU_TITLE else 123,
+    )
+    monkeypatch.setattr(
+        module,
+        "_mouse_buttons_state_over_hwnd",
+        lambda _hwnd: next(menu_states),
+    )
+    monkeypatch.setattr(
+        module, "_right_mouse_state_over_hwnd", lambda _hwnd: (False, False)
+    )
+
+    app._bubble_context_menu_loop()
+
+    assert calls == []
+
+
 def test_tray_menu_has_commands_without_a_default_open_action(monkeypatch):
     import wfx_panel.panel_app as module
 
