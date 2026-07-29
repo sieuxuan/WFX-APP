@@ -869,11 +869,14 @@ def run_catalog(
 ) -> dict[str, Any]:
     with sync_playwright() as playwright:
         _browser, context, page = connect(playwright)
+        # Alert nghiệp vụ phải còn hiển thị trên Chrome để người dùng đọc và
+        # xác nhận; không auto accept/dismiss mọi dialog.
         page.on(
             "dialog",
-            lambda dialog: (
-                emit("DIALOG", "Tự động accept", text=dialog.message[:120]),
-                dialog.accept(),
+            lambda dialog: emit(
+                "DIALOG",
+                "Chờ người dùng xác nhận",
+                text=dialog.message[:120],
             ),
         )
         login_if_needed(page)

@@ -650,7 +650,7 @@ def _foreground_window_hwnd() -> int | None:
 
 
 def _native_compact_context_choice(
-    always_on_top: bool,
+    _always_on_top: bool,
     title: str = MAIN_WINDOW_TITLE,
 ) -> str | None:
     """Hiện menu chuột phải native cạnh con trỏ cho cửa sổ ``title``."""
@@ -693,13 +693,9 @@ def _native_compact_context_choice(
         if not menu:
             return None
         try:
-            label = (
-                "Bỏ luôn trên cùng" if always_on_top else "Bật luôn trên cùng"
-            )
-            user32.AppendMenuW(menu, 0, 1, label)
+            user32.AppendMenuW(menu, 0, 1, "Ẩn xuống taskbar")
             user32.AppendMenuW(menu, 0x0800, 0, "")  # MF_SEPARATOR
-            user32.AppendMenuW(menu, 0, 2, "Ẩn xuống khay hệ thống")
-            user32.AppendMenuW(menu, 0, 3, "Thoát WFX Smart")
+            user32.AppendMenuW(menu, 0, 2, "Thu vào system tray")
             hwnd = wintypes.HWND(found[0])
             user32.SetForegroundWindow(hwnd)
             selected = user32.TrackPopupMenu(
@@ -713,9 +709,8 @@ def _native_compact_context_choice(
             )
             user32.PostMessageW(hwnd, 0, 0, 0)  # WM_NULL đóng menu sạch trên Win32
             return {
-                1: "toggle_on_top",
-                2: "hide",
-                3: "exit",
+                1: "taskbar",
+                2: "tray",
             }.get(int(selected))
         finally:
             user32.DestroyMenu(menu)

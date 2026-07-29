@@ -459,11 +459,13 @@ def test_taskbar_minimize_and_restore_events_open_panel(monkeypatch):
 
     monkeypatch.setattr(module.threading, "Thread", ImmediateThread)
     app._open_panel_from_taskbar = lambda: calls.append("open")
+    app._bubble_direct_action_until = 999999.0
 
-    app._on_bubble_taskbar_event()
-    app._on_bubble_taskbar_event()
+    app._on_bubble_minimized()
+    app._on_bubble_restored()
 
     assert calls == ["open", "open"]
+    assert app._bubble_direct_action_until == 0.0
 
 
 def test_taskbar_foreground_transition_opens_only_for_bubble(monkeypatch):
@@ -1039,7 +1041,7 @@ def test_bubble_context_menu_can_hide_to_tray(monkeypatch):
     app.window = FakeWindow()
     app.bubble_window = FakeBubble()
     app._panel_visible = True
-    monkeypatch.setattr(module, "_native_compact_context_choice", lambda *_a: "hide")
+    monkeypatch.setattr(module, "_native_compact_context_choice", lambda *_a: "tray")
 
     result = app.bubble_context_menu()
 
@@ -1049,41 +1051,51 @@ def test_bubble_context_menu_can_hide_to_tray(monkeypatch):
     assert app._panel_visible is False
 
 
-def test_bubble_context_menu_can_toggle_on_top(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    app = module.PanelApp()
-    app._always_on_top = True
-    applied = []
-    monkeypatch.setattr(
-        module, "_native_compact_context_choice", lambda *_a: "toggle_on_top"
-    )
-    app.api.set_always_on_top = lambda value: (
-        applied.append(value)
-        or {
-            "ok": True,
-            "always_on_top": value,
-        }
-    )
-
-    result = app.bubble_context_menu()
-
-    assert result["always_on_top"] is False
-    assert applied == [False]
-
-
-def test_bubble_context_menu_can_exit(monkeypatch):
+def test_bubble_context_menu_can_minimize_to_taskbar(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
     calls = []
-    monkeypatch.setattr(module, "_native_compact_context_choice", lambda *_a: "exit")
-    app.quit = lambda: calls.append("quit")
+
+    class FakeWindow:
+        def hide(self):
+            calls.append("panel-hide")
+
+    class FakeBubble:
+        def minimize(self):
+            calls.append("bubble-minimize")
+
+    app.window = FakeWindow()
+    app.bubble_window = FakeBubble()
+    app._panel_visible = True
+    monkeypatch.setattr(
+        module, "_native_compact_context_choice", lambda *_a: "taskbar"
+    )
 
     result = app.bubble_context_menu()
 
-    assert result["code"] == "APP_EXITING"
-    assert calls == ["quit"]
+    assert result["code"] == "HIDDEN_TO_TASKBAR"
+    assert calls == ["panel-hide", "bubble-minimize"]
+    assert app._taskbar_minimize_requested is True
+    assert app._bubble_hidden is False
+
+
+def test_requested_taskbar_minimize_event_does_not_reopen_panel(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+    app._taskbar_minimize_requested = True
+    monkeypatch.setattr(
+        module.threading,
+        "Thread",
+        lambda **_kwargs: calls.append("thread"),
+    )
+
+    app._on_bubble_minimized()
+
+    assert calls == []
+    assert app._taskbar_minimize_requested is False
 
 
 def test_tray_menu_has_commands_without_a_default_open_action(monkeypatch):
@@ -1224,12 +1236,8 @@ def test_bubble_and_notification_windows_are_created():
     assert "self.bubble_window.events.closing += self._on_bubble_closing" in source
     # Click taskbar phải mở đầy đủ UI, cả khi Windows phát minimize/restore
     # hoặc chỉ chuyển foreground về bubble.
-    assert (
-        "self.bubble_window.events.minimized += self._on_bubble_taskbar_event" in source
-    )
-    assert (
-        "self.bubble_window.events.restored += self._on_bubble_taskbar_event" in source
-    )
+    assert "self.bubble_window.events.minimized += self._on_bubble_minimized" in source
+    assert "self.bubble_window.events.restored += self._on_bubble_restored" in source
     assert "target=self._taskbar_activation_loop" in source
     # Panel tự thu khi mất focus qua kiểm tra foreground.
     assert "_foreground_process_id()" in source

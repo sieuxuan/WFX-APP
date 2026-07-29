@@ -8,7 +8,10 @@ lập trình.
 - Launcher nổi 48×48 luôn sẵn sàng trên màn hình.
 - Click launcher để mở panel ngay bên cạnh.
 - Kéo launcher đến vị trí thuận tiện; app nhớ vị trí cho lần mở sau.
-- Chuột phải launcher để ẩn xuống system tray.
+- Chuột phải launcher để chọn **Ẩn xuống taskbar** hoặc **Thu vào system tray**;
+  thoát hoàn toàn vẫn thực hiện từ menu icon trong system tray.
+- System alert nghiệp vụ của WFX được giữ hiển thị trên Chrome để người dùng đọc
+  và xác nhận, không còn bị automation chấp nhận ngay lập tức.
 - Hotkey mặc định `Ctrl+Shift+X` để ẩn/hiện panel khi đang làm trên WFX.
 - Tùy chọn `Luôn trên cùng` giữ panel phía trên các cửa sổ khác.
 - Bản EXE mặc định khởi động cùng Windows. Có thể tắt `Khởi động cùng Windows`

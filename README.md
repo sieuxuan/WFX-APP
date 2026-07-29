@@ -11,7 +11,9 @@ Benchmark RAM/tốc độ của bản này nằm tại
 
 ## Chức năng nổi bật
 
-- Mở panel bằng launcher nổi, system tray hoặc hotkey `Ctrl+Shift+X`.
+- Mở panel bằng launcher nổi, taskbar, system tray hoặc hotkey `Ctrl+Shift+X`;
+  chuột phải launcher để chọn nơi thu gọn.
+- Alert nghiệp vụ của WFX vẫn hiện trên Chrome và chờ người dùng xác nhận.
 - Bản EXE mặc định khởi động cùng Windows; người dùng có thể tắt trong Settings
   và lựa chọn này được giữ nguyên.
 - Chuyển màn và phản hồi tiến trình có animation ngắn, mượt, đồng thời tự giảm

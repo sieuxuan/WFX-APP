@@ -329,6 +329,39 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
     )
 
 
+def test_wfx_dialog_stays_visible_for_user_and_handler_is_not_duplicated():
+    handlers = []
+    removed = []
+    logs = []
+
+    class FakePage:
+        def on(self, event, handler):
+            assert event == "dialog"
+            handlers.append(handler)
+
+        def remove_listener(self, event, handler):
+            removed.append((event, handler))
+
+    class FakeDialog:
+        message = "Thông báo nghiệp vụ"
+
+        def accept(self):
+            raise AssertionError("System alert must wait for the user")
+
+        def dismiss(self):
+            raise AssertionError("System alert must wait for the user")
+
+    page = FakePage()
+    browser._attach_dialog_handler(page, logs.append)
+    first = handlers[-1]
+    browser._attach_dialog_handler(page, logs.append)
+    second = handlers[-1]
+    second(FakeDialog())
+
+    assert removed == [("dialog", first)]
+    assert "Chrome đang chờ bạn xác nhận" in logs[-1]
+
+
 def test_division_is_detected_from_company_name_title():
     woven = login._division_for_text(
         "PRO SPORTS (H.K) LTD (PRO SPORTS - WOVEN HANOI)"
