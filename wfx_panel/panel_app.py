@@ -12,7 +12,16 @@ import pystray
 import webview
 from PIL import Image
 
-from wfx_panel import crash_log, hotkey, prefs, status, updater
+# Giới hạn WebView2 của panel/bubble/notification trên máy 8 GB RAM. WebView2
+# chỉ đọc giá trị này lúc tạo environment, không phải khi import pywebview.
+os.environ.setdefault(
+    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+    "--renderer-process-limit=3 --process-per-site "
+    "--disable-background-networking --disable-component-update "
+    "--disable-sync --no-service-autorun",
+)
+
+from wfx_panel import autostart, crash_log, hotkey, prefs, status, updater
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
@@ -1084,6 +1093,9 @@ class PanelApp:
         self._quitting = True
         crash_log.clean_shutdown("user_exit")
         self._stop_status.set()
+        shutdown = getattr(self.api, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
         try:
             keyboard.remove_hotkey(self._hotkey)
         except (KeyError, ValueError):
@@ -1302,6 +1314,18 @@ class PanelApp:
         webview.start(background, private_mode=True)
 
 
+def _sync_packaged_autostart() -> bool | None:
+    """Đồng bộ Windows startup cho bản đóng gói, không chạm máy khi chạy source."""
+    if not getattr(sys, "frozen", False):
+        return None
+    preferences = prefs.load_prefs()
+    wanted_autostart = preferences["autostart"]
+    actual_autostart = autostart.sync(wanted_autostart)
+    if actual_autostart != wanted_autostart:
+        prefs.save_prefs(autostart=actual_autostart)
+    return actual_autostart
+
+
 def main():
     crash_log.install(prefs.DATA_DIR, app_version=APP_VERSION)
     app = PanelApp()
@@ -1313,6 +1337,9 @@ def main():
         crash_log.clean_shutdown("secondary_instance")
         return
     app.lock = lock
+    # Chỉ bản đóng gói mới tự đăng ký startup mặc định. Chạy source để phát
+    # triển không được âm thầm thêm pythonw vào Windows Run key.
+    _sync_packaged_autostart()
     try:
         app.run()
     except BaseException as error:

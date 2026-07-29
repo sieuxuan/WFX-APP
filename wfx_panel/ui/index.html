@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260728-6">
+  <link rel="stylesheet" href="style.css?v=20260729-8">
 </head>
 <body>
   <aside class="panel" aria-label="WFX Smart Automation">
@@ -95,6 +95,9 @@
 
     <footer class="panel-footer">
       <span class="footer-status" data-tone="neutral"><i></i><b class="footer-status-text">Đang kiểm tra...</b></span>
+      <button class="stop-action-button" type="button" title="Dừng tác vụ tại checkpoint an toàn" hidden>
+        <span aria-hidden="true"></span>Stop
+      </button>
       <span class="footer-health">
         <span class="health-chrome" data-state="unknown" title="Chrome automation"><i></i>Chrome</span>
         <span class="health-session" data-state="unknown" title="Phiên WFX"><i></i>WFX</span>
@@ -112,7 +115,7 @@
           <div class="module-modal-identity">
             <div class="module-modal-heading">
               <strong id="module-page-title">Catalog</strong>
-              <span class="module-modal-subtitle">Tìm style, mở Costing hoặc BOM.</span>
+              <span class="module-modal-subtitle">Tìm Style · Season · Costing/BOM.</span>
             </div>
           </div>
         </header>
@@ -252,6 +255,49 @@
           </div>
         </div>
 
+        <div class="special-module-workspace" data-module-view="rmpo" hidden>
+          <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="rmpo-list">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+            <span><strong>List</strong><small>Mở RMPO List hiện tại</small></span>
+          </button>
+          <div class="module-search-block">
+            <div class="module-multi-filter-grid module-multi-filter-grid-two">
+              <label class="module-multi-filter-field"><span>Supplier</span><input class="rmpo-supplier-query" type="text" autocomplete="off" placeholder="Nhập Supplier" /></label>
+              <label class="module-multi-filter-field"><span>RMPO No.</span><input class="rmpo-order-query" type="text" autocomplete="off" placeholder="Nhập RMPO No." /></label>
+            </div>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="rmpo-search">Tìm theo các điều kiện đã nhập</button>
+          </div>
+        </div>
+
+        <div class="special-module-workspace" data-module-view="indent" hidden>
+          <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="indent-list">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+            <span><strong>List</strong><small>Mở danh sách hiện tại</small></span>
+          </button>
+          <div class="module-search-block">
+            <div class="module-multi-filter-grid">
+              <label class="module-multi-filter-field"><span>Supplier</span><input class="indent-supplier-query" type="text" autocomplete="off" placeholder="Nhập Supplier" /></label>
+              <label class="module-multi-filter-field"><span>Article</span><input class="indent-article-query" type="text" autocomplete="off" placeholder="Nhập Article" /></label>
+              <label class="module-multi-filter-field"><span>Indent No.</span><input class="indent-no-query" type="text" autocomplete="off" placeholder="Nhập Indent No." /></label>
+              <label class="module-multi-filter-field"><span>Style</span><input class="indent-style-query" type="text" autocomplete="off" placeholder="Nhập Style" /></label>
+            </div>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="indent-search">Tìm theo các điều kiện đã nhập</button>
+          </div>
+        </div>
+
+        <div class="special-module-workspace" data-module-view="list_new" hidden>
+          <div class="workflow-choice-grid">
+            <button type="button" class="workflow-choice" data-module-action="list-new-list">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+              <span><strong>List</strong><small>Mở danh sách hiện tại</small></span>
+            </button>
+            <button type="button" class="workflow-choice" data-module-action="list-new-new">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <span><strong>New</strong><small class="list-new-module-label">Mở màn tạo mới</small></span>
+            </button>
+          </div>
+        </div>
+
         <div class="special-module-workspace" data-module-view="supplier" hidden>
           <div class="special-section supplier-list-step">
             <span class="supplier-step-copy"><strong>1. Mở Supplier List</strong><small>Chỉ cần mở một lần trước khi đổi Category.</small></span>
@@ -344,18 +390,28 @@
           </div>
           <div class="account-status-card">
             <span class="account-status-icon" data-state="unknown"><i></i></span>
-            <div><span>Kết nối WFX</span><strong class="account-status-label">Chưa kiểm tra</strong></div>
+            <div class="account-status-copy">
+              <span>Kết nối WFX</span>
+              <strong class="account-status-label">Chưa kiểm tra</strong>
+              <small class="account-status-user" hidden></small>
+            </div>
           </div>
-          <div class="form-grid">
-            <label><span>Tên đăng nhập WFX</span><input class="user-input" type="text" autocomplete="username" placeholder="Nhập User ID" /></label>
-            <label class="password-field"><span>Mật khẩu</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="Nhập lại mật khẩu" /><button class="toggle-password" type="button">Hiện</button></div></label>
+          <div class="account-connected-view" hidden>
+            <p>Phiên WFX đang hoạt động. Bạn chỉ cần đổi tài khoản khi muốn đăng nhập bằng User ID khác.</p>
+            <button class="account-change-button" type="button">Đổi tài khoản</button>
           </div>
-          <p class="account-help">Mật khẩu được lưu riêng trên máy này và không hiển thị lại. Nếu WFX từ chối đăng nhập, ứng dụng sẽ mở màn hình này để bạn nhập lại.</p>
-          <p class="account-form-status" aria-live="polite"></p>
-          <button class="save-button settings-save-button" type="button">
-            <span>Lưu và đăng nhập WFX</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-          </button>
+          <div class="account-edit-view">
+            <div class="form-grid">
+              <label><span>Tên đăng nhập WFX</span><input class="user-input" type="text" autocomplete="username" placeholder="Nhập User ID" /></label>
+              <label class="password-field"><span>Mật khẩu</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="Nhập lại mật khẩu" /><button class="toggle-password" type="button">Hiện</button></div></label>
+            </div>
+            <p class="account-help">Mật khẩu được lưu riêng trên máy này và không hiển thị lại. Nếu WFX từ chối đăng nhập, ứng dụng sẽ mở màn hình này để bạn nhập lại.</p>
+            <p class="account-form-status" aria-live="polite"></p>
+            <button class="save-button settings-save-button" type="button">
+              <span>Lưu và đăng nhập WFX</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
+          </div>
         </section>
 
         <section class="settings-panel settings-automation-panel" data-settings-panel="automation">
@@ -398,12 +454,16 @@
           <select class="feedback-kind"><option value="bug">Báo lỗi</option><option value="feedback">Góp ý tính năng</option></select>
         </label>
         <label class="feedback-field"><span>Mô tả</span>
-          <textarea class="feedback-message" maxlength="2000" rows="6" placeholder="Bạn đã làm gì, điều gì xảy ra và kết quả mong muốn..."></textarea>
+          <textarea class="feedback-message" maxlength="2000" rows="6" aria-describedby="feedback-message-hint feedback-character-count" aria-invalid="false" placeholder="Bạn đã làm gì, điều gì xảy ra và kết quả mong muốn..."></textarea>
+          <span class="feedback-message-meta">
+            <span id="feedback-message-hint">Tối thiểu 5 ký tự</span>
+            <output id="feedback-character-count" class="feedback-character-count" aria-live="polite">0/2000</output>
+          </span>
         </label>
         <label class="feedback-diagnostics"><input class="feedback-diagnostics-input" type="checkbox" checked /><span>Đính kèm chẩn đoán an toàn (Windows, trạng thái Chrome và mã lỗi gần đây)</span></label>
         <p class="feedback-privacy">Không gửi mật khẩu, cookie, Style Code hay ảnh màn hình tự động. Vui lòng không nhập mật khẩu vào nội dung.</p>
         <p class="feedback-status" aria-live="polite"></p>
-        <button class="save-button feedback-submit-button" type="button">Gửi báo cáo</button>
+        <button class="save-button feedback-submit-button" type="button" disabled>Gửi báo cáo</button>
       </div>
     </div>
 
@@ -429,6 +489,6 @@
       </div>
     </div>
   </aside>
-  <script src="panel.js?v=20260728-10"></script>
+  <script src="panel.js?v=20260729-12"></script>
 </body>
 </html>

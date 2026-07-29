@@ -13,6 +13,8 @@ SOURCE = "\n".join(
 
 
 def test_list_floating_filter_excludes_old_grid_and_confirms_visible_input():
+    assert "MODULE_GRID_POLL_MS = 150" in SOURCE
+    assert "MODULE_FILTER_VISIBLE_STABLE_SECONDS = 0.5" in SOURCE
     assert "previous_grids = _mark_grid_roots(page)" in SOURCE
     assert "_grid_root_is_new" in SOURCE
     assert "_MODULE_GRID_STATE_JS" in SOURCE
@@ -27,9 +29,24 @@ def test_list_floating_filter_excludes_old_grid_and_confirms_visible_input():
     assert 'button.evaluate("element => element.click()")' in SOURCE
 
 
+def test_long_automation_waits_use_cancellable_short_slices():
+    assert "def _wait(target: Any, milliseconds: int)" in SOURCE
+    assert "step = min(100, remaining)" in SOURCE
+    assert "target.wait_for_timeout(step)" in SOURCE
+    assert "page.wait_for_timeout(" not in SOURCE
+    assert "grid.wait_for_timeout(" not in SOURCE
+    assert "with cancellation_deferred():" in SOURCE
+
+
 def test_chrome_launch_does_not_force_a_window_size():
     assert '"--start-maximized"' not in SOURCE
     assert '"--window-size' not in SOURCE
+
+
+def test_chrome_launch_caps_renderer_count_for_8gb_machines():
+    assert '"--renderer-process-limit=4"' in SOURCE
+    assert '"--process-per-site"' in SOURCE
+    assert '"--disable-background-networking"' in SOURCE
 
 
 def test_sale_asn_new_keeps_or_selects_required_values():
@@ -71,6 +88,46 @@ def test_oc_sample_and_sale_asn_search_fill_only_the_requested_filter():
     assert '"MODULE_SEARCH_NOT_CONFIRMED"' in search_block
     assert "def open_sample_new" in SOURCE
     assert "New Sample Order" in SOURCE
+
+
+def test_rmpo_and_indent_support_context_bound_combined_filters():
+    assert "def search_rmpo_list" in SOURCE
+    assert "def search_indent_list" in SOURCE
+    assert "def _search_module_fields" in SOURCE
+    for selector in (
+        "#gridRMPO_tblGridHeader_trSearch_td_colSupplier",
+        "#gridRMPO_tblGridHeader_trSearch_td_colOrderNo",
+        "#gridMOLList_tblGridHeader_trSearch_td_ColSupplier",
+        "#gridMOLList_tblGridHeader_trSearch_td_ColArticle",
+        "#gridMOLList_tblGridHeader_trSearch_td_ColIndentNo",
+        "#gridMOLList_tblGridHeader_trSearch_td_ColStyle",
+    ):
+        assert selector in SOURCE
+    combined_block = SOURCE[
+        SOURCE.index("def _search_module_fields"):
+        SOURCE.index("def _search_module_list")
+    ]
+    assert "for field in fields.values()" in combined_block
+    assert 'field.fill("")' in combined_block
+    assert "for key in active:" in combined_block
+    assert "_click_module_menu_on_page" not in combined_block
+    assert '"MODULE_LIST_NOT_OPEN"' in combined_block
+
+
+def test_qa_advance_pr_and_expense_new_use_current_list_controls():
+    assert "def open_module_new" in SOURCE
+    new_block = SOURCE[
+        SOURCE.index("def open_module_new"):
+        SOURCE.index("def open_sample_new")
+    ]
+    assert "titlebarQARequestList" in new_block
+    assert "mnuAdvancePaymentRequestNew" in new_block
+    assert "ARAPType=APR" in new_block
+    assert "mnuExpenseInvoiceNew" in new_block
+    assert "InvoiceType=Expense" in new_block
+    assert "_click_module_menu_on_page" not in new_block
+    assert "_document_changed" in new_block
+    assert '"MODULE_NEW_READY"' in new_block
 
 
 def test_supplier_uses_exact_actionable_master_and_company_search():

@@ -82,7 +82,7 @@ def test_new_pref_defaults(tmp_path):
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["hotkey"] == "ctrl+shift+x"
     assert loaded["hotkey_label"] == "Ctrl + Shift + X"
-    assert loaded["autostart"] is False
+    assert loaded["autostart"] is True
     assert loaded["start_hidden"] is False
     assert loaded["toast_enabled"] is True
     assert loaded["focus_chrome_on_module"] is True
@@ -287,6 +287,11 @@ def test_new_prefs_partial_update_preserves_others(tmp_path):
     assert loaded["toast_enabled"] is False
     assert loaded["start_hidden"] is True
     assert loaded["theme"] == "light"
+
+
+def test_explicitly_disabled_autostart_stays_disabled(tmp_path):
+    prefs.save_prefs(base_dir=tmp_path, autostart=False)
+    assert prefs.load_prefs(base_dir=tmp_path)["autostart"] is False
 
 
 def test_focus_chrome_on_module_round_trip(tmp_path):

@@ -30,6 +30,9 @@ const methodLabels = {
   search_oc: 'Tìm trong OC List',
   search_sample: 'Tìm trong Sample List',
   search_sale_asn: 'Tìm trong Sale ASN List',
+  search_rmpo: 'Tìm trong RMPO List',
+  search_indent: 'Tìm trong Indent List',
+  open_module_new: 'Mở màn New của module',
   open_supplier_category: 'Mở Supplier List',
   find_supplier: 'Tìm Supplier',
   find_supplier_in_category: 'Tìm Supplier theo Category',
@@ -38,11 +41,43 @@ const methodLabels = {
   switch_division: 'Đổi Division',
 };
 
+const methodContexts = {
+  search_oc: { module: 'OC List', filter: 'OC No. / Style' },
+  search_sample: {
+    module: 'Sample List',
+    filter: 'Sample Order No. / Style / Created By',
+  },
+  search_sale_asn: {
+    module: 'Sale ASN',
+    filter: 'Invoice No. / Style',
+  },
+  search_rmpo: { module: 'RMPO List', filter: 'Supplier / RMPO No.' },
+  search_indent: {
+    module: 'Indent List / User Indent',
+    filter: 'Supplier / Article / Indent No. / Style',
+  },
+  find_supplier: { module: 'Supplier List', filter: 'Company Name' },
+  find_supplier_in_category: {
+    module: 'Supplier List',
+    filter: 'Company Name',
+  },
+  find_buyer: { module: 'Buyer List', filter: 'Company Name' },
+  toggle_company_foc: { module: 'Company Setup', filter: '' },
+};
+
 // Mapping này giúp webhook của các bản app cũ vẫn có thông báo dễ hiểu.
 const errorCodes = {
   DIVISION_CHANGE_NOT_CONFIRMED: {
     title: 'WFX chưa xác nhận đổi Division',
     suggestion: 'Kiểm tra menu Division trên WFX rồi thử lại.',
+  },
+  DIVISION_CHANGE_FAILED: {
+    title: 'Không thể đổi Division',
+    suggestion: 'Kiểm tra phiên WFX và menu Division rồi thử lại.',
+  },
+  MODULE_NOT_FOUND: {
+    title: 'Không tìm thấy menu module',
+    suggestion: 'Kiểm tra quyền tài khoản và menu WFX rồi thử lại.',
   },
   MODULE_FAILED: {
     title: 'Không thể thao tác module WFX',
@@ -86,6 +121,9 @@ const methodLabel = String(
 );
 const code = String(source.code || '');
 const mappedError = errorCodes[code] || {};
+const methodContext = methodContexts[method] || {};
+const moduleName = String(source.module || methodContext.module || '');
+const filterKind = String(source.filter_kind || methodContext.filter || '');
 const redactAutomationText = (value) => String(value || '')
   .replace(/https?:\/\/[^\s<>'"]+/gi, '[URL đã ẩn]')
   .replace(
@@ -101,11 +139,31 @@ const errorTitle = String(
     || mappedError.title
     || `${methodLabel} chưa hoàn tất`,
 );
+const fallbackErrorDetail = (() => {
+  if (['MODULE_SEARCH_NOT_READY', 'MODULE_LIST_NOT_OPEN'].includes(code)) {
+    const target = filterKind ? `ô ${filterKind}` : 'ô tìm kiếm';
+    const location = moduleName ? ` trong ${moduleName}` : '';
+    return `Không tìm thấy ${target}${location}; màn List có thể chưa mở hoặc chưa tải xong.`;
+  }
+  if (code === 'MODULE_SEARCH_NOT_CONFIRMED') {
+    const target = filterKind ? ` theo ${filterKind}` : '';
+    const location = moduleName ? ` trong ${moduleName}` : '';
+    return `WFX chưa xác nhận kết quả tìm kiếm${target}${location}.`;
+  }
+  if (['open_module', 'open_module_new'].includes(method)) {
+    const target = moduleName || 'module được chọn';
+    return `Không thể mở ${target}; menu hoặc frame WFX chưa sẵn sàng (mã ${code || 'UNKNOWN'}).`;
+  }
+  if (method === 'switch_division') {
+    return `WFX chưa hoàn tất đổi Division (mã ${code || 'UNKNOWN'}).`;
+  }
+  return `${methodLabel} trả về mã ${code || 'UNKNOWN'} nhưng không kèm lỗi gốc.`;
+})();
 const errorDetail = String(
   redactAutomationText(
     source.error_detail
       || source.message
-      || 'Automation không trả về mô tả chi tiết.',
+      || fallbackErrorDetail,
   ),
 );
 const safeMessage = eventType === 'automation_error'
@@ -136,8 +194,8 @@ const notificationLines = [
 if (eventType === 'automation_error') {
   notificationLines.push(
     `⚙️ Tác vụ: ${methodLabel}`,
-    source.module ? `📂 Module: ${source.module}` : '',
-    source.filter_kind ? `🔍 Trường tìm: ${source.filter_kind}` : '',
+    moduleName ? `📂 Module: ${moduleName}` : '',
+    filterKind ? `🔍 Trường tìm: ${filterKind}` : '',
     `❌ Lỗi: ${errorTitle}`,
     `📝 Chi tiết: ${errorDetail}`,
     `💡 Xử lý: ${suggestion}`,
@@ -167,8 +225,8 @@ return [{
     error_title: eventType === 'automation_error' ? errorTitle : '',
     error_detail: eventType === 'automation_error' ? errorDetail : '',
     suggestion: eventType === 'automation_error' ? suggestion : '',
-    module: source.module || '',
-    filter_kind: source.filter_kind || '',
+    module: moduleName,
+    filter_kind: filterKind,
     run_id: source.run_id || '',
     elapsed_ms: source.elapsed_ms ?? '',
     user_id: account.user_id || '',

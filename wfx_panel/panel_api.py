@@ -20,6 +20,8 @@ from wfx_panel import (
     hotkey as hotkey_spec,
 )
 from wfx_panel import prefs as prefs_default
+from wfx_panel.automation import runtime as automation_runtime
+from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.catalog_controller import CatalogController
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 
@@ -47,6 +49,7 @@ SESSION_OK = frozenset(
         "CATALOG_FOLDERS_CACHED",
         "MODULE_FILTER_READY",
         "MODULE_SEARCH_APPLIED",
+        "MODULE_NEW_READY",
         "SAMPLE_NEW_READY",
         "SALE_ASN_NEW_READY",
         "COMPANY_FOC_CHANGED",
@@ -106,6 +109,7 @@ NON_REPORTABLE_FAILURES = frozenset(
         "BUYER_LIST_NOT_OPEN",
         "COMPANY_LIST_NOT_OPEN",
         "ACTION_IN_PROGRESS",
+        "ACTION_CANCELLED",
         "ARTICLE_DESTINATION_UNKNOWN",
         "HOTKEY_INVALID",
         "JOB_NOT_FOUND",
@@ -343,7 +347,9 @@ class PanelAPI:
                 **self._division_state(),
             }
         try:
-            return self._run_unlocked(method_name, action, request)
+            return automation_runtime.run(
+                lambda: self._run_unlocked(method_name, action, request)
+            )
         finally:
             self._run_lock.release()
 
@@ -360,6 +366,12 @@ class PanelAPI:
         self._log(f"[RUN] Bắt đầu {method_name}")
         try:
             result = action()
+        except AutomationCancelled:
+            result = {
+                "ok": False,
+                "code": "ACTION_CANCELLED",
+                "message": "Đã dừng tác vụ tại checkpoint an toàn.",
+            }
         except Exception as error:
             result = {
                 "ok": False,
@@ -389,6 +401,9 @@ class PanelAPI:
                 "search_oc",
                 "search_sample",
                 "search_sale_asn",
+                "search_rmpo",
+                "search_indent",
+                "open_module_new",
                 "open_supplier_category",
                 "find_supplier",
                 "find_supplier_in_category",
@@ -434,6 +449,7 @@ class PanelAPI:
             error_context = telemetry.automation_error_context(
                 method_name,
                 result,
+                request,
             )
             telemetry.enqueue(
                 self._base_dir,
@@ -449,9 +465,13 @@ class PanelAPI:
                     **telemetry.system_summary(),
                 },
             )
+            # Chốt endpoint trước khi tạo thread. Nếu test/cấu hình hiện tại
+            # đã tắt webhook thì thread chạy trễ cũng không được tự resolve lại
+            # DEFAULT_WEBHOOK_URL và gửi payload sang production.
+            telemetry_endpoint = telemetry.webhook_url(self._base_dir)
             threading.Thread(
                 target=telemetry.flush,
-                args=(self._base_dir,),
+                args=(self._base_dir, telemetry_endpoint),
                 daemon=True,
             ).start()
         self._observe(method_name, result, elapsed)
@@ -460,6 +480,24 @@ class PanelAPI:
             **self._session_status(),
             **self._division_state(),
         }
+
+    def cancel_current_action(self) -> dict:
+        if automation_runtime.request_cancel():
+            self._log("[STOP] Đã nhận yêu cầu dừng; đang chờ checkpoint an toàn.")
+            return {
+                "ok": True,
+                "code": "CANCEL_REQUESTED",
+                "message": "Đang dừng tại checkpoint an toàn…",
+                "run_id": self._current_run_id,
+            }
+        return {
+            "ok": False,
+            "code": "NO_ACTION_RUNNING",
+            "message": "Không có tác vụ automation đang chạy.",
+        }
+
+    def shutdown(self) -> None:
+        automation_runtime.shutdown()
 
     # -- automation --------------------------------------------------------
     def login(self) -> dict:
@@ -627,6 +665,63 @@ class PanelAPI:
                 "filter_kind": str(filter_kind or ""),
                 "query": str(query or "").strip(),
             },
+        )
+
+    def search_rmpo(
+        self,
+        supplier: str,
+        order_no: str,
+    ) -> dict:
+        return self._run(
+            "search_rmpo",
+            lambda: self._login.search_rmpo_list(
+                str(supplier or "").strip(),
+                str(order_no or "").strip(),
+                self._log,
+            ),
+            {"module_id": "0005_0050_0020"},
+        )
+
+    def search_indent(
+        self,
+        module_id: str,
+        supplier: str,
+        article: str,
+        indent_no: str,
+        style: str,
+    ) -> dict:
+        if module_id not in {"0005_0080_0020", "user_indent_list"}:
+            return self._run(
+                "search_indent",
+                lambda: {
+                    "ok": False,
+                    "code": "MODULE_UNKNOWN",
+                    "message": f"Module Indent lạ: {module_id}",
+                },
+                {"module_id": module_id},
+            )
+        module_name = constants.MODULE_BY_ID[module_id]["name"]
+        return self._run(
+            "search_indent",
+            lambda: self._login.search_indent_list(
+                module_name,
+                str(supplier or "").strip(),
+                str(article or "").strip(),
+                str(indent_no or "").strip(),
+                str(style or "").strip(),
+                self._log,
+            ),
+            {"module_id": module_id},
+        )
+
+    def open_module_new(self, module_id: str) -> dict:
+        return self._run(
+            "open_module_new",
+            lambda: self._login.open_module_new(
+                str(module_id or ""),
+                self._log,
+            ),
+            {"module_id": str(module_id or "")},
         )
 
     def toggle_company_foc(self) -> dict:

@@ -217,8 +217,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} tăng độ ổn định cho Buyer/Supplier,
-            panel và hệ thống chẩn đoán.
+            WFX Smart ${{ env.VERSION }} tăng tốc automation, bổ sung Stop an
+            toàn và tối ưu bộ nhớ cho máy RAM 8 GB.
 
             Cách cài:
             1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
@@ -235,6 +235,10 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
+            - Dùng chung một Playwright worker và CDP connection giữa các flow, không reconnect ở từng thao tác.
+            - Nút Stop ở footer dừng tại checkpoint an toàn; không cắt ngang lúc Company Setup đang Save.
+            - Giới hạn Chrome/WebView2 renderer và tắt dịch vụ nền không cần thiết để giảm đỉnh RAM.
+            - Catalog có tiêu đề ngắn gọn hơn; chuyển màn và trạng thái tác vụ mượt hơn.
             - Buyer/Supplier giữ đúng PartyType khi frame WFX reload, không đọc nhầm màn có cùng ô Company Name.
             - Tìm Supplier tiếp tục qua Category lỗi, báo phần chưa kiểm tra và đếm tổng kết quả chính xác.
             - Panel không tự thu nếu người dùng đã quay lại trước khi automation hoàn tất.

@@ -42,6 +42,9 @@ METHOD_LABELS = {
     "search_oc": "Tìm trong OC List",
     "search_sample": "Tìm trong Sample List",
     "search_sale_asn": "Tìm trong Sale ASN List",
+    "search_rmpo": "Tìm trong RMPO List",
+    "search_indent": "Tìm trong Indent List",
+    "open_module_new": "Mở màn New của module",
     "open_supplier_category": "Mở Supplier List",
     "find_supplier": "Tìm Supplier",
     "find_supplier_in_category": "Tìm Supplier theo Category",
@@ -297,12 +300,124 @@ def redact_telemetry_text(value: object) -> str:
     return _EXACT_CODE_PATTERN.sub("Code [đã ẩn]", text)
 
 
+_METHOD_MODULES = {
+    "search_oc": "OC List",
+    "search_sample": "Sample List",
+    "search_sale_asn": "Sale ASN",
+    "search_rmpo": "RMPO List",
+    "find_supplier": "Supplier List",
+    "find_supplier_in_category": "Supplier List",
+    "find_buyer": "Buyer List",
+    "toggle_company_foc": "Company Setup",
+}
+_MODULE_NAMES_BY_ID = {
+    "0003_6200": "Catalog",
+    "0004_0050_0020": "OC List",
+    "0004_0056_4070": "Sample List",
+    "0004_0070_0020": "Sale ASN",
+    "0005_0050_0020": "RMPO List",
+    "0005_0080_0020": "Indent List",
+    "user_indent_list": "User Indent",
+    "0063_0030_0020": "QA List",
+    "0065_0880_0010_0020": "Advance PR List",
+    "0065_0880_0020_0020": "Supplier Inv List",
+    "0065_0880_0030_0020": "Expense Inv List",
+    "0090_0001": "Org Structure",
+    "0090_0250": "System Coding",
+    "0090_0007": "Company Setup",
+    "0004_0010_1720": "Buyer List",
+    "0005_0010_1290": "Supplier List",
+}
+_FILTER_LABELS = {
+    "search_oc": {
+        "oc_no": "OC No.",
+        "style": "Style",
+    },
+    "search_sample": {
+        "sample_no": "Sample Order No.",
+        "style": "Style",
+        "created_by": "Created By",
+    },
+    "search_sale_asn": {
+        "invoice_no": "Invoice No.",
+        "style": "Style",
+    },
+}
+_METHOD_DEFAULT_FILTERS = {
+    "search_rmpo": "Supplier / RMPO No.",
+    "search_indent": "Supplier / Article / Indent No. / Style",
+}
+_DIVISION_LABELS = {
+    "woven": "WOVEN",
+    "knit": "KNIT",
+    "pssg": "PSSG",
+}
+
+
+def _error_operation_context(
+    method: str,
+    result: dict[str, Any],
+    request: dict[str, Any],
+) -> tuple[str, str, str]:
+    module_id = str(request.get("module_id") or "").strip()
+    module = (
+        str(result.get("module") or "").strip()
+        or _MODULE_NAMES_BY_ID.get(module_id, "")
+        or _METHOD_MODULES.get(method, "")
+    )
+    raw_filter = str(
+        result.get("filter_kind")
+        or request.get("filter_kind")
+        or ""
+    ).strip()
+    filter_kind = (
+        _FILTER_LABELS.get(method, {}).get(raw_filter, raw_filter)
+        or _METHOD_DEFAULT_FILTERS.get(method, "")
+    )
+    division_key = str(request.get("division_key") or "").strip().casefold()
+    division_label = _DIVISION_LABELS.get(division_key, "")
+    return module, filter_kind, division_label
+
+
+def _fallback_error_detail(
+    method: str,
+    code: str,
+    method_label: str,
+    module: str,
+    filter_kind: str,
+    division_label: str,
+) -> str:
+    if code in {"MODULE_SEARCH_NOT_READY", "MODULE_LIST_NOT_OPEN"}:
+        target = f"ô {filter_kind}" if filter_kind else "ô tìm kiếm"
+        location = f" trong {module}" if module else ""
+        return (
+            f"Không tìm thấy {target}{location}; màn List có thể chưa mở "
+            "hoặc chưa tải xong."
+        )
+    if code == "MODULE_SEARCH_NOT_CONFIRMED":
+        target = f" theo {filter_kind}" if filter_kind else ""
+        location = f" trong {module}" if module else ""
+        return f"WFX chưa xác nhận kết quả tìm kiếm{target}{location}."
+    if method in {"open_module", "open_module_new"}:
+        target = module or "module được chọn"
+        return (
+            f"Không thể mở {target}; menu hoặc frame WFX chưa sẵn sàng "
+            f"(mã {code})."
+        )
+    if method == "switch_division":
+        target = f" sang Division {division_label}" if division_label else ""
+        return f"WFX chưa hoàn tất chuyển Division{target} (mã {code})."
+    return f"{method_label} trả về mã {code} nhưng không kèm lỗi gốc."
+
+
 def automation_error_context(
     method: str,
     result: dict[str, Any],
+    request: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Tạo mô tả webhook rõ nghĩa, chỉ lấy dữ liệu đã whitelist."""
     method = str(method or "")
+    safe_request = request if isinstance(request, dict) else {}
     code = str(result.get("code") or "UNKNOWN")
     method_label = METHOD_LABELS.get(method, method or "Tác vụ WFX")
     default_title = f"{method_label} chưa hoàn tất"
@@ -313,12 +428,23 @@ def automation_error_context(
             "Mở Log kỹ thuật và dùng Run ID để đối chiếu bước bị lỗi.",
         ),
     )
-    module = str(result.get("module") or "").strip()
+    module, filter_kind, division_label = _error_operation_context(
+        method,
+        result,
+        safe_request,
+    )
     if code == "MODULE_FAILED" and module:
         title = f"Không thể thao tác module {module}"
     detail = redact_telemetry_text(result.get("message"))
     if not detail:
-        detail = "Automation không trả về mô tả chi tiết."
+        detail = _fallback_error_detail(
+            method,
+            code,
+            method_label,
+            module,
+            filter_kind,
+            division_label,
+        )
     return {
         "method_label": method_label,
         "error_title": title,
@@ -326,7 +452,7 @@ def automation_error_context(
         "suggestion": suggestion,
         "message": f"{title}: {detail}"[:4_000],
         "module": module,
-        "filter_kind": str(result.get("filter_kind") or "").strip(),
+        "filter_kind": filter_kind,
     }
 
 
@@ -485,8 +611,16 @@ def _post(url: str, event: dict[str, Any], timeout: float = 5.0) -> None:
             raise HTTPError(url, response.status, "Webhook rejected", {}, None)
 
 
-def flush(base_dir: Path) -> dict[str, Any]:
-    url = webhook_url(base_dir)
+def flush(
+    base_dir: Path,
+    endpoint: str | None = None,
+) -> dict[str, Any]:
+    """Gửi outbox qua endpoint đã chốt tại lúc lên lịch, nếu được truyền vào."""
+    url = (
+        webhook_url(base_dir)
+        if endpoint is None
+        else str(endpoint or "").strip()
+    )
     if not url.startswith(("https://", "http://")):
         return {
             "ok": True,

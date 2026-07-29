@@ -1,7 +1,9 @@
 import json
 import threading
+import time
 
-from wfx_panel import constants, prefs
+from wfx_panel import constants, prefs, telemetry
+from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.panel_api import PanelAPI
 
 
@@ -60,6 +62,27 @@ class FakeLogin:
     def search_sale_asn_list(self, xpath, filter_kind, query, log=print):
         self.calls.append(("search_sale_asn", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def search_rmpo_list(self, supplier, order_no, log=print):
+        self.calls.append(("search_rmpo", supplier, order_no))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def search_indent_list(
+        self, module_name, supplier, article, indent_no, style, log=print
+    ):
+        self.calls.append((
+            "search_indent",
+            module_name,
+            supplier,
+            article,
+            indent_no,
+            style,
+        ))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def open_module_new(self, module_id, log=print):
+        self.calls.append(("open_module_new", module_id))
+        return {"ok": True, "code": "MODULE_NEW_READY", "message": "ready"}
 
     def toggle_company_foc(self, xpath, log=print):
         self.calls.append(("toggle_company_foc", xpath))
@@ -258,6 +281,37 @@ def make_api(tmp_path):
     fake = FakeLogin()
     api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
     return api, fake
+
+
+def test_stop_cancels_running_flow_at_safe_checkpoint(tmp_path):
+    entered = threading.Event()
+
+    class SlowLogin(FakeLogin):
+        def open_module(self, module_name, xpath, log=print):
+            entered.set()
+            while True:
+                automation_runtime.checkpoint()
+                time.sleep(0.01)
+
+    api = PanelAPI(
+        login_module=SlowLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+    results = []
+    caller = threading.Thread(
+        target=lambda: results.append(api.open_module("0004_0050_0020"))
+    )
+    caller.start()
+    assert entered.wait(timeout=1)
+
+    requested = api.cancel_current_action()
+    caller.join(timeout=2)
+    api.shutdown()
+
+    assert requested["code"] == "CANCEL_REQUESTED"
+    assert results[0]["code"] == "ACTION_CANCELLED"
+    assert "checkpoint an toàn" in results[0]["message"]
 
 
 def test_find_code_uses_the_prepared_catalog_grid(tmp_path):
@@ -971,6 +1025,17 @@ def test_initial_state_contains_module_classes_and_jobs(tmp_path):
     catalog = state["module_groups"][0]["modules"][0]
     assert catalog["kind"] == "catalog"
     assert catalog["description"]
+    modules = {
+        module["id"]: module
+        for group in state["module_groups"]
+        for module in group["modules"]
+    }
+    assert modules["0005_0050_0020"]["kind"] == "rmpo"
+    assert modules["0005_0080_0020"]["kind"] == "indent"
+    assert modules["user_indent_list"]["kind"] == "indent"
+    assert modules["0063_0030_0020"]["kind"] == "list_new"
+    assert modules["0065_0880_0010_0020"]["kind"] == "list_new"
+    assert modules["0065_0880_0030_0020"]["kind"] == "list_new"
     assert state["jobs"] == []
 
 
@@ -1043,6 +1108,78 @@ def test_failed_automation_webhook_contains_human_readable_context(
     assert payload["error_title"] == "Không thể thao tác module QA List"
     assert "frame WFX đã đổi" in payload["message"]
     assert payload["suggestion"]
+
+
+def test_blank_search_webhook_uses_safe_request_context(tmp_path, monkeypatch):
+    monkeypatch.setattr("wfx_panel.telemetry.DEFAULT_WEBHOOK_URL", "")
+
+    class BlankSearchFailure(FakeLogin):
+        def search_oc_list(self, xpath, filter_kind, query, log=print):
+            return {
+                "ok": False,
+                "code": "MODULE_SEARCH_NOT_READY",
+                "message": "",
+            }
+
+    api = PanelAPI(
+        login_module=BlankSearchFailure(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+    result = api.search_oc("oc_no", "private-oc-query")
+    assert result["ok"] is False
+
+    payload = json.loads(
+        (tmp_path / "telemetry-outbox.json").read_text(encoding="utf-8")
+    )[0]
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["module"] == "OC List"
+    assert payload["filter_kind"] == "OC No."
+    assert "Không tìm thấy ô OC No. trong OC List" in payload["error_detail"]
+    assert "private-oc-query" not in serialized
+    assert "Automation không trả về mô tả chi tiết" not in serialized
+
+
+def test_automatic_report_thread_captures_disabled_endpoint(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("wfx_panel.telemetry.DEFAULT_WEBHOOK_URL", "")
+    scheduled = []
+
+    class DeferredThread:
+        def __init__(self, target, args, daemon):
+            scheduled.append((target, args, daemon))
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(
+        "wfx_panel.panel_api.threading.Thread",
+        DeferredThread,
+    )
+
+    class FailingLogin(FakeLogin):
+        def open_module(self, module_name, xpath, log=print):
+            return {
+                "ok": False,
+                "code": "MODULE_FAILED",
+                "message": "fake failure",
+                "module": module_name,
+            }
+
+    api = PanelAPI(
+        login_module=FailingLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+    api.open_module("0004_0050_0020")
+
+    assert len(scheduled) == 1
+    target, args, daemon = scheduled[0]
+    assert target is telemetry.flush
+    assert args == (tmp_path, "")
+    assert daemon is True
 
 
 def test_failed_division_switch_records_local_screenshot(tmp_path):
@@ -1137,6 +1274,53 @@ def test_oc_sample_and_sale_asn_workflows_delegate(tmp_path):
         "invoice_no",
         "INV-9",
     ) in fake.calls
+
+
+def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    assert api.search_rmpo(" Acme ", " RM-42 ")["ok"] is True
+    assert api.search_indent(
+        "0005_0080_0020",
+        " Acme ",
+        " ART-1 ",
+        " IN-9 ",
+        " ST-2 ",
+    )["ok"] is True
+    assert api.search_indent(
+        "user_indent_list",
+        "",
+        " ART-2 ",
+        "",
+        "",
+    )["ok"] is True
+    assert api.open_module_new("0063_0030_0020")["code"] == "MODULE_NEW_READY"
+    assert api.open_module_new("0065_0880_0010_0020")["ok"] is True
+    assert api.open_module_new("0065_0880_0030_0020")["ok"] is True
+
+    assert ("search_rmpo", "Acme", "RM-42") in fake.calls
+    assert (
+        "search_indent",
+        "Indent List",
+        "Acme",
+        "ART-1",
+        "IN-9",
+        "ST-2",
+    ) in fake.calls
+    assert (
+        "search_indent",
+        "User Indent",
+        "",
+        "ART-2",
+        "",
+        "",
+    ) in fake.calls
+    for module_id in (
+        "0063_0030_0020",
+        "0065_0880_0010_0020",
+        "0065_0880_0030_0020",
+    ):
+        assert ("open_module_new", module_id) in fake.calls
 
 
 def test_supplier_category_and_find_delegate_with_all_categories(tmp_path):

@@ -387,7 +387,9 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "favorite_module_ids": favorite_module_ids,
         "hotkey": stored_hotkey,
         "hotkey_label": hotkey_spec.format_label(stored_hotkey),
-        "autostart": data.get("autostart", False) is True,
+        # Mặc định bật cho cài đặt mới. Giá trị False đã được người dùng lưu
+        # vẫn luôn được tôn trọng ở các lần chạy sau.
+        "autostart": data.get("autostart", True) is not False,
         "start_hidden": data.get("start_hidden", False) is True,
         "toast_enabled": data.get("toast_enabled", True) is not False,
         "focus_chrome_on_module": data.get(

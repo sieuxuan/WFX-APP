@@ -83,7 +83,7 @@ def test_index_html_has_contract_hooks():
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js?v=20260728-10"',
+        'src="panel.js?v=20260729-12"',
     ]:
         assert hook in html, hook
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
@@ -213,6 +213,8 @@ def test_footer_has_health_indicators():
         'class="health-refresh"',
     ]:
         assert hook in html, hook
+    assert 'class="stop-action-button"' in html
+    assert "checkpoint an toàn" in html
 
 
 def test_settings_has_new_toggles_and_enabled_hotkey_button():
@@ -242,6 +244,9 @@ def test_settings_account_flow_and_defaults_are_safe():
     admin_tag = admin_tag[: admin_tag.index(">")]
     assert "checked" not in start_hidden_tag
     assert "checked" not in admin_tag
+    assert 'class="account-connected-view" hidden' in html
+    assert 'class="account-change-button"' in html
+    assert 'class="account-status-user" hidden' in html
 
 
 def test_division_switcher_precedes_operation_and_has_three_choices():
@@ -296,8 +301,14 @@ def test_favorites_are_before_module_search_and_setting_defaults_to_remember():
     ]
     assert "place-items: center" in favorite_button
     assert "transform: translateY(-50%)" in favorite_button
+    assert "width: 34px" in favorite_button
+    assert "height: 34px" in favorite_button
     assert "overflow" not in favorites_list
     assert "max-height" not in favorites_list
+    assert (
+        ".favorites-list .module-card:last-child:nth-child(odd)"
+        in css
+    )
 
 
 def test_external_notification_and_generic_svg_icon_are_present():
@@ -318,6 +329,34 @@ def test_external_notification_and_generic_svg_icon_are_present():
     assert 'class="operation-progress"' in html
     assert 'class="generic-module-icon"' in html
     assert 'class="generic-module-code"' not in html
+
+
+def test_rmpo_indent_and_list_new_workspaces_are_present():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    for view in ("rmpo", "indent", "list_new"):
+        assert f'data-module-view="{view}"' in html
+    for hook in (
+        "rmpo-supplier-query",
+        "rmpo-order-query",
+        "indent-supplier-query",
+        "indent-article-query",
+        "indent-no-query",
+        "indent-style-query",
+        'data-module-action="list-new-new"',
+    ):
+        assert hook in html
+
+
+def test_ui_uses_short_compositor_motion_with_reduced_motion_fallback():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    for hook in (
+        "@keyframes view-enter",
+        "@keyframes operation-enter",
+        "@keyframes operation-track",
+        ".is-action-source",
+        "@media (prefers-reduced-motion: reduce)",
+    ):
+        assert hook in css
 
 
 def test_settings_are_split_into_three_focused_tabs_with_auth_prompt():
@@ -511,4 +550,25 @@ def test_admin_toggle_and_feedback_dialog_have_contract_hooks():
         "feedback-submit-button",
     ]:
         assert hook in html
+    assert 'id="feedback-character-count"' in html
+    assert "Tối thiểu 5 ký tự" in html
+    submit_tag = html[html.index("feedback-submit-button") :]
+    submit_tag = submit_tag[: submit_tag.index(">")]
+    assert "disabled" in submit_tag
     assert "WFX_ERROR_WEBHOOK_URL" not in html
+
+
+def test_division_switcher_is_visually_compact():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    compact_refresh = css[css.index("/* 1.0.4 visual refresh") :]
+    division_card = compact_refresh[
+        compact_refresh.index(".division-card {") :
+        compact_refresh.index(".division-card::after")
+    ]
+    division_button = compact_refresh[
+        compact_refresh.index(".division-button {") :
+        compact_refresh.index(".division-button:hover")
+    ]
+    assert "padding: 4px" in division_card
+    assert "margin: 0 0 5px" in division_card
+    assert "height: 29px" in division_button

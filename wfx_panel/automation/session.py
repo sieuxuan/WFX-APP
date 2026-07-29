@@ -21,6 +21,7 @@ from wfx_panel.automation._common import (
     PlaywrightTimeoutError,
     _click,
     _result,
+    _wait,
     _write_log,
     os,
     sync_playwright,
@@ -316,7 +317,7 @@ def switch_division(
                     )
                     actionable.evaluate("element => element.click()")
                     retried = True
-            page.wait_for_timeout(250)
+            _wait(page, 250)
         return _result(
             False,
             "DIVISION_CHANGE_NOT_CONFIRMED",

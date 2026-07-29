@@ -2,19 +2,19 @@
 (() => {
   let MODULE_GROUPS = [
     { name: "Operation", accent: "cyan", modules: [
-      { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm style, kiểm tra Season/CostSheet và mở BOM hoặc Costsheet." },
+      { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Style · Season · Costing/BOM." },
       { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở OC List hoặc tìm theo OC No. và Style." },
       { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
       { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn." },
-      { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "generic", description: "Theo dõi đơn mua nguyên phụ liệu." },
-      { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "generic", description: "Mở danh sách Indent." },
-      { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "generic", description: "Mở User Indent List." },
-      { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "generic", description: "Mở danh sách kiểm tra chất lượng." },
+      { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No." },
+      { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Mở Indent List hoặc lọc kết hợp theo 4 điều kiện." },
+      { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "indent", description: "Mở User Indent List hoặc lọc kết hợp theo 4 điều kiện." },
+      { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "list_new", description: "Mở QA List hoặc tạo QA Request mới." },
     ]},
     { name: "Finance", accent: "violet", modules: [
-      { name: "Advance PR List", id: "0065_0880_0010_0020", icon: "PR", kind: "generic", description: "Mở danh sách Advance PR." },
+      { name: "Advance PR List", id: "0065_0880_0010_0020", icon: "PR", kind: "list_new", description: "Mở danh sách Advance PR hoặc tạo yêu cầu mới." },
       { name: "Supplier Inv List", id: "0065_0880_0020_0020", icon: "SI", kind: "generic", description: "Mở danh sách hóa đơn nhà cung cấp." },
-      { name: "Expense Inv List", id: "0065_0880_0030_0020", icon: "EI", kind: "generic", description: "Mở danh sách hóa đơn chi phí." },
+      { name: "Expense Inv List", id: "0065_0880_0030_0020", icon: "EI", kind: "list_new", description: "Mở danh sách Expense Invoice hoặc tạo hóa đơn mới." },
     ]},
     { name: "Admin", accent: "amber", modules: [
       { name: "Org Structure", id: "0090_0001", icon: "OR", kind: "generic", description: "Mở cấu trúc tổ chức." },
@@ -72,6 +72,10 @@
   let sessionActive = null;
   let currentDivision = null;
   let hasCredentials = false;
+  let accountEditing = false;
+  let accountUserId = "";
+  let feedbackSubmitting = false;
+  let bootstrapReceived = false;
   let toastEnabled = true;
   let lastCatalogResult = null;
   let catalogKind = "code";
@@ -92,16 +96,21 @@
     sale_asn: "invoice_no",
   };
   const MODULE_RUN_METHODS = new Set([
-    "open_module", "prepare_catalog", "find_code", "find_buyer_reference",
+    "open_chrome", "login", "retry_job", "open_module",
+    "prepare_catalog", "scan_catalog_folders", "find_code", "find_buyer_reference",
     "open_catalog_destination", "browse_catalog", "catalog_action",
     "open_sale_asn_new", "open_sample_new", "search_oc", "search_sample",
-    "search_sale_asn", "open_supplier_category", "find_supplier",
+    "search_sale_asn", "search_rmpo", "search_indent", "open_module_new",
+    "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
   ]);
   const BUSY_MESSAGES = {
+    open_chrome: "Đang mở và đăng nhập WFX…",
+    retry_job: "Đang chạy lại tác vụ…",
     open_module: "Đang mở module trên WFX…",
     prepare_catalog: "Đang chuẩn bị Catalog…",
+    scan_catalog_folders: "Đang quét folder Catalog…",
     browse_catalog: "Đang mở vị trí Catalog…",
     catalog_action: "Đang tìm và mở dữ liệu Catalog…",
     find_code: "Đang tìm Style Code…",
@@ -113,6 +122,9 @@
     search_oc: "Đang tìm OC…",
     search_sample: "Đang tìm Sample…",
     search_sale_asn: "Đang tìm Sale ASN…",
+    search_rmpo: "Đang lọc RMPO List…",
+    search_indent: "Đang lọc Indent List…",
+    open_module_new: "Đang mở màn New…",
     open_supplier_category: "Đang mở Supplier…",
     find_supplier: "Đang tìm Supplier…",
     find_supplier_in_category: "Đang tìm Supplier trong Category…",
@@ -140,6 +152,9 @@
     search_oc: "Tìm OC",
     search_sample: "Tìm Sample",
     search_sale_asn: "Tìm Sale ASN",
+    search_rmpo: "Tìm RMPO",
+    search_indent: "Tìm Indent",
+    open_module_new: "Mở màn New",
     open_supplier_category: "Mở Supplier",
     find_supplier: "Tìm Supplier",
     find_supplier_in_category: "Tìm Supplier theo Category",
@@ -188,7 +203,15 @@
   }
 
   function buildModules() {
-    $(".module-list").innerHTML = visibleModuleGroups().map((group) => `
+    const mainGroups = visibleModuleGroups()
+      .map((group) => ({
+        ...group,
+        modules: group.modules.filter(
+          (module) => !favoriteModuleIds.has(module.id),
+        ),
+      }))
+      .filter((group) => group.modules.length > 0);
+    $(".module-list").innerHTML = mainGroups.map((group) => `
       <section class="module-group" data-group="${escapeHtml(group.name)}">
         <div class="group-heading"><span class="group-accent accent-${escapeHtml(group.accent)}"></span><span>${escapeHtml(group.name)}</span><span class="group-count">${group.modules.length}</span></div>
         <div class="module-grid">${group.modules.map(
@@ -225,7 +248,15 @@
     setStatus("success", result.message || "Đã cập nhật module yêu thích.");
   }
 
+  function replayMotion(element, className) {
+    if (!element) return;
+    element.classList.remove(className);
+    void element.offsetWidth;
+    element.classList.add(className);
+  }
+
   function setBusy(value, message = "Đang xử lý trên WFX…") {
+    const wasBusy = busy;
     busy = value;
     document.body.classList.toggle("is-busy", value);
     // Chỉ giữ một spinner tiến trình. Các nút có inline spinner được dọn ngay
@@ -236,13 +267,23 @@
         button.classList.remove("is-loading"));
     }
     const progress = $(".operation-progress");
+    const stopButton = $(".stop-action-button");
+    if (stopButton) {
+      stopButton.hidden = !value;
+      if (!value) {
+        stopButton.disabled = false;
+        stopButton.classList.remove("is-stopping");
+      }
+    }
     if (progress) {
       progress.hidden = !value;
       $(".operation-progress-text").textContent = message;
+      if (value && !wasBusy) replayMotion(progress, "operation-enter");
     }
     $$("button, select, input").forEach((element) => {
       if (element.closest(".settings-overlay")) return;
       if (element.matches(".close-button, .module-back-button")) return;
+      if (element.matches(".stop-action-button")) return;
       element.disabled = value;
     });
     if (!value) {
@@ -317,6 +358,9 @@
         oc: ".oc-query",
         sample: ".sample-query",
         sale_asn: '[data-module-action="sale-asn-list"]',
+        rmpo: ".rmpo-supplier-query",
+        indent: ".indent-supplier-query",
+        list_new: '[data-module-action="list-new-list"]',
         supplier: ".supplier-query",
         buyer: ".buyer-query",
         company_setup: '[data-module-action="company-list"]',
@@ -391,6 +435,7 @@
         ? "Chưa kiểm tra"
         : (active ? "Đã đăng nhập" : "Chưa đăng nhập");
     }
+    syncAccountView();
     const ready = $(".workspace-ready");
     if (ready) {
       ready.dataset.state = active === true ? "ok" : "setup";
@@ -467,8 +512,41 @@
   }
   window.wfxApplyTheme = applyTheme;
 
-  function setAccount(userId) { $(".user-input").value = userId || ""; }
+  function syncAccountView() {
+    const needsCredentials = settingsOverlay().classList.contains(
+      "credentials-required",
+    );
+    const connected = sessionActive === true;
+    const showEditor = needsCredentials || !connected || accountEditing;
+    const connectedView = $(".account-connected-view");
+    const editView = $(".account-edit-view");
+    const user = accountUserId || $(".user-input").value.trim();
+    const statusUser = $(".account-status-user");
+    connectedView.hidden = showEditor;
+    editView.hidden = !showEditor;
+    statusUser.hidden = !user;
+    statusUser.textContent = user ? `User ID: ${user}` : "";
+  }
+
+  function setAccount(userId) {
+    accountUserId = String(userId || "").trim();
+    $(".user-input").value = accountUserId;
+    syncAccountView();
+  }
   window.wfxSetAccount = setAccount;
+
+  function updateFeedbackState() {
+    const message = $(".feedback-message");
+    const value = message.value;
+    const valid = value.trim().length >= 5;
+    $(".feedback-character-count").textContent = `${value.length}/2000`;
+    message.setAttribute(
+      "aria-invalid",
+      String(value.length > 0 && !valid),
+    );
+    $(".feedback-submit-button").disabled =
+      feedbackSubmitting || !valid;
+  }
 
   function selectSettingsTab(name) {
     if (settingsOverlay().classList.contains("credentials-required") && name !== "account") return;
@@ -539,11 +617,11 @@
 
   async function withButtonLoading(button, run) {
     if (!button) return run();
-    button.classList.add("is-loading");
+    button.classList.add("is-loading", "is-action-source");
     try {
       return await run();
     } finally {
-      button.classList.remove("is-loading");
+      button.classList.remove("is-loading", "is-action-source");
     }
   }
 
@@ -560,6 +638,12 @@
   function closeSettings() {
     const overlay = settingsOverlay();
     if (overlay.classList.contains("credentials-required")) return;
+    if (sessionActive === true) {
+      accountEditing = false;
+      $(".user-input").value = accountUserId;
+      $(".password-input").value = "";
+      syncAccountView();
+    }
     overlay.classList.remove("settings-open");
     overlay.setAttribute("aria-hidden", "true");
     overlayReturnFocus?.focus?.();
@@ -581,7 +665,9 @@
     );
     $(".password-input").value = "";
     hasCredentials = false;
+    accountEditing = true;
     settingsOverlay().classList.add("credentials-required");
+    syncAccountView();
     openSettings("account");
     window.setTimeout(() => {
       const target = $(".user-input").value.trim() ? $(".password-input") : $(".user-input");
@@ -594,6 +680,8 @@
     $(".auth-prompt").hidden = true;
     settingsOverlay().classList.remove("credentials-required");
     hasCredentials = true;
+    if (sessionActive === true) accountEditing = false;
+    syncAccountView();
   }
 
   function setStyleStatus(style) {
@@ -757,7 +845,11 @@
 
   function handleResult(result) {
     if (!result) return;
-    setStatus(result.ok ? "success" : "error", result.message || "");
+    const cancelled = result.code === "ACTION_CANCELLED";
+    setStatus(
+      cancelled ? "warning" : (result.ok ? "success" : "error"),
+      result.message || "",
+    );
     if (result.user_id !== undefined) setAccount(result.user_id);
     if (result.chrome_alive !== undefined) {
       setBrowserStatus(Boolean(result.chrome_alive), result.browser_available, result.browser_name);
@@ -833,10 +925,12 @@
       );
     });
     try {
-      if (MODULE_RUN_METHODS.has(method)) {
-        await api()?.focus_automation_browser?.();
-      }
+      // Bắt đầu backend ngay; đưa Chrome lên trước chỉ là hiệu ứng song song,
+      // không được nằm trên critical path của automation.
       const pending = bridge[method](...args);
+      if (MODULE_RUN_METHODS.has(method)) {
+        Promise.resolve(api()?.focus_automation_browser?.()).catch(() => {});
+      }
       // Nếu watchdog thắng trước, promise gốc reject muộn sẽ không còn ai bắt →
       // gắn no-op catch để tránh "unhandled rejection". Race vẫn bắt lỗi bình thường.
       pending.catch(() => {});
@@ -897,16 +991,23 @@
     $(".panel-body").hidden = true;
     page.hidden = false;
     page.setAttribute("aria-hidden", "false");
+    replayMotion(page, "view-enter");
     const focusTarget = {
       catalog: ".catalog-query",
       oc: ".oc-query",
       sample: ".sample-query",
       sale_asn: '[data-module-action="sale-asn-list"]',
+      rmpo: ".rmpo-supplier-query",
+      indent: ".indent-supplier-query",
+      list_new: '[data-module-action="list-new-list"]',
       supplier: ".supplier-category",
       buyer: '[data-module-action="buyer-list"]',
       company_setup: '[data-module-action="company-list"]',
       generic: ".generic-module-open",
     }[module.kind] || ".generic-module-open";
+    if (module.kind === "list_new") {
+      $(".list-new-module-label").textContent = `Mở New từ ${module.name}`;
+    }
     setTimeout(() => $(focusTarget)?.focus(), 0);
     if (module.kind === "catalog") {
       catalogFolderEditorOpen = false;
@@ -916,12 +1017,28 @@
     }
   }
 
+  async function stopCurrentAction() {
+    const button = $(".stop-action-button");
+    if (!busy || !button || button.disabled) return;
+    button.disabled = true;
+    button.classList.add("is-stopping");
+    setStatus("warning", "Đang dừng tại checkpoint an toàn…");
+    const result = await callQuiet("cancel_current_action");
+    if (!result?.ok) {
+      button.disabled = false;
+      button.classList.remove("is-stopping");
+      setStatus("warning", result?.message || "Chưa thể dừng tác vụ.");
+    }
+  }
+
   function closeModulePage() {
     const page = $(".module-page");
     if (page.hidden) return;
     page.hidden = true;
     page.setAttribute("aria-hidden", "true");
-    $(".panel-body").hidden = false;
+    const panelBody = $(".panel-body");
+    panelBody.hidden = false;
+    replayMotion(panelBody, "view-enter");
     moduleReturnFocus?.focus?.();
     moduleReturnFocus = null;
   }
@@ -1009,6 +1126,23 @@
       moduleFilterKinds.sale_asn,
       $(".sale-asn-query").value.trim(),
     ),
+    "rmpo-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "rmpo-search": () => runSelectedModuleAction(
+      "search_rmpo",
+      $(".rmpo-supplier-query").value.trim(),
+      $(".rmpo-order-query").value.trim(),
+    ),
+    "indent-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "indent-search": () => selectedModule && runSelectedModuleAction(
+      "search_indent",
+      selectedModule.id,
+      $(".indent-supplier-query").value.trim(),
+      $(".indent-article-query").value.trim(),
+      $(".indent-no-query").value.trim(),
+      $(".indent-style-query").value.trim(),
+    ),
+    "list-new-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "list-new-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
     // Supplier là luồng 3 bước; giữ panel mở để người dùng tiếp tục bước kế.
     "supplier-list": () => selectedModule && call("open_module", selectedModule.id),
     "supplier-open": () => call("open_supplier_category", $(".supplier-category").value),
@@ -1313,7 +1447,7 @@
     $(".catalog-folder-list").setAttribute("aria-busy", "true");
     setStatus("neutral", "Đang tải folder…");
     syncCatalogStepButtons();
-    const result = await callQuiet(
+    const result = await call(
       "scan_catalog_folders",
       category,
       Boolean(force),
@@ -1520,7 +1654,9 @@
 
   function filterModules(query) {
     const normalized = query.trim().toLowerCase();
-    let visibleTotal = 0;
+    let visibleTotal = $$(".favorites-list .module-button").filter(
+      (button) => !normalized || button.dataset.search.includes(normalized),
+    ).length;
     $$(".module-group").forEach((group) => {
       let visible = 0;
       group.querySelectorAll(".module-card").forEach((card) => {
@@ -1653,6 +1789,19 @@
     $(".oc-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["oc-search"](); });
     $(".sample-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["sample-search"](); });
     $(".sale-asn-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["sale-asn-search"](); });
+    [".rmpo-supplier-query", ".rmpo-order-query"].forEach((selector) =>
+      $(selector).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") moduleActions["rmpo-search"]();
+      }));
+    [
+      ".indent-supplier-query",
+      ".indent-article-query",
+      ".indent-no-query",
+      ".indent-style-query",
+    ].forEach((selector) =>
+      $(selector).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") moduleActions["indent-search"]();
+      }));
     $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["supplier-find"](); });
     $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["buyer-find"](); });
     // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble.
@@ -1725,6 +1874,7 @@
     $(".feedback-button").addEventListener("click", () => {
       feedbackOverlay().classList.add("feedback-open");
       $(".feedback-status").textContent = "";
+      updateFeedbackState();
       setTimeout(() => $(".feedback-message").focus(), 0);
     });
     $(".feedback-close-button").addEventListener("click", () => feedbackOverlay().classList.remove("feedback-open"));
@@ -1734,7 +1884,9 @@
     $(".feedback-submit-button").addEventListener("click", async (event) => {
       const button = event.currentTarget;
       const message = $(".feedback-message").value.trim();
-      button.disabled = true;
+      if (message.length < 5 || feedbackSubmitting) return;
+      feedbackSubmitting = true;
+      updateFeedbackState();
       button.textContent = "Đang gửi...";
       const result = await callQuiet(
         "submit_feedback",
@@ -1742,14 +1894,16 @@
         message,
         $(".feedback-diagnostics-input").checked
       );
-      button.disabled = false;
+      feedbackSubmitting = false;
       button.textContent = "Gửi báo cáo";
       if (result) {
         $(".feedback-status").textContent = result.message || "";
         $(".feedback-status").dataset.tone = result.ok ? "success" : "error";
         if (result.ok) $(".feedback-message").value = "";
       }
+      updateFeedbackState();
     });
+    $(".feedback-message").addEventListener("input", updateFeedbackState);
     $(".log-button").addEventListener("click", () => {
       $(".log-overlay").classList.add("log-open");
       $(".log-button").classList.remove("has-alert");
@@ -1757,10 +1911,10 @@
     });
     $(".log-close-button").addEventListener("click", () => $(".log-overlay").classList.remove("log-open"));
     $(".close-button").addEventListener("click", () => api()?.hide_panel?.());
+    $(".stop-action-button").addEventListener("click", stopCurrentAction);
     $(".open-chrome-button").addEventListener("click", async (event) => {
       event.currentTarget.disabled = true;
-      const result = await callQuiet("open_chrome");
-      if (result) handleResult(result);
+      const result = await call("open_chrome");
       event.currentTarget.disabled = false;
     });
 
@@ -1769,6 +1923,15 @@
       const show = input.type === "password";
       input.type = show ? "text" : "password";
       $(".toggle-password").textContent = show ? "Ẩn" : "Hiện";
+    });
+    $(".account-change-button").addEventListener("click", () => {
+      accountEditing = true;
+      $(".account-form-status").textContent = "";
+      syncAccountView();
+      window.setTimeout(() => {
+        $(".user-input").focus();
+        $(".user-input").select();
+      }, 0);
     });
     // Enter trong ô User ID / Password = Lưu và đăng nhập, không phải rê chuột.
     [".user-input", ".password-input"].forEach((selector) =>
@@ -1798,12 +1961,13 @@
       }
       handleResult(saved);
       formStatus.textContent = "Đang kiểm tra đăng nhập WFX...";
-      const loggedIn = await callQuiet("login");
-      if (loggedIn) handleResult(loggedIn);
+      const loggedIn = await call("login");
       if (loggedIn && loggedIn.ok) {
         formStatus.dataset.tone = "success";
         formStatus.textContent = "Đã đăng nhập thành công.";
         $(".password-input").value = "";
+        accountEditing = false;
+        syncAccountView();
         window.setTimeout(closeSettings, 450);
       } else {
         formStatus.dataset.tone = "error";
@@ -1951,8 +2115,7 @@
         if (result) setStatus(result.ok ? "success" : "error", result.message || "");
       } else {
         button.disabled = true;
-        const result = await callQuiet("retry_job", card.dataset.runId);
-        if (result) handleResult(result);
+        const result = await call("retry_job", card.dataset.runId);
         button.disabled = false;
       }
     });
@@ -1991,13 +2154,13 @@
 
   window.wfxBootstrap = (state) => {
     if (!state) return;
+    bootstrapReceived = true;
     if (state.app_version_label) {
       $(".app-version").textContent = `Phiên bản ${state.app_version_label}`;
       $(".settings-version-badge").textContent = `v${state.app_version_label}`;
     }
     if (Array.isArray(state.module_groups) && state.module_groups.length) {
       MODULE_GROUPS = state.module_groups;
-      buildModules();
     }
     setAccount(state.user_id);
     hasCredentials = state.has_credentials === true;
@@ -2058,9 +2221,20 @@
   function init() {
     buildModules();
     bind();
-    const ready = () => api()?.get_initial_state?.().then(window.wfxBootstrap);
-    if (api()) ready();
-    else window.addEventListener("pywebviewready", ready);
+    updateFeedbackState();
+    // PanelApp chủ động inject bootstrap trong luồng khởi động. Chỉ gọi bridge
+    // làm fallback nếu sau một nhịp UI vẫn chưa nhận state, tránh đọc/render
+    // cùng một dữ liệu hai lần ở lần mở bình thường.
+    const requestFallbackBootstrap = () => window.setTimeout(() => {
+      if (bootstrapReceived) return;
+      api()?.get_initial_state?.().then((state) => {
+        if (!bootstrapReceived) window.wfxBootstrap(state);
+      });
+    }, 600);
+    if (api()) requestFallbackBootstrap();
+    else window.addEventListener(
+      "pywebviewready", requestFallbackBootstrap, { once: true }
+    );
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

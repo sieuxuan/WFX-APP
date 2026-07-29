@@ -1,4 +1,4 @@
-# WFX Smart 1.0.14
+# WFX Smart 1.0.15
 
 WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
 dùng của WorldFashionExchange (WFX). App chạy bằng pywebview, điều khiển một
@@ -6,26 +6,48 @@ Chromium browser hệ thống qua Playwright/CDP và không phải Chrome Extens
 
 Xem danh sách đầy đủ dành cho người dùng tại
 [`docs/USER_FEATURES.md`](./docs/USER_FEATURES.md).
+Benchmark RAM/tốc độ của bản này nằm tại
+[`docs/PERFORMANCE_1.0.15.md`](./docs/PERFORMANCE_1.0.15.md).
 
 ## Chức năng nổi bật
 
 - Mở panel bằng launcher nổi, system tray hoặc hotkey `Ctrl+Shift+X`.
-- Ghim module yêu thích lên đầu, trước ô tìm kiếm.
+- Bản EXE mặc định khởi động cùng Windows; người dùng có thể tắt trong Settings
+  và lựa chọn này được giữ nguyên.
+- Chuyển màn và phản hồi tiến trình có animation ngắn, mượt, đồng thời tự giảm
+  chuyển động theo thiết lập accessibility của Windows.
+- Ghim module yêu thích lên đầu, trước ô tìm kiếm; module đã ghim không bị lặp
+  lại ở danh sách bên dưới.
 - Nhớ màn hình đang làm; có setting `Trở về List sau khi thao tác`.
 - Đổi Division WOVEN/KNIT/PSSG và chỉ xác nhận khi WFX đổi thành công.
-- Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, Supplier List,
-  Buyer List và Company Setup.
+- Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
+  Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
+  và Company Setup.
 - Search chạy trên đúng List đã mở, không tải lại module. Nếu chưa mở List, app
   hướng dẫn người dùng thay vì gửi lỗi webhook.
+- Flow module bắt đầu automation ngay trong lúc app đưa Chrome lên foreground;
+  nhận diện Floating Filter phản hồi nhanh hơn nhưng vẫn xác nhận đúng grid.
+- Playwright/CDP được giữ trên một worker dùng chung giữa các flow, giảm thời
+  gian kết nối lại và tránh tạo nhiều driver đồng thời; tự nhả sau 1 phút không
+  có thao tác để trả RAM cho hệ thống.
+- Nút `Stop` nằm ngay dòng trạng thái dưới cùng, dừng ở checkpoint an toàn và
+  không cắt ngang bước Save của WFX.
+- Chrome/WebView2 được giới hạn số renderer và tắt dịch vụ nền không cần thiết,
+  tối ưu cho máy Windows RAM 8 GB.
 - Lịch sử tác vụ, Run ID, ảnh lỗi cục bộ, retry có kiểm soát và Log kỹ thuật có
   thể bôi đen/copy.
 - Webhook lỗi có mô tả tiếng Việt, hướng xử lý và context tài khoản; không gửi
-  password, cookie, URL WFX hoặc nội dung tìm kiếm.
+  password, cookie, URL WFX hoặc nội dung tìm kiếm. Nếu nhánh automation cũ
+  không trả message, app vẫn suy ra module/trường tìm/Division từ metadata an
+  toàn thay vì gửi mô tả trống.
+- Endpoint webhook được chốt trước khi tạo background thread; môi trường test
+  đã tắt reporting không thể gửi trễ payload giả sang production.
 - Tự kiểm tra và cài GitHub Release có xác minh checksum/chữ ký và rollback.
 
 ## Cách sử dụng nhanh
 
-1. Mở WFX Smart và lưu User ID/password trong Settings.
+1. Mở WFX Smart và lưu User ID/password trong Settings. Khi đã kết nối, tab Tài
+   khoản chỉ hiện trạng thái và nút `Đổi tài khoản`.
 2. Bấm `Mở trình duyệt` để app mở browser automation và đăng nhập WFX.
 3. Chọn Division nếu cần.
 4. Chọn module. Với module có nhiều flow, bấm `List` trước rồi mới Search/New/
@@ -92,7 +114,7 @@ Test không được in credential hoặc nội dung tìm kiếm ra output.
 
 ## Release và cập nhật
 
-Gói phát hành có dạng `WFX-Smart-v1.0.14-win64.zip`, kèm checksum `.sha256` và
+Gói phát hành có dạng `WFX-Smart-v1.0.15-win64.zip`, kèm checksum `.sha256` và
 chữ ký detached `.sha256.p7s`.
 
 GitHub Actions cần hai secrets:

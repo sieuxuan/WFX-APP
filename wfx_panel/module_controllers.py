@@ -40,7 +40,7 @@ class ModuleController:
 class CatalogModule(ModuleController):
     module_id = "0003_6200"
     kind = "catalog"
-    description = "Tìm style, kiểm tra Season/CostSheet và mở BOM hoặc Costsheet."
+    description = "Tìm Style · Season · Costing/BOM."
 
 
 class OCListModule(ModuleController):
@@ -75,27 +75,32 @@ class SaleASNModule(ModuleController):
 
 class RMPOListModule(ModuleController):
     module_id = "0005_0050_0020"
-    description = "Theo dõi đơn mua nguyên phụ liệu."
+    kind = "rmpo"
+    description = "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No."
 
 
 class IndentListModule(ModuleController):
     module_id = "0005_0080_0020"
-    description = "Mở danh sách Indent."
+    kind = "indent"
+    description = "Mở Indent List hoặc lọc kết hợp theo 4 điều kiện."
 
 
 class UserIndentModule(ModuleController):
     module_id = "user_indent_list"
-    description = "Mở User Indent List."
+    kind = "indent"
+    description = "Mở User Indent List hoặc lọc kết hợp theo 4 điều kiện."
 
 
 class QAListModule(ModuleController):
     module_id = "0063_0030_0020"
-    description = "Mở danh sách kiểm tra chất lượng."
+    kind = "list_new"
+    description = "Mở QA List hoặc tạo QA Request mới."
 
 
 class AdvancePRListModule(ModuleController):
     module_id = "0065_0880_0010_0020"
-    description = "Mở danh sách Advance PR."
+    kind = "list_new"
+    description = "Mở danh sách Advance PR hoặc tạo yêu cầu mới."
 
 
 class SupplierInvoiceListModule(ModuleController):
@@ -105,7 +110,8 @@ class SupplierInvoiceListModule(ModuleController):
 
 class ExpenseInvoiceListModule(ModuleController):
     module_id = "0065_0880_0030_0020"
-    description = "Mở danh sách hóa đơn chi phí."
+    kind = "list_new"
+    description = "Mở danh sách Expense Invoice hoặc tạo hóa đơn mới."
 
 
 class OrgStructureModule(ModuleController):

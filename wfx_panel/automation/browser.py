@@ -17,8 +17,10 @@ from wfx_panel.automation._common import (
     Page,
     Path,
     Playwright,
+    PlaywrightError,
     URLError,
     _result,
+    _sleep,
     _write_log,
     dataclass,
     json,
@@ -28,6 +30,7 @@ from wfx_panel.automation._common import (
     time,
     urlopen,
 )
+from wfx_panel.automation.runtime import connect_browser, invalidate_browser
 
 
 @dataclass(frozen=True)
@@ -170,7 +173,15 @@ def _start_persistent_chrome(log: Callable[[str], None]) -> None:
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-save-password-bubble",
-            "--disable-features=PasswordManagerOnboarding,PasswordManagerEnableAccountStorage,PasswordLeakDetection",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-default-apps",
+            "--disable-sync",
+            "--metrics-recording-only",
+            "--no-service-autorun",
+            "--process-per-site",
+            "--renderer-process-limit=4",
+            "--disable-features=PasswordManagerOnboarding,PasswordManagerEnableAccountStorage,PasswordLeakDetection,MediaRouter,OptimizationHints",
             URL,
         ],
         stdin=subprocess.DEVNULL,
@@ -187,7 +198,7 @@ def _start_persistent_chrome(log: Callable[[str], None]) -> None:
     while time.monotonic() < deadline:
         if _chrome_is_ready():
             return
-        time.sleep(0.25)
+        _sleep(0.25)
     raise TimeoutError(f"Chrome không mở cổng điều khiển {CDP_URL} sau 15 giây.")
 
 
@@ -239,11 +250,17 @@ def browser_status() -> dict[str, Any]:
 
 
 def _connect_to_chrome(playwright: Playwright) -> tuple[Browser, Page]:
-    browser = playwright.chromium.connect_over_cdp(CDP_URL)
-    if not browser.contexts:
+    browser = connect_browser(playwright, CDP_URL)
+    try:
+        contexts = browser.contexts
+    except PlaywrightError:
+        invalidate_browser(browser)
+        browser = connect_browser(playwright, CDP_URL)
+        contexts = browser.contexts
+    if not contexts:
         raise RuntimeError("Đã kết nối Chrome nhưng không tìm thấy browser context.")
 
-    context = browser.contexts[0]
+    context = contexts[0]
     context.set_default_timeout(DEFAULT_TIMEOUT_MS)
     # Luôn ưu tiên tab WFX chính, tránh bám nhầm popup Article Detail.
     page = next(

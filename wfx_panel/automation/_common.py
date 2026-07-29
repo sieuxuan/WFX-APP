@@ -23,7 +23,6 @@ from playwright.sync_api import (
     Frame,
     Page,
     Playwright,
-    sync_playwright,
 )
 from playwright.sync_api import (
     Error as PlaywrightError,
@@ -32,6 +31,7 @@ from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 
+from wfx_panel.automation.runtime import checkpoint, sync_playwright
 from wfx_panel.constants import DIVISIONS
 
 URL = "https://prosports.worldfashionexchange.com/wfx_Home.aspx"
@@ -53,6 +53,28 @@ DEFAULT_TIMEOUT_MS = 20_000
 
 
 CATALOG_XPATH = '//*[@id="0003_6200"]/a'
+
+
+def _wait(target: Any, milliseconds: int) -> None:
+    """Wait theo lát ngắn để nút Stop phản hồi tại checkpoint an toàn."""
+    remaining = max(0, int(milliseconds))
+    while remaining:
+        checkpoint()
+        step = min(100, remaining)
+        target.wait_for_timeout(step)
+        remaining -= step
+    checkpoint()
+
+
+def _sleep(seconds: float) -> None:
+    """Sleep có thể hủy mà không cắt ngang một thao tác DOM đang thực thi."""
+    deadline = time.monotonic() + max(0.0, seconds)
+    while True:
+        checkpoint()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.1, remaining))
 
 
 def _write_log(log: Callable[[str], None], message: str) -> None:
@@ -82,6 +104,7 @@ def _style_status_suffix(style: dict[str, Any] | None) -> str:
 
 def _click(locator: Any) -> None:
     """Click menu ASP.NET, dùng JavaScript fallback nếu menu đang bị ẩn."""
+    checkpoint()
     locator.wait_for(state="attached")
     try:
         locator.click(timeout=3_000)
@@ -91,6 +114,7 @@ def _click(locator: Any) -> None:
 
 def _first_visible(locator: Any) -> Any | None:
     for index in range(locator.count()):
+        checkpoint()
         candidate = locator.nth(index)
         try:
             if candidate.is_visible():
@@ -177,7 +201,7 @@ def _wait_frame_with_selectors(
                     return frame
             except PlaywrightError:
                 continue
-        page.wait_for_timeout(200)
+        _wait(page, 200)
     raise PlaywrightTimeoutError(
         f"Không tìm thấy frame chứa: {', '.join(selectors)}"
     )
@@ -205,7 +229,7 @@ def _ensure_select_value(
         )
         _write_log(log, f"[SALE ASN NEW] Đang chọn {label}: {value}")
         field.select_option(value=value, timeout=4_000)
-        page.wait_for_timeout(300)
+        _wait(page, 300)
     raise PlaywrightTimeoutError(
         f"WFX không xác nhận {label}={value}; current={last_value}"
     )
