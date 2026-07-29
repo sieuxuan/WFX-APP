@@ -16,6 +16,7 @@ import os
 MAIN_WINDOW_TITLE = "WFX Smart"
 NOTIFICATION_TITLE = "WFX Smart Notification"
 BUBBLE_WINDOW_TITLE = "WFX Smart Bubble"
+BUBBLE_MENU_TITLE = "WFX Smart Bubble Menu"
 
 # Kích thước ổn định: không resize WebView trong callback automation vì có thể
 # làm nghẽn GUI thread. Phần tử bên trong vẫn nhỏ, dành đủ chỗ cho nội dung.
@@ -66,7 +67,8 @@ def _window_dpi_by_title(title: str) -> int:
         from ctypes import wintypes
 
         user32 = ctypes.windll.user32
-        hwnd = _find_window_hwnd(title)
+        # Cả cửa sổ hidden cũng phải lấy đúng DPI (startup vào tray/màn phụ).
+        hwnd = _find_window_hwnd_any_state(title)
         get_window_dpi = getattr(user32, "GetDpiForWindow", None)
         if hwnd and get_window_dpi is not None:
             get_window_dpi.argtypes = [wintypes.HWND]
@@ -105,7 +107,7 @@ def _window_priority(process_id: int, title: str) -> int | None:
         return 0
     # Toast và bubble bị loại khỏi việc chọn "cửa sổ chính" (panel) khi
     # enumerate — nếu không, các helper rect/bounds/front sẽ nhắm nhầm.
-    if title in (NOTIFICATION_TITLE, BUBBLE_WINDOW_TITLE):
+    if title in (NOTIFICATION_TITLE, BUBBLE_WINDOW_TITLE, BUBBLE_MENU_TITLE):
         return None
     return 2
 
@@ -566,6 +568,28 @@ def _native_notification_visibility(
     height: int = NOTIFICATION_HEIGHT,
 ) -> bool:
     """Hiện toast không lấy focus và không tạo thêm icon taskbar."""
+    return _native_popup_visibility(
+        NOTIFICATION_TITLE,
+        visible,
+        x,
+        y,
+        width,
+        height,
+        activate=False,
+    )
+
+
+def _native_popup_visibility(
+    title: str,
+    visible: bool,
+    x: int = 0,
+    y: int = 0,
+    width: int = 1,
+    height: int = 1,
+    *,
+    activate: bool = False,
+) -> bool:
+    """Hiện popup tool-window có/không focus mà không tạo icon taskbar."""
     if os.name != "nt":
         return False
     try:
@@ -573,37 +597,27 @@ def _native_notification_visibility(
         from ctypes import wintypes
 
         user32 = ctypes.windll.user32
-        found: list[int] = []
-        callback_type = ctypes.WINFUNCTYPE(
-            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
-        )
-
-        @callback_type
-        def visit(hwnd, _lparam):
-            pid = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if (
-                pid.value == os.getpid()
-                and _native_window_text(user32, hwnd) == NOTIFICATION_TITLE
-            ):
-                found.append(int(hwnd))
-                return False
-            return True
-
-        user32.EnumWindows(visit, 0)
+        found = _find_window_hwnd_any_state(title)
         if not found:
             return False
-        hwnd = wintypes.HWND(found[0])
+        hwnd = wintypes.HWND(found)
         get_style = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
         set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
         style = int(get_style(hwnd, -20))
-        style = (style | 0x00000080 | 0x08000000) & ~0x00040000
+        style = (style | 0x00000080) & ~0x00040000  # TOOLWINDOW, no APPWINDOW
+        if activate:
+            style &= ~0x08000000  # bỏ NOACTIVATE
+        else:
+            style |= 0x08000000
         set_style(hwnd, -20, style)
         if not visible:
             user32.ShowWindow(hwnd, 0)  # SW_HIDE
             return True
-        user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
-        return bool(
+        user32.ShowWindow(hwnd, 5 if activate else 4)  # SHOW / SHOWNOACTIVATE
+        flags = 0x0020 | 0x0040  # FRAMECHANGED | SHOW
+        if not activate:
+            flags |= 0x0010  # NOACTIVATE
+        moved = bool(
             user32.SetWindowPos(
                 hwnd,
                 wintypes.HWND(-1),
@@ -611,9 +625,13 @@ def _native_notification_visibility(
                 int(y),
                 max(1, int(width)),
                 max(1, int(height)),
-                0x0010 | 0x0020 | 0x0040,  # NOACTIVATE | FRAMECHANGED | SHOW
+                flags,
             )
         )
+        if activate:
+            user32.SetForegroundWindow(hwnd)
+            user32.SetFocus(hwnd)
+        return moved and bool(user32.IsWindowVisible(hwnd))
     except Exception:
         return False
 

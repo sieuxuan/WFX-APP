@@ -12,7 +12,7 @@ import pystray
 import webview
 from PIL import Image
 
-# Giới hạn WebView2 của panel/bubble/notification trên máy 8 GB RAM. WebView2
+# Giới hạn WebView2 của panel/bubble/menu/notification trên máy 8 GB RAM. WebView2
 # chỉ đọc giá trị này lúc tạo environment, không phải khi import pywebview.
 os.environ.setdefault(
     "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
@@ -27,6 +27,7 @@ from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
 from wfx_panel.version import APP_VERSION
 from wfx_panel.win32_window import (
+    BUBBLE_MENU_TITLE,
     BUBBLE_WINDOW_TITLE,
     MAIN_WINDOW_TITLE,
     NOTIFICATION_HEIGHT,
@@ -37,8 +38,8 @@ from wfx_panel.win32_window import (
     _find_window_hwnd,
     _foreground_process_id,
     _foreground_window_hwnd,
-    _native_compact_context_choice,
     _native_notification_visibility,
+    _native_popup_visibility,
     _native_window_visibility,
     _right_mouse_state_over_hwnd,
     _scale_logical_size,
@@ -69,6 +70,7 @@ ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 NOTIFICATION_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
 BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
+BUBBLE_MENU_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble_menu.html"
 
 WINDOW_WIDTH = 440
 WINDOW_HEIGHT = 620
@@ -76,6 +78,9 @@ WINDOW_MARGIN = 24
 # Khôi phục đúng kích thước launcher cũ; bubble chỉ tách thành cửa sổ riêng.
 BUBBLE_SIZE = 48
 BUBBLE_PANEL_GAP = 10
+BUBBLE_MENU_WIDTH = 184
+BUBBLE_MENU_HEIGHT = 82
+BUBBLE_MENU_GAP = 8
 # NOTIFICATION_TITLE/WIDTH/HEIGHT sống ở win32_window (lớp native cần chúng);
 # import lại phía trên để _notification_position và create_window dùng chung.
 NOTIFICATION_MARGIN = 10
@@ -276,6 +281,19 @@ class _BubbleBridge:
         return self._app.bubble_context_menu()
 
 
+class _BubbleMenuBridge:
+    """Cầu nối cho popup menu tách riêng khỏi cửa sổ bubble."""
+
+    def __init__(self, app: PanelApp):
+        self._app = app
+
+    def choose(self, action: str) -> dict:
+        return self._app.choose_bubble_menu(action)
+
+    def dismiss(self) -> dict:
+        return self._app.dismiss_bubble_menu()
+
+
 class PanelApp:
     def __init__(self):
         self.api = PanelAPI()
@@ -291,6 +309,7 @@ class PanelApp:
         self._always_on_top = preferences["always_on_top"]
         self._start_hidden = preferences["start_hidden"]
         self.bubble_window = None
+        self.bubble_menu_window = None
         # Bubble là trạng thái nghỉ sau khi thu panel. Khi user chạy app bình
         # thường, UI đầy đủ phải xuất hiện ngay lần đầu (trừ khi họ chủ động
         # bật "Mở ẩn trong tray").
@@ -312,6 +331,8 @@ class PanelApp:
         self._taskbar_opening = False
         self._taskbar_minimize_requested = False
         self._bubble_menu_lock = threading.Lock()
+        self._bubble_menu_visible = False
+        self._bubble_menu_last_opened = 0.0
         self._notification_ready = threading.Event()
         self._notification_lock = threading.Lock()
         self._notification_generation = 0
@@ -533,6 +554,8 @@ class PanelApp:
 
     def save_bubble_position(self) -> dict:
         """Lưu vị trí sau native pywebview drag và giữ bubble trong màn hình."""
+        # Khi kéo qua màn hình có scale khác, resize trước rồi mới lưu tọa độ.
+        self._enforce_bubble_native_bounds()
         rect = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
         area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
         if rect is None:
@@ -541,13 +564,11 @@ class PanelApp:
                 "code": "BUBBLE_POSITION_UNAVAILABLE",
                 "message": "Không đọc được vị trí icon WFX.",
             }
-        x, y = _clamp_to_work_area(
-            rect[0], rect[1], BUBBLE_SIZE, BUBBLE_SIZE, area
-        )
+        width = max(1, rect[2] - rect[0])
+        height = max(1, rect[3] - rect[1])
+        x, y = _clamp_to_work_area(rect[0], rect[1], width, height, area)
         if (x, y) != (rect[0], rect[1]):
-            _set_bounds_by_title(
-                BUBBLE_WINDOW_TITLE, x, y, BUBBLE_SIZE, BUBBLE_SIZE
-            )
+            _set_bounds_by_title(BUBBLE_WINDOW_TITLE, x, y, width, height)
         self._bubble_offset = (x, y)
         prefs.save_prefs(compact_offset_x=x, compact_offset_y=y)
         return {
@@ -559,7 +580,7 @@ class PanelApp:
         }
 
     def bubble_context_menu(self) -> dict:
-        """Menu bubble: thu xuống taskbar hoặc tiếp tục chạy trong tray."""
+        """Hiện popup menu tách riêng để không bị Win32 dismiss tức thì."""
         if not self._bubble_menu_lock.acquire(blocking=False):
             return {
                 "ok": True,
@@ -567,27 +588,105 @@ class PanelApp:
                 "message": "Menu bubble đang mở.",
             }
         try:
-            crash_log.record("BUBBLE_CONTEXT_MENU_OPEN")
-            choice = _native_compact_context_choice(
-                self._always_on_top, BUBBLE_WINDOW_TITLE
-            )
-            crash_log.record("BUBBLE_CONTEXT_MENU_CHOICE", choice=choice or "dismiss")
-            if choice == "taskbar":
-                return self.minimize_to_taskbar()
-            if choice == "tray":
-                self.hide_to_tray()
+            now = time.monotonic()
+            if self._bubble_menu_visible and now - self._bubble_menu_last_opened < 0.5:
                 return {
                     "ok": True,
-                    "code": "HIDDEN_TO_TRAY",
-                    "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
+                    "code": "MENU_ALREADY_OPEN",
+                    "message": "Menu bubble đang mở.",
                 }
+            if self.bubble_menu_window is None:
+                return {
+                    "ok": False,
+                    "code": "MENU_NOT_READY",
+                    "message": "Menu bubble chưa sẵn sàng.",
+                }
+            x, y, width, height = self._bubble_menu_position()
+            crash_log.record("BUBBLE_CONTEXT_MENU_OPEN")
+            native_shown = _native_popup_visibility(
+                BUBBLE_MENU_TITLE,
+                True,
+                x,
+                y,
+                width,
+                height,
+                activate=True,
+            )
+            shown = native_shown
+            fallback_error = ""
+            if not shown:
+                try:
+                    self.bubble_menu_window.resize(BUBBLE_MENU_WIDTH, BUBBLE_MENU_HEIGHT)
+                    self.bubble_menu_window.move(x, y)
+                    self.bubble_menu_window.show()
+                    shown = True
+                except Exception as error:
+                    fallback_error = str(error)
+                    shown = False
+            if shown:
+                _set_smooth_corners_by_title(BUBBLE_MENU_TITLE)
+            crash_log.record(
+                "BUBBLE_CONTEXT_MENU_RESULT",
+                shown=shown,
+                native_shown=native_shown,
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                fallback_error=fallback_error,
+            )
+            self._bubble_menu_visible = shown
+            self._bubble_menu_last_opened = now
             return {
-                "ok": True,
-                "code": "MENU_DISMISSED",
-                "message": "Đã đóng menu.",
+                "ok": shown,
+                "code": "MENU_OPENED" if shown else "MENU_OPEN_FAILED",
+                "message": "Đã mở menu bubble." if shown else "Không mở được menu bubble.",
             }
         finally:
             self._bubble_menu_lock.release()
+
+    def _bubble_menu_position(self) -> tuple[int, int, int, int]:
+        bubble = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
+        area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
+        dpi = _window_dpi_by_title(BUBBLE_WINDOW_TITLE)
+        width, height = _scale_logical_size(
+            BUBBLE_MENU_WIDTH, BUBBLE_MENU_HEIGHT, dpi
+        )
+        if bubble is None or area is None:
+            return WINDOW_MARGIN, WINDOW_MARGIN, width, height
+        right_x = bubble[2] + BUBBLE_MENU_GAP
+        left_x = bubble[0] - width - BUBBLE_MENU_GAP
+        x = right_x if right_x + width <= area[2] else left_x
+        x, y = _clamp_to_work_area(x, bubble[1], width, height, area)
+        return x, y, width, height
+
+    def dismiss_bubble_menu(self) -> dict:
+        _native_popup_visibility(BUBBLE_MENU_TITLE, False)
+        if self.bubble_menu_window is not None:
+            try:
+                self.bubble_menu_window.hide()
+            except Exception:
+                pass
+        self._bubble_menu_visible = False
+        return {"ok": True, "code": "MENU_DISMISSED", "message": "Đã đóng menu."}
+
+    def choose_bubble_menu(self, action: str) -> dict:
+        self.dismiss_bubble_menu()
+        crash_log.record("BUBBLE_CONTEXT_MENU_CHOICE", choice=action)
+        if action == "taskbar":
+            return self.minimize_to_taskbar()
+        if action == "tray":
+            self.hide_to_tray()
+            return {
+                "ok": True,
+                "code": "HIDDEN_TO_TRAY",
+                "message": "Đã ẩn WFX Smart xuống khay hệ thống.",
+            }
+        return {
+            "ok": False,
+            "code": "MENU_ACTION_INVALID",
+            "message": "Lựa chọn menu không hợp lệ.",
+        }
 
     def _bubble_context_menu_loop(self) -> None:
         """Fallback Win32: bắt chuột phải kể cả WebView nuốt contextmenu."""
@@ -611,6 +710,8 @@ class PanelApp:
 
     def minimize_to_taskbar(self) -> dict:
         """Thu bubble xuống taskbar; click taskbar sẽ mở lại toàn bộ UI."""
+        if self._bubble_menu_visible:
+            self.dismiss_bubble_menu()
         self.hide_panel()
         if self.bubble_window is None:
             return {
@@ -637,6 +738,8 @@ class PanelApp:
 
     def hide_to_tray(self) -> None:
         """Giấu cả panel lẫn bubble; chỉ còn icon khay hệ thống."""
+        if self._bubble_menu_visible:
+            self.dismiss_bubble_menu()
         self.hide_panel()
         if self.bubble_window is not None:
             try:
@@ -1077,6 +1180,12 @@ class PanelApp:
         self.hide_to_tray()
         return False
 
+    def _on_bubble_menu_closing(self):
+        if self._quitting:
+            return None
+        self.dismiss_bubble_menu()
+        return False
+
     # -- lifecycle ---------------------------------------------------------
     def on_loaded(self):
         # Chạy nền: bơm trạng thái ban đầu + auto-login, không chặn UI.
@@ -1192,7 +1301,7 @@ class PanelApp:
         return x, 120
 
     def _enforce_bubble_native_bounds(self) -> bool:
-        """Ép bubble về 48 physical px, kể cả khi start_hidden=True.
+        """Giữ bubble 48 logical px theo DPI của đúng màn hình hiện tại.
 
         Không chỉ tin giá trị trả về của ``SetWindowPos``: WinForms có thể báo
         thành công nhưng vẫn giữ minimum tracking size 120×39. Luôn đọc rect
@@ -1202,13 +1311,17 @@ class PanelApp:
         area = _work_area_for_window_title_any_state(BUBBLE_WINDOW_TITLE)
         if rect is None or area is None:
             return False
-        x, y = _clamp_to_work_area(
-            rect[0], rect[1], BUBBLE_SIZE, BUBBLE_SIZE, area
+        dpi = _window_dpi_by_title(BUBBLE_WINDOW_TITLE)
+        target_width, target_height = _scale_logical_size(
+            BUBBLE_SIZE, BUBBLE_SIZE, dpi
         )
-        # create_window dùng logical pixels và có thể bị Windows DPI scale.
-        # SetWindowPos lại bằng physical pixels để launcher không thành 72/96px.
+        x, y = _clamp_to_work_area(
+            rect[0], rect[1], target_width, target_height, area
+        )
+        # create_window dùng logical pixels; SetWindowPos dùng physical pixels.
+        # Vì vậy 48 logical tương ứng 48/60/72/96 physical ở 100/125/150/200%.
         resized = _set_bounds_by_title(
-            BUBBLE_WINDOW_TITLE, x, y, BUBBLE_SIZE, BUBBLE_SIZE
+            BUBBLE_WINDOW_TITLE, x, y, target_width, target_height
         )
         if not resized:
             return False
@@ -1218,8 +1331,8 @@ class PanelApp:
         actual = _window_rect_by_title_any_state(BUBBLE_WINDOW_TITLE)
         if (
             actual is None
-            or actual[2] - actual[0] != BUBBLE_SIZE
-            or actual[3] - actual[1] != BUBBLE_SIZE
+            or actual[2] - actual[0] != target_width
+            or actual[3] - actual[1] != target_height
         ):
             return False
         if (x, y) != (rect[0], rect[1]):
@@ -1249,8 +1362,13 @@ class PanelApp:
         self._bubble_size_thread.start()
 
     def _on_bubble_loaded(self) -> None:
-        """Giữ bubble đúng 48px native, kể cả khi WebView2 tạo HWND chậm."""
+        """Giữ bubble đúng 48px logical, kể cả khi WebView2 tạo HWND chậm."""
         self._schedule_bubble_native_bounds()
+
+    def _on_bubble_menu_loaded(self) -> None:
+        _native_popup_visibility(BUBBLE_MENU_TITLE, False)
+        _set_smooth_corners_by_title(BUBBLE_MENU_TITLE)
+        self._bubble_menu_visible = False
 
     def run(self):
         if not ICON_PATH.exists():
@@ -1340,6 +1458,28 @@ class PanelApp:
         self.bubble_window.events.closing += self._on_bubble_closing
         self.bubble_window.events.minimized += self._on_bubble_minimized
         self.bubble_window.events.restored += self._on_bubble_restored
+
+        # Menu chuột phải là một tool-window riêng. TrackPopupMenu đồng bộ bị
+        # Windows dismiss ngay khi gọi từ thread WebView/worker trên một số máy.
+        self.bubble_menu_window = webview.create_window(
+            BUBBLE_MENU_TITLE,
+            url=str(BUBBLE_MENU_INDEX),
+            js_api=_BubbleMenuBridge(self),
+            width=BUBBLE_MENU_WIDTH,
+            height=BUBBLE_MENU_HEIGHT,
+            x=-32000,
+            y=-32000,
+            min_size=(1, 1),
+            resizable=False,
+            frameless=True,
+            easy_drag=False,
+            on_top=True,
+            hidden=True,
+            background_color="#f7fafb",
+            shadow=False,
+        )
+        self.bubble_menu_window.events.loaded += self._on_bubble_menu_loaded
+        self.bubble_menu_window.events.closing += self._on_bubble_menu_closing
 
         notification_x, notification_y = _notification_position()
         self.notification_window = webview.create_window(

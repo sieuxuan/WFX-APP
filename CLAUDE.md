@@ -31,7 +31,9 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 
 ### Hành vi giao diện
 
-- Launcher 48×48 mở panel; hotkey mặc định là `Ctrl+Shift+X`.
+- Launcher 48×48 logical mở panel; native bounds phải scale theo DPI của HWND
+  (48/60/72/96 physical tại 100/125/150/200%), kể cả khi cửa sổ đang hidden.
+  Hotkey mặc định là `Ctrl+Shift+X`.
 - Bản EXE mặc định bật `Khởi động cùng Windows` cho cài đặt mới và đồng bộ
   Windows Run key sau khi giữ được single-instance lock. Nếu người dùng đã tắt
   thì phải giữ nguyên lựa chọn đó. Chạy source development không được tự đăng
@@ -93,11 +95,13 @@ Mỗi nút trong module là một flow riêng:
 - Chrome automation chạy `--process-per-site`, tối đa 4 renderer và tắt các
   dịch vụ nền không cần cho WFX; không giới hạn V8 heap cứng vì grid lớn có thể
   cần bộ nhớ đột biến.
-- WebView2 của panel/bubble/notification dùng tối đa 3 renderer qua
+- WebView2 của panel/bubble/menu/notification dùng tối đa 3 renderer qua
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. Dùng `setdefault` để cấu hình quản trị
   viên vẫn có quyền override.
 - Bubble phải có fallback Win32 bắt chuột phải, không chỉ dựa vào sự kiện
-  `contextmenu` của WebView. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
+  `contextmenu` của WebView. Menu chuột phải là tool-window pywebview riêng;
+  không dùng `TrackPopupMenu` đồng bộ từ worker/WebView thread vì Windows có thể
+  dismiss ngay. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
 - Chỉ một Playwright driver/CDP connection được tồn tại trong app; tự nhả sau
   60 giây idle và runtime phải shutdown khi người dùng thoát.
 

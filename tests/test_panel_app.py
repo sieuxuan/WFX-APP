@@ -917,8 +917,8 @@ def test_bubble_loaded_repairs_an_offscreen_saved_position(monkeypatch):
     saved = []
     rects = iter(
         [
-            (1950, 1100, 1998, 1148),
-            (1872, 1032, 1920, 1080),
+            (1950, 1100, 2010, 1160),
+            (1860, 1020, 1920, 1080),
         ]
     )
     monkeypatch.setattr(
@@ -939,6 +939,7 @@ def test_bubble_loaded_repairs_an_offscreen_saved_position(monkeypatch):
     monkeypatch.setattr(
         module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
     )
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 120)
     monkeypatch.setattr(
         module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
     )
@@ -948,27 +949,26 @@ def test_bubble_loaded_repairs_an_offscreen_saved_position(monkeypatch):
     assert moved == [
         (
             module.BUBBLE_WINDOW_TITLE,
-            1920 - module.BUBBLE_SIZE,
-            1080 - module.BUBBLE_SIZE,
-            module.BUBBLE_SIZE,
-            module.BUBBLE_SIZE,
+            1860,
+            1020,
+            60,
+            60,
         )
     ]
     assert saved == [
         {
-            "compact_offset_x": 1920 - module.BUBBLE_SIZE,
-            "compact_offset_y": 1080 - module.BUBBLE_SIZE,
+            "compact_offset_x": 1860,
+            "compact_offset_y": 1020,
         }
     ]
 
 
-def test_bubble_loaded_always_enforces_native_main_size(monkeypatch):
+def test_bubble_loaded_preserves_48_logical_pixels_at_150_percent(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
     moved = []
-    rects = iter([(100, 100, 172, 172), (100, 100, 148, 148)])
-    # Mô phỏng WebView bị DPI scale thành 72×72 dù create_window nhận 48.
+    rects = iter([(100, 100, 148, 148), (100, 100, 172, 172)])
     monkeypatch.setattr(
         module, "_window_rect_by_title_any_state", lambda _title: next(rects)
     )
@@ -987,6 +987,7 @@ def test_bubble_loaded_always_enforces_native_main_size(monkeypatch):
     monkeypatch.setattr(
         module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
     )
+    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 144)
     monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
 
     app._on_bubble_loaded()
@@ -996,8 +997,8 @@ def test_bubble_loaded_always_enforces_native_main_size(monkeypatch):
             module.BUBBLE_WINDOW_TITLE,
             100,
             100,
-            module.BUBBLE_SIZE,
-            module.BUBBLE_SIZE,
+            72,
+            72,
         )
     ]
 
@@ -1041,9 +1042,7 @@ def test_bubble_context_menu_can_hide_to_tray(monkeypatch):
     app.window = FakeWindow()
     app.bubble_window = FakeBubble()
     app._panel_visible = True
-    monkeypatch.setattr(module, "_native_compact_context_choice", lambda *_a: "tray")
-
-    result = app.bubble_context_menu()
+    result = app.choose_bubble_menu("tray")
 
     assert result["code"] == "HIDDEN_TO_TRAY"
     assert ("bubble-hide",) in calls
@@ -1068,16 +1067,42 @@ def test_bubble_context_menu_can_minimize_to_taskbar(monkeypatch):
     app.window = FakeWindow()
     app.bubble_window = FakeBubble()
     app._panel_visible = True
-    monkeypatch.setattr(
-        module, "_native_compact_context_choice", lambda *_a: "taskbar"
-    )
-
-    result = app.bubble_context_menu()
+    result = app.choose_bubble_menu("taskbar")
 
     assert result["code"] == "HIDDEN_TO_TASKBAR"
     assert calls == ["panel-hide", "bubble-minimize"]
     assert app._taskbar_minimize_requested is True
     assert app._bubble_hidden is False
+
+
+def test_bubble_context_menu_shows_dedicated_dpi_aware_popup(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app.bubble_menu_window = object()
+    shown = []
+    monkeypatch.setattr(
+        app, "_bubble_menu_position", lambda: (1400, 200, 230, 103)
+    )
+    monkeypatch.setattr(
+        module,
+        "_native_popup_visibility",
+        lambda *args, **kwargs: shown.append((args, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        module, "_set_smooth_corners_by_title", lambda _title: True
+    )
+
+    result = app.bubble_context_menu()
+
+    assert result["code"] == "MENU_OPENED"
+    assert shown == [
+        (
+            (module.BUBBLE_MENU_TITLE, True, 1400, 200, 230, 103),
+            {"activate": True},
+        )
+    ]
+    assert app._bubble_menu_visible is True
 
 
 def test_requested_taskbar_minimize_event_does_not_reopen_panel(monkeypatch):
@@ -1258,6 +1283,7 @@ def test_bubble_and_notification_windows_are_created():
     source = Path(panel_app.__file__).read_text(encoding="utf-8")
     assert "url=str(NOTIFICATION_INDEX)" in source
     assert "url=str(BUBBLE_INDEX)" in source
+    assert "url=str(BUBBLE_MENU_INDEX)" in source
     assert "focus=False" in source
     # Bubble bắt sự kiện đóng để thu vào tray thay vì huỷ.
     assert "self.bubble_window.events.closing += self._on_bubble_closing" in source
