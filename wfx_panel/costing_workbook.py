@@ -1,0 +1,2072 @@
+"""Định dạng XLSX Costing hai sheet, độc lập với DOM của WFX.
+
+Người dùng chỉ làm việc trong một form Costing có cột chuẩn. Metadata kỹ thuật
+nằm ở các cột ẩn cùng sheet; workbook không chứa selector thực thi.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import zipfile
+from collections.abc import Iterable, Mapping, Sequence
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+from openpyxl import Workbook, load_workbook
+from openpyxl.comments import Comment
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
+
+FORMAT_VERSION = "2.0"
+SUPPORTED_EXTENSIONS = {".xlsx"}
+MAX_FILE_BYTES = 12 * 1024 * 1024
+MAX_XLSX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
+MAX_XLSX_MEMBERS = 5_000
+MAX_SECTIONS = 250
+MAX_ITEMS = 20_000
+MAX_FIELDS = 120_000
+MAX_CELL_CHARS = 20_000
+CLEAR_MARKER = "__CLEAR__"
+DEFAULT_NEW_ITEM_ROWS_PER_SECTION = 3
+
+GUIDE_SHEET = "Hướng dẫn"
+FORM_SHEET = "Costing"
+ITEMS_SHEET = FORM_SHEET
+# Tên format 1.x chỉ giữ cho các helper legacy không còn nằm trong đường
+# export/import công khai. Workbook 2.x không tạo các sheet này.
+META_SHEET = "_Meta"
+FIELDS_SHEET = "_Fields"
+COST_SHEET = "Cost Sheet"
+SECTIONS_SHEET = "Sections"
+
+FIELD_SCOPES = {"cost_sheet", "section", "item"}
+ITEM_ACTIONS = {"UPSERT", "SKIP", "DELETE"}
+ITEM_TYPES = {"article", "cost_line"}
+FIELD_COLUMNS = [
+    "scope",
+    "section_key",
+    "item_key",
+    "field_key",
+    "label",
+    "value",
+    "data_type",
+    "editable",
+    "required",
+    "options",
+    "row_order",
+]
+FORM_BASE_COLUMNS = [
+    "Section",
+    "Action",
+    "Article Code",
+    "Article Name",
+]
+FORM_TECH_COLUMNS = [
+    "__Section Key",
+    "__Item Key",
+    "__Row Order",
+    "__Item Type",
+]
+STANDARD_ITEM_FIELDS = (
+    {
+        "field_key": "colMaterialSizeList",
+        "label": "Material Size",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colMaterialColorList",
+        "label": "Material Color",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colColorDependency",
+        "label": "Color Dep.",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colColorDependencyMapping",
+        "label": "Color Mapping",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colSizeDependency",
+        "label": "Size Dep.",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colSizeDependencyMapping",
+        "label": "Size Mapping",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colShrinkagePerRemarks",
+        "label": "Shrinkage %(LxW)",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colConsQty",
+        "label": "Cons. Qty.",
+        "data_type": "number",
+    },
+    {
+        "field_key": "colWastagePer",
+        "label": "Waste %",
+        "data_type": "number",
+    },
+    {
+        "field_key": "colConsPlusWastageQty",
+        "label": "Cons. Qty. Incl. Waste",
+        "data_type": "number",
+        "read_only": True,
+    },
+    {
+        "field_key": "colSupplierCompanyName",
+        "label": "Supplier",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colCurrencyCode",
+        "label": "Curr.",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colRate1",
+        "label": "Rate",
+        "data_type": "number",
+    },
+    {
+        "field_key": "colValueInCSCurr",
+        "label": "Value in (USD)",
+        "data_type": "number",
+        "read_only": True,
+    },
+    {
+        "field_key": "colRemarks",
+        "label": "Remarks",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colPlacement",
+        "label": "Placement",
+        "data_type": "text",
+    },
+    {
+        "field_key": "colPurchaseOfficer",
+        "label": "Purchase Officer",
+        "data_type": "text",
+    },
+)
+FORM_COLUMNS = [
+    *FORM_BASE_COLUMNS,
+    *[str(field["label"]) for field in STANDARD_ITEM_FIELDS],
+    *FORM_TECH_COLUMNS,
+]
+OPTIONAL_FORM_COLUMNS = {
+    "Color Mapping",
+    "Size Mapping",
+    "Cons. Qty. Incl. Waste",
+    "Value in (USD)",
+}
+
+_HEADER_FILL = PatternFill("solid", fgColor="0F766E")
+_SUBHEADER_FILL = PatternFill("solid", fgColor="DFF4F2")
+_INPUT_FILL = PatternFill("solid", fgColor="FFF2CC")
+_TEMPLATE_INPUT_FILL = PatternFill("solid", fgColor="FFE699")
+_META_FILL = PatternFill("solid", fgColor="E8EEF5")
+_READ_ONLY_FILL = PatternFill("solid", fgColor="F4CCCC")
+_READ_ONLY_HEADER_FILL = PatternFill("solid", fgColor="B91C1C")
+_HEADER_FONT = Font(color="FFFFFF", bold=True)
+_TITLE_FONT = Font(color="0F5660", bold=True, size=16)
+_THIN_GRAY = Side(style="thin", color="D4DEE5")
+_SECTION_SIDE = Side(style="medium", color="0F766E")
+_STRUCTURE_BORDER = Border(bottom=_THIN_GRAY)
+_SECTION_BORDER = Border(top=_SECTION_SIDE, bottom=_THIN_GRAY)
+_DANGEROUS_EXCEL_PREFIXES = ("=", "+", "-", "@")
+_DYNAMIC_HEADER_RE = re.compile(r"^(.*?)\s*\[([^\[\]]+)\]\s*$")
+_EXCLUDED_SECTION_TOKENS = {
+    "cmcosts",
+    "productioncosts",
+    "indirectcosts",
+}
+STANDARD_SECTIONS = (
+    ("fabricshell", "FABRIC- SHELL"),
+    ("fabriclining", "FABRIC - LINING"),
+    ("fabricinterlining", "FABRIC - INTERLINING"),
+    ("fabricpadding", "FABRIC - PADDING"),
+    ("sewingtrims", "SEWING TRIMS"),
+    ("packingtrims", "PACKING TRIMS"),
+)
+_EXCLUDED_FIELD_TOKENS = {
+    "deliveryterms",
+    "processrequired",
+    "bomsno",
+    "bomdtsno",
+    "rolllotavg",
+    "destinationcountry",
+    "desspecific",
+    "destinationspecific",
+    "materialcostincludedin",
+}
+_EXCLUDED_FIELD_KEYS = {
+    "colbom",
+    "colsno",
+    "colrolllot",
+    "colavg",
+    "coldes",
+    "colspecific",
+    "colmaterialcost",
+    "colincludedin",
+}
+_EXCLUDED_FIELD_LABELS = {
+    "deliveryterms",
+    "processrequired",
+    "bom",
+    "sno",
+    "rolllot",
+    "avg",
+    "destinationcountry",
+    "des",
+    "specific",
+    "materialcost",
+    "includedin",
+}
+
+
+class CostingWorkbookError(ValueError):
+    """Lỗi file có mã ổn định để UI/telemetry phân loại."""
+
+    def __init__(self, code: str, message: str, *, details: Sequence[str] = ()):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.details = [str(item) for item in details]
+
+    def as_result(self) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "code": self.code,
+            "message": self.message,
+            "validation_errors": list(self.details),
+        }
+
+
+def _text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value).strip()
+
+
+def _bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _text(value).casefold() in {"1", "true", "yes", "y", "x", "có"}
+
+
+def _order(value: Any, fallback: int = 0) -> int:
+    try:
+        return int(float(_text(value)))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _options(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [_text(item) for item in value if _text(item)]
+    raw = _text(value)
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [_text(item) for item in parsed if _text(item)]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+    return [_text(item) for item in raw.split("|") if _text(item)]
+
+
+def _excel_safe(value: Any) -> Any:
+    """Giữ identifier là text và vô hiệu hoá formula injection khi export."""
+    if not isinstance(value, str):
+        return value
+    if value.startswith(_DANGEROUS_EXCEL_PREFIXES):
+        return "'" + value
+    return value
+
+
+def _excel_unescape(value: Any) -> Any:
+    if (
+        isinstance(value, str)
+        and len(value) >= 2
+        and value[0] == "'"
+        and value[1] in _DANGEROUS_EXCEL_PREFIXES
+    ):
+        return value[1:]
+    return value
+
+
+def _reject_formula(value: Any, location: str) -> None:
+    if isinstance(value, str) and value.startswith("="):
+        raise CostingWorkbookError(
+            "COSTING_FORMULA_NOT_ALLOWED",
+            "File Costing không được chứa công thức trong vùng dữ liệu.",
+            details=[location],
+        )
+
+
+def _clean_cell(value: Any, location: str) -> Any:
+    _reject_formula(value, location)
+    value = _excel_unescape(value)
+    if isinstance(value, str) and len(value) > MAX_CELL_CHARS:
+        raise CostingWorkbookError(
+            "COSTING_VALIDATION_FAILED",
+            "Một ô trong file Costing dài hơn giới hạn cho phép.",
+            details=[location],
+        )
+    return value
+
+
+def _normalized_field(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
+    scope = _text(raw.get("scope")).casefold()
+    return {
+        "scope": scope,
+        "section_key": _text(raw.get("section_key")),
+        "item_key": _text(raw.get("item_key")),
+        "field_key": _text(raw.get("field_key")),
+        "label": _text(raw.get("label") or raw.get("field_label")),
+        "value": raw.get("value", ""),
+        "data_type": _text(raw.get("data_type") or "text").casefold(),
+        "editable": _bool(raw.get("editable")),
+        "required": _bool(raw.get("required")),
+        "options": _options(raw.get("options")),
+        "row_order": _order(raw.get("row_order"), index),
+    }
+
+
+def _normalized_section(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
+    return {
+        "section_key": _text(raw.get("section_key")),
+        "name": _text(raw.get("name") or raw.get("section_name")),
+        "row_order": _order(raw.get("row_order"), index),
+    }
+
+
+def _normalized_item(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
+    action = _text(raw.get("action") or "UPSERT").upper()
+    item_type = _text(raw.get("item_type") or "article").casefold()
+    return {
+        "section_key": _text(raw.get("section_key")),
+        "section_name": _text(raw.get("section_name")),
+        "item_key": _text(raw.get("item_key")),
+        "row_order": _order(raw.get("row_order"), index),
+        "action": action,
+        "item_type": item_type,
+        "article_code": _text(raw.get("article_code")),
+        "article_name": _text(raw.get("article_name")),
+    }
+
+
+def normalize_document(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Chuẩn hoá và validate document trước khi ghi file hoặc lập dry-run."""
+    fields = [
+        _normalized_field(field, index)
+        for index, field in enumerate(document.get("fields") or ())
+        if isinstance(field, Mapping)
+    ]
+    sections = [
+        _normalized_section(section, index)
+        for index, section in enumerate(document.get("sections") or ())
+        if isinstance(section, Mapping)
+    ]
+    items = [
+        _normalized_item(item, index)
+        for index, item in enumerate(document.get("items") or ())
+        if isinstance(item, Mapping)
+    ]
+    normalized = {
+        "format_version": _text(
+            document.get("format_version") or FORMAT_VERSION
+        ),
+        "style_code": _text(document.get("style_code")),
+        "style_name": _text(document.get("style_name")),
+        "title": _text(document.get("title")),
+        "cost_sheet_status": _text(document.get("cost_sheet_status")),
+        "cost_sheet_type": _text(
+            document.get("cost_sheet_type") or "Internal Cost Sheets"
+        ),
+        "order_execution_type": _text(
+            document.get("order_execution_type") or "Trading"
+        ),
+        "season": _text(document.get("season")),
+        "template": _text(document.get("template") or "FOB"),
+        "signature": _text(document.get("signature")),
+        "fields": fields,
+        "sections": sections,
+        "items": items,
+    }
+    _validate_document(normalized)
+    return normalized
+
+
+def _semantic_token(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _text(value).casefold())
+
+
+def _section_is_excluded(section: Mapping[str, Any]) -> bool:
+    semantic = " ".join(
+        (
+            _semantic_token(section.get("section_key")),
+            _semantic_token(section.get("name")),
+        )
+    )
+    return any(token in semantic for token in _EXCLUDED_SECTION_TOKENS)
+
+
+def _standard_section(
+    section: Mapping[str, Any],
+) -> tuple[int, str] | None:
+    semantics = {
+        _semantic_token(section.get("section_key")),
+        _semantic_token(section.get("name")),
+    }
+    for index, (token, name) in enumerate(STANDARD_SECTIONS):
+        if any(token in semantic for semantic in semantics):
+            return index, name
+    # Tương thích export cũ/test từng gọi section đầu tiên là "Fabric".
+    if "fabric" in semantics:
+        return 0, STANDARD_SECTIONS[0][1]
+    return None
+
+
+def _field_is_excluded(field: Mapping[str, Any]) -> bool:
+    field_key = _semantic_token(
+        re.sub(r"__\d+$", "", _text(field.get("field_key")))
+    )
+    label = _semantic_token(field.get("label"))
+    return (
+        any(token in field_key for token in _EXCLUDED_FIELD_TOKENS)
+        or field_key in _EXCLUDED_FIELD_KEYS
+        or label in _EXCLUDED_FIELD_LABELS
+        or label in _EXCLUDED_FIELD_TOKENS
+    )
+
+
+def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Giữ đúng phần người dùng được nhập trong workbook Costing.
+
+    Read-only field và các cột/section tổng hợp bị loại ở cả export lẫn import,
+    kể cả khi người dùng import lại workbook được tạo bởi phiên bản cũ.
+    """
+    normalized = normalize_document(document)
+    selected_sections: dict[int, dict[str, Any]] = {}
+    for section in normalized["sections"]:
+        standard = _standard_section(section)
+        if standard is None or _section_is_excluded(section):
+            continue
+        index, name = standard
+        selected_sections.setdefault(
+            index,
+            {
+                **section,
+                "name": name,
+                "row_order": index + 1,
+            },
+        )
+    for index, (token, name) in enumerate(STANDARD_SECTIONS):
+        selected_sections.setdefault(
+            index,
+            {
+                "section_key": f"standard:{token}",
+                "name": name,
+                "row_order": index + 1,
+            },
+        )
+    sections = [
+        selected_sections[index]
+        for index in sorted(selected_sections)
+    ]
+    allowed_section_keys = {
+        section["section_key"].casefold() for section in sections
+    }
+    excluded_section_keys = {
+        section["section_key"].casefold()
+        for section in normalized["sections"]
+        if _section_is_excluded(section)
+    }
+    items = [
+        item
+        for item in normalized["items"]
+        if item["section_key"].casefold() not in excluded_section_keys
+        and item["item_type"] == "article"
+    ]
+    allowed_item_keys = {
+        (item["section_key"].casefold(), item["item_key"].casefold())
+        for item in items
+    }
+    fields = []
+    standard_keys = {
+        str(field["field_key"]).casefold()
+        for field in STANDARD_ITEM_FIELDS
+    }
+    read_only_keys = {
+        str(field["field_key"]).casefold()
+        for field in STANDARD_ITEM_FIELDS
+        if field.get("read_only")
+    }
+    for field in normalized["fields"]:
+        base_field_key = re.sub(
+            r"__\d+$",
+            "",
+            field["field_key"],
+        ).casefold()
+        if (
+            field["scope"] != "item"
+            or (
+                not field["editable"]
+                and base_field_key not in read_only_keys
+            )
+            or _field_is_excluded(field)
+            or base_field_key not in standard_keys
+        ):
+            continue
+        section_key = field["section_key"].casefold()
+        if field["scope"] in {"section", "item"} and (
+            section_key in excluded_section_keys
+            or (
+                allowed_section_keys
+                and section_key not in allowed_section_keys
+            )
+        ):
+            continue
+        if field["scope"] == "item" and (
+            section_key,
+            field["item_key"].casefold(),
+        ) not in allowed_item_keys:
+            continue
+        fields.append(field)
+    return normalize_document(
+        {
+            **normalized,
+            "sections": sections,
+            "items": items,
+            "fields": fields,
+        }
+    )
+
+
+def _validate_document(document: Mapping[str, Any]) -> None:
+    errors: list[str] = []
+    if document.get("format_version") != FORMAT_VERSION:
+        raise CostingWorkbookError(
+            "COSTING_FORMAT_UNSUPPORTED",
+            "Phiên bản file Costing không được hỗ trợ.",
+            details=[
+                f"Nhận {document.get('format_version') or 'trống'}; "
+                f"cần {FORMAT_VERSION}."
+            ],
+        )
+    if not _text(document.get("style_code")):
+        errors.append("Thiếu Style Code.")
+    sections = list(document.get("sections") or ())
+    items = list(document.get("items") or ())
+    fields = list(document.get("fields") or ())
+    if len(sections) > MAX_SECTIONS:
+        errors.append(f"Quá {MAX_SECTIONS} section.")
+    if len(items) > MAX_ITEMS:
+        errors.append(f"Quá {MAX_ITEMS} Article.")
+    if len(fields) > MAX_FIELDS:
+        errors.append(f"Quá {MAX_FIELDS} field.")
+
+    section_keys: set[str] = set()
+    for section in sections:
+        key = _text(section.get("section_key"))
+        if not key:
+            errors.append("Section thiếu Section Key.")
+        elif key in section_keys:
+            errors.append(f"Section Key trùng: {key}.")
+        section_keys.add(key)
+
+    item_keys: set[tuple[str, str]] = set()
+    for item in items:
+        section_key = _text(item.get("section_key"))
+        item_key = _text(item.get("item_key"))
+        action = _text(item.get("action") or "UPSERT").upper()
+        if not section_key:
+            errors.append("Article thiếu Section Key.")
+        if not item_key:
+            errors.append(
+                f"Article {_text(item.get('article_code')) or '(trống)'} "
+                "thiếu Item Key."
+            )
+        composite = (section_key.casefold(), item_key.casefold())
+        if all(composite) and composite in item_keys:
+            errors.append(f"Item Key trùng trong section: {item_key}.")
+        item_keys.add(composite)
+        if action not in ITEM_ACTIONS:
+            errors.append(f"Action không hợp lệ: {action}.")
+        item_type = _text(item.get("item_type") or "article").casefold()
+        if item_type not in ITEM_TYPES:
+            errors.append(f"Item Type không hợp lệ: {item_type}.")
+        if item_type == "article" and action != "SKIP" and not (
+            _text(item.get("article_code"))
+            or _text(item.get("article_name"))
+        ):
+            errors.append(f"Article {item_key or '(trống)'} thiếu Code/Name.")
+
+    field_keys: set[tuple[str, str, str, str]] = set()
+    for field in fields:
+        scope = _text(field.get("scope")).casefold()
+        field_key = _text(field.get("field_key"))
+        if scope not in FIELD_SCOPES:
+            errors.append(f"Field scope không hợp lệ: {scope or '(trống)'}.")
+        if not field_key:
+            errors.append("Field thiếu Field Key.")
+        composite = (
+            scope,
+            _text(field.get("section_key")).casefold(),
+            _text(field.get("item_key")).casefold(),
+            field_key.casefold(),
+        )
+        if field_key and composite in field_keys:
+            errors.append(
+                "Field Key trùng trong cùng scope: "
+                + " / ".join(part or "-" for part in composite)
+            )
+        field_keys.add(composite)
+        if scope in {"section", "item"} and not _text(
+            field.get("section_key")
+        ):
+            errors.append(f"Field {field_key or '(trống)'} thiếu Section Key.")
+        if scope == "item" and not _text(field.get("item_key")):
+            errors.append(f"Item field {field_key or '(trống)'} thiếu Item Key.")
+        _reject_formula(field.get("value"), f"Field {field_key or '(trống)'}")
+
+    if errors:
+        raise CostingWorkbookError(
+            "COSTING_VALIDATION_FAILED",
+            "File Costing có dữ liệu chưa hợp lệ.",
+            details=errors[:100],
+        )
+
+
+def _preflight_path(path: str | Path, *, must_exist: bool) -> Path:
+    raw_path = str(path or "").strip()
+    if not raw_path:
+        raise CostingWorkbookError(
+            "COSTING_FILE_REQUIRED",
+            "Chưa chọn file Costing.",
+        )
+    target = Path(raw_path).expanduser()
+    suffix = target.suffix.casefold()
+    if suffix not in SUPPORTED_EXTENSIONS:
+        raise CostingWorkbookError(
+            "COSTING_FILE_TYPE_UNSUPPORTED",
+            "Costing chỉ hỗ trợ file .xlsx.",
+        )
+    if must_exist:
+        if not target.is_file():
+            raise CostingWorkbookError(
+                "COSTING_FILE_REQUIRED",
+                "File Costing không còn tồn tại.",
+            )
+        if target.stat().st_size > MAX_FILE_BYTES:
+            raise CostingWorkbookError(
+                "COSTING_FILE_TOO_LARGE",
+                "File Costing lớn hơn giới hạn 12 MB.",
+            )
+        if suffix == ".xlsx":
+            _preflight_xlsx_archive(target)
+    return target
+
+
+def _preflight_xlsx_archive(path: Path) -> None:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            members = archive.infolist()
+            if len(members) > MAX_XLSX_MEMBERS:
+                raise CostingWorkbookError(
+                    "COSTING_FILE_TOO_LARGE",
+                    "Workbook có quá nhiều thành phần.",
+                )
+            total = sum(max(0, member.file_size) for member in members)
+            if total > MAX_XLSX_UNCOMPRESSED_BYTES:
+                raise CostingWorkbookError(
+                    "COSTING_FILE_TOO_LARGE",
+                    "Workbook giải nén lớn hơn giới hạn an toàn.",
+                )
+    except CostingWorkbookError:
+        raise
+    except (OSError, zipfile.BadZipFile) as error:
+        raise CostingWorkbookError(
+            "COSTING_VALIDATION_FAILED",
+            "File XLSX bị hỏng hoặc không đúng định dạng.",
+        ) from error
+
+
+def _set_header(ws: Any, row: int, columns: Sequence[str]) -> None:
+    for column, value in enumerate(columns, 1):
+        cell = ws.cell(row=row, column=column, value=value)
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+    ws.row_dimensions[row].height = 28
+    ws.auto_filter.ref = (
+        f"A{row}:{get_column_letter(len(columns))}{max(row, ws.max_row)}"
+    )
+    ws.freeze_panes = f"A{row + 1}"
+
+
+def _finish_sheet(
+    ws: Any,
+    widths: Mapping[int, float],
+    *,
+    editable_columns: Iterable[int] = (),
+) -> None:
+    editable = set(editable_columns)
+    for column, width in widths.items():
+        ws.column_dimensions[get_column_letter(column)].width = width
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.border = _STRUCTURE_BORDER
+            if cell.column in editable:
+                cell.fill = _INPUT_FILL
+    ws.sheet_view.showGridLines = False
+
+
+def _dynamic_header(label: str, key: str) -> str:
+    return f"{label or key} [{key}]"
+
+
+def _dynamic_key(value: Any) -> str:
+    match = _DYNAMIC_HEADER_RE.match(_text(value))
+    return _text(match.group(2)) if match else ""
+
+
+def _fields_by_scope(
+    fields: Sequence[Mapping[str, Any]],
+    scope: str,
+) -> list[Mapping[str, Any]]:
+    return [field for field in fields if field.get("scope") == scope]
+
+
+def _write_guide(workbook: Workbook, document: Mapping[str, Any]) -> None:
+    ws = workbook.create_sheet(GUIDE_SHEET)
+    ws.merge_cells("A1:F1")
+    ws["A1"] = "WFX Smart · Catalog Costing"
+    ws["A1"].font = _TITLE_FONT
+    ws["A1"].alignment = Alignment(vertical="center")
+    ws.row_dimensions[1].height = 34
+    rows = [
+        ("Style Code", document["style_code"]),
+        ("Style Name", document.get("style_name") or "—"),
+        ("Costing status lúc export", document.get("cost_sheet_status") or "—"),
+        ("Format version", f"v{FORMAT_VERSION}"),
+        (
+            "Cách dùng",
+            "Mở sheet Costing và điền trực tiếp vào các cột màu vàng. "
+            f"Mỗi section có {DEFAULT_NEW_ITEM_ROWS_PER_SECTION} dòng vàng đậm "
+            "để thêm Article mới; để trống dòng không dùng.",
+        ),
+        (
+            "Phạm vi",
+            "Mọi status đều có thể Export. Chỉ CostSheet Open mới được "
+            "Import/Apply. File không có Cost Sheet header/section chi phí.",
+        ),
+        (
+            "Section có sẵn",
+            ", ".join(
+                str(section.get("name") or section.get("section_key") or "")
+                for section in document.get("sections") or ()
+                if str(
+                    section.get("name") or section.get("section_key") or ""
+                ).strip()
+            )
+            or "—",
+        ),
+        (
+            "Thêm nhiều Article",
+            "Điền lần lượt các dòng vàng đậm trong đúng section. Nếu cần hơn "
+            f"{DEFAULT_NEW_ITEM_ROWS_PER_SECTION} Article mới, sao chép nguyên "
+            "dòng vàng cuối và chèn trước section tiếp theo.",
+        ),
+        (
+            "Split màu/size",
+            "Các dòng liền nhau cùng Article Code sẽ được Splitter thành các "
+            "dòng >> riêng trước khi app điền phối, số lượng và giá.",
+        ),
+        (
+            "Phối Table",
+            "Color/Size Mapping dùng mỗi dòng Nguồn => Đích 1 | Đích 2. "
+            "App scan mapping hiện tại và danh sách Color/Size của từng item.",
+        ),
+        (
+            "Cột công thức",
+            "Cons. Qty. Incl. Waste = Cons. Qty. × (1 + Waste %/100); "
+            "Value in (USD) = Rate × Cons. Qty. Incl. Waste. Hai cột đỏ chỉ đọc.",
+        ),
+        (
+            "Purchase Officer",
+            "Chọn từ dropdown khi dòng WFX đang trống. Dry-run sẽ dừng trước "
+            "Apply nếu field bắt buộc này chưa có giá trị.",
+        ),
+        (
+            "Article Action",
+            "Để trống/UPSERT = thêm hoặc cập nhật; SKIP = bỏ qua; "
+            "DELETE = xóa đúng Article sau dry-run.",
+        ),
+        (
+            "Xóa giá trị",
+            f"Ô trống = giữ nguyên. Ghi {CLEAR_MARKER} để xóa có chủ ý.",
+        ),
+        (
+            "An toàn",
+            "WFX Smart luôn dry-run trước, không tự chọn khi Material Search "
+            "có nhiều kết quả, và chỉ Save sau khi áp dụng xong.",
+        ),
+        (
+            "Minutes",
+            "WFX Smart tự đặt mọi field Minutes editable thành 1 khi Apply. "
+            "CM/Production/Indirect Costs không thuộc file import.",
+        ),
+    ]
+    for row, (label, value) in enumerate(rows, 3):
+        label_cell = ws.cell(row=row, column=1, value=label)
+        label_cell.font = Font(bold=True)
+        label_cell.alignment = Alignment(vertical="top", wrap_text=True)
+        ws.cell(row=row, column=2, value=_excel_safe(value))
+        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=6)
+        ws.cell(row=row, column=2).alignment = Alignment(
+            horizontal="left",
+            vertical="top",
+            wrap_text=True,
+        )
+        ws.row_dimensions[row].height = 42 if row >= 6 else 24
+        if label == "Cách dùng":
+            ws.cell(row=row, column=2).fill = _INPUT_FILL
+    for column, width in enumerate((23, 18, 18, 18, 18, 18), 1):
+        ws.column_dimensions[get_column_letter(column)].width = width
+    ws.sheet_view.showGridLines = False
+
+
+def _write_meta(workbook: Workbook, document: Mapping[str, Any]) -> None:
+    ws = workbook.create_sheet(META_SHEET)
+    meta = [
+        ("format_version", FORMAT_VERSION),
+        ("style_code", document.get("style_code", "")),
+        ("title", document.get("title", "")),
+        ("cost_sheet_status", document.get("cost_sheet_status", "")),
+        ("cost_sheet_type", document.get("cost_sheet_type", "")),
+        ("order_execution_type", document.get("order_execution_type", "")),
+        ("season", document.get("season", "")),
+        ("template", document.get("template", "")),
+        ("signature", document.get("signature", "")),
+    ]
+    for row, (key, value) in enumerate(meta, 1):
+        ws.cell(row=row, column=1, value=key)
+        ws.cell(row=row, column=2, value=_excel_safe(value))
+    ws.protection.sheet = True
+    ws.sheet_state = "hidden"
+
+
+def _write_raw_fields(workbook: Workbook, document: Mapping[str, Any]) -> None:
+    ws = workbook.create_sheet(FIELDS_SHEET)
+    _set_header(ws, 1, FIELD_COLUMNS)
+    for row, field in enumerate(document["fields"], 2):
+        values = [
+            field["scope"],
+            field["section_key"],
+            field["item_key"],
+            field["field_key"],
+            field["label"],
+            field["value"],
+            field["data_type"],
+            field["editable"],
+            field["required"],
+            "|".join(field["options"]),
+            field["row_order"],
+        ]
+        for column, value in enumerate(values, 1):
+            ws.cell(row=row, column=column, value=_excel_safe(value))
+    ws.protection.sheet = True
+    ws.sheet_state = "hidden"
+
+
+def _write_cost_sheet(workbook: Workbook, document: Mapping[str, Any]) -> None:
+    ws = workbook.create_sheet(COST_SHEET)
+    columns = [
+        "Field Key",
+        "Label",
+        "Value",
+        "Data Type",
+        "Editable",
+        "Required",
+        "Options",
+    ]
+    _set_header(ws, 1, columns)
+    fields = sorted(
+        _fields_by_scope(document["fields"], "cost_sheet"),
+        key=lambda item: item["row_order"],
+    )
+    for row, field in enumerate(fields, 2):
+        values = [
+            field["field_key"],
+            field["label"],
+            field["value"],
+            field["data_type"],
+            field["editable"],
+            field["required"],
+            "|".join(field["options"]),
+        ]
+        for column, value in enumerate(values, 1):
+            ws.cell(row=row, column=column, value=_excel_safe(value))
+    _finish_sheet(
+        ws,
+        {1: 25, 2: 30, 3: 24, 4: 14, 5: 11, 6: 11, 7: 35},
+        editable_columns={3},
+    )
+
+
+def _unique_dynamic_fields(
+    fields: Sequence[Mapping[str, Any]],
+) -> list[tuple[str, str]]:
+    seen: set[str] = set()
+    output: list[tuple[str, str]] = []
+    for field in sorted(fields, key=lambda item: item["row_order"]):
+        key = _text(field.get("field_key"))
+        if not key or key.casefold() in seen:
+            continue
+        seen.add(key.casefold())
+        output.append((key, _text(field.get("label")) or key))
+    return output
+
+
+def _write_sections(workbook: Workbook, document: Mapping[str, Any]) -> None:
+    ws = workbook.create_sheet(SECTIONS_SHEET)
+    section_fields = _fields_by_scope(document["fields"], "section")
+    dynamic = _unique_dynamic_fields(section_fields)
+    columns = [
+        "Section Key",
+        "Section Name",
+        "Row Order",
+        *[_dynamic_header(label, key) for key, label in dynamic],
+    ]
+    _set_header(ws, 1, columns)
+    by_key = {
+        (
+            _text(field.get("section_key")).casefold(),
+            _text(field.get("field_key")).casefold(),
+        ): field
+        for field in section_fields
+    }
+    for row, section in enumerate(
+        sorted(document["sections"], key=lambda item: item["row_order"]),
+        2,
+    ):
+        base = [
+            section["section_key"],
+            section["name"],
+            section["row_order"],
+        ]
+        values = [
+            by_key.get(
+                (
+                    section["section_key"].casefold(),
+                    field_key.casefold(),
+                ),
+                {},
+            ).get("value", "")
+            for field_key, _label in dynamic
+        ]
+        for column, value in enumerate([*base, *values], 1):
+            ws.cell(row=row, column=column, value=_excel_safe(value))
+    _finish_sheet(
+        ws,
+        {
+            1: 24,
+            2: 30,
+            3: 12,
+            **dict.fromkeys(range(4, len(columns) + 1), 22),
+        },
+        editable_columns=range(4, len(columns) + 1),
+    )
+
+
+def _write_items(workbook: Workbook, document: Mapping[str, Any]) -> None:
+    ws = workbook.create_sheet(ITEMS_SHEET)
+    item_fields = _fields_by_scope(document["fields"], "item")
+    dynamic = _unique_dynamic_fields(item_fields)
+    base_columns = [
+        "Section Key",
+        "Section Name",
+        "Item Key",
+        "Row Order",
+        "Action",
+        "Item Type",
+        "Article Code",
+        "Article Name",
+    ]
+    columns = [
+        *base_columns,
+        *[_dynamic_header(label, key) for key, label in dynamic],
+    ]
+    _set_header(ws, 1, columns)
+    by_key = {
+        (
+            _text(field.get("section_key")).casefold(),
+            _text(field.get("item_key")).casefold(),
+            _text(field.get("field_key")).casefold(),
+        ): field
+        for field in item_fields
+    }
+    for row, item in enumerate(
+        sorted(
+            document["items"],
+            key=lambda value: (
+                value["section_key"].casefold(),
+                value["row_order"],
+            ),
+        ),
+        2,
+    ):
+        base = [
+            item["section_key"],
+            item["section_name"],
+            item["item_key"],
+            item["row_order"],
+            item["action"],
+            item["item_type"],
+            item["article_code"],
+            item["article_name"],
+        ]
+        values = [
+            by_key.get(
+                (
+                    item["section_key"].casefold(),
+                    item["item_key"].casefold(),
+                    field_key.casefold(),
+                ),
+                {},
+            ).get("value", "")
+            for field_key, _label in dynamic
+        ]
+        for column, value in enumerate([*base, *values], 1):
+            ws.cell(row=row, column=column, value=_excel_safe(value))
+    if ws.max_row >= 2:
+        validation = DataValidation(
+            type="list",
+            formula1='"UPSERT,SKIP,DELETE"',
+            allow_blank=True,
+        )
+        ws.add_data_validation(validation)
+        validation.add(f"E2:E{max(ws.max_row, 200)}")
+        item_type_validation = DataValidation(
+            type="list",
+            formula1='"article,cost_line"',
+            allow_blank=False,
+        )
+        ws.add_data_validation(item_type_validation)
+        item_type_validation.add(f"F2:F{max(ws.max_row, 200)}")
+    for index, (field_key, label) in enumerate(dynamic, len(base_columns) + 1):
+        ws.cell(row=1, column=index).comment = Comment(
+            f"WFX Field Key: {field_key}\nLabel: {label}",
+            "WFX Smart",
+        )
+    _finish_sheet(
+        ws,
+        {
+            1: 24,
+            2: 26,
+            3: 24,
+            4: 11,
+            5: 12,
+            6: 14,
+            7: 20,
+            8: 34,
+            **dict.fromkeys(
+                range(len(base_columns) + 1, len(columns) + 1),
+                20,
+            ),
+        },
+        editable_columns=range(5, len(columns) + 1),
+    )
+
+
+def _base_field_key(value: Any) -> str:
+    return re.sub(r"__\d+$", "", _text(value)).casefold()
+
+
+def _unique_values(values: Iterable[Any]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _text(value)
+        folded = text.casefold()
+        if not text or folded in seen:
+            continue
+        seen.add(folded)
+        output.append(text)
+    return output
+
+
+def _split_wfx_multiselect(value: Any) -> list[str]:
+    """Tách chuỗi WFX theo dấu phẩy nhưng giữ nguyên dấu phẩy trong ngoặc."""
+    text = _text(value)
+    if not text:
+        return []
+    output: list[str] = []
+    start = 0
+    depth = 0
+    for index, character in enumerate(text):
+        if character == "(":
+            depth += 1
+        elif character == ")" and depth:
+            depth -= 1
+        elif character in {",", "|"} and depth == 0:
+            token = text[start:index].strip()
+            if token:
+                output.append(token)
+            start = index + 1
+    token = text[start:].strip()
+    if token:
+        output.append(token)
+    return output
+
+
+def _form_dropdown_options(
+    document: Mapping[str, Any],
+) -> dict[str, list[str]]:
+    """Tạo lookup chung; option Material được gắn riêng theo từng item."""
+    fields = list(document.get("fields") or ())
+
+    def matching(field_key: str) -> list[Mapping[str, Any]]:
+        wanted = field_key.casefold()
+        return [
+            field
+            for field in fields
+            if _base_field_key(field.get("field_key")) == wanted
+        ]
+
+    purchase_officers = matching("colPurchaseOfficer")
+    return {
+        "Color Dep.": _unique_values(
+            [
+                "[None]",
+                "[Table]",
+                "[Body Type]",
+                "[Base Colors]",
+            ]
+        ),
+        "Size Dep.": _unique_values(
+            [
+                "[None]",
+                "[Table]",
+                "[Body Type]",
+            ]
+        ),
+        "Purchase Officer": _unique_values(
+            [
+                *(field.get("value") for field in purchase_officers),
+                *(
+                    option
+                    for field in purchase_officers
+                    for option in field.get("options") or ()
+                ),
+            ]
+        ),
+    }
+
+
+def _add_form_dropdowns(
+    ws: Any,
+    document: Mapping[str, Any],
+    *,
+    last_row: int,
+) -> int:
+    """Gắn dropdown bằng lookup columns ẩn, không tạo sheet thứ ba."""
+    option_sets = _form_dropdown_options(document)
+    lookup_column = len(FORM_COLUMNS) + 1
+    for label, options in option_sets.items():
+        if not options:
+            continue
+        column_letter = get_column_letter(lookup_column)
+        for row, option in enumerate(options, 2):
+            ws.cell(row=row, column=lookup_column, value=_excel_safe(option))
+        ws.column_dimensions[column_letter].hidden = True
+        validation = DataValidation(
+            type="list",
+            formula1=f"=${column_letter}$2:${column_letter}${len(options) + 1}",
+            allow_blank=True,
+        )
+        # Cho phép gõ mapping mới hoặc nhiều giá trị bằng dấu | khi lookup live
+        # chưa có đủ màu/size. Dropdown vẫn là đường nhập mặc định.
+        validation.showErrorMessage = False
+        validation.promptTitle = "WFX Smart"
+        validation.prompt = (
+            "Chọn từ danh sách; có thể gõ nhiều giá trị, ngăn bằng dấu |."
+        )
+        validation.showInputMessage = True
+        ws.add_data_validation(validation)
+        target_column = FORM_COLUMNS.index(label) + 1
+        target_letter = get_column_letter(target_column)
+        validation.add(f"{target_letter}2:{target_letter}{last_row}")
+        lookup_column += 1
+    return lookup_column
+
+
+def _add_item_option_dropdowns(
+    ws: Any,
+    document: Mapping[str, Any],
+    row_by_item: Mapping[tuple[str, str], int],
+    *,
+    lookup_column: int,
+) -> None:
+    """Gắn dropdown Material Color/Size đúng option của từng Article row."""
+    wanted_fields = {
+        "colmaterialcolorlist": "Material Color",
+        "colmaterialsizelist": "Material Size",
+    }
+    for field in document.get("fields") or ():
+        base_key = _base_field_key(field.get("field_key"))
+        label = wanted_fields.get(base_key)
+        if label is None:
+            continue
+        row = row_by_item.get(
+            (
+                _text(field.get("section_key")).casefold(),
+                _text(field.get("item_key")).casefold(),
+            )
+        )
+        options = _unique_values(
+            [
+                *(field.get("options") or ()),
+                *_split_wfx_multiselect(field.get("value")),
+            ]
+        )
+        if row is None or not options:
+            continue
+        lookup_letter = get_column_letter(lookup_column)
+        for option_row, option in enumerate(options, 2):
+            ws.cell(
+                row=option_row,
+                column=lookup_column,
+                value=_excel_safe(option),
+            )
+        ws.column_dimensions[lookup_letter].hidden = True
+        validation = DataValidation(
+            type="list",
+            formula1=(
+                f"=${lookup_letter}$2:"
+                f"${lookup_letter}${len(options) + 1}"
+            ),
+            allow_blank=True,
+        )
+        validation.showErrorMessage = False
+        validation.promptTitle = f"{label} của Article"
+        validation.prompt = (
+            "Chọn một giá trị; nhiều giá trị có thể nhập theo đúng chuỗi WFX."
+        )
+        validation.showInputMessage = True
+        ws.add_data_validation(validation)
+        target_letter = get_column_letter(FORM_COLUMNS.index(label) + 1)
+        validation.add(f"{target_letter}{row}")
+        lookup_column += 1
+
+
+def _write_costing_form(
+    workbook: Workbook,
+    document: Mapping[str, Any],
+) -> None:
+    """Ghi form một sheet với bộ cột cố định và dòng thêm Article sẵn có."""
+    ws = workbook.create_sheet(FORM_SHEET)
+    _set_header(ws, 1, FORM_COLUMNS)
+    visible_column_count = len(FORM_COLUMNS) - len(FORM_TECH_COLUMNS)
+    field_by_item: dict[tuple[str, str, str], Mapping[str, Any]] = {}
+    for field in document["fields"]:
+        field_by_item[
+            (
+                field["section_key"].casefold(),
+                field["item_key"].casefold(),
+                _base_field_key(field["field_key"]),
+            )
+        ] = field
+    items_by_section: dict[str, list[Mapping[str, Any]]] = {}
+    for item in document["items"]:
+        items_by_section.setdefault(
+            item["section_key"].casefold(),
+            [],
+        ).append(item)
+
+    output_row = 2
+    section_rows: list[list[int]] = []
+    template_rows: list[tuple[int, str]] = []
+    row_by_item: dict[tuple[str, str], int] = {}
+    for section in sorted(
+        document["sections"],
+        key=lambda value: value["row_order"],
+    ):
+        section_key = section["section_key"]
+        section_items = sorted(
+            items_by_section.get(section_key.casefold(), []),
+            key=lambda value: value["row_order"],
+        )
+        current_section_rows: list[int] = []
+        template_index = 0
+        for item in [
+            *section_items,
+            *([None] * DEFAULT_NEW_ITEM_ROWS_PER_SECTION),
+        ]:
+            is_template = item is None
+            if is_template:
+                template_index += 1
+            item_key = "" if is_template else str(item["item_key"])
+            row_order = (
+                max(
+                    (
+                        int(existing["row_order"])
+                        for existing in section_items
+                    ),
+                    default=0,
+                )
+                + template_index
+                if is_template
+                else int(item["row_order"])
+            )
+            values: list[Any] = [
+                section["name"],
+                "UPSERT" if is_template else item["action"],
+                "" if is_template else item["article_code"],
+                "" if is_template else item["article_name"],
+            ]
+            for definition in STANDARD_ITEM_FIELDS:
+                field = field_by_item.get(
+                    (
+                        section_key.casefold(),
+                        item_key.casefold(),
+                        str(definition["field_key"]).casefold(),
+                    )
+                )
+                values.append("" if field is None else field["value"])
+            values.extend(
+                [
+                    section_key,
+                    item_key,
+                    row_order,
+                    "article",
+                ]
+            )
+            for column, value in enumerate(values, 1):
+                ws.cell(
+                    row=output_row,
+                    column=column,
+                    value=_excel_safe(value),
+                )
+            if is_template:
+                template_rows.append((output_row, str(section["name"])))
+            else:
+                row_by_item[
+                    (section_key.casefold(), item_key.casefold())
+                ] = output_row
+            current_section_rows.append(output_row)
+            output_row += 1
+        section_rows.append(current_section_rows)
+
+    form_data_last_row = ws.max_row
+    last_row = max(form_data_last_row, 200)
+    action_validation = DataValidation(
+        type="list",
+        formula1='"UPSERT,SKIP,DELETE"',
+        allow_blank=True,
+    )
+    ws.add_data_validation(action_validation)
+    action_validation.add(f"B2:B{last_row}")
+    next_lookup_column = _add_form_dropdowns(
+        ws,
+        document,
+        last_row=last_row,
+    )
+    _add_item_option_dropdowns(
+        ws,
+        document,
+        row_by_item,
+        lookup_column=next_lookup_column,
+    )
+    for offset, definition in enumerate(
+        STANDARD_ITEM_FIELDS,
+        len(FORM_BASE_COLUMNS) + 1,
+    ):
+        ws.cell(row=1, column=offset).comment = Comment(
+            f"WFX Field Key: {definition['field_key']}",
+            "WFX Smart",
+        )
+    widths = {
+        1: 24,
+        2: 12,
+        3: 20,
+        4: 30,
+    }
+    for offset, definition in enumerate(
+        STANDARD_ITEM_FIELDS,
+        len(FORM_BASE_COLUMNS) + 1,
+    ):
+        widths[offset] = {
+            "Material Color": 32,
+            "Material Size": 28,
+            "Color Mapping": 44,
+            "Size Mapping": 44,
+            "Cons. Qty. Incl. Waste": 24,
+            "Value in (USD)": 20,
+            "Remarks": 28,
+            "Supplier": 25,
+            "Placement": 20,
+            "Purchase Officer": 20,
+            "Shrinkage %(LxW)": 20,
+        }.get(str(definition["label"]), 16)
+    _finish_sheet(
+        ws,
+        widths,
+        editable_columns=range(2, visible_column_count + 1),
+    )
+    read_only_definitions = [
+        definition
+        for definition in STANDARD_ITEM_FIELDS
+        if definition.get("read_only")
+    ]
+    read_only_columns = {
+        FORM_COLUMNS.index(str(definition["label"])) + 1
+        for definition in read_only_definitions
+    }
+    for definition in read_only_definitions:
+        column = FORM_COLUMNS.index(str(definition["label"])) + 1
+        header = ws.cell(row=1, column=column)
+        header.fill = _READ_ONLY_HEADER_FILL
+        header.font = _HEADER_FONT
+        for row in range(2, form_data_last_row + 1):
+            cell = ws.cell(row=row, column=column)
+            cell.fill = _READ_ONLY_FILL
+            cell.font = Font(color="991B1B")
+        formula = (
+            "Cons. Qty. × (1 + Waste %/100)"
+            if definition["field_key"] == "colConsPlusWastageQty"
+            else "Rate × Cons. Qty. Incl. Waste"
+        )
+        header.comment = Comment(
+            f"Cột công thức WFX, chỉ đọc: {formula}.",
+            "WFX Smart",
+        )
+    cons_column = FORM_COLUMNS.index("Cons. Qty.") + 1
+    waste_column = FORM_COLUMNS.index("Waste %") + 1
+    cons_incl_column = FORM_COLUMNS.index("Cons. Qty. Incl. Waste") + 1
+    rate_column = FORM_COLUMNS.index("Rate") + 1
+    value_column = FORM_COLUMNS.index("Value in (USD)") + 1
+    for row in range(2, form_data_last_row + 1):
+        cons_ref = f"{get_column_letter(cons_column)}{row}"
+        waste_ref = f"{get_column_letter(waste_column)}{row}"
+        cons_incl_ref = f"{get_column_letter(cons_incl_column)}{row}"
+        rate_ref = f"{get_column_letter(rate_column)}{row}"
+        ws.cell(row=row, column=cons_incl_column).value = (
+            f'=IF({cons_ref}="","",{cons_ref}*'
+            f'(1+IF({waste_ref}="",0,{waste_ref})/100))'
+        )
+        ws.cell(row=row, column=value_column).value = (
+            f'=IF(OR({rate_ref}="",{cons_incl_ref}=""),"",'
+            f"{rate_ref}*{cons_incl_ref})"
+        )
+        ws.cell(row=row, column=cons_incl_column).number_format = "0.0000"
+        ws.cell(row=row, column=value_column).number_format = "0.0000"
+    for mapping_label, option_key in (
+        ("Color Mapping", "colColorDependencyMapping"),
+        ("Size Mapping", "colSizeDependencyMapping"),
+    ):
+        column = FORM_COLUMNS.index(mapping_label) + 1
+        for field in document.get("fields") or ():
+            if _base_field_key(field.get("field_key")) != option_key.casefold():
+                continue
+            row = row_by_item.get(
+                (
+                    _text(field.get("section_key")).casefold(),
+                    _text(field.get("item_key")).casefold(),
+                )
+            )
+            if row is None:
+                continue
+            choices = _unique_values(field.get("options") or ())
+            detail = "\n".join(choices[:100]) or "Chưa scan được option Style."
+            ws.cell(row=row, column=column).comment = Comment(
+                "Mỗi dòng: Material => Style 1 | Style 2\n\n"
+                "Các lựa chọn Style đã scan:\n" + detail,
+                "WFX Smart",
+            )
+            ws.cell(row=row, column=column).alignment = Alignment(
+                vertical="top",
+                wrap_text=True,
+            )
+    for rows in section_rows:
+        if not rows:
+            continue
+        for row in rows:
+            section_cell = ws.cell(row=row, column=1)
+            section_cell.fill = _SUBHEADER_FILL
+            section_cell.font = Font(color="0F5660", bold=True)
+        for column in range(1, visible_column_count + 1):
+            ws.cell(row=rows[0], column=column).border = _SECTION_BORDER
+    article_code_column = FORM_COLUMNS.index("Article Code") + 1
+    article_name_column = FORM_COLUMNS.index("Article Name") + 1
+    for row, section_name in template_rows:
+        ws.cell(row=row, column=1).font = Font(
+            color="0F5660",
+            bold=True,
+            italic=True,
+        )
+        for column in range(2, visible_column_count + 1):
+            if column in read_only_columns:
+                continue
+            ws.cell(row=row, column=column).fill = _TEMPLATE_INPUT_FILL
+        hint = (
+            f"Dòng thêm Article mới cho section {section_name}. "
+            "Nhập Article Code hoặc Article Name; để trống nếu không dùng."
+        )
+        ws.cell(row=row, column=article_code_column).comment = Comment(
+            hint,
+            "WFX Smart",
+        )
+        ws.cell(row=row, column=article_name_column).comment = Comment(
+            hint,
+            "WFX Smart",
+        )
+    ws.freeze_panes = "E2"
+    ws.auto_filter.ref = (
+        f"A1:{get_column_letter(visible_column_count)}{max(1, ws.max_row)}"
+    )
+    ws.row_dimensions[1].height = 34
+    for row in range(2, ws.max_row + 1):
+        ws.row_dimensions[row].height = 23
+    for mapping_label in ("Color Mapping", "Size Mapping"):
+        column = FORM_COLUMNS.index(mapping_label) + 1
+        for row in row_by_item.values():
+            line_count = str(ws.cell(row=row, column=column).value or "").count(
+                "\n"
+            ) + 1
+            if line_count > 1:
+                ws.row_dimensions[row].height = max(
+                    ws.row_dimensions[row].height or 23,
+                    min(120, 16 * line_count),
+                )
+    for column in range(visible_column_count + 1, len(FORM_COLUMNS) + 1):
+        ws.column_dimensions[get_column_letter(column)].hidden = True
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = "0F766E"
+
+
+def write_costing_xlsx(document: Mapping[str, Any], path: str | Path) -> Path:
+    normalized = workbook_document(document)
+    target = _preflight_path(path, must_exist=False)
+    if target.suffix.casefold() != ".xlsx":
+        raise CostingWorkbookError(
+            "COSTING_FILE_TYPE_UNSUPPORTED",
+            "Đường dẫn export XLSX phải kết thúc bằng .xlsx.",
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    workbook.calculation.calcMode = "auto"
+    workbook.calculation.fullCalcOnLoad = True
+    workbook.calculation.forceFullCalc = True
+    _write_guide(workbook, normalized)
+    _write_costing_form(workbook, normalized)
+    workbook.save(target)
+    return target
+
+
+def write_costing_file(document: Mapping[str, Any], path: str | Path) -> Path:
+    target = _preflight_path(path, must_exist=False)
+    return write_costing_xlsx(document, target)
+
+
+def _worksheet_rows(
+    ws: Any,
+    *,
+    ignored_columns: set[str] | None = None,
+) -> Iterable[dict[str, Any]]:
+    ignored = ignored_columns or set()
+    rows = ws.iter_rows(values_only=True)
+    try:
+        header = next(rows)
+    except StopIteration:
+        return
+    columns = [_text(value) for value in header]
+    for row_index, values in enumerate(rows, 2):
+        if not any(value not in (None, "") for value in values):
+            continue
+        output: dict[str, Any] = {}
+        for column_index, key in enumerate(columns):
+            if not key or key in ignored:
+                continue
+            value = values[column_index] if column_index < len(values) else None
+            output[key] = _clean_cell(
+                value,
+                f"{ws.title}!{get_column_letter(column_index + 1)}{row_index}",
+            )
+        output["__Excel Row"] = row_index
+        yield output
+
+
+def _read_meta(workbook: Any) -> dict[str, Any]:
+    if META_SHEET not in workbook.sheetnames:
+        raise CostingWorkbookError(
+            "COSTING_FORMAT_UNSUPPORTED",
+            "Workbook thiếu sheet metadata của WFX Smart.",
+        )
+    ws = workbook[META_SHEET]
+    return {
+        _text(row[0]): _clean_cell(row[1], f"{META_SHEET}!B{index}")
+        for index, row in enumerate(ws.iter_rows(values_only=True), 1)
+        if len(row) >= 2 and _text(row[0])
+    }
+
+
+def _read_guide_meta(workbook: Any) -> dict[str, Any]:
+    if workbook.sheetnames != [GUIDE_SHEET, FORM_SHEET]:
+        raise CostingWorkbookError(
+            "COSTING_FORMAT_UNSUPPORTED",
+            "Workbook Costing phải chỉ có hai sheet: Hướng dẫn và Costing.",
+        )
+    values = {
+        _text(row[0]): _clean_cell(row[1], f"{GUIDE_SHEET}!B{index}")
+        for index, row in enumerate(
+            workbook[GUIDE_SHEET].iter_rows(values_only=True),
+            1,
+        )
+        if len(row) >= 2 and _text(row[0])
+    }
+    version = _text(values.get("Format version")).removeprefix("v")
+    return {
+        "format_version": version,
+        "style_code": _text(values.get("Style Code")),
+        "style_name": _text(values.get("Style Name")),
+        "cost_sheet_status": _text(
+            values.get("Costing status lúc export")
+        ),
+        "title": "",
+        "cost_sheet_type": "Internal Cost Sheets",
+        "order_execution_type": "Trading",
+        "season": "",
+        "template": "FOB",
+        "signature": "",
+    }
+
+
+def _read_costing_form(
+    workbook: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    ws = workbook[FORM_SHEET]
+    header = [
+        _text(cell.value)
+        for cell in next(ws.iter_rows(min_row=1, max_row=1))
+    ]
+    missing = [
+        column
+        for column in FORM_COLUMNS
+        if column not in header and column not in OPTIONAL_FORM_COLUMNS
+    ]
+    if missing:
+        raise CostingWorkbookError(
+            "COSTING_FORMAT_UNSUPPORTED",
+            "Sheet Costing thiếu cột chuẩn của WFX Smart.",
+            details=[
+                f"{FORM_SHEET}!hàng 1: thiếu cột “{column}”."
+                for column in missing
+            ],
+        )
+    rows = list(
+        _worksheet_rows(
+            ws,
+            ignored_columns={
+                str(definition["label"])
+                for definition in STANDARD_ITEM_FIELDS
+                if definition.get("read_only")
+            },
+        )
+    )
+    section_key_by_name = {
+        _text(row.get("Section")).casefold(): _text(
+            row.get("__Section Key")
+        )
+        for row in rows
+        if _text(row.get("Section")) and _text(row.get("__Section Key"))
+    }
+    sections: list[dict[str, Any]] = []
+    section_seen: set[str] = set()
+    items: list[dict[str, Any]] = []
+    fields: list[dict[str, Any]] = []
+    row_errors: list[str] = []
+    seen_item_locations: dict[tuple[str, str], int] = {}
+    for fallback_row_index, row in enumerate(rows, 2):
+        row_index = _order(row.get("__Excel Row"), fallback_row_index)
+        section_name = _text(row.get("Section"))
+        section_key = _text(row.get("__Section Key")) or section_key_by_name.get(
+            section_name.casefold(),
+            "",
+        )
+        row_order = _order(row.get("__Row Order"), row_index)
+        if section_key and section_key.casefold() not in section_seen:
+            section_seen.add(section_key.casefold())
+            sections.append(
+                {
+                    "section_key": section_key,
+                    "name": section_name or section_key,
+                    "row_order": len(sections) + 1,
+                }
+            )
+
+        article_code = _text(row.get("Article Code"))
+        article_name = _text(row.get("Article Name"))
+        field_values = [
+            row.get(str(definition["label"]), "")
+            for definition in STANDARD_ITEM_FIELDS
+        ]
+        if not (article_code or article_name) and not any(
+            value not in (None, "") for value in field_values
+        ):
+            continue
+        item_key = _text(row.get("__Item Key"))
+        if not item_key:
+            identity = article_code or article_name or f"row-{row_index}"
+            # Hai dòng liền nhau có cùng Article là yêu cầu Splitter hợp lệ.
+            # Gắn Excel row để mỗi dòng vẫn có item_key riêng và planner có thể
+            # ánh xạ occurrence 1/2/3 thay vì reject là khóa trùng.
+            item_key = f"new:{section_key}:{identity}:row-{row_index}"
+        action = _text(row.get("Action") or "UPSERT").upper()
+        item_type = _text(row.get("__Item Type") or "article").casefold()
+        if not section_key:
+            row_errors.append(
+                f"{FORM_SHEET}!A{row_index}: Section không thuộc form chuẩn."
+            )
+        if action not in ITEM_ACTIONS:
+            row_errors.append(
+                f"{FORM_SHEET}!B{row_index}: Action “{action}” không hợp lệ."
+            )
+        if item_type not in ITEM_TYPES:
+            item_type_column = FORM_COLUMNS.index("__Item Type") + 1
+            row_errors.append(
+                f"{FORM_SHEET}!{get_column_letter(item_type_column)}"
+                f"{row_index}: Item Type “{item_type}” không hợp lệ."
+            )
+        composite = (section_key.casefold(), item_key.casefold())
+        if all(composite) and composite in seen_item_locations:
+            item_key_column = FORM_COLUMNS.index("__Item Key") + 1
+            row_errors.append(
+                f"{FORM_SHEET}!{get_column_letter(item_key_column)}"
+                f"{row_index}: Item Key trùng dòng "
+                f"{seen_item_locations[composite]}."
+            )
+        else:
+            seen_item_locations[composite] = row_index
+        item = _normalized_item(
+            {
+                "section_key": section_key,
+                "section_name": section_name,
+                "item_key": item_key,
+                "row_order": row_order,
+                "action": action,
+                "item_type": item_type,
+                "article_code": article_code,
+                "article_name": article_name,
+            },
+            row_index,
+        )
+        items.append(item)
+        for field_order, definition in enumerate(STANDARD_ITEM_FIELDS):
+            if definition.get("read_only"):
+                continue
+            value = row.get(str(definition["label"]), "")
+            if value in (None, ""):
+                continue
+            fields.append(
+                _normalized_field(
+                    {
+                        "scope": "item",
+                        "section_key": section_key,
+                        "item_key": item_key,
+                        "field_key": definition["field_key"],
+                        "label": definition["label"],
+                        "value": value,
+                        "data_type": definition["data_type"],
+                        "editable": True,
+                        "required": False,
+                        "options": [],
+                        "row_order": field_order,
+                    },
+                    field_order,
+                )
+            )
+    if row_errors:
+        raise CostingWorkbookError(
+            "COSTING_VALIDATION_FAILED",
+            "File Costing có dữ liệu chưa hợp lệ.",
+            details=row_errors[:100],
+        )
+    return sections, items, fields
+
+
+def _read_raw_fields(workbook: Any) -> list[dict[str, Any]]:
+    if FIELDS_SHEET not in workbook.sheetnames:
+        raise CostingWorkbookError(
+            "COSTING_FORMAT_UNSUPPORTED",
+            "Workbook thiếu field inventory của WFX Smart.",
+        )
+    fields: list[dict[str, Any]] = []
+    for index, row in enumerate(_worksheet_rows(workbook[FIELDS_SHEET])):
+        fields.append(
+            _normalized_field(
+                {
+                    "scope": row.get("scope"),
+                    "section_key": row.get("section_key"),
+                    "item_key": row.get("item_key"),
+                    "field_key": row.get("field_key"),
+                    "label": row.get("label"),
+                    "value": row.get("value"),
+                    "data_type": row.get("data_type"),
+                    "editable": row.get("editable"),
+                    "required": row.get("required"),
+                    "options": row.get("options"),
+                    "row_order": row.get("row_order"),
+                },
+                index,
+            )
+        )
+    return fields
+
+
+def _field_index(fields: Sequence[dict[str, Any]]) -> dict[tuple[str, str, str, str], dict[str, Any]]:
+    return {
+        (
+            field["scope"],
+            field["section_key"].casefold(),
+            field["item_key"].casefold(),
+            field["field_key"].casefold(),
+        ): field
+        for field in fields
+    }
+
+
+def _overlay_cost_sheet(workbook: Any, fields: list[dict[str, Any]]) -> None:
+    if COST_SHEET not in workbook.sheetnames:
+        return
+    index = _field_index(fields)
+    for row in _worksheet_rows(workbook[COST_SHEET]):
+        key = _text(row.get("Field Key"))
+        field = index.get(("cost_sheet", "", "", key.casefold()))
+        if field is not None and field["editable"]:
+            field["value"] = row.get("Value", "")
+
+
+def _metadata_from_fields(
+    meta: Mapping[str, Any],
+    fields: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Đồng bộ metadata người dùng được phép sửa từ field thân thiện.
+
+    Title của New Costing phải lấy đúng ô Title đã sửa trong workbook, không
+    lấy bản snapshot cũ ở sheet ẩn. Các metadata cấu trúc khác vẫn do WFX/plan
+    kiểm soát.
+    """
+    output = dict(meta)
+    title_fields = [
+        field
+        for field in fields
+        if field.get("scope") == "cost_sheet"
+        and (
+            _text(field.get("field_key")).casefold()
+            in {"title", "lbltitle", "txttitle"}
+            or _text(field.get("label")).casefold() == "title"
+        )
+    ]
+    if title_fields:
+        output["title"] = title_fields[0].get("value", "")
+    return output
+
+
+def _overlay_sections(
+    workbook: Any,
+    fields: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if SECTIONS_SHEET not in workbook.sheetnames:
+        return []
+    index = _field_index(fields)
+    sections: list[dict[str, Any]] = []
+    for row_index, row in enumerate(_worksheet_rows(workbook[SECTIONS_SHEET])):
+        section = _normalized_section(
+            {
+                "section_key": row.get("Section Key"),
+                "name": row.get("Section Name"),
+                "row_order": row.get("Row Order"),
+            },
+            row_index,
+        )
+        sections.append(section)
+        for header, value in row.items():
+            field_key = _dynamic_key(header)
+            if not field_key:
+                continue
+            field = index.get(
+                (
+                    "section",
+                    section["section_key"].casefold(),
+                    "",
+                    field_key.casefold(),
+                )
+            )
+            if field is not None and field["editable"]:
+                field["value"] = value
+    return sections
+
+
+def _template_item_field(
+    fields: Sequence[dict[str, Any]],
+    section_key: str,
+    field_key: str,
+) -> dict[str, Any] | None:
+    scoped = [
+        field
+        for field in fields
+        if field["scope"] == "item"
+        and field["section_key"].casefold() == section_key.casefold()
+        and field["field_key"].casefold() == field_key.casefold()
+    ]
+    if scoped:
+        return min(scoped, key=lambda field: field["row_order"])
+    matches = [
+        field
+        for field in fields
+        if field["scope"] == "item"
+        and field["field_key"].casefold() == field_key.casefold()
+    ]
+    return min(matches, key=lambda field: field["row_order"]) if matches else None
+
+
+def _overlay_items(
+    workbook: Any,
+    fields: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if ITEMS_SHEET not in workbook.sheetnames:
+        return []
+    index = _field_index(fields)
+    items: list[dict[str, Any]] = []
+    for row_index, row in enumerate(_worksheet_rows(workbook[ITEMS_SHEET])):
+        section_key = _text(row.get("Section Key"))
+        item_key = _text(row.get("Item Key"))
+        if not item_key:
+            article_key = _text(row.get("Article Code") or row.get("Article Name"))
+            item_key = f"new:{section_key}:{article_key or row_index + 2}"
+        item = _normalized_item(
+            {
+                "section_key": section_key,
+                "section_name": row.get("Section Name"),
+                "item_key": item_key,
+                "row_order": row.get("Row Order"),
+                "action": row.get("Action") or "UPSERT",
+                "item_type": row.get("Item Type") or "article",
+                "article_code": row.get("Article Code"),
+                "article_name": row.get("Article Name"),
+            },
+            row_index,
+        )
+        items.append(item)
+        for header, value in row.items():
+            field_key = _dynamic_key(header)
+            if not field_key:
+                continue
+            composite = (
+                "item",
+                section_key.casefold(),
+                item_key.casefold(),
+                field_key.casefold(),
+            )
+            field = index.get(composite)
+            if field is None:
+                template = _template_item_field(fields, section_key, field_key)
+                if template is None:
+                    continue
+                field = deepcopy(template)
+                field["section_key"] = section_key
+                field["item_key"] = item_key
+                field["value"] = ""
+                fields.append(field)
+                index[composite] = field
+            if field["editable"]:
+                field["value"] = value
+    item_keys = {
+        (item["section_key"].casefold(), item["item_key"].casefold())
+        for item in items
+    }
+    fields[:] = [
+        field
+        for field in fields
+        if field["scope"] != "item"
+        or (
+            field["section_key"].casefold(),
+            field["item_key"].casefold(),
+        )
+        in item_keys
+    ]
+    return items
+
+
+def read_costing_xlsx(path: str | Path) -> dict[str, Any]:
+    target = _preflight_path(path, must_exist=True)
+    try:
+        workbook = load_workbook(
+            target,
+            read_only=False,
+            data_only=False,
+            keep_links=False,
+        )
+    except CostingWorkbookError:
+        raise
+    except Exception as error:
+        raise CostingWorkbookError(
+            "COSTING_VALIDATION_FAILED",
+            "Không đọc được workbook Costing.",
+        ) from error
+    meta = _read_guide_meta(workbook)
+    if not _text(meta.get("style_code")):
+        raise CostingWorkbookError(
+            "COSTING_VALIDATION_FAILED",
+            "File Costing có dữ liệu chưa hợp lệ.",
+            details=[f"{GUIDE_SHEET}!B2: thiếu Style Code."],
+        )
+    sections, items, fields = _read_costing_form(workbook)
+    document = {
+        **meta,
+        "fields": fields,
+        "sections": sections,
+        "items": items,
+    }
+    return workbook_document(document)
+
+
+def read_costing_file(path: str | Path) -> dict[str, Any]:
+    target = _preflight_path(path, must_exist=True)
+    return read_costing_xlsx(target)
+
+
+def costing_file_summary(
+    document: Mapping[str, Any],
+    path: str | Path,
+) -> dict[str, Any]:
+    normalized = workbook_document(document)
+    target = Path(path)
+    return {
+        "file_name": target.name,
+        "file_format": target.suffix.casefold().lstrip("."),
+        "style_code": normalized["style_code"],
+        "section_count": len(normalized["sections"]),
+        "item_count": len(normalized["items"]),
+        "field_count": len(normalized["fields"]),
+    }
