@@ -11,6 +11,8 @@ import re
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
@@ -559,29 +561,25 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
-def _validate_document(document: Mapping[str, Any]) -> None:
+def _document_size_errors(
+    sections: Sequence[Mapping[str, Any]],
+    items: Sequence[Mapping[str, Any]],
+    fields: Sequence[Mapping[str, Any]],
+) -> list[str]:
     errors: list[str] = []
-    if document.get("format_version") != FORMAT_VERSION:
-        raise CostingWorkbookError(
-            "COSTING_FORMAT_UNSUPPORTED",
-            "Phiên bản file Costing không được hỗ trợ.",
-            details=[
-                f"Nhận {document.get('format_version') or 'trống'}; "
-                f"cần {FORMAT_VERSION}."
-            ],
-        )
-    if not _text(document.get("style_code")):
-        errors.append("Thiếu Style Code.")
-    sections = list(document.get("sections") or ())
-    items = list(document.get("items") or ())
-    fields = list(document.get("fields") or ())
     if len(sections) > MAX_SECTIONS:
         errors.append(f"Quá {MAX_SECTIONS} section.")
     if len(items) > MAX_ITEMS:
         errors.append(f"Quá {MAX_ITEMS} Article.")
     if len(fields) > MAX_FIELDS:
         errors.append(f"Quá {MAX_FIELDS} field.")
+    return errors
 
+
+def _section_validation_errors(
+    sections: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    errors: list[str] = []
     section_keys: set[str] = set()
     for section in sections:
         key = _text(section.get("section_key"))
@@ -590,7 +588,13 @@ def _validate_document(document: Mapping[str, Any]) -> None:
         elif key in section_keys:
             errors.append(f"Section Key trùng: {key}.")
         section_keys.add(key)
+    return errors
 
+
+def _item_validation_errors(
+    items: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    errors: list[str] = []
     item_keys: set[tuple[str, str]] = set()
     for item in items:
         section_key = _text(item.get("section_key"))
@@ -617,7 +621,13 @@ def _validate_document(document: Mapping[str, Any]) -> None:
             or _text(item.get("article_name"))
         ):
             errors.append(f"Article {item_key or '(trống)'} thiếu Code/Name.")
+    return errors
 
+
+def _field_validation_errors(
+    fields: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    errors: list[str] = []
     field_keys: set[tuple[str, str, str, str]] = set()
     for field in fields:
         scope = _text(field.get("scope")).casefold()
@@ -645,6 +655,27 @@ def _validate_document(document: Mapping[str, Any]) -> None:
         if scope == "item" and not _text(field.get("item_key")):
             errors.append(f"Item field {field_key or '(trống)'} thiếu Item Key.")
         _reject_formula(field.get("value"), f"Field {field_key or '(trống)'}")
+    return errors
+
+
+def _validate_document(document: Mapping[str, Any]) -> None:
+    if document.get("format_version") != FORMAT_VERSION:
+        raise CostingWorkbookError(
+            "COSTING_FORMAT_UNSUPPORTED",
+            "Phiên bản file Costing không được hỗ trợ.",
+            details=[
+                f"Nhận {document.get('format_version') or 'trống'}; "
+                f"cần {FORMAT_VERSION}."
+            ],
+        )
+    sections = list(document.get("sections") or ())
+    items = list(document.get("items") or ())
+    fields = list(document.get("fields") or ())
+    errors = [] if _text(document.get("style_code")) else ["Thiếu Style Code."]
+    errors.extend(_document_size_errors(sections, items, fields))
+    errors.extend(_section_validation_errors(sections))
+    errors.extend(_item_validation_errors(items))
+    errors.extend(_field_validation_errors(fields))
 
     if errors:
         raise CostingWorkbookError(
@@ -1278,89 +1309,105 @@ def _add_item_option_dropdowns(
         lookup_column += 1
 
 
-def _write_costing_form(
-    workbook: Workbook,
-    document: Mapping[str, Any],
-) -> None:
-    """Ghi form một sheet với bộ cột cố định và dòng thêm Article sẵn có."""
-    ws = workbook.create_sheet(FORM_SHEET)
-    _set_header(ws, 1, FORM_COLUMNS)
-    visible_column_count = len(FORM_COLUMNS) - len(FORM_TECH_COLUMNS)
-    field_by_item: dict[tuple[str, str, str], Mapping[str, Any]] = {}
-    for field in document["fields"]:
-        field_by_item[
-            (
-                field["section_key"].casefold(),
-                field["item_key"].casefold(),
-                _base_field_key(field["field_key"]),
-            )
-        ] = field
-    items_by_section: dict[str, list[Mapping[str, Any]]] = {}
-    for item in document["items"]:
-        items_by_section.setdefault(
-            item["section_key"].casefold(),
-            [],
-        ).append(item)
+@dataclass(frozen=True)
+class _CostingFormLayout:
+    section_rows: list[list[int]]
+    template_rows: list[tuple[int, str]]
+    row_by_item: dict[tuple[str, str], int]
 
-    output_row = 2
+
+def _form_field_index(
+    document: Mapping[str, Any],
+) -> dict[tuple[str, str, str], Mapping[str, Any]]:
+    return {
+        (
+            field["section_key"].casefold(),
+            field["item_key"].casefold(),
+            _base_field_key(field["field_key"]),
+        ): field
+        for field in document["fields"]
+    }
+
+
+def _form_items_by_section(
+    document: Mapping[str, Any],
+) -> dict[str, list[Mapping[str, Any]]]:
+    grouped: dict[str, list[Mapping[str, Any]]] = {}
+    for item in document["items"]:
+        grouped.setdefault(item["section_key"].casefold(), []).append(item)
+    for items in grouped.values():
+        items.sort(key=lambda value: value["row_order"])
+    return grouped
+
+
+def _form_row_values(
+    section: Mapping[str, Any],
+    item: Mapping[str, Any] | None,
+    row_order: int,
+    field_by_item: Mapping[tuple[str, str, str], Mapping[str, Any]],
+) -> list[Any]:
+    section_key = str(section["section_key"])
+    item_key = "" if item is None else str(item["item_key"])
+    values: list[Any] = [
+        section["name"],
+        "UPSERT" if item is None else item["action"],
+        "" if item is None else item["article_code"],
+        "" if item is None else item["article_name"],
+    ]
+    for definition in STANDARD_ITEM_FIELDS:
+        field = field_by_item.get(
+            (
+                section_key.casefold(),
+                item_key.casefold(),
+                str(definition["field_key"]).casefold(),
+            )
+        )
+        values.append("" if field is None else field["value"])
+    values.extend([section_key, item_key, row_order, "article"])
+    return values
+
+
+def _write_form_data_rows(
+    ws: Any,
+    document: Mapping[str, Any],
+) -> _CostingFormLayout:
+    field_by_item = _form_field_index(document)
+    items_by_section = _form_items_by_section(document)
     section_rows: list[list[int]] = []
     template_rows: list[tuple[int, str]] = []
     row_by_item: dict[tuple[str, str], int] = {}
+    output_row = 2
     for section in sorted(
         document["sections"],
         key=lambda value: value["row_order"],
     ):
-        section_key = section["section_key"]
-        section_items = sorted(
-            items_by_section.get(section_key.casefold(), []),
-            key=lambda value: value["row_order"],
+        section_key = str(section["section_key"])
+        section_items = items_by_section.get(section_key.casefold(), [])
+        highest_row_order = max(
+            (int(item["row_order"]) for item in section_items),
+            default=0,
         )
         current_section_rows: list[int] = []
-        template_index = 0
-        for item in [
+        rows_to_write = [
             *section_items,
             *([None] * DEFAULT_NEW_ITEM_ROWS_PER_SECTION),
-        ]:
+        ]
+        for template_index, item in enumerate(rows_to_write, 1):
             is_template = item is None
-            if is_template:
-                template_index += 1
-            item_key = "" if is_template else str(item["item_key"])
             row_order = (
-                max(
-                    (
-                        int(existing["row_order"])
-                        for existing in section_items
-                    ),
-                    default=0,
-                )
-                + template_index
+                highest_row_order + template_index - len(section_items)
                 if is_template
                 else int(item["row_order"])
             )
-            values: list[Any] = [
-                section["name"],
-                "UPSERT" if is_template else item["action"],
-                "" if is_template else item["article_code"],
-                "" if is_template else item["article_name"],
-            ]
-            for definition in STANDARD_ITEM_FIELDS:
-                field = field_by_item.get(
-                    (
-                        section_key.casefold(),
-                        item_key.casefold(),
-                        str(definition["field_key"]).casefold(),
-                    )
-                )
-                values.append("" if field is None else field["value"])
-            values.extend(
-                [
-                    section_key,
-                    item_key,
+            for column, value in enumerate(
+                _form_row_values(
+                    section,
+                    item,
                     row_order,
-                    "article",
-                ]
-            )
-            for column, value in enumerate(values, 1):
+                    field_by_item,
+                ),
+                1,
+            ):
                 ws.cell(
                     row=output_row,
                     column=column,
@@ -1370,11 +1417,218 @@ def _write_costing_form(
                 template_rows.append((output_row, str(section["name"])))
             else:
                 row_by_item[
-                    (section_key.casefold(), item_key.casefold())
+                    (section_key.casefold(), str(item["item_key"]).casefold())
                 ] = output_row
             current_section_rows.append(output_row)
             output_row += 1
         section_rows.append(current_section_rows)
+    return _CostingFormLayout(section_rows, template_rows, row_by_item)
+
+
+def _form_column_widths() -> dict[int, int]:
+    widths = {1: 24, 2: 12, 3: 20, 4: 30}
+    special_widths = {
+        "Material Color": 32,
+        "Material Size": 28,
+        "Color Mapping": 44,
+        "Size Mapping": 44,
+        "Cons. Qty. Incl. Waste": 24,
+        "Value in (USD)": 20,
+        "Remarks": 28,
+        "Supplier": 25,
+        "Placement": 20,
+        "Purchase Officer": 20,
+        "Shrinkage %(LxW)": 20,
+    }
+    for offset, definition in enumerate(
+        STANDARD_ITEM_FIELDS,
+        len(FORM_BASE_COLUMNS) + 1,
+    ):
+        widths[offset] = special_widths.get(str(definition["label"]), 16)
+    return widths
+
+
+def _style_formula_columns(ws: Any, last_row: int) -> set[int]:
+    read_only_definitions = [
+        definition
+        for definition in STANDARD_ITEM_FIELDS
+        if definition.get("read_only")
+    ]
+    read_only_columns: set[int] = set()
+    for definition in read_only_definitions:
+        column = FORM_COLUMNS.index(str(definition["label"])) + 1
+        read_only_columns.add(column)
+        header = ws.cell(row=1, column=column)
+        header.fill = _READ_ONLY_HEADER_FILL
+        header.font = _HEADER_FONT
+        for row in range(2, last_row + 1):
+            cell = ws.cell(row=row, column=column)
+            cell.fill = _READ_ONLY_FILL
+            cell.font = Font(color="991B1B")
+        formula = (
+            "Cons. Qty. × (1 + Waste %/100)"
+            if definition["field_key"] == "colConsPlusWastageQty"
+            else "Rate × Cons. Qty. Incl. Waste"
+        )
+        header.comment = Comment(
+            f"Cột công thức WFX, chỉ đọc: {formula}.",
+            "WFX Smart",
+        )
+    return read_only_columns
+
+
+def _write_costing_formulas(ws: Any, last_row: int) -> None:
+    columns = {
+        label: FORM_COLUMNS.index(label) + 1
+        for label in (
+            "Cons. Qty.",
+            "Waste %",
+            "Cons. Qty. Incl. Waste",
+            "Rate",
+            "Value in (USD)",
+        )
+    }
+    for row in range(2, last_row + 1):
+        cons_ref = f"{get_column_letter(columns['Cons. Qty.'])}{row}"
+        waste_ref = f"{get_column_letter(columns['Waste %'])}{row}"
+        cons_incl_ref = (
+            f"{get_column_letter(columns['Cons. Qty. Incl. Waste'])}{row}"
+        )
+        rate_ref = f"{get_column_letter(columns['Rate'])}{row}"
+        cons_incl_cell = ws.cell(
+            row=row,
+            column=columns["Cons. Qty. Incl. Waste"],
+        )
+        value_cell = ws.cell(row=row, column=columns["Value in (USD)"])
+        cons_incl_cell.value = (
+            f'=IF({cons_ref}="","",{cons_ref}*'
+            f'(1+IF({waste_ref}="",0,{waste_ref})/100))'
+        )
+        value_cell.value = (
+            f'=IF(OR({rate_ref}="",{cons_incl_ref}=""),"",'
+            f"{rate_ref}*{cons_incl_ref})"
+        )
+        cons_incl_cell.number_format = "0.0000"
+        value_cell.number_format = "0.0000"
+
+
+def _add_dependency_mapping_comments(
+    ws: Any,
+    document: Mapping[str, Any],
+    row_by_item: Mapping[tuple[str, str], int],
+) -> None:
+    mapping_columns = {
+        "colcolordependencymapping": FORM_COLUMNS.index("Color Mapping") + 1,
+        "colsizedependencymapping": FORM_COLUMNS.index("Size Mapping") + 1,
+    }
+    for field in document.get("fields") or ():
+        column = mapping_columns.get(_base_field_key(field.get("field_key")))
+        if column is None:
+            continue
+        row = row_by_item.get(
+            (
+                _text(field.get("section_key")).casefold(),
+                _text(field.get("item_key")).casefold(),
+            )
+        )
+        if row is None:
+            continue
+        choices = _unique_values(field.get("options") or ())
+        detail = "\n".join(choices[:100]) or "Chưa scan được option Style."
+        cell = ws.cell(row=row, column=column)
+        cell.comment = Comment(
+            "Mỗi dòng: Material => Style 1 | Style 2\n\n"
+            "Các lựa chọn Style đã scan:\n" + detail,
+            "WFX Smart",
+        )
+        cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+
+def _style_form_sections(
+    ws: Any,
+    section_rows: Sequence[Sequence[int]],
+    visible_column_count: int,
+) -> None:
+    for rows in section_rows:
+        if not rows:
+            continue
+        for row in rows:
+            section_cell = ws.cell(row=row, column=1)
+            section_cell.fill = _SUBHEADER_FILL
+            section_cell.font = Font(color="0F5660", bold=True)
+        for column in range(1, visible_column_count + 1):
+            ws.cell(row=rows[0], column=column).border = _SECTION_BORDER
+
+
+def _style_form_templates(
+    ws: Any,
+    template_rows: Sequence[tuple[int, str]],
+    visible_column_count: int,
+    read_only_columns: set[int],
+) -> None:
+    article_code_column = FORM_COLUMNS.index("Article Code") + 1
+    article_name_column = FORM_COLUMNS.index("Article Name") + 1
+    for row, section_name in template_rows:
+        ws.cell(row=row, column=1).font = Font(
+            color="0F5660",
+            bold=True,
+            italic=True,
+        )
+        for column in range(2, visible_column_count + 1):
+            if column not in read_only_columns:
+                ws.cell(row=row, column=column).fill = _TEMPLATE_INPUT_FILL
+        hint = (
+            f"Dòng thêm Article mới cho section {section_name}. "
+            "Nhập Article Code hoặc Article Name; để trống nếu không dùng."
+        )
+        ws.cell(row=row, column=article_code_column).comment = Comment(
+            hint,
+            "WFX Smart",
+        )
+        ws.cell(row=row, column=article_name_column).comment = Comment(
+            hint,
+            "WFX Smart",
+        )
+
+
+def _finish_costing_form(
+    ws: Any,
+    layout: _CostingFormLayout,
+    visible_column_count: int,
+) -> None:
+    ws.freeze_panes = "E2"
+    ws.auto_filter.ref = (
+        f"A1:{get_column_letter(visible_column_count)}{max(1, ws.max_row)}"
+    )
+    ws.row_dimensions[1].height = 34
+    for row in range(2, ws.max_row + 1):
+        ws.row_dimensions[row].height = 23
+    for mapping_label in ("Color Mapping", "Size Mapping"):
+        column = FORM_COLUMNS.index(mapping_label) + 1
+        for row in layout.row_by_item.values():
+            line_count = str(ws.cell(row=row, column=column).value or "").count(
+                "\n"
+            ) + 1
+            if line_count > 1:
+                ws.row_dimensions[row].height = max(
+                    ws.row_dimensions[row].height or 23,
+                    min(120, 16 * line_count),
+                )
+    for column in range(visible_column_count + 1, len(FORM_COLUMNS) + 1):
+        ws.column_dimensions[get_column_letter(column)].hidden = True
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = "0F766E"
+
+
+def _write_costing_form(
+    workbook: Workbook,
+    document: Mapping[str, Any],
+) -> None:
+    """Ghi form một sheet với bộ cột cố định và dòng thêm Article sẵn có."""
+    ws = workbook.create_sheet(FORM_SHEET)
+    _set_header(ws, 1, FORM_COLUMNS)
+    visible_column_count = len(FORM_COLUMNS) - len(FORM_TECH_COLUMNS)
+    layout = _write_form_data_rows(ws, document)
 
     form_data_last_row = ws.max_row
     last_row = max(form_data_last_row, 200)
@@ -1393,7 +1647,7 @@ def _write_costing_form(
     _add_item_option_dropdowns(
         ws,
         document,
-        row_by_item,
+        layout.row_by_item,
         lookup_column=next_lookup_column,
     )
     for offset, definition in enumerate(
@@ -1404,163 +1658,22 @@ def _write_costing_form(
             f"WFX Field Key: {definition['field_key']}",
             "WFX Smart",
         )
-    widths = {
-        1: 24,
-        2: 12,
-        3: 20,
-        4: 30,
-    }
-    for offset, definition in enumerate(
-        STANDARD_ITEM_FIELDS,
-        len(FORM_BASE_COLUMNS) + 1,
-    ):
-        widths[offset] = {
-            "Material Color": 32,
-            "Material Size": 28,
-            "Color Mapping": 44,
-            "Size Mapping": 44,
-            "Cons. Qty. Incl. Waste": 24,
-            "Value in (USD)": 20,
-            "Remarks": 28,
-            "Supplier": 25,
-            "Placement": 20,
-            "Purchase Officer": 20,
-            "Shrinkage %(LxW)": 20,
-        }.get(str(definition["label"]), 16)
     _finish_sheet(
         ws,
-        widths,
+        _form_column_widths(),
         editable_columns=range(2, visible_column_count + 1),
     )
-    read_only_definitions = [
-        definition
-        for definition in STANDARD_ITEM_FIELDS
-        if definition.get("read_only")
-    ]
-    read_only_columns = {
-        FORM_COLUMNS.index(str(definition["label"])) + 1
-        for definition in read_only_definitions
-    }
-    for definition in read_only_definitions:
-        column = FORM_COLUMNS.index(str(definition["label"])) + 1
-        header = ws.cell(row=1, column=column)
-        header.fill = _READ_ONLY_HEADER_FILL
-        header.font = _HEADER_FONT
-        for row in range(2, form_data_last_row + 1):
-            cell = ws.cell(row=row, column=column)
-            cell.fill = _READ_ONLY_FILL
-            cell.font = Font(color="991B1B")
-        formula = (
-            "Cons. Qty. × (1 + Waste %/100)"
-            if definition["field_key"] == "colConsPlusWastageQty"
-            else "Rate × Cons. Qty. Incl. Waste"
-        )
-        header.comment = Comment(
-            f"Cột công thức WFX, chỉ đọc: {formula}.",
-            "WFX Smart",
-        )
-    cons_column = FORM_COLUMNS.index("Cons. Qty.") + 1
-    waste_column = FORM_COLUMNS.index("Waste %") + 1
-    cons_incl_column = FORM_COLUMNS.index("Cons. Qty. Incl. Waste") + 1
-    rate_column = FORM_COLUMNS.index("Rate") + 1
-    value_column = FORM_COLUMNS.index("Value in (USD)") + 1
-    for row in range(2, form_data_last_row + 1):
-        cons_ref = f"{get_column_letter(cons_column)}{row}"
-        waste_ref = f"{get_column_letter(waste_column)}{row}"
-        cons_incl_ref = f"{get_column_letter(cons_incl_column)}{row}"
-        rate_ref = f"{get_column_letter(rate_column)}{row}"
-        ws.cell(row=row, column=cons_incl_column).value = (
-            f'=IF({cons_ref}="","",{cons_ref}*'
-            f'(1+IF({waste_ref}="",0,{waste_ref})/100))'
-        )
-        ws.cell(row=row, column=value_column).value = (
-            f'=IF(OR({rate_ref}="",{cons_incl_ref}=""),"",'
-            f"{rate_ref}*{cons_incl_ref})"
-        )
-        ws.cell(row=row, column=cons_incl_column).number_format = "0.0000"
-        ws.cell(row=row, column=value_column).number_format = "0.0000"
-    for mapping_label, option_key in (
-        ("Color Mapping", "colColorDependencyMapping"),
-        ("Size Mapping", "colSizeDependencyMapping"),
-    ):
-        column = FORM_COLUMNS.index(mapping_label) + 1
-        for field in document.get("fields") or ():
-            if _base_field_key(field.get("field_key")) != option_key.casefold():
-                continue
-            row = row_by_item.get(
-                (
-                    _text(field.get("section_key")).casefold(),
-                    _text(field.get("item_key")).casefold(),
-                )
-            )
-            if row is None:
-                continue
-            choices = _unique_values(field.get("options") or ())
-            detail = "\n".join(choices[:100]) or "Chưa scan được option Style."
-            ws.cell(row=row, column=column).comment = Comment(
-                "Mỗi dòng: Material => Style 1 | Style 2\n\n"
-                "Các lựa chọn Style đã scan:\n" + detail,
-                "WFX Smart",
-            )
-            ws.cell(row=row, column=column).alignment = Alignment(
-                vertical="top",
-                wrap_text=True,
-            )
-    for rows in section_rows:
-        if not rows:
-            continue
-        for row in rows:
-            section_cell = ws.cell(row=row, column=1)
-            section_cell.fill = _SUBHEADER_FILL
-            section_cell.font = Font(color="0F5660", bold=True)
-        for column in range(1, visible_column_count + 1):
-            ws.cell(row=rows[0], column=column).border = _SECTION_BORDER
-    article_code_column = FORM_COLUMNS.index("Article Code") + 1
-    article_name_column = FORM_COLUMNS.index("Article Name") + 1
-    for row, section_name in template_rows:
-        ws.cell(row=row, column=1).font = Font(
-            color="0F5660",
-            bold=True,
-            italic=True,
-        )
-        for column in range(2, visible_column_count + 1):
-            if column in read_only_columns:
-                continue
-            ws.cell(row=row, column=column).fill = _TEMPLATE_INPUT_FILL
-        hint = (
-            f"Dòng thêm Article mới cho section {section_name}. "
-            "Nhập Article Code hoặc Article Name; để trống nếu không dùng."
-        )
-        ws.cell(row=row, column=article_code_column).comment = Comment(
-            hint,
-            "WFX Smart",
-        )
-        ws.cell(row=row, column=article_name_column).comment = Comment(
-            hint,
-            "WFX Smart",
-        )
-    ws.freeze_panes = "E2"
-    ws.auto_filter.ref = (
-        f"A1:{get_column_letter(visible_column_count)}{max(1, ws.max_row)}"
+    read_only_columns = _style_formula_columns(ws, form_data_last_row)
+    _write_costing_formulas(ws, form_data_last_row)
+    _add_dependency_mapping_comments(ws, document, layout.row_by_item)
+    _style_form_sections(ws, layout.section_rows, visible_column_count)
+    _style_form_templates(
+        ws,
+        layout.template_rows,
+        visible_column_count,
+        read_only_columns,
     )
-    ws.row_dimensions[1].height = 34
-    for row in range(2, ws.max_row + 1):
-        ws.row_dimensions[row].height = 23
-    for mapping_label in ("Color Mapping", "Size Mapping"):
-        column = FORM_COLUMNS.index(mapping_label) + 1
-        for row in row_by_item.values():
-            line_count = str(ws.cell(row=row, column=column).value or "").count(
-                "\n"
-            ) + 1
-            if line_count > 1:
-                ws.row_dimensions[row].height = max(
-                    ws.row_dimensions[row].height or 23,
-                    min(120, 16 * line_count),
-                )
-    for column in range(visible_column_count + 1, len(FORM_COLUMNS) + 1):
-        ws.column_dimensions[get_column_letter(column)].hidden = True
-    ws.sheet_view.showGridLines = False
-    ws.sheet_properties.tabColor = "0F766E"
+    _finish_costing_form(ws, layout, visible_column_count)
 
 
 def write_costing_xlsx(document: Mapping[str, Any], path: str | Path) -> Path:
@@ -1661,29 +1774,41 @@ def _read_guide_meta(workbook: Any) -> dict[str, Any]:
     }
 
 
-def _read_costing_form(
-    workbook: Any,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    ws = workbook[FORM_SHEET]
+@dataclass
+class _CostingFormReadState:
+    sections: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    items: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    fields: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    errors: list[str] = dataclass_field(default_factory=list)
+    section_keys: set[str] = dataclass_field(default_factory=set)
+    item_locations: dict[tuple[str, str], int] = dataclass_field(
+        default_factory=dict
+    )
+
+
+@dataclass(frozen=True)
+class _FormItemMetadata:
+    section_key: str
+    item_key: str
+    action: str
+    item_type: str
+    row_index: int
+
+
+def _missing_form_columns(ws: Any) -> list[str]:
     header = [
         _text(cell.value)
         for cell in next(ws.iter_rows(min_row=1, max_row=1))
     ]
-    missing = [
+    return [
         column
         for column in FORM_COLUMNS
         if column not in header and column not in OPTIONAL_FORM_COLUMNS
     ]
-    if missing:
-        raise CostingWorkbookError(
-            "COSTING_FORMAT_UNSUPPORTED",
-            "Sheet Costing thiếu cột chuẩn của WFX Smart.",
-            details=[
-                f"{FORM_SHEET}!hàng 1: thiếu cột “{column}”."
-                for column in missing
-            ],
-        )
-    rows = list(
+
+
+def _costing_form_rows(ws: Any) -> list[dict[str, Any]]:
+    return list(
         _worksheet_rows(
             ws,
             ignored_columns={
@@ -1693,86 +1818,172 @@ def _read_costing_form(
             },
         )
     )
-    section_key_by_name = {
-        _text(row.get("Section")).casefold(): _text(
-            row.get("__Section Key")
-        )
+
+
+def _form_section_key_index(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, str]:
+    return {
+        _text(row.get("Section")).casefold(): _text(row.get("__Section Key"))
         for row in rows
         if _text(row.get("Section")) and _text(row.get("__Section Key"))
     }
-    sections: list[dict[str, Any]] = []
-    section_seen: set[str] = set()
-    items: list[dict[str, Any]] = []
-    fields: list[dict[str, Any]] = []
-    row_errors: list[str] = []
-    seen_item_locations: dict[tuple[str, str], int] = {}
-    for fallback_row_index, row in enumerate(rows, 2):
-        row_index = _order(row.get("__Excel Row"), fallback_row_index)
-        section_name = _text(row.get("Section"))
-        section_key = _text(row.get("__Section Key")) or section_key_by_name.get(
-            section_name.casefold(),
-            "",
-        )
-        row_order = _order(row.get("__Row Order"), row_index)
-        if section_key and section_key.casefold() not in section_seen:
-            section_seen.add(section_key.casefold())
-            sections.append(
-                {
-                    "section_key": section_key,
-                    "name": section_name or section_key,
-                    "row_order": len(sections) + 1,
-                }
-            )
 
-        article_code = _text(row.get("Article Code"))
-        article_name = _text(row.get("Article Name"))
-        field_values = [
-            row.get(str(definition["label"]), "")
-            for definition in STANDARD_ITEM_FIELDS
-        ]
-        if not (article_code or article_name) and not any(
-            value not in (None, "") for value in field_values
-        ):
+
+def _register_form_section(
+    state: _CostingFormReadState,
+    section_key: str,
+    section_name: str,
+) -> None:
+    normalized_key = section_key.casefold()
+    if not section_key or normalized_key in state.section_keys:
+        return
+    state.section_keys.add(normalized_key)
+    state.sections.append(
+        {
+            "section_key": section_key,
+            "name": section_name or section_key,
+            "row_order": len(state.sections) + 1,
+        }
+    )
+
+
+def _form_row_has_data(row: Mapping[str, Any]) -> bool:
+    if _text(row.get("Article Code")) or _text(row.get("Article Name")):
+        return True
+    return any(
+        row.get(str(definition["label"]), "") not in (None, "")
+        for definition in STANDARD_ITEM_FIELDS
+    )
+
+
+def _form_item_key(
+    row: Mapping[str, Any],
+    section_key: str,
+    article_code: str,
+    article_name: str,
+    row_index: int,
+) -> str:
+    existing_key = _text(row.get("__Item Key"))
+    if existing_key:
+        return existing_key
+    identity = article_code or article_name or f"row-{row_index}"
+    # Adjacent duplicate Articles are valid Splitter requests. Excel row keeps
+    # each new row uniquely addressable for planner occurrence matching.
+    return f"new:{section_key}:{identity}:row-{row_index}"
+
+
+def _validate_form_item_row(
+    state: _CostingFormReadState,
+    metadata: _FormItemMetadata,
+) -> None:
+    if not metadata.section_key:
+        state.errors.append(
+            f"{FORM_SHEET}!A{metadata.row_index}: Section không thuộc form chuẩn."
+        )
+    if metadata.action not in ITEM_ACTIONS:
+        state.errors.append(
+            f"{FORM_SHEET}!B{metadata.row_index}: "
+            f"Action “{metadata.action}” không hợp lệ."
+        )
+    if metadata.item_type not in ITEM_TYPES:
+        item_type_column = FORM_COLUMNS.index("__Item Type") + 1
+        state.errors.append(
+            f"{FORM_SHEET}!{get_column_letter(item_type_column)}"
+            f"{metadata.row_index}: Item Type “{metadata.item_type}” "
+            "không hợp lệ."
+        )
+    composite = (
+        metadata.section_key.casefold(),
+        metadata.item_key.casefold(),
+    )
+    if all(composite) and composite in state.item_locations:
+        item_key_column = FORM_COLUMNS.index("__Item Key") + 1
+        state.errors.append(
+            f"{FORM_SHEET}!{get_column_letter(item_key_column)}"
+            f"{metadata.row_index}: Item Key trùng dòng "
+            f"{state.item_locations[composite]}."
+        )
+        return
+    state.item_locations[composite] = metadata.row_index
+
+
+def _form_fields_for_item(
+    row: Mapping[str, Any],
+    section_key: str,
+    item_key: str,
+) -> list[dict[str, Any]]:
+    fields: list[dict[str, Any]] = []
+    for field_order, definition in enumerate(STANDARD_ITEM_FIELDS):
+        if definition.get("read_only"):
             continue
-        item_key = _text(row.get("__Item Key"))
-        if not item_key:
-            identity = article_code or article_name or f"row-{row_index}"
-            # Hai dòng liền nhau có cùng Article là yêu cầu Splitter hợp lệ.
-            # Gắn Excel row để mỗi dòng vẫn có item_key riêng và planner có thể
-            # ánh xạ occurrence 1/2/3 thay vì reject là khóa trùng.
-            item_key = f"new:{section_key}:{identity}:row-{row_index}"
-        action = _text(row.get("Action") or "UPSERT").upper()
-        item_type = _text(row.get("__Item Type") or "article").casefold()
-        if not section_key:
-            row_errors.append(
-                f"{FORM_SHEET}!A{row_index}: Section không thuộc form chuẩn."
+        value = row.get(str(definition["label"]), "")
+        if value in (None, ""):
+            continue
+        fields.append(
+            _normalized_field(
+                {
+                    "scope": "item",
+                    "section_key": section_key,
+                    "item_key": item_key,
+                    "field_key": definition["field_key"],
+                    "label": definition["label"],
+                    "value": value,
+                    "data_type": definition["data_type"],
+                    "editable": True,
+                    "required": False,
+                    "options": [],
+                    "row_order": field_order,
+                },
+                field_order,
             )
-        if action not in ITEM_ACTIONS:
-            row_errors.append(
-                f"{FORM_SHEET}!B{row_index}: Action “{action}” không hợp lệ."
-            )
-        if item_type not in ITEM_TYPES:
-            item_type_column = FORM_COLUMNS.index("__Item Type") + 1
-            row_errors.append(
-                f"{FORM_SHEET}!{get_column_letter(item_type_column)}"
-                f"{row_index}: Item Type “{item_type}” không hợp lệ."
-            )
-        composite = (section_key.casefold(), item_key.casefold())
-        if all(composite) and composite in seen_item_locations:
-            item_key_column = FORM_COLUMNS.index("__Item Key") + 1
-            row_errors.append(
-                f"{FORM_SHEET}!{get_column_letter(item_key_column)}"
-                f"{row_index}: Item Key trùng dòng "
-                f"{seen_item_locations[composite]}."
-            )
-        else:
-            seen_item_locations[composite] = row_index
-        item = _normalized_item(
+        )
+    return fields
+
+
+def _read_costing_form_row(
+    row: Mapping[str, Any],
+    fallback_row_index: int,
+    section_key_by_name: Mapping[str, str],
+    state: _CostingFormReadState,
+) -> None:
+    row_index = _order(row.get("__Excel Row"), fallback_row_index)
+    section_name = _text(row.get("Section"))
+    section_key = _text(row.get("__Section Key")) or section_key_by_name.get(
+        section_name.casefold(),
+        "",
+    )
+    _register_form_section(state, section_key, section_name)
+    if not _form_row_has_data(row):
+        return
+    article_code = _text(row.get("Article Code"))
+    article_name = _text(row.get("Article Name"))
+    item_key = _form_item_key(
+        row,
+        section_key,
+        article_code,
+        article_name,
+        row_index,
+    )
+    action = _text(row.get("Action") or "UPSERT").upper()
+    item_type = _text(row.get("__Item Type") or "article").casefold()
+    _validate_form_item_row(
+        state,
+        _FormItemMetadata(
+            section_key=section_key,
+            item_key=item_key,
+            action=action,
+            item_type=item_type,
+            row_index=row_index,
+        ),
+    )
+    state.items.append(
+        _normalized_item(
             {
                 "section_key": section_key,
                 "section_name": section_name,
                 "item_key": item_key,
-                "row_order": row_order,
+                "row_order": _order(row.get("__Row Order"), row_index),
                 "action": action,
                 "item_type": item_type,
                 "article_code": article_code,
@@ -1780,38 +1991,41 @@ def _read_costing_form(
             },
             row_index,
         )
-        items.append(item)
-        for field_order, definition in enumerate(STANDARD_ITEM_FIELDS):
-            if definition.get("read_only"):
-                continue
-            value = row.get(str(definition["label"]), "")
-            if value in (None, ""):
-                continue
-            fields.append(
-                _normalized_field(
-                    {
-                        "scope": "item",
-                        "section_key": section_key,
-                        "item_key": item_key,
-                        "field_key": definition["field_key"],
-                        "label": definition["label"],
-                        "value": value,
-                        "data_type": definition["data_type"],
-                        "editable": True,
-                        "required": False,
-                        "options": [],
-                        "row_order": field_order,
-                    },
-                    field_order,
-                )
-            )
-    if row_errors:
+    )
+    state.fields.extend(_form_fields_for_item(row, section_key, item_key))
+
+
+def _read_costing_form(
+    workbook: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    ws = workbook[FORM_SHEET]
+    missing = _missing_form_columns(ws)
+    if missing:
+        raise CostingWorkbookError(
+            "COSTING_FORMAT_UNSUPPORTED",
+            "Sheet Costing thiếu cột chuẩn của WFX Smart.",
+            details=[
+                f"{FORM_SHEET}!hàng 1: thiếu cột “{column}”."
+                for column in missing
+            ],
+        )
+    rows = _costing_form_rows(ws)
+    section_key_by_name = _form_section_key_index(rows)
+    state = _CostingFormReadState()
+    for fallback_row_index, row in enumerate(rows, 2):
+        _read_costing_form_row(
+            row,
+            fallback_row_index,
+            section_key_by_name,
+            state,
+        )
+    if state.errors:
         raise CostingWorkbookError(
             "COSTING_VALIDATION_FAILED",
             "File Costing có dữ liệu chưa hợp lệ.",
-            details=row_errors[:100],
+            details=state.errors[:100],
         )
-    return sections, items, fields
+    return state.sections, state.items, state.fields
 
 
 def _read_raw_fields(workbook: Any) -> list[dict[str, Any]]:
