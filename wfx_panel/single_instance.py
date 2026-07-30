@@ -139,10 +139,18 @@ class SingleInstance:
                     if connection.recv(len(TOKEN)) != TOKEN:
                         continue
                     connection.sendall(TOKEN)
-                    if connection.recv(len(ACTIVATE)) == ACTIVATE:
-                        self._on_activate()
+                    activate = connection.recv(len(ACTIVATE)) == ACTIVATE
                 except OSError:
                     continue
+            if not activate:
+                continue
+            try:
+                self._on_activate()
+            except Exception:
+                # on_activate đi vào tầng GUI/Win32. Một lỗi ở đó không được
+                # giết thread accept, nếu không mọi lần bấm shortcut sau đó sẽ
+                # im lặng không hiện panel cho tới khi restart app.
+                continue
 
     def signal_existing(self) -> bool:
         """Yêu cầu instance đang chạy hiện panel. False nếu bên kia không phải ta."""

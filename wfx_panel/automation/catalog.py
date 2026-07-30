@@ -24,6 +24,7 @@ from wfx_panel.automation._common import (
     PlaywrightError,
     PlaywrightTimeoutError,
     _click,
+    _first_line,
     _result,
     _sleep,
     _style_status_suffix,
@@ -1027,7 +1028,7 @@ def open_catalog_destination(
             destination=destination,
         )
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(
             False,
@@ -1487,7 +1488,7 @@ def scan_catalog_files(
             article_code=article_code,
         )
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(
             False,
@@ -1692,7 +1693,7 @@ def download_catalog_file(
             f"Không lưu được file: {exc}",
         )
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_FILE_DOWNLOAD_FAILED", message)
     finally:
@@ -1812,7 +1813,7 @@ def _find_in_open_catalog(
             "Catalog không còn ở bước Master; app sẽ tự mở lại đúng List.",
         )
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_SEARCH_FAILED", message)
     finally:
@@ -1906,11 +1907,11 @@ def prepare_catalog_master(
             value=category_value,
         )
     except PlaywrightTimeoutError as exc:
-        message = f"Catalog Master chưa sẵn sàng: {str(exc).splitlines()[0]}"
+        message = f"Catalog Master chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_NOT_OPEN", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATEGORY_FAILED", message)
     finally:
@@ -1968,11 +1969,11 @@ def scan_catalog_folders(
             folders=folders,
         )
     except PlaywrightTimeoutError as exc:
-        message = f"Không quét được cây Catalog: {str(exc).splitlines()[0]}"
+        message = f"Không quét được cây Catalog: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_FOLDER_SCAN_TIMEOUT", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_FOLDER_SCAN_FAILED", message)
     finally:
@@ -2073,11 +2074,11 @@ def open_catalog_folder(
             folder=folder,
         )
     except PlaywrightTimeoutError as exc:
-        message = f"Không mở được folder Catalog: {str(exc).splitlines()[0]}"
+        message = f"Không mở được folder Catalog: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_FOLDER_OPEN_TIMEOUT", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_FOLDER_OPEN_FAILED", message)
     finally:
@@ -2188,11 +2189,11 @@ def quick_find_catalog(
         result["query"] = query
         return result
     except PlaywrightTimeoutError as exc:
-        message = f"Quick Search timeout: {str(exc).splitlines()[0]}"
+        message = f"Quick Search timeout: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "QUICK_SEARCH_TIMEOUT", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "QUICK_SEARCH_FAILED", message)
     finally:
@@ -2396,11 +2397,11 @@ def filter_and_open_catalog_code(
             codes=codes,
         )
     except PlaywrightTimeoutError as exc:
-        message = f"Timeout khi lọc Code: {str(exc).splitlines()[0]}"
+        message = f"Timeout khi lọc Code: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CODE_FILTER_TIMEOUT", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CODE_FILTER_FAILED", message)
     finally:

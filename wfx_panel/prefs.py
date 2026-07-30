@@ -4,10 +4,33 @@ import json
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
 
 from wfx_panel import hotkey as hotkey_spec
 from wfx_panel import secret
+
+# save_prefs là read-modify-write. Nó được gọi từ UI thread (Settings), từ
+# automation worker (_refresh_admin_access, scan_catalog_folders) và từ thread
+# poll cập nhật (_check_update_once). Không có khoá thì hai lần ghi song song
+# vừa mất một trong hai thay đổi, vừa dùng CHUNG một file .tmp: bên nào
+# replace() sau sẽ gặp FileNotFoundError vì .tmp đã bị bên kia move đi.
+_WRITE_LOCK = threading.RLock()
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Ghi nguyên tử với .tmp riêng cho từng tiến trình/thread."""
+    temp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        temp.write_text(content, encoding="utf-8")
+        temp.replace(path)
+    finally:
+        # replace() thành công thì temp đã biến mất; chỉ dọn khi ghi lỗi giữa
+        # đường để không để lại rác .tmp trong thư mục dữ liệu người dùng.
+        try:
+            temp.unlink()
+        except OSError:
+            pass
 
 # RESOURCE_DIR: nơi chứa asset chỉ-đọc được đóng gói cùng ứng dụng (ui/, assets/).
 # Khi build bằng PyInstaller (frozen), __file__ nằm trong dist/WFX-Panel/_internal/,
@@ -227,21 +250,19 @@ def save_catalog_folder_cache(
         normalised.append(folder)
     if not normalised:
         return []
-    path = _catalog_cache_path(base_dir)
-    temp = path.with_name(path.name + ".tmp")
-    temp.write_text(
-        json.dumps(
-            {
-                "user_id": owner,
-                "category_name": "Apparel",
-                "folders": normalised,
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ),
-        encoding="utf-8",
-    )
-    temp.replace(path)
+    with _WRITE_LOCK:
+        _atomic_write_text(
+            _catalog_cache_path(base_dir),
+            json.dumps(
+                {
+                    "user_id": owner,
+                    "category_name": "Apparel",
+                    "folders": normalised,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        )
     return normalised
 
 
@@ -264,13 +285,18 @@ def load_account(base_dir: Path | None = None) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     path = _env_path(base_dir)
     values: dict[str, str] = {}
-    if path.exists():
-        for raw in path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            values[key.strip()] = _parse_env_value(value)
+    try:
+        raw_lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        # Đọc tài khoản là bước đầu của get_initial_state. File bị khoá bởi
+        # antivirus/sync hoặc quyền sai không được làm panel không mở lên nổi.
+        raw_lines = []
+    for raw in raw_lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = _parse_env_value(value)
     encrypted = values.get("WFX_PASSWORD_ENC", "")
     if encrypted:
         # Không giải được (DPAPI vắng mặt, đổi máy/user, blob hỏng) => coi như
@@ -283,11 +309,17 @@ def load_account(base_dir: Path | None = None) -> dict:
         if password and os.name == "nt":
             # Đọc legacy lần đầu là thời điểm migration: ghi lại ngay bằng DPAPI
             # để plaintext không tiếp tục nằm trên đĩa tới lần người dùng Save.
-            save_account(
-                values.get("WFX_USER_ID", ""),
-                password,
-                base_dir=base_dir,
-            )
+            # Migration là tác dụng phụ của một lần ĐỌC: nếu DPAPI hoặc ổ đĩa
+            # lỗi, vẫn phải trả về credential vừa đọc được thay vì ném lỗi ra
+            # get_initial_state và làm panel trống trơn.
+            try:
+                save_account(
+                    values.get("WFX_USER_ID", ""),
+                    password,
+                    base_dir=base_dir,
+                )
+            except (CredentialProtectionError, OSError):
+                pass
     return {
         "user_id": values.get("WFX_USER_ID", ""),
         "password": password,
@@ -333,10 +365,8 @@ def save_account(user_id: str, password: str, base_dir: Path | None = None) -> N
         password_line,
         *[line for line in preserved if line.strip()],
     ]
-    content = "\n".join(lines) + "\n"
-    temp = path.with_name(path.name + ".tmp")
-    temp.write_text(content, encoding="utf-8")
-    temp.replace(path)
+    with _WRITE_LOCK:
+        _atomic_write_text(path, "\n".join(lines) + "\n")
     # Runtime (session.run) đọc mật khẩu plaintext qua env trong tiến trình; chỉ
     # bản trên đĩa được mã hoá.
     os.environ["WFX_USER_ID"] = user_id
@@ -477,6 +507,56 @@ def save_prefs(
     costing_export_dir: str | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
+    with _WRITE_LOCK:
+        return _save_prefs_locked(
+            base_dir,
+            theme=theme,
+            close_after_module=close_after_module,
+            return_to_list_after_action=return_to_list_after_action,
+            favorite_module_ids=favorite_module_ids,
+            hotkey=hotkey,
+            autostart=autostart,
+            start_hidden=start_hidden,
+            toast_enabled=toast_enabled,
+            focus_chrome_on_module=focus_chrome_on_module,
+            always_on_top=always_on_top,
+            admin_mode=admin_mode,
+            update_channel=update_channel,
+            last_update_notice=last_update_notice,
+            compact_offset_x=compact_offset_x,
+            compact_offset_y=compact_offset_y,
+            panel_offset_x=panel_offset_x,
+            panel_offset_y=panel_offset_y,
+            catalog_default_folder=catalog_default_folder,
+            costing_export_dir=costing_export_dir,
+            hotkey_label=hotkey_label,
+        )
+
+
+def _save_prefs_locked(
+    base_dir: Path,
+    *,
+    theme: str | None,
+    close_after_module: bool | None,
+    return_to_list_after_action: bool | None,
+    favorite_module_ids: list[str] | None,
+    hotkey: str | None,
+    autostart: bool | None,
+    start_hidden: bool | None,
+    toast_enabled: bool | None,
+    focus_chrome_on_module: bool | None,
+    always_on_top: bool | None,
+    admin_mode: bool | None,
+    update_channel: str | None,
+    last_update_notice: str | None,
+    compact_offset_x: int | None,
+    compact_offset_y: int | None,
+    panel_offset_x: int | None,
+    panel_offset_y: int | None,
+    catalog_default_folder: dict | None,
+    costing_export_dir: str | None,
+    hotkey_label: str | None,
+) -> dict:
     current = load_prefs(base_dir)
     _apply_simple_preference_updates(
         current,
@@ -523,10 +603,8 @@ def save_prefs(
     _ = hotkey_label
 
     payload = {key: value for key, value in current.items() if key != "hotkey_label"}
-    path = _prefs_path(base_dir)
-    temp = path.with_name(path.name + ".tmp")
-    temp.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    _atomic_write_text(
+        _prefs_path(base_dir),
+        json.dumps(payload, ensure_ascii=False, indent=2),
     )
-    temp.replace(path)
     return current

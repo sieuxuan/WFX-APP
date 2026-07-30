@@ -18,6 +18,7 @@ from wfx_panel.automation._common import (
     Playwright,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _first_line,
     _result,
     _sleep,
     _wait,
@@ -3068,7 +3069,7 @@ def _apply_single_costing_field(
     except (PlaywrightError, RuntimeError) as error:
         field_key = str(change.get("field_key") or "")
         item_key = str(change.get("item_key") or "")
-        reason = str(error).splitlines()[0][:160]
+        reason = _first_line(error)[:160]
         _write_log(
             session.log,
             "[COSTING] Không thể điền field "
@@ -3350,7 +3351,7 @@ def apply_costing_plan(
     except CostingPlanError as error:
         return error.as_result()
     except Exception as error:
-        raw = str(error).splitlines()[0]
+        raw = _first_line(error)
         code = raw.split(":", 1)[0] if raw.startswith("COSTING_") else "COSTING_APPLY_FAILED"
         _write_log(log, f"[COSTING] {type(error).__name__}: {raw}")
         return _result(
@@ -3455,7 +3456,7 @@ def _costing_scan_error(
     article_code: str,
     log: Callable[[str], None],
 ) -> dict[str, Any]:
-    raw = str(error).splitlines()[0]
+    raw = _first_line(error)
     messages = {
         "COSTING_ACTIVE_TAB_NOT_FOUND": (
             "Tab đang chọn chưa ở màn Costing. Hãy mở Costing cần xuất rồi thử lại."

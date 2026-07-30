@@ -153,6 +153,40 @@ def test_runtime_reuses_one_cdp_browser_within_a_flow():
     ]
 
 
+def test_cancellation_survives_workflow_except_exception_handlers():
+    """Mọi workflow kết thúc bằng ``except Exception`` để đổi lỗi kỹ thuật thành
+    mã nghiệp vụ. Stop không được bị các handler đó nuốt, nếu không người dùng
+    thấy lỗi giả và telemetry gửi lỗi không tồn tại ra webhook production."""
+    worker = runtime.AutomationRuntime()
+    worker._cancel.set()
+    finalised = []
+
+    def workflow():
+        try:
+            worker.checkpoint()
+            return {"code": "MODULE_OPENED"}
+        except Exception as exc:  # noqa: BLE001 - đúng dạng handler trong automation
+            return {"code": "MODULE_FAILED", "message": str(exc)}
+        finally:
+            finalised.append("playwright.stop")
+
+    with pytest.raises(runtime.AutomationCancelled):
+        workflow()
+    # finally vẫn phải chạy để nhả Playwright/CDP lease.
+    assert finalised == ["playwright.stop"]
+    assert not issubclass(runtime.AutomationCancelled, Exception)
+
+
+def test_execute_recovers_when_worker_stopped_before_task_ran():
+    """shutdown() có thể tiêu thụ worker ngay giữa _ensure_thread() và put().
+    Task đã xếp hàng vẫn phải chạy chứ không treo caller vĩnh viễn."""
+    worker = runtime.AutomationRuntime()
+    worker.execute(lambda: None)
+    worker.shutdown()
+    assert worker.execute(lambda: "ran-after-shutdown") == "ran-after-shutdown"
+    worker.shutdown()
+
+
 def test_critical_section_defers_stop_until_next_checkpoint():
     worker = runtime.AutomationRuntime()
     worker._cancel.set()

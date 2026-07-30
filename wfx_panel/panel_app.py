@@ -372,6 +372,10 @@ class PanelApp:
         self._bubble_pointer_started = 0.0
         self._taskbar_focus_armed = False
         self._taskbar_opening = False
+        # _taskbar_opening được dùng như mutex nhưng mỗi event taskbar lại chạy
+        # trên một thread mới, nên check-rồi-set không nguyên tử: hai event sát
+        # nhau đều thấy False và cùng gọi _restore_bubble()/show_panel().
+        self._taskbar_open_lock = threading.Lock()
         self._taskbar_minimize_requested = False
         self._panel_focus_lost_since = 0.0
         self._panel_hide_pending = False
@@ -1294,14 +1298,15 @@ class PanelApp:
 
     def _open_panel_from_taskbar(self) -> None:
         """Khôi phục bubble và mở toàn bộ UI khi kích hoạt từ taskbar."""
-        if (
-            self._taskbar_opening
-            or self._bubble_hidden
-            or self._bubble_interaction_active()
-            or time.monotonic() < self._bubble_direct_action_until
-        ):
-            return
-        self._taskbar_opening = True
+        with self._taskbar_open_lock:
+            if (
+                self._taskbar_opening
+                or self._bubble_hidden
+                or self._bubble_interaction_active()
+                or time.monotonic() < self._bubble_direct_action_until
+            ):
+                return
+            self._taskbar_opening = True
         crash_log.record("TASKBAR_OPEN_BEGIN")
         completed = threading.Event()
         threading.Thread(

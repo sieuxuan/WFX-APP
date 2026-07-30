@@ -20,6 +20,7 @@ from wfx_panel.automation._common import (
     _click,
     _document_changed,
     _ensure_select_value,
+    _first_line,
     _first_visible,
     _mark_document,
     _result,
@@ -130,7 +131,7 @@ def open_module(
             url=page.url,
         )
     except PlaywrightTimeoutError as exc:
-        detail = str(exc).splitlines()[0]
+        detail = _first_line(exc)
         code = (
             "MODULE_OPEN_NOT_CONFIRMED"
             if detail.startswith("MODULE_OPEN_NOT_CONFIRMED:")
@@ -404,11 +405,11 @@ def open_module_with_floating_filter(
         )
         return _result(False, code, message, module=module_name)
     except PlaywrightTimeoutError as exc:
-        message = f"Timeout khi mở {module_name}: {str(exc).splitlines()[0]}"
+        message = f"Timeout khi mở {module_name}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "FLOATING_FILTER_NOT_READY", message, module=module_name)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "MODULE_FAILED", message, module=module_name)
     finally:
@@ -457,11 +458,11 @@ def open_sale_asn_new(
         )
         return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
-        message = f"Sale ASN New chưa sẵn sàng: {str(exc).splitlines()[0]}"
+        message = f"Sale ASN New chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SALE_ASN_NEW_NOT_READY", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SALE_ASN_NEW_FAILED", message)
     finally:
@@ -910,7 +911,7 @@ def _search_module_fields(
         )
         return _result(False, code, message, module=search_spec.module_name)
     except PlaywrightTimeoutError as exc:
-        detail = str(exc).splitlines()[0]
+        detail = _first_line(exc)
         if search_started:
             code = "MODULE_SEARCH_NOT_CONFIRMED"
             message = (
@@ -933,7 +934,7 @@ def _search_module_fields(
             module=search_spec.module_name,
         )
     except Exception as exc:
-        detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        detail = f"{type(exc).__name__}: {_first_line(exc)}"
         message = f"Không thể tìm trong {search_spec.module_name}: {detail}"
         _write_log(log, message)
         return _result(
@@ -1069,7 +1070,7 @@ def _search_module_list(
         )
         return _result(False, code, message, module=search_spec.module_name)
     except PlaywrightTimeoutError as exc:
-        detail = str(exc).splitlines()[0]
+        detail = _first_line(exc)
         if search_started:
             code = "MODULE_SEARCH_NOT_CONFIRMED"
             message = (
@@ -1092,7 +1093,7 @@ def _search_module_list(
             filter_kind=selected_field.label,
         )
     except Exception as exc:
-        detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        detail = f"{type(exc).__name__}: {_first_line(exc)}"
         message = (
             f"Không thể tìm theo {selected_field.label} trong "
             f"{search_spec.module_name}: {detail}"
@@ -1298,7 +1299,7 @@ def open_module_new(
         )
         return _result(False, code, message, module=module_name)
     except Exception as exc:
-        detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        detail = f"{type(exc).__name__}: {_first_line(exc)}"
         message = f"Không thể mở New từ {module_name}: {detail}"
         _write_log(log, message)
         return _result(
@@ -1344,11 +1345,11 @@ def open_sample_new(
         )
         return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
-        message = f"Sample New chưa sẵn sàng: {str(exc).splitlines()[0]}"
+        message = f"Sample New chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SAMPLE_NEW_NOT_READY", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SAMPLE_NEW_FAILED", message)
     finally:
@@ -1569,12 +1570,12 @@ def toggle_company_foc(
     except PlaywrightTimeoutError as exc:
         message = (
             "Company Setup chưa sẵn sàng: "
-            f"{str(exc).splitlines()[0]}"
+            f"{_first_line(exc)}"
         )
         _write_log(log, message)
         return _result(False, "COMPANY_FOC_NOT_READY", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "COMPANY_FOC_FAILED", message)
     finally:

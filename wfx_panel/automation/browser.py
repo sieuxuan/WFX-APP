@@ -39,12 +39,45 @@ class BrowserExecutable:
     path: Path
 
 
+# Quét tới 30 đường dẫn ứng viên tốn ~6 ms mỗi lần gọi. Trình duyệt không tự di
+# chuyển giữa các lần gọi trong cùng phiên, mà detect_browser() bị gọi lặp:
+# start_chrome() gọi một lần rồi _start_persistent_chrome() gọi lại ngay, cộng
+# mỗi browser_status(). Cache kết quả và chỉ quét lại khi file đã biến mất
+# (uninstall/đổi channel) hoặc khi một input của quá trình dò thay đổi.
+_BROWSER_ENV_KEYS = (
+    "WFX_CHROME_PATH",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "LOCALAPPDATA",
+)
+_DETECTED_BROWSER: BrowserExecutable | None = None
+_DETECTED_FOR_ENV: tuple[str, ...] | None = None
+
+
+def _browser_env_signature() -> tuple[str, ...]:
+    """Khoá cache phải phủ MỌI input mà detect_browser đọc, không chỉ
+    WFX_CHROME_PATH: nếu chỉ khoá theo một biến, lần dò sau vẫn nhận kết quả cũ
+    khi PROGRAMFILES/LOCALAPPDATA đổi (đúng tình huống test monkeypatch)."""
+    return tuple(os.getenv(key) or "" for key in _BROWSER_ENV_KEYS)
+
+
 def detect_browser() -> BrowserExecutable | None:
     """Tìm Chromium browser có hỗ trợ CDP trên Windows 10/11.
 
     Ưu tiên đường dẫn do người dùng cấu hình, sau đó Chrome Stable và các
     channel Chrome/Edge/Brave/Chromium thường gặp.
     """
+    global _DETECTED_BROWSER, _DETECTED_FOR_ENV
+    signature = _browser_env_signature()
+    cached = _DETECTED_BROWSER
+    if (
+        cached is not None
+        and signature == _DETECTED_FOR_ENV
+        and cached.path.is_file()
+    ):
+        return cached
+    _DETECTED_BROWSER = None
+    _DETECTED_FOR_ENV = signature
     configured_path = os.getenv("WFX_CHROME_PATH")
     roots = [
         Path(value)
@@ -86,7 +119,8 @@ def detect_browser() -> BrowserExecutable | None:
             continue
         seen.add(key)
         if path.is_file():
-            return BrowserExecutable(name=name, path=path)
+            _DETECTED_BROWSER = BrowserExecutable(name=name, path=path)
+            return _DETECTED_BROWSER
     return None
 
 

@@ -366,3 +366,37 @@ def test_legacy_settings_migrate_once_without_overwrite(tmp_path):
     prefs.save_account("new-user", "new-password", base_dir=data)
     prefs._migrate_legacy_files(data, [legacy])
     assert prefs.load_account(base_dir=data)["user_id"] == "new-user"
+
+
+def test_concurrent_save_prefs_keeps_every_setting(tmp_path: Path):
+    """save_prefs là read-modify-write và bị gọi từ UI thread, automation worker
+    và thread poll cập nhật cùng lúc. Không được mất thay đổi, và không được
+    raise FileNotFoundError vì hai bên dùng chung một file .tmp."""
+    import threading
+
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(4)
+
+    def writer(index: int):
+        try:
+            barrier.wait(timeout=5)
+            for _ in range(15):
+                prefs.save_prefs(
+                    base_dir=tmp_path,
+                    last_update_notice=f"notice-{index}",
+                )
+        except BaseException as error:  # noqa: BLE001
+            errors.append(error)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert errors == []
+    # File cuối cùng phải còn đọc được (không bị ghi dở/rỗng).
+    assert prefs.load_prefs(base_dir=tmp_path)["last_update_notice"].startswith(
+        "notice-"
+    )
+    assert not list(tmp_path.glob("*.tmp"))

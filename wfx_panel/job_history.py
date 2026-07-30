@@ -65,6 +65,16 @@ def screenshot_dir(base_dir: Path) -> Path:
     return Path(base_dir) / "job-screenshots"
 
 
+def _safe_limit(limit: object, default: int = 30) -> int:
+    """WebView truyền limit qua JSON bridge; ``int("30")`` hay ``int(None)``
+    raise ValueError/TypeError và giết cả lời gọi get_job_history."""
+    try:
+        value = int(limit)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        value = default
+    return max(1, min(value, MAX_JOBS))
+
+
 def _load(base_dir: Path) -> list[dict[str, Any]]:
     path = _history_path(base_dir)
     if not path.exists():
@@ -105,12 +115,18 @@ def _remove_screenshot(base_dir: Path, row: dict[str, Any]) -> None:
     raw = str(row.get("screenshot") or "")
     if not raw:
         return
-    path = Path(raw).resolve()
-    allowed = screenshot_dir(base_dir).resolve()
+    try:
+        path = Path(raw).resolve()
+        allowed = screenshot_dir(base_dir).resolve()
+    except OSError:
+        return
     if path.parent == allowed and path.suffix.casefold() == ".png":
         try:
             path.unlink()
-        except FileNotFoundError:
+        except OSError:
+            # PermissionError rất thực tế trên Windows: người dùng đang mở ảnh
+            # lỗi trong Photos. Dọn rác thất bại không được làm việc ghi lịch
+            # sử / đọc danh sách job thất bại theo.
             pass
 
 
@@ -166,7 +182,7 @@ def append(base_dir: Path, job: dict[str, Any]) -> None:
 
 
 def list_jobs(base_dir: Path, limit: int = 30) -> list[dict[str, Any]]:
-    safe_limit = max(1, min(int(limit), MAX_JOBS))
+    safe_limit = _safe_limit(limit)
     base_dir = Path(base_dir)
     with _LOCK:
         rows, changed = _prune(base_dir, _load(base_dir))
@@ -209,11 +225,19 @@ def clear(base_dir: Path) -> None:
     path = _history_path(base_dir)
     shots = screenshot_dir(base_dir).resolve()
     if path.is_file():
-        path.unlink()
+        try:
+            path.unlink()
+        except OSError:
+            pass
     if shots.is_dir() and shots.parent == base_dir:
         for item in shots.iterdir():
             if item.is_file() and item.suffix.lower() == ".png":
-                item.unlink()
+                try:
+                    item.unlink()
+                except OSError:
+                    # Một ảnh đang bị giữ không được chặn việc xoá các ảnh còn
+                    # lại; nút "Xoá lịch sử" phải luôn hoàn tất.
+                    continue
         try:
             shots.rmdir()
         except OSError:

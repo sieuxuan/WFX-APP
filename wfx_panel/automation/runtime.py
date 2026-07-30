@@ -21,8 +21,19 @@ T = TypeVar("T")
 CDP_CONNECT_TIMEOUT_MS = 10_000
 
 
-class AutomationCancelled(RuntimeError):
-    """Người dùng yêu cầu dừng tại một checkpoint an toàn."""
+class AutomationCancelled(BaseException):
+    """Người dùng yêu cầu dừng tại một checkpoint an toàn.
+
+    Kế thừa ``BaseException``, KHÔNG phải ``Exception``: mọi workflow automation
+    đều kết thúc bằng ``except Exception as exc`` để đổi lỗi kỹ thuật thành mã
+    nghiệp vụ. Nếu cancel là ``Exception``, những handler đó nuốt luôn yêu cầu
+    Stop và trả về mã lỗi thật (``LOGIN_FAILED``, ``CATALOG_SEARCH_FAILED``,
+    ``COSTING_APPLY_FAILED``…). Hệ quả: người dùng thấy lỗi giả, và vì các mã đó
+    nằm ngoài ``NON_REPORTABLE_FAILURES`` nên telemetry gửi một lỗi không tồn
+    tại ra webhook production. Với ``BaseException``, checkpoint xuyên qua các
+    handler đó nhưng ``finally`` vẫn chạy, và ``PanelAPI._run_unlocked`` bắt
+    riêng để trả đúng ``ACTION_CANCELLED``.
+    """
 
 
 @dataclass
@@ -58,24 +69,48 @@ class AutomationRuntime:
         self._defer_depth = 0
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
+        self._closed = False
 
     def _ensure_thread(self) -> None:
+        """Bảo đảm có worker sống. Trả về sau khi thread đã được xếp hàng chạy.
+
+        Chỉ coi thread là dùng được khi nó CHƯA nhận sentinel dừng. Một worker
+        đang trên đường thoát vẫn báo ``is_alive()`` True trong khoảnh khắc giữa
+        ``return`` và lúc thread thật sự kết thúc; nếu tin vào cờ đó, task kế
+        tiếp sẽ nằm lại trong queue mãi mãi và ``execute()`` treo vô hạn.
+        """
         with self._state_lock:
-            if self._thread is not None and self._thread.is_alive():
+            alive = (
+                self._thread is not None
+                and self._thread.is_alive()
+                and not self._closed
+            )
+            if alive:
                 return
+            self._closed = False
             self._thread = threading.Thread(
                 target=self._worker,
                 name="wfx-automation",
                 daemon=True,
             )
+            # Gán thread_id ngay tại thread tạo, không chờ worker tự set: nếu
+            # worker cũ kết thúc SAU khi worker mới đã set id, dòng dọn dẹp của
+            # nó sẽ xoá id của worker mới. Khi đó playwright_start() tưởng mình
+            # đang chạy ngoài worker và tự mở driver riêng — runtime mất quyền
+            # sở hữu lifecycle, driver không bao giờ được stop.
+            self._thread_id = self._thread.ident
             self._thread.start()
+            self._thread_id = self._thread.ident
 
     def _worker(self) -> None:
-        self._thread_id = threading.get_ident()
+        my_id = threading.get_ident()
+        self._thread_id = my_id
         try:
             while True:
                 task = self._queue.get()
                 if task is None:
+                    with self._state_lock:
+                        self._closed = True
                     return
                 self._cancel.clear()
                 self._defer_depth = 0
@@ -98,7 +133,8 @@ class AutomationRuntime:
                     task.done.set()
         finally:
             self._release_connections()
-            self._thread_id = None
+            if self._thread_id == my_id:
+                self._thread_id = None
 
     def _release_connections(self) -> None:
         """Nhả driver sau mỗi flow; Chrome ngoài vẫn mở và giữ phiên đăng nhập."""
@@ -116,7 +152,17 @@ class AutomationRuntime:
         self._ensure_thread()
         task = _Task(action=action, done=threading.Event())
         self._queue.put(task)
-        task.done.wait()
+        # Không dùng wait() vô hạn. Nếu worker nhận sentinel dừng ngay giữa
+        # _ensure_thread() và put(), task này không còn ai chạy; UI thread sẽ
+        # treo vĩnh viễn và app không đóng được. Chờ theo lát rồi hồi sinh
+        # worker để task vẫn được thực thi đúng một lần.
+        while not task.done.wait(0.25):
+            thread = self._thread
+            if thread is not None and thread.is_alive():
+                continue
+            if task.done.is_set():
+                break
+            self._ensure_thread()
         if task.error is not None:
             raise task.error
         return task.result
@@ -192,7 +238,9 @@ class AutomationRuntime:
 
     def shutdown(self, timeout: float = 3.0) -> None:
         self.request_cancel()
-        thread = self._thread
+        with self._state_lock:
+            self._closed = True
+            thread = self._thread
         if thread is None or not thread.is_alive():
             return
         try:

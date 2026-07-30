@@ -24,6 +24,7 @@ ENV_NAME = "WFX_ERROR_WEBHOOK_URL"
 MAX_OUTBOX = 100
 SCHEMA_VERSION = 1
 _LOCK = threading.Lock()
+_FLUSH_LOCK = threading.Lock()
 
 METHOD_LABELS = {
     "login": "Đăng nhập WFX",
@@ -585,7 +586,7 @@ def _write_outbox(base_dir: Path, rows: list[dict[str, Any]]) -> None:
     if not rows:
         try:
             path.unlink()
-        except FileNotFoundError:
+        except OSError:
             pass
         return
     temporary = path.with_name(path.name + ".tmp")
@@ -596,11 +597,27 @@ def _write_outbox(base_dir: Path, rows: list[dict[str, Any]]) -> None:
     temporary.replace(path)
 
 
+def _json_safe(value: Any) -> Any:
+    """Chỉ giữ giá trị JSON hoá được.
+
+    Payload góp ý nhúng cả ``get_status()`` và diagnostics; một object lạ lọt
+    vào sẽ làm ``json.dumps`` raise TypeError — mà TypeError không nằm trong
+    danh sách except của flush(), nên nó bay thẳng ra bridge.
+    """
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
 def enqueue(base_dir: Path, event: dict[str, Any]) -> int:
     envelope = {
         "schema": SCHEMA_VERSION,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        **event,
+        **_json_safe(event),
     }
     with _LOCK:
         rows = _load_outbox(base_dir)
@@ -695,23 +712,48 @@ def flush(
             "sent": 0,
             "queued": len(_load_outbox(base_dir)),
         }
-    sent = 0
-    with _LOCK:
-        rows = _load_outbox(base_dir)
-        remaining: list[dict[str, Any]] = []
-        for index, event in enumerate(rows):
+    # _FLUSH_LOCK tuần tự hoá phần GỬI, _LOCK chỉ bảo vệ đọc/ghi file.
+    # Vì sao tách: mỗi lỗi automation spawn một thread flush, nên hai flush có
+    # thể chồng nhau. Nếu chúng cùng snapshot outbox thì cùng POST một event —
+    # webhook nhận trùng. Còn nếu giữ _LOCK suốt lúc gửi (bản cũ) thì 100 event
+    # × timeout 5 s chặn cả enqueue, và submit_feedback đứng im trên UI thread.
+    if not _FLUSH_LOCK.acquire(blocking=False):
+        return {
+            "ok": True,
+            "code": "WEBHOOK_BUSY",
+            "sent": 0,
+            "queued": len(_load_outbox(base_dir)),
+        }
+    try:
+        with _LOCK:
+            rows = _load_outbox(base_dir)
+        sent = 0
+        failed = False
+        for event in rows:
             try:
                 _post(url, event)
-                sent += 1
-            except (OSError, HTTPError, URLError, ValueError):
-                remaining.extend(rows[index:])
+            except (OSError, HTTPError, URLError, ValueError, TypeError):
+                failed = True
                 break
-        _write_outbox(base_dir, remaining)
+            sent += 1
+        if sent:
+            with _LOCK:
+                # Chỉ bỏ đúng số event ĐÃ gửi ở đầu hàng đợi, không ghi đè cả
+                # file bằng snapshot cũ: event mới xếp vào trong lúc đang gửi
+                # phải còn nguyên. Cũng không xoá outbox trước khi gửi — bị kill
+                # giữa lúc POST thì gửi lại vài event vẫn tốt hơn là mất chúng.
+                _write_outbox(base_dir, _load_outbox(base_dir)[sent:])
+        queued = len(_load_outbox(base_dir))
+    finally:
+        _FLUSH_LOCK.release()
+    # Trạng thái phải phản ánh việc GỬI có lỗi hay không, không phải độ sâu hàng
+    # đợi: một event vừa được enqueue giữa lúc flush làm queued > 0 nhưng webhook
+    # vẫn hoàn toàn bình thường.
     return {
-        "ok": not remaining,
-        "code": "REPORTS_FLUSHED" if not remaining else "WEBHOOK_UNAVAILABLE",
+        "ok": not failed,
+        "code": "WEBHOOK_UNAVAILABLE" if failed else "REPORTS_FLUSHED",
         "sent": sent,
-        "queued": len(remaining),
+        "queued": queued,
     }
 
 

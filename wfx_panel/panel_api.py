@@ -489,55 +489,80 @@ class PanelAPI:
             f"({int(elapsed * 1000)} ms)"
         )
         self._current_run_id = None
-        job_history.append(
-            self._base_dir,
-            {
-                "run_id": run_id,
-                "method": method_name,
-                "request": dict(request or {}),
-                "ok": bool(result.get("ok")),
-                "code": str(result.get("code") or "UNKNOWN"),
-                "message": str(result.get("message") or ""),
-                "started_at": started_at,
-                "elapsed_ms": int(elapsed * 1000),
-                "screenshot": screenshot,
-            },
-        )
-        if not result.get("ok") and code not in NON_REPORTABLE_FAILURES:
-            error_context = telemetry.automation_error_context(
-                method_name,
-                result,
-                request,
-            )
-            telemetry.enqueue(
+        # Lịch sử và telemetry là phụ trợ. Ổ đĩa đầy, file jobs.json bị khoá
+        # hoặc payload không serialize được KHÔNG được biến một flow đã chạy
+        # xong thành exception bay ra bridge pywebview — khi đó UI mất kết quả
+        # và các nút workflow đứng ở trạng thái busy vĩnh viễn.
+        try:
+            job_history.append(
                 self._base_dir,
                 {
-                    "event_type": "automation_error",
-                    "app_version": APP_VERSION,
-                    "method": method_name,
-                    "code": code,
                     "run_id": run_id,
+                    "method": method_name,
+                    "request": dict(request or {}),
+                    "ok": bool(result.get("ok")),
+                    "code": str(result.get("code") or "UNKNOWN"),
+                    "message": str(result.get("message") or ""),
+                    "started_at": started_at,
                     "elapsed_ms": int(elapsed * 1000),
-                    **error_context,
-                    "account": self._telemetry_account_context(),
-                    **telemetry.system_summary(),
+                    "screenshot": screenshot,
                 },
             )
-            # Chốt endpoint trước khi tạo thread. Nếu test/cấu hình hiện tại
-            # đã tắt webhook thì thread chạy trễ cũng không được tự resolve lại
-            # DEFAULT_WEBHOOK_URL và gửi payload sang production.
-            telemetry_endpoint = telemetry.webhook_url(self._base_dir)
-            threading.Thread(
-                target=telemetry.flush,
-                args=(self._base_dir, telemetry_endpoint),
-                daemon=True,
-            ).start()
+        except Exception as error:
+            self._log(f"[RUN] Không ghi được lịch sử: {type(error).__name__}")
+        if not result.get("ok") and code not in NON_REPORTABLE_FAILURES:
+            try:
+                self._report_automation_error(
+                    method_name, result, request, code, run_id, elapsed
+                )
+            except Exception as error:
+                self._log(
+                    f"[RUN] Không xếp được báo lỗi: {type(error).__name__}"
+                )
         self._observe(method_name, result, elapsed)
         return {
             **result,
             **self._session_status(),
             **self._division_state(),
         }
+
+    def _report_automation_error(
+        self,
+        method_name: str,
+        result: dict,
+        request: dict | None,
+        code: str,
+        run_id: str,
+        elapsed: float,
+    ) -> None:
+        error_context = telemetry.automation_error_context(
+            method_name,
+            result,
+            request,
+        )
+        telemetry.enqueue(
+            self._base_dir,
+            {
+                "event_type": "automation_error",
+                "app_version": APP_VERSION,
+                "method": method_name,
+                "code": code,
+                "run_id": run_id,
+                "elapsed_ms": int(elapsed * 1000),
+                **error_context,
+                "account": self._telemetry_account_context(),
+                **telemetry.system_summary(),
+            },
+        )
+        # Chốt endpoint trước khi tạo thread. Nếu test/cấu hình hiện tại
+        # đã tắt webhook thì thread chạy trễ cũng không được tự resolve lại
+        # DEFAULT_WEBHOOK_URL và gửi payload sang production.
+        telemetry_endpoint = telemetry.webhook_url(self._base_dir)
+        threading.Thread(
+            target=telemetry.flush,
+            args=(self._base_dir, telemetry_endpoint),
+            daemon=True,
+        ).start()
 
     def cancel_current_action(self) -> dict:
         if automation_runtime.request_cancel():
