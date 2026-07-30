@@ -73,18 +73,19 @@ def test_oc_sample_and_sale_asn_search_auto_open_their_list():
     ):
         assert label in SOURCE
     assert "field.fill(query)" in SOURCE
-    assert "module_field_selectors" in SOURCE
+    assert "ModuleSearchSpec" in SOURCE
+    assert "search_spec.field_selectors" in SOURCE
     assert 'field.press("Enter"' in SOURCE
     assert '"MODULE_SEARCH_APPLIED"' in SOURCE
     search_block = SOURCE[
-        SOURCE.index("def _search_module_list"):
+        SOURCE.index("def _open_list_search_context"):
         SOURCE.index("def search_oc_list")
     ]
     assert "_click_module_menu_on_page" in search_block
     assert "_show_module_floating_filter" in search_block
     assert "_search_input_in_frame" in search_block
-    assert "context_selectors" in search_block
-    assert "context_aliases" in search_block
+    assert "search_spec.context_field.selectors" in search_block
+    assert "search_spec.context_field.aliases" in search_block
     assert "đang tự mở List" in search_block
     assert '"MODULE_LIST_NOT_OPEN"' not in search_block
     assert '"MODULE_SEARCH_NOT_CONFIRMED"' in search_block
@@ -106,12 +107,12 @@ def test_rmpo_and_indent_support_context_bound_combined_filters():
     ):
         assert selector in SOURCE
     combined_block = SOURCE[
-        SOURCE.index("def _search_module_fields"):
-        SOURCE.index("def _search_module_list")
+        SOURCE.index("def _open_multi_field_search_context"):
+        SOURCE.index("def _open_list_search_context")
     ]
-    assert "for field in fields.values()" in combined_block
-    assert 'field.fill("")' in combined_block
-    assert "for key in active:" in combined_block
+    assert "for search_field in fields.values()" in combined_block
+    assert 'search_field.fill("")' in combined_block
+    assert "for field_name in active_fields:" in combined_block
     assert "_click_module_menu_on_page" in combined_block
     assert "đang tự mở List" in combined_block
     assert '"MODULE_LIST_NOT_OPEN"' not in combined_block

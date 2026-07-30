@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +29,14 @@ from wfx_panel.costing_workbook import (
 )
 
 COSTING_PLAN_TTL_SECONDS = 15 * 60
+
+
+@dataclass(frozen=True)
+class CatalogActionRequest:
+    category_name: str
+    filter_kind: str
+    query: str
+    destination: str | None
 
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
@@ -69,11 +79,14 @@ class CatalogController:
         self.costing_plans.clear()
 
     # -- helpers -----------------------------------------------------------
-    def default_for_account(self) -> dict | None:
+    def default_folder_for_account(
+        self,
+        preferences: Mapping | None = None,
+    ) -> dict | None:
         panel = self._panel
-        folder = panel._prefs.load_prefs(
-            base_dir=panel._base_dir
-        )["catalog_default_folder"]
+        if preferences is None:
+            preferences = panel._prefs.load_prefs(base_dir=panel._base_dir)
+        folder = preferences["catalog_default_folder"]
         if not folder:
             return None
         user_id = str(panel._account().get("user_id") or "").strip()
@@ -177,7 +190,7 @@ class CatalogController:
                     "category": category_name,
                     "value": constants.CATEGORIES[category_name],
                     "folders": cached,
-                    "default_folder": self.default_for_account(),
+                    "default_folder": self.default_folder_for_account(),
                     **panel._session_status(),
                     **panel._division_state(),
                 }
@@ -252,7 +265,7 @@ class CatalogController:
                     # Cache chỉ là tối ưu UX; scan thành công không được biến
                     # thành lỗi chỉ vì ổ đĩa tạm thời không ghi được.
                     pass
-            saved = self.default_for_account()
+            saved = self.default_folder_for_account()
             if (
                 saved
                 and saved.get("category_name") == category_name
@@ -360,7 +373,7 @@ class CatalogController:
                     "message": "Bản automation chưa hỗ trợ mở folder mặc định.",
                 }
             saved = (
-                self.default_for_account()
+                self.default_folder_for_account()
                 if category_name == "Apparel"
                 else None
             )
@@ -512,6 +525,228 @@ class CatalogController:
                 self.prepared_category = None
         return result
 
+    def _validate_catalog_action(
+        self,
+        request: CatalogActionRequest,
+    ) -> dict | None:
+        if request.category_name not in constants.CATEGORIES:
+            return {
+                "ok": False,
+                "code": "CATEGORY_UNKNOWN",
+                "message": f"Category lạ: {request.category_name}",
+            }
+        if request.filter_kind not in {"code", "buyer_reference"}:
+            return {
+                "ok": False,
+                "code": "INVALID_FILTER",
+                "message": "Kiểu tìm Catalog không hợp lệ.",
+            }
+        if not request.query:
+            return {
+                "ok": False,
+                "code": "QUERY_REQUIRED",
+                "message": "Vui lòng nhập nội dung cần tìm.",
+            }
+        if request.destination not in {None, "costsheet", "bom", "files"}:
+            return {
+                "ok": False,
+                "code": "ARTICLE_DESTINATION_UNKNOWN",
+                "message": "Chỉ hỗ trợ mở Costing, BOM hoặc File.",
+            }
+        if (
+            request.destination in {"costsheet", "bom"}
+            and request.category_name != "Apparel"
+        ):
+            return {
+                "ok": False,
+                "code": "APPAREL_ONLY",
+                "message": "Costing và BOM chỉ hỗ trợ Category Apparel.",
+            }
+        return None
+
+    def _matches_current_result(self, request: CatalogActionRequest) -> bool:
+        current = self.result
+        return bool(
+            current
+            and current["category_name"] == request.category_name
+            and current["filter_kind"] == request.filter_kind
+            and current["query"].casefold() == request.query.casefold()
+        )
+
+    def _remember_search_result(
+        self,
+        search_result: dict,
+        request: CatalogActionRequest,
+    ) -> None:
+        self.active_article_destination = None
+        article_code = str(search_result.get("article_code") or "").strip()
+        if search_result.get("code") not in {
+            "RESULT_OPENED",
+            "CATALOG_DESTINATION_OPENED",
+        } or not article_code:
+            self.result = None
+            return
+        self.result = {
+            "article_code": article_code,
+            "category_name": request.category_name,
+            "filter_kind": request.filter_kind,
+            "query": request.query,
+            "style_status": search_result.get("style_status"),
+        }
+
+    def _reuse_current_catalog_result(
+        self,
+        request: CatalogActionRequest,
+    ) -> dict | None:
+        if not request.destination or not self._matches_current_result(request):
+            return None
+        current = self.result
+        if current is None:
+            return None
+        article_code = str(current["article_code"])
+        direct_result = (
+            self._scan_open_article_files(article_code)
+            if request.destination == "files"
+            else self._panel._login.open_catalog_destination(
+                article_code,
+                request.destination,
+                self._panel._log,
+            )
+        )
+        if direct_result.get("code") in {
+            "CATALOG_RESULT_EXPIRED",
+            "CATALOG_FILES_CONTEXT_EXPIRED",
+        }:
+            self.result = None
+            self.active_article_destination = None
+            return None
+        return {
+            **direct_result,
+            "article_code": article_code,
+            "style_status": current.get("style_status"),
+            "category": request.category_name,
+            "filter_kind": request.filter_kind,
+            "query": request.query,
+        }
+
+    def _run_catalog_finder(self, request: CatalogActionRequest) -> dict:
+        combined_finder = getattr(
+            self._panel._login,
+            "find_and_open_catalog_destination",
+            None,
+        )
+        if (
+            request.destination in {"costsheet", "bom"}
+            and callable(combined_finder)
+        ):
+            return combined_finder(
+                request.category_name,
+                request.filter_kind,
+                request.query,
+                request.destination,
+                self._panel._log,
+            )
+        return self._panel._login.find_in_open_catalog(
+            request.category_name,
+            request.filter_kind,
+            request.query,
+            self._panel._log,
+        )
+
+    def _prepare_catalog_search(self, request: CatalogActionRequest) -> dict:
+        login = self._panel._login
+        category_value = constants.CATEGORIES[request.category_name]
+        if hasattr(login, "prepare_catalog_master"):
+            return login.prepare_catalog_master(
+                request.category_name,
+                category_value,
+                self._panel._log,
+            )
+        prepared = login.open_module(
+            "Catalog",
+            login.CATALOG_XPATH,
+            self._panel._log,
+        )
+        if not prepared.get("ok"):
+            return prepared
+        return login.set_catalog_category(
+            request.category_name,
+            category_value,
+            self._panel._log,
+        )
+
+    def _find_catalog_result(
+        self,
+        request: CatalogActionRequest,
+    ) -> tuple[dict, bool]:
+        can_reuse_master = (
+            self.prepared_category == request.category_name
+            and hasattr(self._panel._login, "find_in_open_catalog")
+        )
+        if can_reuse_master:
+            search_result = self._run_catalog_finder(request)
+            if search_result.get("code") != "CATALOG_SEARCH_CONTEXT_LOST":
+                return search_result, True
+            self.prepared_category = None
+            self.active_article_destination = None
+
+        prepared = self._prepare_catalog_search(request)
+        if not prepared.get("ok"):
+            return prepared, False
+        self.prepared_category = request.category_name
+        return self._run_catalog_finder(request), True
+
+    def _open_destination_after_search(
+        self,
+        search_result: dict,
+        request: CatalogActionRequest,
+    ) -> dict:
+        article_code = str(search_result["article_code"])
+        opened = (
+            self._scan_open_article_files(article_code)
+            if request.destination == "files"
+            else self._panel._login.open_catalog_destination(
+                article_code,
+                request.destination,
+                self._panel._log,
+            )
+        )
+        if not opened.get("ok"):
+            return opened
+        return {
+            **search_result,
+            **opened,
+            "style_status": search_result.get("style_status"),
+            "article_code": search_result.get("article_code"),
+            "category": request.category_name,
+            "filter_kind": request.filter_kind,
+            "query": request.query,
+        }
+
+    def _execute_catalog_action(self, request: CatalogActionRequest) -> dict:
+        validation_error = self._validate_catalog_action(request)
+        if validation_error is not None:
+            return validation_error
+        if request.destination != "files":
+            self.files.clear()
+
+        reused_result = self._reuse_current_catalog_result(request)
+        if reused_result is not None:
+            return reused_result
+
+        search_result, search_performed = self._find_catalog_result(request)
+        if not search_performed:
+            return search_result
+        self._remember_search_result(search_result, request)
+        if search_result.get("code") == "CATALOG_DESTINATION_OPENED":
+            return search_result
+        if (
+            search_result.get("code") != "RESULT_OPENED"
+            or not request.destination
+        ):
+            return search_result
+        return self._open_destination_after_search(search_result, request)
+
     def action(
         self,
         category_name: str,
@@ -522,213 +757,20 @@ class CatalogController:
         method_name: str = "catalog_action",
     ) -> dict:
         """Một nút cho Tìm/Costing/BOM/File, luôn tìm trong Master."""
-        panel = self._panel
-        category_name = str(category_name or "")
-        filter_kind = str(filter_kind or "").casefold()
-        query = str(query or "").strip()
-        destination = str(destination or "").casefold() or None
-
-        def matches_current() -> bool:
-            current = self.result
-            return bool(
-                current
-                and current["category_name"] == category_name
-                and current["filter_kind"] == filter_kind
-                and current["query"].casefold() == query.casefold()
-            )
-
-        def remember(search: dict) -> None:
-            self.active_article_destination = None
-            article_code = str(search.get("article_code") or "").strip()
-            if search.get("code") in {
-                "RESULT_OPENED",
-                "CATALOG_DESTINATION_OPENED",
-            } and article_code:
-                self.result = {
-                    "article_code": article_code,
-                    "category_name": category_name,
-                    "filter_kind": filter_kind,
-                    "query": query,
-                    "style_status": search.get("style_status"),
-                }
-            else:
-                self.result = None
-
-        def action() -> dict:
-            value = constants.CATEGORIES.get(category_name)
-            if value is None:
-                return {
-                    "ok": False,
-                    "code": "CATEGORY_UNKNOWN",
-                    "message": f"Category lạ: {category_name}",
-                }
-            if filter_kind not in {"code", "buyer_reference"}:
-                return {
-                    "ok": False,
-                    "code": "INVALID_FILTER",
-                    "message": "Kiểu tìm Catalog không hợp lệ.",
-                }
-            if not query:
-                return {
-                    "ok": False,
-                    "code": "QUERY_REQUIRED",
-                    "message": "Vui lòng nhập nội dung cần tìm.",
-                }
-            if destination not in {None, "costsheet", "bom", "files"}:
-                return {
-                    "ok": False,
-                    "code": "ARTICLE_DESTINATION_UNKNOWN",
-                    "message": "Chỉ hỗ trợ mở Costing, BOM hoặc File.",
-                }
-            if destination in {"costsheet", "bom"} and category_name != "Apparel":
-                return {
-                    "ok": False,
-                    "code": "APPAREL_ONLY",
-                    "message": "Costing và BOM chỉ hỗ trợ Category Apparel.",
-                }
-            if destination != "files":
-                self.files.clear()
-
-            if destination and matches_current():
-                direct = (
-                    self._scan_open_article_files(self.result["article_code"])
-                    if destination == "files"
-                    else panel._login.open_catalog_destination(
-                        self.result["article_code"],
-                        destination,
-                        panel._log,
-                    )
-                )
-                expired_codes = {
-                    "CATALOG_RESULT_EXPIRED",
-                    "CATALOG_FILES_CONTEXT_EXPIRED",
-                }
-                if direct.get("code") not in expired_codes:
-                    return {
-                        **direct,
-                        "article_code": self.result["article_code"],
-                        "style_status": self.result.get("style_status"),
-                        "category": category_name,
-                        "filter_kind": filter_kind,
-                        "query": query,
-                    }
-                self.result = None
-                self.active_article_destination = None
-
-            search: dict | None = None
-            if (
-                self.prepared_category == category_name
-                and hasattr(panel._login, "find_in_open_catalog")
-            ):
-                combined_finder = getattr(
-                    panel._login,
-                    "find_and_open_catalog_destination",
-                    None,
-                )
-                if (
-                    destination in {"costsheet", "bom"}
-                    and callable(combined_finder)
-                ):
-                    search = combined_finder(
-                        category_name,
-                        filter_kind,
-                        query,
-                        destination,
-                        panel._log,
-                    )
-                else:
-                    search = panel._login.find_in_open_catalog(
-                        category_name,
-                        filter_kind,
-                        query,
-                        panel._log,
-                    )
-                if search.get("code") == "CATALOG_SEARCH_CONTEXT_LOST":
-                    search = None
-                    self.prepared_category = None
-                    self.active_article_destination = None
-
-            if search is None:
-                if hasattr(panel._login, "prepare_catalog_master"):
-                    prepared = panel._login.prepare_catalog_master(
-                        category_name,
-                        value,
-                        panel._log,
-                    )
-                else:
-                    prepared = panel._login.open_module(
-                        "Catalog",
-                        panel._login.CATALOG_XPATH,
-                        panel._log,
-                    )
-                    if prepared.get("ok"):
-                        prepared = panel._login.set_catalog_category(
-                            category_name,
-                            value,
-                            panel._log,
-                        )
-                if not prepared.get("ok"):
-                    return prepared
-                self.prepared_category = category_name
-                combined_finder = getattr(
-                    panel._login,
-                    "find_and_open_catalog_destination",
-                    None,
-                )
-                if (
-                    destination in {"costsheet", "bom"}
-                    and callable(combined_finder)
-                ):
-                    search = combined_finder(
-                        category_name,
-                        filter_kind,
-                        query,
-                        destination,
-                        panel._log,
-                    )
-                else:
-                    search = panel._login.find_in_open_catalog(
-                        category_name,
-                        filter_kind,
-                        query,
-                        panel._log,
-                    )
-
-            remember(search)
-            if search.get("code") == "CATALOG_DESTINATION_OPENED":
-                return search
-            if search.get("code") != "RESULT_OPENED" or not destination:
-                return search
-
-            opened = (
-                self._scan_open_article_files(str(search["article_code"]))
-                if destination == "files"
-                else panel._login.open_catalog_destination(
-                    str(search["article_code"]),
-                    destination,
-                    panel._log,
-                )
-            )
-            if opened.get("ok"):
-                return {
-                    **search,
-                    **opened,
-                    "style_status": search.get("style_status"),
-                    "article_code": search.get("article_code"),
-                    "category": category_name,
-                    "filter_kind": filter_kind,
-                    "query": query,
-                }
-            return opened
-
-        result = panel._run(
+        request = CatalogActionRequest(
+            category_name=str(category_name or ""),
+            filter_kind=str(filter_kind or "").casefold(),
+            query=str(query or "").strip(),
+            destination=str(destination or "").casefold() or None,
+        )
+        result = self._panel._run(
             method_name,
-            action,
+            lambda: self._execute_catalog_action(request),
             {
-                "category_name": category_name,
-                "filter_kind": filter_kind,
-                "query": query,
-                "destination": destination,
+                "category_name": request.category_name,
+                "filter_kind": request.filter_kind,
+                "query": request.query,
+                "destination": request.destination,
             },
         )
         if result.get("code") in {
@@ -741,14 +783,17 @@ class CatalogController:
             self.active_article_destination = None
         elif (
             result.get("ok")
-            and destination in {"costsheet", "bom"}
+            and request.destination in {"costsheet", "bom"}
             and str(result.get("article_code") or "").strip()
         ):
             self.active_article_destination = (
                 str(result["article_code"]).strip().casefold(),
-                destination,
+                request.destination,
             )
-        elif result.get("code") == "RESULT_OPENED" and not destination:
+        elif (
+            result.get("code") == "RESULT_OPENED"
+            and not request.destination
+        ):
             self.active_article_destination = None
         return result
 

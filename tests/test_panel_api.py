@@ -1148,6 +1148,22 @@ def test_get_initial_state(tmp_path):
     ]
 
 
+def test_get_initial_state_reads_preferences_once(tmp_path, monkeypatch):
+    real_load_prefs = prefs.load_prefs
+    calls = []
+
+    def counted_load_prefs(base_dir=None):
+        calls.append(base_dir)
+        return real_load_prefs(base_dir=base_dir)
+
+    monkeypatch.setattr(prefs, "load_prefs", counted_load_prefs)
+    api, _ = make_api(tmp_path)
+
+    api.get_initial_state()
+
+    assert calls == [tmp_path]
+
+
 def test_initial_state_requires_credentials_when_account_is_empty(tmp_path):
     api, _ = make_api(tmp_path)
     assert api.get_initial_state()["has_credentials"] is False
