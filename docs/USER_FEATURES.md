@@ -99,11 +99,9 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - dùng nút **Kiểm tra file** để xem lỗi kèm sheet/ô trước khi tạo dry-run;
   - nhập trực tiếp vào form cột chuẩn trên sheet `Costing` rồi import lại;
   - scan Material Color/Size theo từng Article, mapping Table hiện tại và danh
-    sách Style Color/Size; các cột Material Color/Size đánh số cho phép chọn
-    thêm nhiều giá trị từ dropdown riêng theo item mà không phải gõ tay;
-  - phối trực tiếp bằng nhiều ô dropdown `Color Mapping`/`Size Mapping`, mỗi ô
-    là một cặp `Material => Style`; app tự gộp các ô cùng Material rồi tick
-    exact trong popup Table;
+    sách Style Color/Size; Material Color/Size có dropdown riêng theo item;
+  - phối trực tiếp trong `Color Mapping`/`Size Mapping` theo từng dòng
+    `Material => Style 1 | Style 2`, rồi app tick exact trong popup Table;
   - lấy Style Name chuẩn từ phần sau dấu `/` của `#lblArticleNameValue`;
   - hiển thị hai cột công thức màu đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
     `Value in (USD)`; hai cột này không được import ngược;
@@ -133,7 +131,7 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   Nếu file thêm các dòng cùng Article liền nhau, app tự dùng nút Splitter để tạo
   đủ dòng `>>`; file đã xuất bằng bản cũ vẫn được ghép từng cột về dòng WFX phù
   hợp khi import. Dòng subtotal/total có nhãn `>>` ẩn không được tính là split;
-  dòng phantom chỉ có identity trong file cũ được tự bỏ qua.
+  phantom row chỉ có identity trong file cũ được tự bỏ qua.
 - Dry-run chặn sớm nếu dòng bắt buộc còn thiếu `Purchase Officer`, tránh điền
   xong nhiều field rồi mới bị WFX từ chối ở bước Save.
 - Mở BOM.
