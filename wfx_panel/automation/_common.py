@@ -77,6 +77,17 @@ def _sleep(seconds: float) -> None:
         time.sleep(min(0.1, remaining))
 
 
+def _first_line(error: BaseException | str) -> str:
+    """Dòng đầu của mô tả lỗi, an toàn khi exception không có message.
+
+    ``str(exc).splitlines()[0]`` raise IndexError với mọi exception rỗng —
+    ``KeyError()``, ``StopIteration()``, ``RuntimeError()`` — nghĩa là chính
+    handler lỗi lại nổ, workflow mất luôn chẩn đoán gốc và chỉ còn PANEL_ERROR.
+    """
+    lines = str(error).splitlines()
+    return lines[0] if lines else type(error).__name__
+
+
 def _write_log(log: Callable[[str], None], message: str) -> None:
     """Không để lỗi encoding của console làm hỏng thao tác browser."""
     try:
@@ -318,6 +329,7 @@ __all__ = [
     '_click',
     '_document_changed',
     '_ensure_select_value',
+    '_first_line',
     '_first_visible',
     '_mark_document',
     '_result',

@@ -19,6 +19,7 @@ from wfx_panel.automation._common import (
     PlaywrightError,
     PlaywrightTimeoutError,
     _document_changed,
+    _first_line,
     _mark_document,
     _result,
     _wait,
@@ -371,10 +372,10 @@ def open_supplier_category(
         message = "Chrome automation chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
         return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
-        message = f"Supplier chưa sẵn sàng: {str(exc).splitlines()[0]}"
+        message = f"Supplier chưa sẵn sàng: {_first_line(exc)}"
         return _result(False, "SUPPLIER_MASTER_NOT_READY", message)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
         return _result(False, "SUPPLIER_OPEN_FAILED", message)
     finally:
         if playwright is not None:
@@ -541,7 +542,7 @@ def _scan_supplier_categories(
                 "supplier",
             )
         except (PlaywrightError, PlaywrightTimeoutError) as error:
-            detail = str(error).splitlines()[0]
+            detail = _first_line(error)
             state.failed_categories.append(
                 {"category": category_name, "detail": detail}
             )
@@ -692,14 +693,14 @@ def find_supplier_across_categories(
         return _result(
             False,
             "SUPPLIER_SEARCH_NOT_READY",
-            str(exc).splitlines()[0],
+            _first_line(exc),
             checked_categories=state.checked,
         )
     except Exception as exc:
         return _result(
             False,
             "SUPPLIER_SEARCH_FAILED",
-            f"{type(exc).__name__}: {str(exc).splitlines()[0]}",
+            f"{type(exc).__name__}: {_first_line(exc)}",
             checked_categories=state.checked,
         )
     finally:
@@ -772,14 +773,14 @@ def find_supplier_in_category(
         return _result(
             False,
             "SUPPLIER_SEARCH_NOT_READY",
-            str(exc).splitlines()[0],
+            _first_line(exc),
             category=category_name,
         )
     except Exception as exc:
         return _result(
             False,
             "SUPPLIER_SEARCH_FAILED",
-            f"{type(exc).__name__}: {str(exc).splitlines()[0]}",
+            f"{type(exc).__name__}: {_first_line(exc)}",
             category=category_name,
         )
     finally:
@@ -954,9 +955,9 @@ def find_and_open_buyer(
         message = "Chrome automation chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
         return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
-        return _result(False, "BUYER_SEARCH_NOT_READY", str(exc).splitlines()[0])
+        return _result(False, "BUYER_SEARCH_NOT_READY", _first_line(exc))
     except Exception as exc:
-        return _result(False, "BUYER_SEARCH_FAILED", f"{type(exc).__name__}: {str(exc).splitlines()[0]}")
+        return _result(False, "BUYER_SEARCH_FAILED", f"{type(exc).__name__}: {_first_line(exc)}")
     finally:
         if playwright is not None:
             playwright.stop()

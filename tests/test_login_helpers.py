@@ -283,6 +283,45 @@ def test_detect_browser_accepts_edge_on_windows_layout(tmp_path, monkeypatch):
     assert found.path == edge
 
 
+def test_detect_browser_cache_rescans_when_layout_or_config_changes(
+    tmp_path, monkeypatch
+):
+    """detect_browser cache kết quả (quét ~30 path tốn ~6 ms và bị gọi lặp),
+    nhưng khoá cache phải phủ mọi env nó đọc — nếu không lần dò sau nhận đúng
+    trình duyệt cũ dù layout đã đổi."""
+    def layout(root_name: str, exe_relative: str) -> Path:
+        root = tmp_path / root_name
+        exe = root / exe_relative
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_bytes(b"browser")
+        monkeypatch.setenv("PROGRAMFILES", str(root))
+        monkeypatch.setenv("PROGRAMFILES(X86)", str(tmp_path / "none-x86"))
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "none-local"))
+        return exe
+
+    monkeypatch.delenv("WFX_CHROME_PATH", raising=False)
+    monkeypatch.setattr(login.shutil, "which", lambda _name: None)
+
+    chrome = layout("A", "Google/Chrome/Application/chrome.exe")
+    assert login.detect_browser().path == chrome
+    # Cùng env => phải dùng cache, không quét lại.
+    assert login.detect_browser().path == chrome
+
+    edge = layout("B", "Microsoft/Edge/Application/msedge.exe")
+    assert login.detect_browser().path == edge
+
+    # WFX_CHROME_PATH thắng và cũng phải làm cache hết hiệu lực.
+    override = tmp_path / "custom" / "brave.exe"
+    override.parent.mkdir(parents=True, exist_ok=True)
+    override.write_bytes(b"brave")
+    monkeypatch.setenv("WFX_CHROME_PATH", str(override))
+    assert login.detect_browser().path == override
+
+    # File bị xoá (uninstall) => quét lại thay vì trả path không còn tồn tại.
+    override.unlink()
+    assert login.detect_browser().path == edge
+
+
 def test_detect_browser_finds_edge_under_program_files_x86(tmp_path, monkeypatch):
     # Regression: env var name is ProgramFiles(x86); a missing ")" meant browsers
     # installed only under "C:\\Program Files (x86)\\" (common for Edge) were never

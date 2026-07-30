@@ -245,3 +245,83 @@ def test_n8n_workflow_uses_current_normalizer_without_raw_payload():
     assert "Automation không trả về mô tả chi tiết." not in standalone
     assert "const safeMessage" in standalone
     assert "message: safeMessage" in standalone
+
+
+def test_flush_never_loses_or_duplicates_events(tmp_path, monkeypatch):
+    """flush gửi HTTP ngoài _LOCK để không chặn UI thread. Nhưng nới khoá không
+    được đổi lấy việc mất event: outbox chỉ được cắt đúng số đã gửi, sau khi gửi.
+    """
+    endpoint = "https://example.invalid/hook"
+    for index in range(3):
+        telemetry.enqueue(tmp_path, {"event_type": "automation_error", "n": index})
+
+    posted: list[int] = []
+
+    def post_and_enqueue(url, event, timeout=5.0):
+        posted.append(event["n"])
+        if event["n"] == 0:
+            # Một lỗi automation khác xảy ra ngay giữa lúc đang gửi.
+            telemetry.enqueue(
+                tmp_path, {"event_type": "automation_error", "n": 99}
+            )
+
+    monkeypatch.setattr(telemetry, "_post", post_and_enqueue)
+    outcome = telemetry.flush(tmp_path, endpoint)
+
+    assert posted == [0, 1, 2]
+    # Event đến giữa lúc flush phải còn nguyên, không bị snapshot cũ ghi đè.
+    assert [row["n"] for row in telemetry._load_outbox(tmp_path)] == [99]
+    # queued > 0 vì có event mới, nhưng việc gửi không hề lỗi.
+    assert outcome["ok"] is True
+    assert outcome["code"] == "REPORTS_FLUSHED"
+    assert outcome["sent"] == 3
+
+
+def test_flush_keeps_unsent_events_when_webhook_fails(tmp_path, monkeypatch):
+    for index in range(4):
+        telemetry.enqueue(tmp_path, {"event_type": "automation_error", "n": index})
+
+    def fail_from_third(url, event, timeout=5.0):
+        if event["n"] >= 2:
+            raise OSError("network down")
+
+    monkeypatch.setattr(telemetry, "_post", fail_from_third)
+    outcome = telemetry.flush(tmp_path, "https://example.invalid/hook")
+
+    assert outcome["ok"] is False
+    assert outcome["code"] == "WEBHOOK_UNAVAILABLE"
+    assert outcome["sent"] == 2
+    assert [row["n"] for row in telemetry._load_outbox(tmp_path)] == [2, 3]
+
+
+def test_concurrent_flushes_do_not_post_duplicates(tmp_path, monkeypatch):
+    """Mỗi lỗi automation spawn một thread flush riêng, nên hai flush chồng nhau
+    là bình thường. Chúng không được cùng gửi một event ra webhook."""
+    import threading
+    import time
+
+    for index in range(5):
+        telemetry.enqueue(tmp_path, {"event_type": "automation_error", "n": index})
+
+    seen: list[int] = []
+    guard = threading.Lock()
+
+    def slow_post(url, event, timeout=5.0):
+        with guard:
+            seen.append(event["n"])
+        time.sleep(0.02)
+
+    monkeypatch.setattr(telemetry, "_post", slow_post)
+    threads = [
+        threading.Thread(
+            target=telemetry.flush, args=(tmp_path, "https://example.invalid/hook")
+        )
+        for _ in range(4)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert sorted(seen) == [0, 1, 2, 3, 4]
+    assert telemetry._load_outbox(tmp_path) == []

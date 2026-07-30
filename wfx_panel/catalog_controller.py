@@ -281,10 +281,14 @@ class CatalogController:
                     catalog_default_folder=master,
                 )
                 result["default_folder"] = master
-                result["message"] += (
-                    " Folder mặc định cũ không còn quyền truy cập; "
+                # `+=` trên key có thể vắng: automation chỉ bảo đảm ok/code,
+                # còn `message` là tuỳ chọn. KeyError ở đây xảy ra NGOÀI _run
+                # nên không có handler nào biến nó thành PANEL_ERROR.
+                result["message"] = (
+                    f"{str(result.get('message') or '').rstrip()} "
+                    "Folder mặc định cũ không còn quyền truy cập; "
                     "đã chuyển về Master."
-                )
+                ).strip()
             else:
                 result["default_folder"] = saved
         return result
