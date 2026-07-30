@@ -6,8 +6,21 @@ import pytest
 from wfx_panel.automation import runtime
 
 
-def test_production_runtime_releases_after_one_idle_minute():
-    assert runtime.RUNTIME_IDLE_RELEASE_SECONDS == 60.0
+def test_runtime_releases_connections_after_each_flow(monkeypatch):
+    # Không giữ CDP attach giữa các flow: mỗi flow một driver riêng và bị nhả
+    # ngay khi xong. Nhờ vậy tab người dùng tự mở trong Chrome không bị
+    # auto-attach pause ("Debugger paused in another tab") hay treo khi đóng.
+    factory = FakeFactory()
+    worker = runtime.AutomationRuntime()
+    monkeypatch.setattr(runtime, "_sync_playwright", lambda: factory)
+    try:
+        worker.execute(lambda: worker.playwright_start())
+        worker.execute(lambda: worker.playwright_start())
+        assert len(factory.instances) == 2
+        assert factory.instances[0].stop_calls == 1
+        assert factory.instances[1].stop_calls == 1
+    finally:
+        worker.shutdown()
 
 
 class FakePlaywright:
@@ -38,45 +51,49 @@ class FakeChromium:
     def __init__(self):
         self.calls = []
 
-    def connect_over_cdp(self, url):
-        self.calls.append(url)
+    def connect_over_cdp(self, url, **kwargs):
+        self.calls.append((url, kwargs))
         return FakeBrowser()
 
 
-def test_runtime_reuses_one_playwright_on_its_worker(monkeypatch):
+def test_runtime_reuses_one_playwright_within_a_flow(monkeypatch):
     factory = FakeFactory()
     worker = runtime.AutomationRuntime()
     monkeypatch.setattr(runtime, "_sync_playwright", lambda: factory)
     try:
-        first = worker.execute(lambda: worker.playwright_start())
-        first.stop()
-        second = worker.execute(lambda: worker.playwright_start())
-        second.stop()
+        def flow():
+            return worker.playwright_start(), worker.playwright_start()
 
+        first, second = worker.execute(flow)
+        # Trong cùng một flow, các lease dùng chung một driver.
         assert first._playwright is second._playwright
         assert len(factory.instances) == 1
-        assert factory.instances[0].stop_calls == 0
+        # Nhả ngay khi flow xong: driver của flow bị stop.
+        assert factory.instances[0].stop_calls == 1
     finally:
         worker.shutdown()
-    assert factory.instances[0].stop_calls == 1
 
 
-def test_runtime_recycles_playwright_without_starting_parallel_driver(monkeypatch):
+def test_runtime_recycles_playwright_within_a_flow(monkeypatch):
     factory = FakeFactory()
     worker = runtime.AutomationRuntime()
     monkeypatch.setattr(runtime, "_sync_playwright", lambda: factory)
     try:
-        first = worker.execute(lambda: worker.playwright_start())
-        second = worker.execute(lambda: worker.recycle_playwright(first))
+        def flow():
+            first = worker.playwright_start()
+            second = worker.recycle_playwright(first)
+            return first, second
 
+        first, second = worker.execute(flow)
+        # recycle giữa flow: stop driver cũ + start driver mới, không song song.
         assert len(factory.instances) == 2
         assert first._playwright is factory.instances[0]
         assert second._playwright is factory.instances[1]
         assert factory.instances[0].stop_calls == 1
-        assert factory.instances[1].stop_calls == 0
+        # Driver mới bị nhả khi flow kết thúc.
+        assert factory.instances[1].stop_calls == 1
     finally:
         worker.shutdown()
-    assert factory.instances[1].stop_calls == 1
 
 
 def test_persistent_factory_keeps_sync_playwright_call_shape():
@@ -111,36 +128,29 @@ def test_runtime_stop_raises_only_at_checkpoint():
     assert not thread.is_alive()
 
 
-def test_runtime_reuses_one_cdp_browser_connection():
+def test_runtime_reuses_one_cdp_browser_within_a_flow():
     worker = runtime.AutomationRuntime()
     chromium = FakeChromium()
     playwright = type("FakePlaywrightClient", (), {"chromium": chromium})()
     try:
-        first = worker.execute(
-            lambda: worker.connect_browser(playwright, "http://127.0.0.1:9222")
-        )
-        second = worker.execute(
-            lambda: worker.connect_browser(playwright, "http://127.0.0.1:9222")
-        )
+        def flow():
+            return (
+                worker.connect_browser(playwright, "http://127.0.0.1:9222"),
+                worker.connect_browser(playwright, "http://127.0.0.1:9222"),
+            )
+
+        first, second = worker.execute(flow)
     finally:
         worker.shutdown()
 
+    # Trong cùng một flow chỉ connect_over_cdp một lần rồi dùng lại.
     assert first is second
-    assert chromium.calls == ["http://127.0.0.1:9222"]
-
-
-def test_runtime_releases_playwright_after_idle_timeout(monkeypatch):
-    factory = FakeFactory()
-    worker = runtime.AutomationRuntime(idle_seconds=0.05)
-    monkeypatch.setattr(runtime, "_sync_playwright", lambda: factory)
-    try:
-        worker.execute(lambda: worker.playwright_start())
-        deadline = time.monotonic() + 1
-        while factory.instances[0].stop_calls == 0 and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert factory.instances[0].stop_calls == 1
-    finally:
-        worker.shutdown()
+    assert chromium.calls == [
+        (
+            "http://127.0.0.1:9222",
+            {"timeout": runtime.CDP_CONNECT_TIMEOUT_MS},
+        )
+    ]
 
 
 def test_critical_section_defers_stop_until_next_checkpoint():

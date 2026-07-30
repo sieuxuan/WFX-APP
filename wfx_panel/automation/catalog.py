@@ -184,9 +184,13 @@ def _click_catalog_master(
     raise PlaywrightTimeoutError(f"Không click được Master: {last_error}")
 
 
-def _catalog_grid_frame(page: Page, previous_frame: Frame | None = None) -> Frame:
+def _catalog_grid_frame(
+    page: Page,
+    previous_frame: Frame | None = None,
+    timeout_seconds: float = 15,
+) -> Frame:
     """Chờ Angular AG Grid nằm trong frame right của Catalog."""
-    deadline = time.monotonic() + 15
+    deadline = time.monotonic() + max(0.1, timeout_seconds)
     while time.monotonic() < deadline:
         for frame in page.frames:
             if frame != previous_frame and "wfxcataloglist" in frame.url.lower():
@@ -199,30 +203,111 @@ def _catalog_grid_frame(page: Page, previous_frame: Frame | None = None) -> Fram
     raise PlaywrightTimeoutError("Không tìm thấy AG Grid của Catalog.")
 
 
+def _wait_catalog_grid_data_ready(
+    grid: Frame,
+    timeout_seconds: float = 20,
+) -> None:
+    """Chờ datasource AG Grid thật sự có row hoặc no-rows ổn định.
+
+    WFX dựng header/Floating Filter trước rồi mới bind datasource. Chỉ nhìn
+    input visible có thể bắt trúng trạng thái ``aria-rowcount`` còn giá trị cũ
+    nhưng center container cao 1px và chưa có row nào.
+    """
+    root = grid.locator(".ag-root-wrapper").first
+    read_state_js = """root => {
+        const shown = element => {
+            if (!element || !element.isConnected) return false;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                Number(style.opacity || 1) !== 0 &&
+                rect.width > 0 && rect.height > 0;
+        };
+        const loading = [
+            '.ag-overlay-loading-wrapper', '.ag-loading', '.ag-row-loading'
+        ].some(selector => [...root.querySelectorAll(selector)].some(shown));
+        const noRows = [
+            '.ag-overlay-no-rows-wrapper', '.ag-overlay-no-rows-center'
+        ].some(selector => [...root.querySelectorAll(selector)].some(shown));
+        const rows = [...root.querySelectorAll(
+            '.ag-center-cols-container .ag-row[row-index], ' +
+            '.ag-center-cols-container [role="row"][row-index]'
+        )].filter(shown).length;
+        return {loading, noRows, rows};
+    }"""
+    deadline = time.monotonic() + timeout_seconds
+    stable_key: tuple[bool, bool, int] | None = None
+    stable_since = 0.0
+    while time.monotonic() < deadline:
+        state = root.evaluate(read_state_js)
+        key = (state["loading"], state["noRows"], state["rows"])
+        ready = not state["loading"] and (state["rows"] > 0 or state["noRows"])
+        if ready and key == stable_key:
+            required_stable = 1.8 if state["noRows"] else 0.6
+            if time.monotonic() - stable_since >= required_stable:
+                return
+        else:
+            stable_key = key
+            stable_since = time.monotonic()
+        _wait(grid, 200)
+    raise PlaywrightTimeoutError("Dữ liệu AG Grid của Catalog chưa sẵn sàng.")
+
+
 def _show_catalog_floating_filter(
     page: Page,
     log: Callable[[str], None],
     previous_frame: Frame | None = None,
+    require_data_ready: bool = False,
+    timeout_seconds: float = 20,
 ) -> Frame:
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + max(0.1, timeout_seconds)
     excluded_frame = previous_frame
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            grid = _catalog_grid_frame(page, previous_frame=excluded_frame)
+            remaining = max(0.1, deadline - time.monotonic())
+            grid = _catalog_grid_frame(
+                page,
+                previous_frame=excluded_frame,
+                timeout_seconds=min(1.0, remaining),
+            )
+            code_input = grid.locator('input[aria-label="Code Filter Input"]')
+            # Nếu Floating Filter đã hiển thị sẵn (vd. vừa prepare Master rồi
+            # bấm Tìm), KHÔNG click lại #showfloatingfilter: nút này là toggle,
+            # click sẽ TẮT filter rồi phải chờ 4s + retry — đúng cảm giác
+            # "search phải tải lại màn Catalog". Dùng lại grid ngay.
+            if code_input.count() > 0 and code_input.first.is_visible():
+                if require_data_ready:
+                    _wait_catalog_grid_data_ready(grid)
+                _write_log(log, "[FILTER] Ô lọc cột Code đã sẵn sàng, dùng lại grid.")
+                return grid
             show_button = grid.locator("#showfloatingfilter")
             if show_button.count() > 0 and show_button.is_visible():
                 _write_log(log, "[FILTER] Đang bật Show Floating Filters...")
-                show_button.click(timeout=3_000)
-            code_input = grid.locator('input[aria-label="Code Filter Input"]')
-            code_input.wait_for(state="visible", timeout=4_000)
+                remaining_ms = max(
+                    100,
+                    min(3_000, int((deadline - time.monotonic()) * 1_000)),
+                )
+                show_button.click(timeout=remaining_ms)
+            remaining_ms = max(
+                100,
+                min(4_000, int((deadline - time.monotonic()) * 1_000)),
+            )
+            code_input.wait_for(state="visible", timeout=remaining_ms)
+            if require_data_ready:
+                _wait_catalog_grid_data_ready(
+                    grid,
+                    timeout_seconds=max(0.1, deadline - time.monotonic()),
+                )
             _write_log(log, "[FILTER] Đã sẵn sàng ô lọc cột Code.")
             return grid
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             last_error = exc
             # Angular/WFX có thể thay frame một lần nữa sau khi Master load.
             excluded_frame = None
-            _wait(page, 300)
+            if time.monotonic() < deadline:
+                _wait(page, min(300, int((deadline - time.monotonic()) * 1_000)))
     raise PlaywrightTimeoutError(f"Floating Filter chưa sẵn sàng: {last_error}")
 
 
@@ -479,6 +564,8 @@ def _filter_grid_and_maybe_open(
     rows: list[dict[str, str]] = []
     stable_key: tuple[Any, ...] | None = None
     stable_since = 0.0
+    empty_since: float | None = None
+    filter_reapplied = False
     while time.monotonic() < deadline:
         state = root.evaluate(
             read_rows_js,
@@ -502,6 +589,46 @@ def _filter_grid_and_maybe_open(
             ),
         )
         ready = not state["loading"] and (applied or state["noRows"])
+        phantom_empty = (
+            not state["loading"]
+            and not state["noRows"]
+            and not rows
+        )
+        empty_since = (
+            empty_since or time.monotonic()
+            if phantom_empty
+            else None
+        )
+        if (
+            phantom_empty
+            and not filter_reapplied
+            and empty_since is not None
+            and time.monotonic() - empty_since >= 2
+        ):
+            # WFX đôi khi nhận text filter trước khi datasource đầu tiên bind:
+            # input có value nhưng center container vẫn cao 1px, không row và
+            # cũng không no-rows. Clear/refill một lần làm AG Grid phát lại
+            # floating-filter event sau khi datasource đã tồn tại.
+            _write_log(
+                log,
+                "[FILTER] Grid chưa phản hồi, đang áp dụng lại bộ lọc...",
+            )
+            search_input.fill("", timeout=3_000)
+            _wait(grid, 1_000)
+            search_input.fill(query, timeout=3_000)
+            if search_input.input_value(timeout=1_000) != query:
+                return _result(
+                    False,
+                    "FILTER_VALUE_NOT_CONFIRMED",
+                    f"WFX chưa xác nhận lại giá trị {label}.",
+                )
+            filter_reapplied = True
+            empty_since = None
+            stable_key = None
+            stable_since = time.monotonic()
+            deadline = time.monotonic() + 15
+            _wait(grid, 500)
+            continue
         if ready and key == stable_key:
             # AG Grid có thể chớp no-rows trong lúc debounce dù loading overlay
             # không hiện. Giữ no-rows lâu hơn trước khi kết luận 0 kết quả.
@@ -620,16 +747,35 @@ def _open_article_destination(
     deadline = started + timeout_seconds
     _write_log(log, f"[ARTICLE] Đang chờ ArticleTop để mở {label}...")
     slow_notice_written = False
+    focused_pages: set[int] = set()
 
     while time.monotonic() < deadline:
         for candidate in reversed(context.pages):
-            article_top = candidate.frame(name="ArticleTop")
-            if article_top is None:
-                continue
             old_state = next(
                 (state for state in previous_states if state[0] is candidate),
                 None,
             )
+            candidate_key = id(candidate)
+            # Popup Article mới chạy nền có thể chưa tạo ArticleTop cho tới khi
+            # được activate. Chỉ focus Page mới sinh sau click Article Code;
+            # không đụng các tab WFX khác đã có từ trước.
+            if (
+                previous_states
+                and old_state is None
+                and candidate_key not in focused_pages
+            ):
+                try:
+                    candidate.bring_to_front()
+                    focused_pages.add(candidate_key)
+                    _write_log(
+                        log,
+                        "[ARTICLE] Đã nhận tab Article mới, đang chuyển sang tab đó...",
+                    )
+                except PlaywrightError:
+                    continue
+            article_top = candidate.frame(name="ArticleTop")
+            if article_top is None:
+                continue
             navigation_changed = (
                 old_state is None
                 or candidate.url != old_state[1]
@@ -645,7 +791,9 @@ def _open_article_destination(
                 if target.count() == 0:
                     continue
                 target.wait_for(state="attached", timeout=1_000)
-                candidate.bring_to_front()
+                if candidate_key not in focused_pages:
+                    candidate.bring_to_front()
+                    focused_pages.add(candidate_key)
                 _write_log(log, f"[ARTICLE] Đang mở {label}...")
                 target.evaluate("element => element.click()")
                 _write_log(log, f"[ARTICLE] Đã mở {label}.")
@@ -657,6 +805,23 @@ def _open_article_destination(
             slow_notice_written = True
         _sleep(0.25)
     raise PlaywrightTimeoutError(f"Không tìm thấy nút {label} trong ArticleTop.")
+
+
+def _article_navigation_states(
+    context: Any,
+) -> list[tuple[Page, str, str]]:
+    """Chụp trạng thái popup trước khi click style để nhận đúng lần điều hướng."""
+    states: list[tuple[Page, str, str]] = []
+    for candidate in list(getattr(context, "pages", ()) or ()):
+        article_top = candidate.frame(name="ArticleTop")
+        states.append(
+            (
+                candidate,
+                str(candidate.url or ""),
+                str(article_top.url or "") if article_top is not None else "",
+            )
+        )
+    return states
 
 
 def _refresh_article_context(
@@ -730,23 +895,37 @@ def open_catalog_destination(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
-        playwright, browser, page = _refresh_article_context(
-            playwright,
-            browser,
-            page,
-            log,
-        )
-        label = _open_article_destination(
-            browser.contexts[0],
-            destination,
-            [],
-            log,
-            # Popup Article có thể được WFX tái sử dụng rồi detach/attach lại
-            # ArticleTop sau khi search đã trả RESULT_OPENED. 8 giây không đủ
-            # trên phiên đang tải nhiều module; chờ đúng frame mới thay vì báo
-            # nhầm style hết hạn.
-            timeout_seconds=20,
-        )
+        # Ưu tiên popup Article đang mở trên CDP hiện tại. Chỉ khi probe này
+        # timeout (WFX đã detach ArticleTop khỏi driver hiện tại) mới dựng đúng
+        # một driver/CDP mới. Trước đây flow luôn recycle vô điều kiện, khiến
+        # Chrome nhấp banner "đang bị điều khiển" và re-attach mọi tab mỗi lần
+        # bấm Costing/BOM — nguồn gốc của lag và banner nhấp nháy.
+        try:
+            label = _open_article_destination(
+                browser.contexts[0],
+                destination,
+                [],
+                log,
+                timeout_seconds=12,
+            )
+        except PlaywrightTimeoutError:
+            playwright, browser, page = _refresh_article_context(
+                playwright,
+                browser,
+                page,
+                log,
+            )
+            label = _open_article_destination(
+                browser.contexts[0],
+                destination,
+                [],
+                log,
+                # Popup Article có thể được WFX tái sử dụng rồi detach/attach lại
+                # ArticleTop sau khi search đã trả RESULT_OPENED. 8 giây không đủ
+                # trên phiên đang tải nhiều module; chờ đúng frame mới thay vì báo
+                # nhầm style hết hạn.
+                timeout_seconds=20,
+            )
         return _result(
             True,
             "CATALOG_DESTINATION_OPENED",
@@ -1171,16 +1350,27 @@ def scan_catalog_files(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
-        playwright, browser, page = _refresh_article_context(
-            playwright,
-            browser,
-            page,
-            log,
-        )
-        article, article_top = _article_page(browser.contexts[0])
-        article.bring_to_front()
-        article_top = _ensure_article_techpack(article, article_top, log)
-        files, sections = _scan_article_file_tabs(article, article_top, log)
+        def _read_article_files(current_browser: Any, probe_seconds: float):
+            article, article_top = _article_page(
+                current_browser.contexts[0], timeout_seconds=probe_seconds
+            )
+            article.bring_to_front()
+            article_top = _ensure_article_techpack(article, article_top, log)
+            return _scan_article_file_tabs(article, article_top, log)
+
+        # Đọc file trên CDP hiện tại trước; chỉ khi popup không với tới được mới
+        # dựng lại driver/CDP đúng một lần rồi thử lại (tránh banner + re-attach
+        # mọi tab mỗi lần bấm File).
+        try:
+            files, sections = _read_article_files(browser, 12)
+        except (PlaywrightTimeoutError, PlaywrightError):
+            playwright, browser, page = _refresh_article_context(
+                playwright,
+                browser,
+                page,
+                log,
+            )
+            files, sections = _read_article_files(browser, 20)
         available = sum(1 for section in sections if section["available"])
         if available == 0:
             return _result(
@@ -1430,13 +1620,14 @@ def download_catalog_file(
             playwright.stop()
 
 
-def find_in_open_catalog(
+def _find_in_open_catalog(
     category_name: str,
     filter_kind: str,
     query: str,
+    destination: str | None,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    """Lọc grid Catalog đã chuẩn bị; không mở lại menu/category/master."""
+    """Lọc grid và có thể mở đích trong cùng một phiên CDP/popup."""
     query = str(query or "").strip()
     if not query:
         return _result(False, "QUERY_REQUIRED", "Vui lòng nhập nội dung cần tìm.")
@@ -1450,7 +1641,7 @@ def find_in_open_catalog(
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
-        _browser, page = _connect_to_chrome(playwright)
+        browser, page = _connect_to_chrome(playwright)
         _attach_dialog_handler(page, log)
         if not _session_is_active(page):
             return _result(
@@ -1458,14 +1649,72 @@ def find_in_open_catalog(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
-        _write_log(log, "[CATALOG] Dùng grid Master đang mở, không tải lại Catalog.")
-        grid = _show_catalog_floating_filter(page, log)
+        _write_log(log, "[CATALOG] Đang kiểm tra grid Master hiện tại...")
+        grid = _show_catalog_floating_filter(
+            page,
+            log,
+            timeout_seconds=2,
+        )
+        _write_log(log, "[CATALOG] Đã xác nhận grid Master, bắt đầu tìm.")
+        context = (
+            browser.contexts[0]
+            if destination in {"costsheet", "bom"}
+            else None
+        )
+        previous_states = (
+            _article_navigation_states(context)
+            if context is not None
+            else []
+        )
         result = _filter_grid_and_maybe_open(
             grid,
             filter_kind,
             query,
             log,
         )
+        if (
+            destination in {"costsheet", "bom"}
+            and result.get("code") == "RESULT_OPENED"
+        ):
+            # Sau MULTIPLE_RESULTS người dùng có thể đã tự mở một Style. Lần
+            # click exact tiếp theo sẽ tái sử dụng popup đó và WFX thường detach
+            # ArticleTop khỏi CDP cũ. Probe ngắn hơn cho popup đã tồn tại để
+            # recovery diễn ra sớm; popup hoàn toàn mới vẫn được đủ 30 giây tải.
+            popup_already_open = any(state[2] for state in previous_states)
+            try:
+                label = _open_article_destination(
+                    context,
+                    destination,
+                    previous_states,
+                    log,
+                    timeout_seconds=12 if popup_already_open else 30,
+                )
+            except PlaywrightTimeoutError:
+                # WFX thường tái sử dụng popup Article cùng tên. Khi đó lần
+                # click style đã thành công nhưng ArticleTop bị detach khỏi
+                # phiên CDP hiện tại. Phục hồi ngay tại popup; không trả nhầm
+                # CATALOG_SEARCH_CONTEXT_LOST để controller mở lại Catalog và
+                # lọc lần hai trên một grid đang chuyển trạng thái.
+                playwright, browser, page = _refresh_article_context(
+                    playwright,
+                    browser,
+                    page,
+                    log,
+                )
+                context = browser.contexts[0]
+                label = _open_article_destination(
+                    context,
+                    destination,
+                    [],
+                    log,
+                    timeout_seconds=20,
+                )
+            result["code"] = "CATALOG_DESTINATION_OPENED"
+            result["destination"] = destination
+            result["message"] = (
+                f"Đã mở style {result['article_code']} → {label}."
+                f"{_style_status_suffix(result.get('style_status'))}"
+            )
         result["session_active"] = True
         result["category"] = category_name
         result["filter_kind"] = filter_kind
@@ -1475,7 +1724,7 @@ def find_in_open_catalog(
         return _result(
             False,
             "CATALOG_SEARCH_CONTEXT_LOST",
-            "Catalog không còn ở bước Master. Hãy bấm Mở Catalog lại.",
+            "Catalog không còn ở bước Master; app sẽ tự mở lại đúng List.",
         )
     except Exception as exc:
         message = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
@@ -1484,6 +1733,45 @@ def find_in_open_catalog(
     finally:
         if playwright is not None:
             playwright.stop()
+
+
+def find_in_open_catalog(
+    category_name: str,
+    filter_kind: str,
+    query: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Lọc grid Catalog đã chuẩn bị; không mở lại menu/category/master."""
+    return _find_in_open_catalog(
+        category_name,
+        filter_kind,
+        query,
+        None,
+        log,
+    )
+
+
+def find_and_open_catalog_destination(
+    category_name: str,
+    filter_kind: str,
+    query: str,
+    destination: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Click style và mở Costing/BOM trong cùng driver để không mất popup."""
+    if destination not in {"costsheet", "bom"}:
+        return _result(
+            False,
+            "ARTICLE_DESTINATION_UNKNOWN",
+            f"Đích Article không hỗ trợ: {destination}",
+        )
+    return _find_in_open_catalog(
+        category_name,
+        filter_kind,
+        query,
+        destination,
+        log,
+    )
 
 
 def prepare_catalog_master(
@@ -1523,6 +1811,7 @@ def prepare_catalog_master(
             page,
             log,
             previous_frame=previous_grid,
+            require_data_ready=True,
         )
         return _result(
             True,
@@ -1652,6 +1941,7 @@ def open_catalog_folder(
                 page,
                 log,
                 previous_frame=previous_grid,
+                require_data_ready=True,
             )
             return _result(
                 True,
@@ -1776,7 +2066,12 @@ def quick_find_catalog(
         )
         _write_log(log, "[QUICK SEARCH] Đang mở Master...")
         _click_catalog_master(page, log)
-        grid = _show_catalog_floating_filter(page, log, previous_frame=previous_grid)
+        grid = _show_catalog_floating_filter(
+            page,
+            log,
+            previous_frame=previous_grid,
+            require_data_ready=True,
+        )
         result = _filter_grid_and_maybe_open(
             grid,
             filter_kind,
@@ -1878,7 +2173,12 @@ def set_catalog_category(
         _write_log(log, f"[CATEGORY] Đã chọn thành công: {category_name}")
         _write_log(log, "[CATEGORY] Đang tự động mở Master...")
         _click_catalog_master(page, log)
-        _show_catalog_floating_filter(page, log, previous_frame=previous_grid)
+        _show_catalog_floating_filter(
+            page,
+            log,
+            previous_frame=previous_grid,
+            require_data_ready=True,
+        )
         return _result(
             True,
             "CATEGORY_SELECTED",
@@ -1914,7 +2214,12 @@ def open_catalog_master(log: Callable[[str], None] = print) -> dict[str, Any]:
             None,
         )
         _click_catalog_master(page, log)
-        _show_catalog_floating_filter(page, log, previous_frame=previous_grid)
+        _show_catalog_floating_filter(
+            page,
+            log,
+            previous_frame=previous_grid,
+            require_data_ready=True,
+        )
         _write_log(log, "Đã mở Catalog > Master và Floating Filter")
         return _result(
             True,

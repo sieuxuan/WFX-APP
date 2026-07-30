@@ -410,6 +410,9 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "catalog_default_folder": _normalise_catalog_folder(
             data.get("catalog_default_folder")
         ),
+        "costing_export_dir": str(
+            data.get("costing_export_dir") or ""
+        ).strip()[:32_000],
     }
 
 
@@ -435,6 +438,7 @@ def save_prefs(
     panel_offset_x: int | None = None,
     panel_offset_y: int | None = None,
     catalog_default_folder: dict | None = None,
+    costing_export_dir: str | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     current = load_prefs(base_dir)
@@ -488,6 +492,8 @@ def save_prefs(
         current["catalog_default_folder"] = _normalise_catalog_folder(
             catalog_default_folder
         )
+    if costing_export_dir is not None:
+        current["costing_export_dir"] = str(costing_export_dir).strip()[:32_000]
     # Nhận tham số cũ để không phá caller, nhưng nhãn luôn được dẫn xuất từ
     # hotkey thật và không được ghi riêng xuống prefs.json.
     _ = hotkey_label

@@ -72,6 +72,9 @@ def test_index_html_has_contract_hooks():
         'data-catalog-action="bom"',
         'data-catalog-action="costsheet"',
         'data-catalog-action="files"',
+        'data-costing-action="export-xlsx"',
+        'data-costing-action="import"',
+        'data-costing-action="apply"',
         'data-catalog-kind="code"',
         'data-catalog-kind="buyer_reference"',
         'class="catalog-folder-search"',
@@ -83,9 +86,10 @@ def test_index_html_has_contract_hooks():
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js?v=20260729-12"',
+        'src="panel.js?v=20260730-3"',
     ]:
         assert hook in html, hook
+    assert 'data-costing-action="export-csv"' not in html
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
     assert 'class="compact-launcher"' not in html
 
@@ -105,7 +109,7 @@ def test_status_is_only_in_footer_and_log_can_be_selected():
 
 def test_catalog_search_and_destinations_are_direct_actions():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    assert "Tìm trong Master" in html
+    assert "Tìm trong Master" not in html
     assert 'class="catalog-destination-step"' not in html
     for action in ("find", "costsheet", "bom", "files"):
         tag = html[html.index(f'data-catalog-action="{action}"') :]
@@ -115,6 +119,8 @@ def test_catalog_search_and_destinations_are_direct_actions():
     assert 'class="catalog-folder-list"' in html
     assert 'class="catalog-browse-button"' in html
     assert 'class="catalog-results-list"' in html
+    assert 'class="catalog-costing-card"' in html
+    assert "Quét tab Costing hiện tại" in html
 
 
 def test_catalog_folder_picker_is_searchable_and_hides_technical_copy():
@@ -292,6 +298,21 @@ def test_module_page_header_is_compact_with_clear_back_icon():
     assert 'class="module-modal-icon' not in html
 
 
+def test_catalog_uses_compact_category_search_and_active_costing_state():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="catalog-topbar"' in html
+    assert html.index('class="catalog-category-row"') < html.index(
+        'data-catalog-action="browse"'
+    )
+    assert 'class="catalog-search-heading"' not in html
+    assert 'class="catalog-costing-state" data-ready="false"' in html
+    assert "Quét tab Costing hiện tại" in html
+    assert ".catalog-topbar {" in css
+    assert "grid-template-columns: repeat(3, minmax(0,1fr))" in css
+
+
 def test_favorites_are_before_module_search_and_setting_defaults_to_remember():
     html = (UI / "index.html").read_text(encoding="utf-8")
     css = (UI / "style.css").read_text(encoding="utf-8")
@@ -419,7 +440,7 @@ def test_catalog_uses_one_outer_scroll_and_reduced_card_borders():
         "gap: 3px; max-height: none; overflow: visible; }"
     ) in css
     assert (
-        ".catalog-browse-card { padding: 0 0 9px; border: 0; "
+        ".catalog-browse-card { padding: 0 0 6px; border: 0; "
         "border-bottom: 1px solid var(--border); background: transparent; }"
     ) in css
     assert ".catalog-workspace {\n      padding: 1px 2px 10px;\n      border: 0;" in css

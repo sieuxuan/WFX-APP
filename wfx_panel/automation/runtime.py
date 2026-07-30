@@ -18,7 +18,7 @@ from playwright.sync_api import Browser, Playwright
 from playwright.sync_api import sync_playwright as _sync_playwright
 
 T = TypeVar("T")
-RUNTIME_IDLE_RELEASE_SECONDS = 60.0
+CDP_CONNECT_TIMEOUT_MS = 10_000
 
 
 class AutomationCancelled(RuntimeError):
@@ -48,10 +48,7 @@ class _PlaywrightLease:
 
 
 class AutomationRuntime:
-    def __init__(
-        self,
-        idle_seconds: float = RUNTIME_IDLE_RELEASE_SECONDS,
-    ) -> None:
+    def __init__(self) -> None:
         self._queue: queue.Queue[_Task | None] = queue.Queue(maxsize=1)
         self._thread: threading.Thread | None = None
         self._thread_id: int | None = None
@@ -61,7 +58,6 @@ class AutomationRuntime:
         self._defer_depth = 0
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
-        self._idle_seconds = max(0.01, float(idle_seconds))
 
     def _ensure_thread(self) -> None:
         with self._state_lock:
@@ -78,11 +74,7 @@ class AutomationRuntime:
         self._thread_id = threading.get_ident()
         try:
             while True:
-                try:
-                    task = self._queue.get(timeout=self._idle_seconds)
-                except queue.Empty:
-                    self._release_connections()
-                    continue
+                task = self._queue.get()
                 if task is None:
                     return
                 self._cancel.clear()
@@ -97,13 +89,19 @@ class AutomationRuntime:
                     with self._state_lock:
                         self._active = False
                     self._cancel.clear()
+                    # Nhả driver/CDP trước khi mở khoá caller. Nếu báo flow đã
+                    # xong rồi mới cleanup, workflow kế tiếp có thể được xếp
+                    # vào đúng lúc driver cũ còn detach và trông như không phản
+                    # hồi. Result sink đã cập nhật UI ngay khi action kết thúc;
+                    # caller chỉ được hoàn tất sau khi runtime thật sự sẵn sàng.
+                    self._release_connections()
                     task.done.set()
         finally:
             self._release_connections()
             self._thread_id = None
 
     def _release_connections(self) -> None:
-        """Nhả driver lúc idle; Chrome ngoài vẫn mở và giữ phiên đăng nhập."""
+        """Nhả driver sau mỗi flow; Chrome ngoài vẫn mở và giữ phiên đăng nhập."""
         self._browser = None
         if self._playwright is not None:
             try:
@@ -155,7 +153,10 @@ class AutomationRuntime:
 
     def connect_browser(self, playwright: Any, cdp_url: str) -> Browser:
         if threading.get_ident() != self._thread_id:
-            return playwright.chromium.connect_over_cdp(cdp_url)
+            return playwright.chromium.connect_over_cdp(
+                cdp_url,
+                timeout=CDP_CONNECT_TIMEOUT_MS,
+            )
         self.checkpoint()
         if self._browser is not None:
             try:
@@ -163,7 +164,10 @@ class AutomationRuntime:
                     return self._browser
             except Exception:
                 pass
-        self._browser = playwright.chromium.connect_over_cdp(cdp_url)
+        self._browser = playwright.chromium.connect_over_cdp(
+            cdp_url,
+            timeout=CDP_CONNECT_TIMEOUT_MS,
+        )
         return self._browser
 
     def invalidate_browser(self, browser: Browser | None = None) -> None:

@@ -68,6 +68,15 @@ def test_completed_module_actions_use_external_notifications():
     assert "showToast(" not in JS
 
 
+def test_backend_result_sink_recovers_busy_ui_if_bridge_promise_stalls():
+    sink = JS[
+        JS.index("window.wfxHandleBackendResult")
+        : JS.index("async function call(")
+    ]
+    assert "handleResult(result);" in sink
+    assert "settleBusyUi();" in sink
+
+
 def test_hotkey_can_focus_and_select_module_search():
     assert "window.wfxFocusModuleSearch = focusModuleSearch" in JS
     assert 'const input = $(".search-box input")' in JS
@@ -260,6 +269,42 @@ def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
     assert "catalogPreparedCategory" not in JS
 
 
+def test_catalog_costing_import_export_and_dry_run_are_wired():
+    for method in (
+        "choose_costing_export_file",
+        "choose_costing_import_file",
+        "export_catalog_costing",
+        "prepare_catalog_costing_import",
+        "apply_catalog_costing",
+        "clear_catalog_costing_plan",
+    ):
+        assert f'"{method}"' in JS
+    for hook in (
+        "renderCostingPlan",
+        "costingPlanToken",
+        "fields_to_set",
+        "COSTING_DRY_RUN_READY",
+    ):
+        assert hook in JS
+
+
+def test_catalog_costing_export_can_scan_current_tab_without_query():
+    export_block = JS[
+        JS.index("async function exportCatalogCosting()")
+        : JS.index("async function importCatalogCosting()")
+    ]
+    assert "costingQuery()" not in export_block
+    assert '"Current-Style"' in export_block
+    assert 'catalogKind,\n      "",' in export_block
+    assert "Có thể Export/Import tab Costing hiện tại" in JS
+    import_block = JS[
+        JS.index("async function importCatalogCosting()")
+        : JS.index("async function applyCatalogCosting()")
+    ]
+    assert "costingQuery()" not in import_block
+    assert 'catalogKind,\n      "",' in import_block
+
+
 def test_multiple_results_are_selectable_in_panel():
     # Feature: nhiều Code hiện danh sách chọn ngay trong panel; chọn 1 Code mở
     # đúng style đó mà không phải nhìn grid trên WFX.
@@ -305,7 +350,9 @@ def test_overlays_trap_focus_and_restore_it():
 
 def test_autohide_remembers_busy_blur_and_hides_when_idle():
     assert "hidePanelWhenIdle = true" in JS
-    assert "if (hidePanelWhenIdle)" in JS
+    assert "hidePanelWhenIdle && !pointerInsidePanel" in JS
+    assert 'document.documentElement.addEventListener("pointerenter"' in JS
+    assert 'document.documentElement.addEventListener("pointerleave"' in JS
     assert 'window.addEventListener("focus"' in JS
     focus_block = JS[JS.index('window.addEventListener("focus"') :]
     assert "hidePanelWhenIdle = false" in focus_block[:250]
@@ -412,6 +459,9 @@ def test_panel_auto_hides_when_focus_leaves_the_app():
     assert 'window.addEventListener("blur"' in JS
     assert "request_panel_hide" in JS
     assert "hidePanelWhenIdle = true" in JS
+    assert "if (pointerInsidePanel) {" in JS
+    assert '"MULTIPLE_RESULTS"' in JS
+    assert "INTERACTIVE_RESULT_CODES.has(result.code)" in JS
 
 
 def test_bubble_launcher_is_wired():
