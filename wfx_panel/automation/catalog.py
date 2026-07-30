@@ -8,6 +8,8 @@ from __future__ import annotations
 import html
 import re
 import tempfile
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urljoin, urlsplit, urlunsplit
 
@@ -457,23 +459,258 @@ def _wait_catalog_folder_selected(
     return False
 
 
+@dataclass(frozen=True)
+class _CatalogFilterSpec:
+    label: str
+    input_selector: str
+    value_column: str
+
+
+@dataclass(frozen=True)
+class _CatalogGridPoll:
+    grid: Frame
+    root: Any
+    read_rows_js: str
+    search_input: Any
+    query: str
+    spec: _CatalogFilterSpec
+    log: Callable[[str], None]
+
+
+_CATALOG_FILTER_SPECS = {
+    "code": _CatalogFilterSpec(
+        "Code",
+        'input[aria-label="Code Filter Input"]',
+        "lnkArticleCode",
+    ),
+    "buyer_reference": _CatalogFilterSpec(
+        "Buyer Reference",
+        'input[aria-label="Buyer Reference Filter Input"]',
+        "lblBuyerReference",
+    ),
+}
+
+
+def _catalog_grid_state_key(state: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (
+        state["loading"],
+        state["noRows"],
+        tuple(
+            (
+                row["code"].casefold(),
+                row["season"],
+                row["internalCostSheetStatus"],
+            )
+            for row in state["rows"]
+        ),
+    )
+
+
+def _catalog_grid_result_ready(
+    state: Mapping[str, Any],
+    query: str,
+) -> bool:
+    values = [row["value"] for row in state["rows"] if row["value"]]
+    filter_applied = bool(values) and all(
+        query.casefold() in value.casefold() for value in values
+    )
+    return not state["loading"] and (filter_applied or state["noRows"])
+
+
+def _refill_catalog_filter(
+    grid: Frame,
+    search_input: Any,
+    query: str,
+    spec: _CatalogFilterSpec,
+) -> dict[str, Any] | None:
+    search_input.fill("", timeout=3_000)
+    _wait(grid, 1_000)
+    search_input.fill(query, timeout=3_000)
+    if search_input.input_value(timeout=1_000) == query:
+        return None
+    return _result(
+        False,
+        "FILTER_VALUE_NOT_CONFIRMED",
+        f"WFX chưa xác nhận lại giá trị {spec.label}.",
+    )
+
+
+def _wait_catalog_grid_rows(
+    poll: _CatalogGridPoll,
+) -> tuple[list[dict[str, str]], dict[str, Any] | None]:
+    deadline = time.monotonic() + 25
+    stable_key: tuple[Any, ...] | None = None
+    stable_since = 0.0
+    empty_since: float | None = None
+    filter_reapplied = False
+    rows: list[dict[str, str]] = []
+    while time.monotonic() < deadline:
+        state = poll.root.evaluate(
+            poll.read_rows_js,
+            {"valueColumn": poll.spec.value_column},
+        )
+        rows = state["rows"]
+        now = time.monotonic()
+        phantom_empty = not state["loading"] and not state["noRows"] and not rows
+        empty_since = empty_since or now if phantom_empty else None
+        if (
+            phantom_empty
+            and not filter_reapplied
+            and empty_since is not None
+            and now - empty_since >= 2
+        ):
+            _write_log(
+                poll.log,
+                "[FILTER] Grid chưa phản hồi, đang áp dụng lại bộ lọc...",
+            )
+            error = _refill_catalog_filter(
+                poll.grid,
+                poll.search_input,
+                poll.query,
+                poll.spec,
+            )
+            if error is not None:
+                return rows, error
+            filter_reapplied = True
+            empty_since = None
+            stable_key = None
+            stable_since = now
+            deadline = now + 15
+            _wait(poll.grid, 500)
+            continue
+        state_key = _catalog_grid_state_key(state)
+        if (
+            _catalog_grid_result_ready(state, poll.query)
+            and state_key == stable_key
+        ):
+            required_stable = 1.8 if state["noRows"] else 0.6
+            if now - stable_since >= required_stable:
+                return rows, None
+        else:
+            stable_key = state_key
+            stable_since = now
+        _wait(poll.grid, 200)
+    return rows, _result(
+        False,
+        "FILTER_RESULTS_NOT_READY",
+        f"Kết quả lọc {poll.spec.label} chưa ổn định.",
+    )
+
+
+def _catalog_styles_from_rows(
+    rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    unique: dict[str, dict[str, str]] = {}
+    for row in rows:
+        code = row["code"].strip()
+        if not code:
+            continue
+        style = unique.setdefault(
+            code.casefold(),
+            {"code": code, "season": "", "internal_costsheet_status": ""},
+        )
+        style["season"] = style["season"] or row["season"].strip()
+        style["internal_costsheet_status"] = (
+            style["internal_costsheet_status"]
+            or row["internalCostSheetStatus"].strip()
+        )
+    return list(unique.values())[:20]
+
+
+def _click_catalog_style(
+    grid: Frame,
+    target_code: str,
+    label: str,
+    log: Callable[[str], None],
+) -> bool:
+    buttons = grid.locator(
+        '[role="gridcell"][col-id="lnkArticleCode"] input[type="button"]'
+    )
+    for index in range(buttons.count()):
+        button = buttons.nth(index)
+        try:
+            if not button.is_visible():
+                continue
+            if (
+                button.input_value(timeout=500).strip().casefold()
+                != target_code.casefold()
+            ):
+                continue
+            _write_log(
+                log,
+                f"[{label.upper()}] Một kết quả, đang mở {target_code}...",
+            )
+            button.click(timeout=5_000)
+            return True
+        except PlaywrightError:
+            continue
+    return False
+
+
+def _catalog_result_from_rows(
+    grid: Frame,
+    query: str,
+    rows: list[dict[str, str]],
+    spec: _CatalogFilterSpec,
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    styles = _catalog_styles_from_rows(rows)
+    codes = [style["code"] for style in styles]
+    values = [row["value"] for row in rows if row["value"]]
+    _write_log(
+        log,
+        f"[{spec.label.upper()}] unique Code={len(codes)}; "
+        f"renderedRows={len(rows)}; codes={codes}",
+    )
+    if not styles:
+        return _result(
+            False,
+            "NO_RESULTS",
+            f"Không tìm thấy kết quả cho {spec.label}: {query}.",
+            codes=[],
+            styles=[],
+        )
+    if len(styles) >= 2:
+        return _result(
+            True,
+            "MULTIPLE_RESULTS",
+            f"Có {len(styles)} Code; giữ danh sách để bạn tự chọn.",
+            codes=codes,
+            matches=values,
+            styles=styles,
+        )
+    style_status = styles[0]
+    target_code = style_status["code"]
+    if not _click_catalog_style(grid, target_code, spec.label, log):
+        return _result(
+            False,
+            "RESULT_DETACHED",
+            "Kết quả vừa thay đổi trước khi click.",
+        )
+    return _result(
+        True,
+        "RESULT_OPENED",
+        f"Đã tìm và mở style {target_code}."
+        f"{_style_status_suffix(style_status)}",
+        article_code=target_code,
+        codes=codes,
+        matches=values,
+        styles=styles,
+        style_status=style_status,
+        season=style_status["season"],
+        internal_costsheet_status=style_status["internal_costsheet_status"],
+    )
+
+
 def _filter_grid_and_maybe_open(
     grid: Frame,
     filter_kind: str,
     query: str,
     log: Callable[[str], None],
 ) -> dict[str, Any]:
-    definitions = {
-        "code": ("Code", 'input[aria-label="Code Filter Input"]', "lnkArticleCode"),
-        "buyer_reference": (
-            "Buyer Reference",
-            'input[aria-label="Buyer Reference Filter Input"]',
-            "lblBuyerReference",
-        ),
-    }
-    if filter_kind not in definitions:
+    spec = _CATALOG_FILTER_SPECS.get(filter_kind)
+    if spec is None:
         return _result(False, "INVALID_FILTER", f"Filter không hỗ trợ: {filter_kind}")
-    label, input_selector, value_column = definitions[filter_kind]
 
     # Không để điều kiện cũ ở hai cột chồng lên lần tìm mới.
     for selector in (
@@ -484,15 +721,15 @@ def _filter_grid_and_maybe_open(
         if field.count() and field.is_visible():
             field.fill("", timeout=3_000)
 
-    search_input = grid.locator(input_selector)
+    search_input = grid.locator(spec.input_selector)
     search_input.wait_for(state="visible", timeout=5_000)
-    _write_log(log, f"[{label.upper()}] Đang lọc gần đúng: {query}")
+    _write_log(log, f"[{spec.label.upper()}] Đang lọc gần đúng: {query}")
     search_input.fill(query, timeout=3_000)
     if search_input.input_value(timeout=1_000) != query:
         return _result(
             False,
             "FILTER_VALUE_NOT_CONFIRMED",
-            f"WFX chưa xác nhận giá trị {label}.",
+            f"WFX chưa xác nhận giá trị {spec.label}.",
         )
     _wait(grid, 1_000)
 
@@ -560,173 +797,21 @@ def _filter_grid_and_maybe_open(
         return {loading, noRows, rows};
     }"""
 
-    deadline = time.monotonic() + 25
-    rows: list[dict[str, str]] = []
-    stable_key: tuple[Any, ...] | None = None
-    stable_since = 0.0
-    empty_since: float | None = None
-    filter_reapplied = False
-    while time.monotonic() < deadline:
-        state = root.evaluate(
-            read_rows_js,
-            {"valueColumn": value_column},
+    rows, polling_error = _wait_catalog_grid_rows(
+        _CatalogGridPoll(
+            grid=grid,
+            root=root,
+            read_rows_js=read_rows_js,
+            search_input=search_input,
+            query=query,
+            spec=spec,
+            log=log,
         )
-        rows = state["rows"]
-        values = [row["value"] for row in rows if row["value"]]
-        applied = bool(values) and all(
-            query.casefold() in value.casefold() for value in values
-        )
-        key = (
-            state["loading"],
-            state["noRows"],
-            tuple(
-                (
-                    row["code"].casefold(),
-                    row["season"],
-                    row["internalCostSheetStatus"],
-                )
-                for row in rows
-            ),
-        )
-        ready = not state["loading"] and (applied or state["noRows"])
-        phantom_empty = (
-            not state["loading"]
-            and not state["noRows"]
-            and not rows
-        )
-        empty_since = (
-            empty_since or time.monotonic()
-            if phantom_empty
-            else None
-        )
-        if (
-            phantom_empty
-            and not filter_reapplied
-            and empty_since is not None
-            and time.monotonic() - empty_since >= 2
-        ):
-            # WFX đôi khi nhận text filter trước khi datasource đầu tiên bind:
-            # input có value nhưng center container vẫn cao 1px, không row và
-            # cũng không no-rows. Clear/refill một lần làm AG Grid phát lại
-            # floating-filter event sau khi datasource đã tồn tại.
-            _write_log(
-                log,
-                "[FILTER] Grid chưa phản hồi, đang áp dụng lại bộ lọc...",
-            )
-            search_input.fill("", timeout=3_000)
-            _wait(grid, 1_000)
-            search_input.fill(query, timeout=3_000)
-            if search_input.input_value(timeout=1_000) != query:
-                return _result(
-                    False,
-                    "FILTER_VALUE_NOT_CONFIRMED",
-                    f"WFX chưa xác nhận lại giá trị {label}.",
-                )
-            filter_reapplied = True
-            empty_since = None
-            stable_key = None
-            stable_since = time.monotonic()
-            deadline = time.monotonic() + 15
-            _wait(grid, 500)
-            continue
-        if ready and key == stable_key:
-            # AG Grid có thể chớp no-rows trong lúc debounce dù loading overlay
-            # không hiện. Giữ no-rows lâu hơn trước khi kết luận 0 kết quả.
-            required_stable = 1.8 if state["noRows"] else 0.6
-            if time.monotonic() - stable_since >= required_stable:
-                break
-        else:
-            stable_key = key
-            stable_since = time.monotonic()
-        _wait(grid, 200)
-    else:
-        return _result(
-            False,
-            "FILTER_RESULTS_NOT_READY",
-            f"Kết quả lọc {label} chưa ổn định.",
-        )
-
-    unique: dict[str, dict[str, str]] = {}
-    for row in rows:
-        code = row["code"].strip()
-        if not code:
-            continue
-        key = code.casefold()
-        current = unique.setdefault(
-            key,
-            {
-                "code": code,
-                "season": "",
-                "internal_costsheet_status": "",
-            },
-        )
-        current["season"] = current["season"] or row["season"].strip()
-        current["internal_costsheet_status"] = (
-            current["internal_costsheet_status"]
-            or row["internalCostSheetStatus"].strip()
-        )
-
-    styles = list(unique.values())[:20]
-    codes = [style["code"] for style in styles]
-    values = [row["value"] for row in rows if row["value"]]
-    _write_log(
-        log,
-        f"[{label.upper()}] unique Code={len(codes)}; "
-        f"renderedRows={len(rows)}; codes={codes}",
     )
-    if not styles:
-        return _result(
-            False,
-            "NO_RESULTS",
-            f"Không tìm thấy kết quả cho {label}: {query}.",
-            codes=[],
-            styles=[],
-        )
-    if len(styles) >= 2:
-        return _result(
-            True,
-            "MULTIPLE_RESULTS",
-            f"Có {len(styles)} Code; giữ danh sách để bạn tự chọn.",
-            codes=codes,
-            matches=values,
-            styles=styles,
-        )
+    if polling_error is not None:
+        return polling_error
 
-    style_status = styles[0]
-    target_code = style_status["code"]
-    code_buttons = grid.locator(
-        '[role="gridcell"][col-id="lnkArticleCode"] input[type="button"]'
-    )
-    clicked = False
-    for index in range(code_buttons.count()):
-        item = code_buttons.nth(index)
-        try:
-            if (
-                item.is_visible()
-                and item.input_value(timeout=500).strip().casefold()
-                == target_code.casefold()
-            ):
-                _write_log(log, f"[{label.upper()}] Một kết quả, đang mở {target_code}...")
-                item.click(timeout=5_000)
-                clicked = True
-                break
-        except PlaywrightError:
-            continue
-    if not clicked:
-        return _result(False, "RESULT_DETACHED", "Kết quả vừa thay đổi trước khi click.")
-    return _result(
-        True,
-        "RESULT_OPENED",
-        f"Đã tìm và mở style {target_code}."
-        f"{_style_status_suffix(style_status)}",
-        article_code=target_code,
-        codes=codes,
-        matches=values,
-        styles=styles,
-        style_status=style_status,
-        season=style_status["season"],
-        internal_costsheet_status=style_status["internal_costsheet_status"],
-    )
+    return _catalog_result_from_rows(grid, query, rows, spec, log)
 
 
 def _open_article_destination(
