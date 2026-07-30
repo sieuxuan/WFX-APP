@@ -97,7 +97,7 @@ def test_catalog_menu_falls_back_to_direct_url_when_wrapper_does_not_load(
 
     assert result is expected_frame
     assert clicked == [anchor]
-    assert waits == [("old-frame", 3), ("old-frame", 12)]
+    assert waits == [("old-frame", 3), ("old-frame", 30)]
     assert page.body.waited is True
     assert page.body.navigation == (
         "https://example.test/wfx/WFX_CatalogMain.aspx?CatalogType=1"
@@ -123,3 +123,69 @@ def test_catalog_menu_keeps_normal_navigation_when_wrapper_loads(monkeypatch):
 
     assert result is expected_frame
     assert page.body.navigation is None
+
+
+def test_catalog_tree_rejects_supplier_category_frame():
+    class Locator:
+        def count(self):
+            return 1
+
+    class Candidate:
+        def __init__(self, url):
+            self.url = url
+
+        def locator(self, _selector):
+            return Locator()
+
+    supplier = Candidate(
+        "https://example.test/WFXPartyGroup.aspx?PartyType=2"
+    )
+    catalog_tree = Candidate(
+        "https://example.test/WFXArticleCatalog.aspx?CatalogType=1"
+    )
+
+    assert catalog._is_catalog_tree_frame(supplier) is False
+    assert catalog._is_catalog_tree_frame(catalog_tree) is True
+
+
+def test_catalog_left_accepts_same_frame_after_in_place_reload(monkeypatch):
+    frame = object()
+    monkeypatch.setattr(
+        catalog,
+        "_catalog_tree_frame_now",
+        lambda _page: frame,
+    )
+
+    assert catalog._catalog_left_frame(
+        object(),
+        previous_frame=frame,
+        timeout_s=0.1,
+    ) is frame
+
+
+def test_catalog_direct_navigation_prefers_live_body_frame():
+    navigations = []
+
+    class BodyFrame:
+        def goto(self, url, **options):
+            navigations.append((url, options))
+
+    class Page:
+        def frame(self, *, name):
+            assert name == "body"
+            return BodyFrame()
+
+        def locator(self, _selector):
+            raise AssertionError("DOM src fallback should not be used")
+
+    catalog._navigate_catalog_body_direct(
+        Page(),
+        "https://example.test/wfx/WFX_CatalogMain.aspx?CatalogType=1",
+    )
+
+    assert navigations == [
+        (
+            "https://example.test/wfx/WFX_CatalogMain.aspx?CatalogType=1",
+            {"wait_until": "domcontentloaded", "timeout": 15_000},
+        )
+    ]

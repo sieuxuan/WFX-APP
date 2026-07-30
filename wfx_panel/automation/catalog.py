@@ -71,8 +71,19 @@ _ATTACHMENT_ROWS_JS = """table => [...table.querySelectorAll(
 }).filter(row => row.file_name)"""
 
 
+def _is_catalog_tree_frame(frame: Frame) -> bool:
+    """Reject look-alike module trees such as Supplier's ``#ddlCategory``."""
+    try:
+        path = urlsplit(str(frame.url or "")).path.casefold()
+        if "catalog" not in path:
+            return False
+        return frame.locator("#ddlCategory").count() > 0
+    except PlaywrightError:
+        return False
+
+
 def _catalog_tree_frame_now(page: Page) -> Frame | None:
-    """Tìm frame cây Catalog theo nội dung, không phụ thuộc tên ``left``."""
+    """Find the actual Catalog tree by route and DOM, not frame name alone."""
     named_left = page.frame(name="left")
     candidates = ([named_left] if named_left is not None else []) + list(page.frames)
     seen: set[int] = set()
@@ -81,11 +92,8 @@ def _catalog_tree_frame_now(page: Page) -> Frame | None:
         if identity in seen:
             continue
         seen.add(identity)
-        try:
-            if frame.locator("#ddlCategory").count() > 0:
-                return frame
-        except PlaywrightError:
-            continue
+        if _is_catalog_tree_frame(frame):
+            return frame
     return None
 
 
@@ -94,14 +102,42 @@ def _catalog_left_frame(
     previous_frame: Frame | None = None,
     timeout_s: float = 10,
 ) -> Frame:
-    """Chờ frame cây Catalog; hỗ trợ cả WFX đổi tên frame ``left``."""
+    """Wait for a Catalog tree, including an in-place frame document reload."""
+    # Playwright can preserve the Frame object when WFX replaces its document.
+    # ``previous_frame`` therefore cannot be used as a freshness condition.
+    _ = previous_frame
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         frame = _catalog_tree_frame_now(page)
-        if frame is not None and frame != previous_frame:
+        if frame is not None:
             return frame
         _wait(page, 250)
     raise PlaywrightTimeoutError("Không tìm thấy frame left hoặc #ddlCategory của Catalog.")
+
+
+def _navigate_catalog_body_direct(page: Page, direct_url: str) -> None:
+    """Navigate the live body frame; assigning ``src`` alone loses stale races."""
+    frame_resolver = getattr(page, "frame", None)
+    body_frame = frame_resolver(name="body") if callable(frame_resolver) else None
+    if body_frame is not None:
+        try:
+            body_frame.goto(
+                direct_url,
+                wait_until="domcontentloaded",
+                timeout=15_000,
+            )
+            return
+        except PlaywrightTimeoutError:
+            # Navigation was dispatched; the Catalog tree waiter owns the
+            # remaining cold-load budget.
+            return
+        except PlaywrightError:
+            pass
+    body_element = page.locator(
+        'frame[name="body"], iframe[name="body"]'
+    ).first
+    body_element.wait_for(state="attached", timeout=3_000)
+    body_element.evaluate("(element, url) => { element.src = url; }", direct_url)
 
 
 def _catalog_direct_url(page: Page, catalog: Any) -> str | None:
@@ -147,19 +183,15 @@ def _open_catalog_menu_on_page(
         if direct_url is None:
             raise
 
-    body_element = page.locator(
-        'frame[name="body"], iframe[name="body"]'
-    ).first
-    body_element.wait_for(state="attached", timeout=3_000)
     _write_log(
         log,
         "[CATALOG] Menu phản hồi chậm; đang mở trực tiếp trang Catalog...",
     )
-    body_element.evaluate("(element, url) => { element.src = url; }", direct_url)
+    _navigate_catalog_body_direct(page, direct_url)
     return _catalog_left_frame(
         page,
         previous_frame=previous_frame,
-        timeout_s=12,
+        timeout_s=30,
     )
 
 
@@ -361,6 +393,18 @@ def _open_catalog_tree_on_page(
 ) -> Frame:
     """Mở cây Catalog và chọn Category, nhưng không tự click Master."""
     previous_left = _catalog_tree_frame_now(page)
+    if previous_left is not None:
+        _write_log(
+            log,
+            "[CATALOG] Cây Catalog đã mở; dùng lại context hiện tại.",
+        )
+        _select_catalog_category_on_page(
+            page,
+            category_name,
+            category_value,
+            log,
+        )
+        return _catalog_left_frame(page)
     catalog = page.locator(f"xpath={CATALOG_XPATH}")
     catalog.wait_for(state="attached", timeout=8_000)
     _write_log(log, "[CATALOG] Đang mở cây thư mục...")
