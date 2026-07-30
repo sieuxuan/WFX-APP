@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from wfx_panel import (
@@ -244,8 +244,9 @@ class PanelAPI:
             "division_name": self._division_name or "",
         }
 
-    def _admin_state(self) -> dict:
-        preferences = self._prefs.load_prefs(base_dir=self._base_dir)
+    def _admin_state(self, preferences: Mapping | None = None) -> dict:
+        if preferences is None:
+            preferences = self._prefs.load_prefs(base_dir=self._base_dir)
         allowed = self._admin_access is True and bool(self._admin_module_ids)
         return {
             "admin_access": allowed,
@@ -316,8 +317,10 @@ class PanelAPI:
                 "focus_chrome_on_module"
             ],
             "always_on_top": preferences["always_on_top"],
-            "catalog_default_folder": self._catalog.default_for_account(),
-            **self._admin_state(),
+            "catalog_default_folder": (
+                self._catalog.default_folder_for_account(preferences)
+            ),
+            **self._admin_state(preferences),
             "reporting_configured": telemetry.is_configured(self._base_dir),
             "pending_reports": telemetry.outbox_count(self._base_dir),
             "update_channel": "stable",

@@ -5,6 +5,8 @@ Tách nguyên văn từ login.py — không đổi logic.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from wfx_panel.automation._common import (
     _MODULE_GRID_STATE_JS,
     Any,
@@ -38,6 +40,14 @@ from wfx_panel.automation.catalog import (
     _show_catalog_floating_filter,
 )
 from wfx_panel.automation.runtime import cancellation_deferred
+from wfx_panel.automation.search_specs import (
+    INDENT_SEARCH_SPECS,
+    OC_SEARCH_SPEC,
+    RMPO_SEARCH_SPEC,
+    SALE_ASN_SEARCH_SPEC,
+    SAMPLE_SEARCH_SPEC,
+    ModuleSearchSpec,
+)
 
 MODULE_GRID_POLL_MS = 150
 MODULE_FILTER_VISIBLE_STABLE_SECONDS = 0.5
@@ -717,22 +727,116 @@ def _wait_module_search_settled(
     )
 
 
+def _open_multi_field_search_context(
+    page: Page,
+    search_spec: ModuleSearchSpec,
+    xpath: str,
+    log: Callable[[str], None],
+) -> Frame:
+    context_selector = ", ".join(search_spec.context_field.selectors)
+    try:
+        return _frame_with_visible_context(
+            page,
+            context_selector,
+            module_name=search_spec.module_name,
+            timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
+        )
+    except PlaywrightTimeoutError:
+        _write_log(
+            log,
+            f"[MODULE SEARCH] {search_spec.module_name} chưa mở; "
+            "đang tự mở List...",
+        )
+        _click_module_menu_on_page(page, search_spec.module_name, xpath, log)
+        return _frame_with_visible_context(
+            page,
+            context_selector,
+            module_name=search_spec.module_name,
+            timeout_s=30,
+        )
+
+
+def _resolve_multi_search_fields(
+    frame: Frame,
+    search_spec: ModuleSearchSpec,
+) -> dict[str, Any]:
+    resolved: dict[str, Any] = {}
+    for field_name, field_spec in search_spec.fields.items():
+        candidates = frame.locator(", ".join(field_spec.selectors))
+        if (
+            not candidates.count()
+            or not candidates.first.is_visible()
+            or not candidates.first.is_enabled()
+        ):
+            raise PlaywrightTimeoutError(
+                f"Không tìm thấy ô {field_spec.label} trong đúng màn "
+                f"{search_spec.module_name}."
+            )
+        resolved[field_name] = candidates.first
+    return resolved
+
+
+def _clear_multi_search_fields(fields: Mapping[str, Any]) -> None:
+    for search_field in fields.values():
+        search_field.fill("")
+        try:
+            search_field.dispatch_event("change")
+        except PlaywrightError:
+            pass
+
+
+def _fill_multi_search_fields(
+    fields: Mapping[str, Any],
+    cleaned_values: Mapping[str, str],
+    active_fields: list[str],
+    search_spec: ModuleSearchSpec,
+    log: Callable[[str], None],
+) -> tuple[list[str], Any | None]:
+    active_labels: list[str] = []
+    last_field: Any | None = None
+    for field_name in active_fields:
+        field_spec = search_spec.fields[field_name]
+        search_field = fields[field_name]
+        search_field.type(cleaned_values[field_name], delay=25)
+        if search_field.input_value(timeout=1_000) != cleaned_values[field_name]:
+            raise PlaywrightTimeoutError(
+                f"WFX không xác nhận giá trị search {field_spec.label}."
+            )
+        active_labels.append(field_spec.label)
+        last_field = search_field
+        _write_log(log, f"[MODULE SEARCH] Đã nhập {field_spec.label}.")
+    return active_labels, last_field
+
+
+def _submit_multi_search(last_field: Any | None) -> None:
+    if last_field is None:
+        return
+    try:
+        last_field.press("Enter", timeout=2_000)
+    except PlaywrightError:
+        pass
+    try:
+        last_field.dispatch_event("change")
+    except PlaywrightError:
+        pass
+
+
 def _search_module_fields(
-    module_name: str,
+    search_spec: ModuleSearchSpec,
     xpath: str,
     values: dict[str, str],
-    definitions: dict[str, tuple[str, str]],
-    context_selector: str,
     log: Callable[[str], None],
 ) -> dict[str, Any]:
     """Xóa và điền một nhóm filter trong cùng frame để hỗ trợ lọc kết hợp."""
     cleaned = {
         key: str(values.get(key) or "").strip()
-        for key in definitions
+        for key in search_spec.fields
     }
     active = [key for key, value in cleaned.items() if value]
     if not active:
-        labels = ", ".join(label for label, _selector in definitions.values())
+        labels = ", ".join(
+            field_spec.label for field_spec in search_spec.fields.values()
+        )
         return _result(
             False,
             "QUERY_REQUIRED",
@@ -744,77 +848,30 @@ def _search_module_fields(
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
-        try:
-            frame = _frame_with_visible_context(
-                page,
-                context_selector,
-                module_name=module_name,
-                timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
-            )
-        except PlaywrightTimeoutError:
-            _write_log(
-                log,
-                f"[MODULE SEARCH] {module_name} chưa mở; "
-                "đang tự mở List...",
-            )
-            _click_module_menu_on_page(page, module_name, xpath, log)
-            frame = _frame_with_visible_context(
-                page,
-                context_selector,
-                module_name=module_name,
-                timeout_s=30,
-            )
-
-        fields: dict[str, Any] = {}
-        for key, (label, selector) in definitions.items():
-            field = frame.locator(selector)
-            if (
-                not field.count()
-                or not field.first.is_visible()
-                or not field.first.is_enabled()
-            ):
-                raise PlaywrightTimeoutError(
-                    f"Không tìm thấy ô {label} trong đúng màn {module_name}."
-                )
-            fields[key] = field.first
-
-        for field in fields.values():
-            search_started = True
-            field.fill("")
-            try:
-                field.dispatch_event("change")
-            except PlaywrightError:
-                pass
-
-        last_field: Any | None = None
-        active_labels: list[str] = []
-        for key in active:
-            label, _selector = definitions[key]
-            field = fields[key]
-            field.type(cleaned[key], delay=25)
-            if field.input_value(timeout=1_000) != cleaned[key]:
-                raise PlaywrightTimeoutError(
-                    f"WFX không xác nhận giá trị search {label}."
-                )
-            active_labels.append(label)
-            last_field = field
-            _write_log(log, f"[MODULE SEARCH] Đã nhập {label}.")
-
-        if last_field is not None:
-            try:
-                last_field.press("Enter", timeout=2_000)
-            except PlaywrightError:
-                pass
-            try:
-                last_field.dispatch_event("change")
-            except PlaywrightError:
-                pass
+        frame = _open_multi_field_search_context(
+            page,
+            search_spec,
+            xpath,
+            log,
+        )
+        fields = _resolve_multi_search_fields(frame, search_spec)
+        search_started = True
+        _clear_multi_search_fields(fields)
+        active_labels, last_field = _fill_multi_search_fields(
+            fields,
+            cleaned,
+            active,
+            search_spec,
+            log,
+        )
+        _submit_multi_search(last_field)
         _wait_module_search_settled(page, active_labels)
         return _result(
             True,
             "MODULE_SEARCH_APPLIED",
-            f"Đã lọc {module_name} theo {', '.join(active_labels)}.",
-            module=module_name,
+            f"Đã lọc {search_spec.module_name} theo "
+            f"{', '.join(active_labels)}.",
+            module=search_spec.module_name,
             filter_kinds=active,
         )
     except RuntimeError as exc:
@@ -824,19 +881,21 @@ def _search_module_fields(
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
-        return _result(False, code, message, module=module_name)
+        return _result(False, code, message, module=search_spec.module_name)
     except PlaywrightTimeoutError as exc:
         detail = str(exc).splitlines()[0]
         if search_started:
             code = "MODULE_SEARCH_NOT_CONFIRMED"
             message = (
-                f"Đã nhập filter trong {module_name}, nhưng WFX chưa xác nhận: "
+                f"Đã nhập filter trong {search_spec.module_name}, nhưng WFX "
+                "chưa xác nhận: "
                 f"{detail}"
             )
         else:
             code = "MODULE_SEARCH_NOT_READY"
             message = (
-                f"App đã tự mở {module_name}, nhưng các ô search chưa sẵn sàng: "
+                f"App đã tự mở {search_spec.module_name}, nhưng các ô search "
+                "chưa sẵn sàng: "
                 f"{detail}"
             )
         _write_log(log, message)
@@ -844,126 +903,135 @@ def _search_module_fields(
             False,
             code,
             message,
-            module=module_name,
+            module=search_spec.module_name,
         )
     except Exception as exc:
         detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
-        message = f"Không thể tìm trong {module_name}: {detail}"
+        message = f"Không thể tìm trong {search_spec.module_name}: {detail}"
         _write_log(log, message)
         return _result(
             False,
             "MODULE_SEARCH_FAILED",
             message,
-            module=module_name,
+            module=search_spec.module_name,
         )
     finally:
         if playwright is not None:
             playwright.stop()
 
 
-def _search_module_list(
-    module_name: str,
+def _open_list_search_context(
+    page: Page,
+    search_spec: ModuleSearchSpec,
     xpath: str,
-    query: str,
-    label: str,
+    log: Callable[[str], None],
+) -> Frame:
+    try:
+        frame, _context_field = _search_input_in_frames(
+            page,
+            search_spec.context_field.selectors,
+            search_spec.context_field.aliases,
+            timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
+        )
+        return frame
+    except PlaywrightTimeoutError:
+        _write_log(
+            log,
+            f"[MODULE SEARCH] {search_spec.module_name} chưa sẵn sàng; "
+            "đang tự mở List...",
+        )
+        previous_grids = (
+            _mark_grid_roots(page)
+            if search_spec.requires_floating_filter
+            else None
+        )
+        _click_module_menu_on_page(page, search_spec.module_name, xpath, log)
+        if search_spec.requires_floating_filter:
+            _show_module_floating_filter(page, log, previous_grids)
+        frame, _context_field = _search_input_in_frames(
+            page,
+            search_spec.context_field.selectors,
+            search_spec.context_field.aliases,
+            timeout_s=30,
+        )
+        return frame
+
+
+def _clear_list_search_fields(
+    frame: Frame,
     selectors: tuple[str, ...],
-    aliases: tuple[str, ...],
-    context_selectors: tuple[str, ...],
-    context_aliases: tuple[str, ...],
-    module_field_selectors: tuple[str, ...],
-    requires_floating_filter: bool,
+) -> None:
+    """Xóa filter cũ để các lần Search không âm thầm kết hợp điều kiện."""
+    # Một locator union trả node unique theo DOM order, tránh query lại cùng
+    # input khi nhiều selector fallback cùng match nó.
+    candidates = frame.locator(", ".join(selectors))
+    for index in range(candidates.count()):
+        candidate = candidates.nth(index)
+        try:
+            if not candidate.is_visible() or not candidate.is_enabled():
+                continue
+            if not candidate.input_value(timeout=500):
+                continue
+            candidate.fill("")
+            try:
+                candidate.dispatch_event("change")
+            except PlaywrightError:
+                pass
+        except PlaywrightError:
+            continue
+
+
+def _search_module_list(
+    search_spec: ModuleSearchSpec,
+    xpath: str,
+    filter_kind: str,
+    query: str,
     log: Callable[[str], None],
 ) -> dict[str, Any]:
+    selected_field = search_spec.fields.get(filter_kind)
+    if selected_field is None:
+        return _result(
+            False,
+            "INVALID_FILTER",
+            f"Kiểu tìm {search_spec.module_name} không hợp lệ.",
+        )
     query = str(query or "").strip()
     if not query:
         return _result(
             False,
             "QUERY_REQUIRED",
-            f"Vui lòng nhập {label} cần tìm.",
+            f"Vui lòng nhập {selected_field.label} cần tìm.",
         )
     playwright: Playwright | None = None
+    search_started = False
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
-        try:
-            frame, _context_field = _search_input_in_frames(
-                page,
-                context_selectors,
-                context_aliases,
-                timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
-            )
-        except PlaywrightTimeoutError:
-            _write_log(
-                log,
-                f"[MODULE SEARCH] {module_name} chưa sẵn sàng; "
-                "đang tự mở List...",
-            )
-            previous_grids = (
-                _mark_grid_roots(page) if requires_floating_filter else None
-            )
-            _click_module_menu_on_page(page, module_name, xpath, log)
-            if requires_floating_filter:
-                _show_module_floating_filter(
-                    page,
-                    log,
-                    previous_grids,
-                )
-            frame, _context_field = _search_input_in_frames(
-                page,
-                context_selectors,
-                context_aliases,
-                timeout_s=30,
-            )
-
-        # OC/Sample/Sale chỉ chọn một kiểu filter mỗi lần. Xóa các filter còn
-        # lại để lần tìm trước không âm thầm kết hợp với lần tìm hiện tại.
-        for selector in dict.fromkeys(module_field_selectors):
-            try:
-                candidates = frame.locator(selector)
-                for index in range(candidates.count()):
-                    candidate = candidates.nth(index)
-                    if (
-                        candidate.is_visible()
-                        and candidate.is_enabled()
-                        and candidate.input_value(timeout=500)
-                    ):
-                        candidate.fill("")
-                        try:
-                            candidate.dispatch_event("change")
-                        except PlaywrightError:
-                            pass
-            except PlaywrightError:
-                continue
+        frame = _open_list_search_context(page, search_spec, xpath, log)
+        _clear_list_search_fields(frame, search_spec.field_selectors)
         _wait(page, 250)
         field = _search_input_in_frame(
             page,
             frame,
-            selectors,
-            aliases,
+            selected_field.selectors,
+            selected_field.aliases,
             timeout_s=8,
         )
-        try:
-            _apply_module_search(page, field, query, label, log)
-        except PlaywrightTimeoutError as exc:
-            detail = str(exc).splitlines()[0]
-            message = (
-                f"Đã nhập {label} trong {module_name}, nhưng WFX chưa "
-                f"xác nhận kết quả: {detail}"
-            )
-            _write_log(log, message)
-            return _result(
-                False,
-                "MODULE_SEARCH_NOT_CONFIRMED",
-                message,
-                module=module_name,
-                filter_kind=label,
-            )
+        search_started = True
+        _apply_module_search(
+            page,
+            field,
+            query,
+            selected_field.label,
+            log,
+        )
         return _result(
             True,
             "MODULE_SEARCH_APPLIED",
-            f"Đã tìm {module_name} theo {label}: {query}.",
-            module=module_name,
-            filter_kind=label,
+            f"Đã tìm {search_spec.module_name} theo "
+            f"{selected_field.label}: {query}.",
+            module=search_spec.module_name,
+            filter_kind=selected_field.label,
         )
     except RuntimeError as exc:
         code = str(exc)
@@ -972,32 +1040,42 @@ def _search_module_list(
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
-        return _result(False, code, message, module=module_name)
+        return _result(False, code, message, module=search_spec.module_name)
     except PlaywrightTimeoutError as exc:
         detail = str(exc).splitlines()[0]
-        message = (
-            f"App đã tự mở {module_name}, nhưng ô {label} chưa sẵn sàng: "
-            f"{detail}"
-        )
+        if search_started:
+            code = "MODULE_SEARCH_NOT_CONFIRMED"
+            message = (
+                f"Đã nhập {selected_field.label} trong "
+                f"{search_spec.module_name}, nhưng WFX chưa xác nhận kết quả: "
+                f"{detail}"
+            )
+        else:
+            code = "MODULE_SEARCH_NOT_READY"
+            message = (
+                f"App đã tự mở {search_spec.module_name}, nhưng ô "
+                f"{selected_field.label} chưa sẵn sàng: {detail}"
+            )
         _write_log(log, message)
         return _result(
             False,
-            "MODULE_SEARCH_NOT_READY",
+            code,
             message,
-            module=module_name,
-            filter_kind=label,
+            module=search_spec.module_name,
+            filter_kind=selected_field.label,
         )
     except Exception as exc:
         detail = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
         message = (
-            f"Không thể tìm theo {label} trong {module_name}: {detail}"
+            f"Không thể tìm theo {selected_field.label} trong "
+            f"{search_spec.module_name}: {detail}"
         )
         _write_log(log, message)
         return _result(
             False,
             "MODULE_SEARCH_FAILED",
             message,
-            module=module_name,
+            module=search_spec.module_name,
         )
     finally:
         if playwright is not None:
@@ -1010,36 +1088,11 @@ def search_oc_list(
     query: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    definitions = {
-        "oc_no": (
-            "OC No.",
-            ("#txtOCNO", 'input[name="txtOCNO"]'),
-            ("oc no", "proforma invoice num with order ref num"),
-        ),
-        "style": (
-            "Style",
-            ("#txtArticle", 'input[name="txtArticle"]'),
-            ("buyer style ref num", "style", "article"),
-        ),
-    }
-    if filter_kind not in definitions:
-        return _result(False, "INVALID_FILTER", "Kiểu tìm OC không hợp lệ.")
-    label, selectors, aliases = definitions[filter_kind]
     return _search_module_list(
-        "OC List",
+        OC_SEARCH_SPEC,
         xpath,
+        filter_kind,
         query,
-        label,
-        selectors,
-        aliases,
-        ("#txtOCNO", 'input[name="txtOCNO"]'),
-        ("proforma invoice num with order ref num", "oc no"),
-        tuple(
-            selector
-            for _label, selectors, _aliases in definitions.values()
-            for selector in selectors
-        ),
-        False,
         log,
     )
 
@@ -1050,60 +1103,11 @@ def search_sample_list(
     query: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    definitions = {
-        "sample_no": (
-            "Sample Order No.",
-            (
-                "#txtSampleOrderNo",
-                "#txtSampleNo",
-                'input[aria-label*="Sample Order" i]',
-                'input[id*="SampleOrder" i]',
-            ),
-            ("sample order no", "sample order number", "sample no"),
-        ),
-        "style": (
-            "Style",
-            (
-                "#txtArticle",
-                'input[aria-label*="Style" i]',
-                'input[id*="Style" i]',
-                'input[id*="Article" i]',
-            ),
-            ("buyer style", "style", "article"),
-        ),
-        "created_by": (
-            "Created By",
-            (
-                'input[aria-label*="Created By" i]',
-                'input[id*="CreatedBy" i]',
-                'input[name*="CreatedBy" i]',
-            ),
-            ("created by", "createdby", "creator"),
-        ),
-    }
-    if filter_kind not in definitions:
-        return _result(False, "INVALID_FILTER", "Kiểu tìm Sample không hợp lệ.")
-    label, selectors, aliases = definitions[filter_kind]
     return _search_module_list(
-        "Sample List",
+        SAMPLE_SEARCH_SPEC,
         xpath,
+        filter_kind,
         query,
-        label,
-        selectors,
-        aliases,
-        (
-            "#txtSampleOrderNo",
-            "#txtSampleNo",
-            'input[aria-label*="Sample Order" i]',
-            'input[id*="SampleOrder" i]',
-        ),
-        ("sample order no", "sample order number", "sample no"),
-        tuple(
-            selector
-            for _label, selectors, _aliases in definitions.values()
-            for selector in selectors
-        ),
-        True,
         log,
     )
 
@@ -1114,53 +1118,11 @@ def search_sale_asn_list(
     query: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    definitions = {
-        "invoice_no": (
-            "Invoice No.",
-            (
-                "#txtInvoiceNo",
-                'input[aria-label*="Invoice" i]',
-                'input[id*="Invoice" i]',
-            ),
-            ("invoice no", "invoice number", "invoice"),
-        ),
-        "buyer_order_ref": (
-            "Buyer Order Ref/OC No.",
-            (
-                'input[aria-label*="Buyer Order Ref/Oc Num" i]',
-                'input[aria-label*="Buyer Order Ref" i]',
-            ),
-            (
-                "buyer order ref oc num",
-                "buyer order ref",
-                "oc num",
-            ),
-        ),
-    }
-    # Tương thích job cũ trước khi UI đổi tên filter không tồn tại "Style".
-    definitions["style"] = definitions["buyer_order_ref"]
-    if filter_kind not in definitions:
-        return _result(False, "INVALID_FILTER", "Kiểu tìm Sale ASN không hợp lệ.")
-    label, selectors, aliases = definitions[filter_kind]
     return _search_module_list(
-        "Sale ASN",
+        SALE_ASN_SEARCH_SPEC,
         xpath,
+        filter_kind,
         query,
-        label,
-        selectors,
-        aliases,
-        (
-            "#txtInvoiceNo",
-            'input[aria-label*="Invoice" i]',
-            'input[id*="Invoice" i]',
-        ),
-        ("invoice no", "invoice number", "invoice"),
-        tuple(
-            selector
-            for _label, selectors, _aliases in definitions.values()
-            for selector in selectors
-        ),
-        True,
         log,
     )
 
@@ -1172,25 +1134,12 @@ def search_rmpo_list(
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     return _search_module_fields(
-        "RMPO List",
+        RMPO_SEARCH_SPEC,
         xpath,
         {
             "supplier": supplier,
             "order_no": order_no,
         },
-        {
-            "supplier": (
-                "Supplier",
-                "#gridRMPO_tblGridHeader_trSearch_td_colSupplier "
-                "input#txtSupplier",
-            ),
-            "order_no": (
-                "RMPO No.",
-                "#gridRMPO_tblGridHeader_trSearch_td_colOrderNo "
-                "input#txtOrderNo",
-            ),
-        },
-        "#gridRMPO_tblGridHeader_trSearch_td_colSupplier",
         log,
     )
 
@@ -1204,14 +1153,15 @@ def search_indent_list(
     style: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    if module_name not in {"Indent List", "User Indent"}:
+    search_spec = INDENT_SEARCH_SPECS.get(module_name)
+    if search_spec is None:
         return _result(
             False,
             "INVALID_FILTER",
             "Module Indent không hợp lệ.",
         )
     return _search_module_fields(
-        module_name,
+        search_spec,
         xpath,
         {
             "supplier": supplier,
@@ -1219,29 +1169,6 @@ def search_indent_list(
             "indent_no": indent_no,
             "style": style,
         },
-        {
-            "supplier": (
-                "Supplier",
-                "#gridMOLList_tblGridHeader_trSearch_td_ColSupplier "
-                "input#txtSupplier",
-            ),
-            "article": (
-                "Article",
-                "#gridMOLList_tblGridHeader_trSearch_td_ColArticle "
-                "input#txtArticle",
-            ),
-            "indent_no": (
-                "Indent No.",
-                "#gridMOLList_tblGridHeader_trSearch_td_ColIndentNo "
-                "input#txtIndentNo",
-            ),
-            "style": (
-                "Style",
-                "#gridMOLList_tblGridHeader_trSearch_td_ColStyle "
-                "input#txtStyle",
-            ),
-        },
-        "#gridMOLList_tblGridHeader_trSearch_td_ColIndentNo",
         log,
     )
 
