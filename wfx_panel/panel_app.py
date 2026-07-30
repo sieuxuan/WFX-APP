@@ -59,9 +59,11 @@ from wfx_panel.win32_window import (
 HOTKEY = hotkey.DEFAULT
 STATUS_POLL_SECONDS = 5
 TASKBAR_ACTIVATION_POLL_SECONDS = 0.25
+PANEL_BLUR_GRACE_SECONDS = 0.35
 BUBBLE_CONTEXT_POLL_SECONDS = 0.04
 BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS = 0.75
 TRAY_RIGHT_BUTTON_UP = 0x0205  # WM_RBUTTONUP
+TRAY_LEFT_BUTTON_DOUBLE_CLICK = 0x0203  # WM_LBUTTONDBLCLK
 UPDATE_INITIAL_DELAY_SECONDS = 1
 UPDATE_POLL_SECONDS = 4 * 60 * 60
 WFX_MANUAL_URL = (
@@ -96,6 +98,9 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "find_buyer_reference",
         "open_catalog_destination",
         "download_catalog_file",
+        "export_catalog_costing",
+        "prepare_catalog_costing_import",
+        "apply_catalog_costing",
         "open_sale_asn_new",
         "open_sample_new",
         "search_oc",
@@ -117,6 +122,9 @@ NOTIFICATION_ACTION_LABELS = {
     "find_buyer_reference": "Tìm Buyer Reference",
     "open_catalog_destination": "Catalog",
     "download_catalog_file": "Tải file",
+    "export_catalog_costing": "Tải Costing",
+    "prepare_catalog_costing_import": "Kiểm tra file Costing",
+    "apply_catalog_costing": "Áp dụng Costing",
     "open_sale_asn_new": "Sale ASN",
     "open_sample_new": "Sample",
     "search_oc": "Tìm OC",
@@ -144,14 +152,47 @@ def _reveal_downloaded_file(value: object) -> bool:
         return False
 
 
-class _WfxTrayIcon(pystray.Icon):
-    """Báo right-click tray trước khi backend Win32 hiển thị popup menu."""
+def _safe_costing_file_stem(value: object) -> str:
+    stem = "".join(
+        character
+        for character in str(value or "").strip()
+        if character.isalnum() or character in {"-", "_"}
+    )
+    return stem[:80] or "Costing"
 
-    def __init__(self, *args, on_context_menu=None, **kwargs):
+
+def _dialog_selected_path(selected: object) -> Path:
+    """Chuẩn hoá kết quả pywebview: Windows có thể trả str hoặc list[str]."""
+    value = selected
+    if not isinstance(selected, (str, Path)):
+        try:
+            value = selected[0]  # type: ignore[index]
+        except (IndexError, KeyError, TypeError) as error:
+            raise ValueError("File dialog không trả về đường dẫn.") from error
+    return Path(str(value)).expanduser().resolve()
+
+
+class _WfxTrayIcon(pystray.Icon):
+    """Bắt activation/right-click của tray theo đúng hành vi Windows."""
+
+    def __init__(
+        self,
+        *args,
+        on_context_menu=None,
+        on_activate=None,
+        **kwargs,
+    ):
         self._on_context_menu = on_context_menu
+        self._on_activate = on_activate
         super().__init__(*args, **kwargs)
 
     def _on_notify(self, wparam, lparam):
+        if (
+            int(lparam) == TRAY_LEFT_BUTTON_DOUBLE_CLICK
+            and self._on_activate
+        ):
+            self._on_activate()
+            return None
         if int(lparam) == TRAY_RIGHT_BUTTON_UP and self._on_context_menu:
             self._on_context_menu()
         return super()._on_notify(wparam, lparam)
@@ -298,6 +339,7 @@ class _BubbleMenuBridge:
 class PanelApp:
     def __init__(self):
         self.api = PanelAPI()
+        self._base_dir = self.api._base_dir
         self.window = None
         self.notification_window = None
         self.tray = None
@@ -331,6 +373,8 @@ class PanelApp:
         self._taskbar_focus_armed = False
         self._taskbar_opening = False
         self._taskbar_minimize_requested = False
+        self._panel_focus_lost_since = 0.0
+        self._panel_hide_pending = False
         self._bubble_menu_lock = threading.Lock()
         self._bubble_menu_visible = False
         self._bubble_menu_last_opened = 0.0
@@ -383,6 +427,125 @@ class PanelApp:
             )
         except Exception:
             pass
+
+    def choose_costing_import_file(self) -> dict:
+        """Mở native dialog; chỉ trả file do chính người dùng chọn."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ chọn file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ chọn file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_CANCELLED",
+                "message": "Đã huỷ chọn file Costing.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != ".xlsx":
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_TYPE_UNSUPPORTED",
+                "message": "Costing chỉ hỗ trợ file .xlsx.",
+            }
+        return {
+            "ok": True,
+            "code": "COSTING_FILE_SELECTED",
+            "message": f"Đã chọn {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
+    def choose_costing_export_file(
+        self,
+        style_code: str,
+        file_format: str = "xlsx",
+    ) -> dict:
+        """Chọn đích lưu XLSX; dùng đúng toàn bộ đường dẫn từ native dialog."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        if str(file_format or "xlsx").casefold() != "xlsx":
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_TYPE_UNSUPPORTED",
+                "message": "Costing chỉ hỗ trợ file .xlsx.",
+            }
+        extension = ".xlsx"
+        stem = _safe_costing_file_stem(style_code)
+        saved_directory = str(
+            prefs.load_prefs(self._base_dir).get("costing_export_dir") or ""
+        ).strip()
+        if not saved_directory or not Path(saved_directory).is_dir():
+            saved_directory = ""
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                directory=saved_directory,
+                allow_multiple=False,
+                save_filename=f"{stem}-Costing{extension}",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_CANCELLED",
+                "message": "Đã huỷ tải Costing.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "COSTING_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != extension:
+            target = target.with_suffix(extension)
+        try:
+            prefs.save_prefs(
+                self._base_dir,
+                costing_export_dir=str(target.parent),
+            )
+        except OSError:
+            pass
+        return {
+            "ok": True,
+            "code": "COSTING_EXPORT_PATH_SELECTED",
+            "message": f"Sẽ lưu thành {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+            "file_format": extension.lstrip("."),
+        }
 
     def hide_panel(self):
         if (
@@ -443,12 +606,28 @@ class PanelApp:
                 "message": f"Không mở được panel: {error}",
             }
 
+    def _restore_bubble(self) -> None:
+        """Hiện hoặc restore launcher, kể cả khi đang minimized ở taskbar."""
+        restored = _native_window_visibility(
+            BUBBLE_WINDOW_TITLE,
+            True,
+            on_top=self._always_on_top,
+        )
+        if not restored and self.bubble_window is not None:
+            try:
+                self.bubble_window.show()
+                self.bubble_window.on_top = self._always_on_top
+            except Exception:
+                pass
+        self._schedule_bubble_native_bounds()
+        self._bubble_hidden = False
+
     def toggle_panel(self) -> dict:
         """Bấm bubble: đang mở thì thu, đang ẩn thì bung."""
         if self._panel_visible:
             self.hide_panel()
             return {"ok": True, "code": "PANEL_HIDDEN", "message": "Đã thu panel."}
-        return self.show_panel()
+        return self.show_from_tray()
 
     def _position_panel_beside_bubble(self) -> None:
         """Đặt panel cạnh bubble và giữ toàn bộ trong cùng một màn hình."""
@@ -515,8 +694,41 @@ class PanelApp:
         foreground = _foreground_process_id()
         if foreground is not None and foreground == os.getpid():
             return {"ok": True, "code": "PANEL_FOCUS_KEPT"}
+        if self.api.is_action_running():
+            self._panel_hide_pending = True
+            self._panel_focus_lost_since = time.monotonic()
+            return {"ok": True, "code": "PANEL_HIDE_DEFERRED"}
         self.hide_panel()
         return {"ok": True, "code": "PANEL_HIDDEN_ON_BLUR"}
+
+    def _track_panel_foreground(self, foreground_pid: int | None) -> None:
+        """Fallback native khi WebView2 bỏ lỡ sự kiện ``window.blur``."""
+        if not self._panel_visible:
+            self._panel_focus_lost_since = 0.0
+            self._panel_hide_pending = False
+            return
+        if foreground_pid is None or foreground_pid == os.getpid():
+            self._panel_focus_lost_since = 0.0
+            self._panel_hide_pending = False
+            return
+
+        now = time.monotonic()
+        if self.api.is_action_running():
+            self._panel_hide_pending = True
+            if self._panel_focus_lost_since <= 0:
+                self._panel_focus_lost_since = now
+            return
+        if self._panel_hide_pending or (
+            self._panel_focus_lost_since > 0
+            and now - self._panel_focus_lost_since >= PANEL_BLUR_GRACE_SECONDS
+        ):
+            crash_log.record("PANEL_HIDDEN_NATIVE_BLUR")
+            self.hide_panel()
+            self._panel_hide_pending = False
+            self._panel_focus_lost_since = 0.0
+            return
+        if self._panel_focus_lost_since <= 0:
+            self._panel_focus_lost_since = now
 
     def note_bubble_interaction(self) -> dict:
         """Đánh dấu click/drag trực tiếp để monitor taskbar không toggle lần hai."""
@@ -769,24 +981,10 @@ class PanelApp:
                 pass
         self._bubble_hidden = True
 
-    def show_from_tray(self) -> None:
-        """Bật lại bubble (và mở panel) từ khay hệ thống."""
-        if (
-            self.bubble_window is not None
-            and not _native_window_visibility(
-                BUBBLE_WINDOW_TITLE,
-                True,
-                on_top=self._always_on_top,
-            )
-        ):
-            try:
-                self.bubble_window.show()
-                self.bubble_window.on_top = self._always_on_top
-            except Exception:
-                pass
-        self._schedule_bubble_native_bounds()
-        self._bubble_hidden = False
-        self.show_panel()
+    def show_from_tray(self) -> dict:
+        """Khôi phục cả bubble lẫn panel từ tray, taskbar hoặc hotkey."""
+        self._restore_bubble()
+        return self.show_panel()
 
     def open_wfx_manual(self) -> dict:
         """Mở hướng dẫn WFX trong trình duyệt mặc định của người dùng."""
@@ -819,11 +1017,8 @@ class PanelApp:
             pass
 
     def toggle(self):
-        """Hotkey: nếu đang ẩn hẳn trong tray thì bật lại, còn lại bung/thu panel."""
-        if self._bubble_hidden:
-            self.show_from_tray()
-        else:
-            self.toggle_panel()
+        """Hotkey luôn khôi phục bubble khi panel đang đóng/minimized."""
+        self.toggle_panel()
 
     def _apply_hotkey(self, spec: str) -> str | None:
         """Đăng ký hotkey mới; trả thông điệp lỗi nếu đăng ký thất bại."""
@@ -1031,8 +1226,10 @@ class PanelApp:
 
         if method == "download_catalog_file" and result.get("ok"):
             _reveal_downloaded_file(result.get("download_path"))
+        if method == "export_catalog_costing" and result.get("ok"):
+            _reveal_downloaded_file(result.get("export_path"))
 
-        if method in MODULE_NOTIFICATION_METHODS:
+        if method in MODULE_NOTIFICATION_METHODS and not self._panel_visible:
             self._show_notification(
                 result,
                 method=method,
@@ -1093,10 +1290,7 @@ class PanelApp:
 
     def activate(self):
         """Mở lại khi người dùng bấm mở app lần hai (SingleInstance báo sang)."""
-        if self._bubble_hidden:
-            self.show_from_tray()
-        else:
-            self.show_panel()
+        self.show_from_tray()
 
     def _open_panel_from_taskbar(self) -> None:
         """Khôi phục bubble và mở toàn bộ UI khi kích hoạt từ taskbar."""
@@ -1119,7 +1313,7 @@ class PanelApp:
             # Bubble đang visible vì _bubble_hidden đã được guard ở trên.
             # Không gọi restore/show qua WinForms Invoke từ thread monitor:
             # thao tác đó từng gây AppHangB1 khi trùng native drag/input-loop.
-            self._schedule_bubble_native_bounds()
+            self._restore_bubble()
             self.show_panel()
         finally:
             completed.set()
@@ -1155,6 +1349,7 @@ class PanelApp:
                 foreground_hwnd = _foreground_window_hwnd()
                 bubble_hwnd = _find_window_hwnd(BUBBLE_WINDOW_TITLE)
                 panel_hwnd = _find_window_hwnd(MAIN_WINDOW_TITLE)
+                self._track_panel_foreground(foreground_pid)
                 if foreground_pid is not None and foreground_pid != os.getpid():
                     self._taskbar_focus_armed = True
                 elif (
@@ -1278,6 +1473,7 @@ class PanelApp:
             "WFX Smart Panel",
             menu,
             on_context_menu=self._note_tray_context_menu,
+            on_activate=self.show_from_tray,
         )
         self.tray.run()  # blocking → chạy trong thread riêng
 
@@ -1401,6 +1597,8 @@ class PanelApp:
         self.api.request_panel_hide = self.request_panel_hide  # type: ignore[attr-defined]
         self.api.open_wfx_manual = self.open_wfx_manual  # type: ignore[attr-defined]
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
+        self.api.choose_costing_import_file = self.choose_costing_import_file  # type: ignore[attr-defined]
+        self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
         self.api.set_hotkey_applier(self._apply_hotkey)

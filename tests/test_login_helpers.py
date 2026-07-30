@@ -8,6 +8,20 @@ import login
 from wfx_panel.automation import browser, catalog, modules, session
 
 
+def test_legacy_login_exports_atomic_catalog_destination_flow():
+    assert callable(login.find_and_open_catalog_destination)
+    assert callable(login.scan_active_open_costing)
+
+
+def test_catalog_master_waits_for_data_and_recovers_phantom_empty_filter():
+    source = Path(catalog.__file__).read_text(encoding="utf-8")
+
+    assert "def _wait_catalog_grid_data_ready(" in source
+    assert source.count("require_data_ready=True") >= 5
+    assert "[FILTER] Grid chưa phản hồi, đang áp dụng lại bộ lọc..." in source
+    assert "filter_reapplied = True" in source
+
+
 def test_style_status_suffix_includes_both_grid_fields():
     suffix = login._style_status_suffix(
         {
@@ -483,10 +497,71 @@ def test_catalog_destination_uses_existing_article_popup(monkeypatch):
     result = catalog.open_catalog_destination("ABC123", "bom")
 
     assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    # Popup Article với tới được ngay trên CDP hiện tại: mở thẳng bằng probe
+    # ngắn, KHÔNG dựng lại driver/CDP (không nhấp banner "đang bị điều khiển").
     assert calls == [
-        ("destination", context, "bom", [], 20),
+        ("destination", context, "bom", [], 12),
         ("stop",),
     ]
+
+
+def test_catalog_destination_recycles_only_after_probe_times_out(monkeypatch):
+    calls = []
+
+    class Runtime:
+        def __init__(self, tag):
+            self.tag = tag
+
+        def stop(self):
+            calls.append(("stop", self.tag))
+
+    first_playwright = Runtime("first")
+    refreshed_playwright = Runtime("refreshed")
+
+    class PlaywrightStarter:
+        def start(self):
+            return first_playwright
+
+    context1 = object()
+    context2 = object()
+    browser1 = SimpleNamespace(contexts=[context1])
+    browser2 = SimpleNamespace(contexts=[context2])
+    page1 = object()
+    page2 = object()
+
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
+    monkeypatch.setattr(
+        catalog, "_connect_to_chrome", lambda _pw: (browser1, page1)
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_a: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _p: True)
+
+    def refresh(_pw, browser, _page, _log):
+        calls.append(("recycle", browser))
+        return refreshed_playwright, browser2, page2
+
+    monkeypatch.setattr(catalog, "_refresh_article_context", refresh)
+
+    attempts = []
+
+    def open_dest(actual_context, _destination, _previous, _log, timeout_seconds):
+        attempts.append((actual_context, timeout_seconds))
+        if len(attempts) == 1:
+            raise catalog.PlaywrightTimeoutError("ArticleTop chưa sẵn sàng")
+        return "BOM"
+
+    monkeypatch.setattr(catalog, "_open_article_destination", open_dest)
+
+    result = catalog.open_catalog_destination("ABC123", "bom")
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    # Probe trên driver hiện tại timeout -> mới dựng đúng một driver/CDP mới rồi
+    # thử lại trên context mới. Chỉ driver cuối cùng được stop.
+    assert attempts == [(context1, 12), (context2, 20)]
+    assert ("recycle", browser1) in calls
+    assert ("stop", "refreshed") in calls
+    assert ("stop", "first") not in calls
 
 
 def test_detached_article_frame_recycles_driver_and_cdp(monkeypatch):
@@ -556,7 +631,10 @@ def test_detached_article_frame_recycles_driver_and_cdp(monkeypatch):
     ]
 
 
-def test_healthy_article_frame_still_refreshes_before_popup_navigation(monkeypatch):
+def test_article_recovery_rebuilds_driver_when_invoked(monkeypatch):
+    # `_refresh_article_context` giờ là recovery primitive: callers chỉ gọi khi
+    # probe trên driver hiện tại đã timeout. Khi được gọi và vẫn còn popup
+    # Article, nó phải dựng lại driver/CDP để lấy frame WFX đã detach.
     class HealthyBody:
         def count(self):
             return 1
@@ -650,7 +728,9 @@ def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch)
     monkeypatch.setattr(
         catalog,
         "_show_catalog_floating_filter",
-        lambda actual_page, _log: (
+        lambda actual_page, _log, timeout_seconds: (
+            calls.append(("grid-timeout", timeout_seconds))
+            or
             calls.append(("existing-grid", actual_page)) or grid
         ),
     )
@@ -675,10 +755,277 @@ def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch)
 
     assert result["code"] == "RESULT_OPENED"
     assert calls == [
+        ("grid-timeout", 2),
         ("existing-grid", page),
         ("filter", grid, "code", "ABC123"),
         ("stop",),
     ]
+
+
+def test_catalog_search_and_destination_share_popup_driver(monkeypatch):
+    calls = []
+
+    class PlaywrightRuntime:
+        def stop(self):
+            calls.append(("stop",))
+
+    class PlaywrightStarter:
+        def start(self):
+            calls.append(("start",))
+            return PlaywrightRuntime()
+
+    article_top = SimpleNamespace(url="https://example.test/old-top")
+    article_page = SimpleNamespace(
+        url="https://example.test/wfx_ArticleDetail.aspx",
+        frame=lambda name: article_top if name == "ArticleTop" else None,
+    )
+    context = SimpleNamespace(pages=[article_page])
+    browser_instance = SimpleNamespace(contexts=[context])
+    page = object()
+    grid = object()
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda _playwright: (browser_instance, page),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+    monkeypatch.setattr(
+        catalog,
+        "_show_catalog_floating_filter",
+        lambda _page, _log, timeout_seconds: (
+            calls.append(("grid-timeout", timeout_seconds)) or grid
+        ),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_filter_grid_and_maybe_open",
+        lambda _grid, _kind, _query, _log: {
+            "ok": True,
+            "code": "RESULT_OPENED",
+            "article_code": "NEW-STYLE",
+            "style_status": {},
+        },
+    )
+
+    def open_destination(
+        actual_context,
+        destination,
+        previous_states,
+        _log,
+        timeout_seconds,
+    ):
+        calls.append(
+            (
+                "destination",
+                actual_context,
+                destination,
+                previous_states,
+                timeout_seconds,
+            )
+        )
+        return "Costsheet"
+
+    monkeypatch.setattr(catalog, "_open_article_destination", open_destination)
+
+    result = catalog.find_and_open_catalog_destination(
+        "Apparel",
+        "code",
+        "NEW-STYLE",
+        "costsheet",
+    )
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert calls[0] == ("start",)
+    assert calls[1] == ("grid-timeout", 2)
+    destination_call = calls[2]
+    assert destination_call[:3] == (
+        "destination",
+        context,
+        "costsheet",
+    )
+    assert destination_call[3] == [
+        (
+            article_page,
+            "https://example.test/wfx_ArticleDetail.aspx",
+            "https://example.test/old-top",
+        )
+    ]
+    assert destination_call[4] == 12
+    assert calls[-1] == ("stop",)
+
+
+def test_combined_catalog_destination_recovers_popup_without_research(monkeypatch):
+    calls = []
+
+    class Runtime:
+        def __init__(self, tag):
+            self.tag = tag
+
+        def stop(self):
+            calls.append(("stop", self.tag))
+
+    first_runtime = Runtime("first")
+    refreshed_runtime = Runtime("refreshed")
+
+    class PlaywrightStarter:
+        def start(self):
+            return first_runtime
+
+    old_article_top = SimpleNamespace(url="https://example.test/old-top")
+    old_article_page = SimpleNamespace(
+        url="https://example.test/wfx_ArticleDetail.aspx",
+        frame=lambda name: old_article_top if name == "ArticleTop" else None,
+    )
+    old_context = SimpleNamespace(pages=[old_article_page])
+    new_context = SimpleNamespace(pages=[])
+    old_browser = SimpleNamespace(contexts=[old_context])
+    new_browser = SimpleNamespace(contexts=[new_context])
+    old_page = object()
+    new_page = object()
+    grid = object()
+
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda _playwright: (old_browser, old_page),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+    monkeypatch.setattr(
+        catalog,
+        "_show_catalog_floating_filter",
+        lambda _page, _log, timeout_seconds: (
+            calls.append(("grid-timeout", timeout_seconds)) or grid
+        ),
+    )
+
+    def filter_once(actual_grid, kind, query, _log):
+        calls.append(("filter", actual_grid, kind, query))
+        return {
+            "ok": True,
+            "code": "RESULT_OPENED",
+            "article_code": "ABC123",
+            "style_status": {},
+        }
+
+    monkeypatch.setattr(catalog, "_filter_grid_and_maybe_open", filter_once)
+
+    def refresh(actual_runtime, actual_browser, actual_page, _log):
+        calls.append(
+            ("refresh", actual_runtime, actual_browser, actual_page)
+        )
+        return refreshed_runtime, new_browser, new_page
+
+    monkeypatch.setattr(catalog, "_refresh_article_context", refresh)
+    attempts = []
+
+    def open_destination(
+        actual_context,
+        destination,
+        previous_states,
+        _log,
+        timeout_seconds,
+    ):
+        attempts.append(
+            (actual_context, destination, previous_states, timeout_seconds)
+        )
+        if len(attempts) == 1:
+            raise catalog.PlaywrightTimeoutError("ArticleTop detached")
+        return "Costsheet"
+
+    monkeypatch.setattr(catalog, "_open_article_destination", open_destination)
+
+    result = catalog.find_and_open_catalog_destination(
+        "Apparel",
+        "code",
+        "ABC123",
+        "costsheet",
+    )
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert len(attempts) == 2
+    assert attempts[0][0] is old_context
+    assert attempts[0][1] == "costsheet"
+    assert attempts[0][2] == [
+        (
+            old_article_page,
+            "https://example.test/wfx_ArticleDetail.aspx",
+            "https://example.test/old-top",
+        )
+    ]
+    assert attempts[0][3] == 12
+    assert attempts[1:] == [
+        (new_context, "costsheet", [], 20),
+    ]
+    # Không lọc Catalog lần hai sau khi popup bị detach.
+    assert [call for call in calls if call[0] == "filter"] == [
+        ("filter", grid, "code", "ABC123")
+    ]
+    assert (
+        "refresh",
+        first_runtime,
+        old_browser,
+        old_page,
+    ) in calls
+    assert calls[-1] == ("stop", "refreshed")
+
+
+def test_new_article_tab_is_focused_before_waiting_for_articletop():
+    calls = []
+
+    class Target:
+        def count(self):
+            return 1
+
+        def wait_for(self, **kwargs):
+            calls.append(("wait", kwargs))
+
+        def evaluate(self, script):
+            calls.append(("click", script))
+
+    class ArticleTop:
+        url = "https://example.test/new-top"
+
+        def locator(self, selector):
+            calls.append(("locator", selector))
+            return Target()
+
+    class NewArticlePage:
+        url = "about:blank"
+
+        def __init__(self):
+            self.focused = False
+
+        def bring_to_front(self):
+            self.focused = True
+            self.url = "https://example.test/wfx_ArticleDetail.aspx"
+            calls.append(("focus",))
+
+        def frame(self, name):
+            assert name == "ArticleTop"
+            return ArticleTop() if self.focused else None
+
+    old_page = SimpleNamespace(url="https://example.test/catalog")
+    new_page = NewArticlePage()
+    context = SimpleNamespace(pages=[old_page, new_page])
+
+    label = catalog._open_article_destination(
+        context,
+        "costsheet",
+        [(old_page, old_page.url, "")],
+        lambda line: calls.append(("log", line)),
+        timeout_seconds=1,
+    )
+
+    assert label == "Costsheet"
+    assert ("locator", "#CostSheet") in calls
+    assert calls.index(("focus",)) < calls.index(("locator", "#CostSheet"))
+    assert sum(1 for call in calls if call == ("focus",)) == 1
 
 
 def test_catalog_folder_rejects_non_numeric_node_before_browser_access():

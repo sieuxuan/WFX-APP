@@ -249,7 +249,11 @@ def browser_status() -> dict[str, Any]:
     }
 
 
-def _connect_to_chrome(playwright: Playwright) -> tuple[Browser, Page]:
+def _connect_to_chrome(
+    playwright: Playwright,
+    *,
+    bring_to_front: bool = True,
+) -> tuple[Browser, Page]:
     browser = connect_browser(playwright, CDP_URL)
     try:
         contexts = browser.contexts
@@ -276,7 +280,8 @@ def _connect_to_chrome(playwright: Playwright) -> tuple[Browser, Page]:
         page = next((p for p in context.pages if p.url in ("", "about:blank")), None)
     if page is None:
         page = context.new_page()
-    page.bring_to_front()
+    if bring_to_front:
+        page.bring_to_front()
     return browser, page
 
 

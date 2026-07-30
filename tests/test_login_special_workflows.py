@@ -133,6 +133,26 @@ def test_qa_advance_pr_and_expense_new_use_current_list_controls():
     assert '"MODULE_NEW_READY"' in new_block
 
 
+def test_generic_module_open_requires_real_navigation_confirmation():
+    open_block = SOURCE[
+        SOURCE.index("def open_module("):
+        SOURCE.index("def _active_wfx_page")
+    ]
+    assert "_mark_page_documents" in open_block
+    assert "_wait_for_module_navigation" in open_block
+    assert '"MODULE_OPEN_NOT_CONFIRMED"' in open_block
+
+
+def test_company_foc_auto_opens_company_setup_when_context_is_stale():
+    block = SOURCE[
+        SOURCE.index("def toggle_company_foc"):
+    ]
+    assert 'timeout_s=1' in block
+    assert '_click_module_menu_on_page(page, "Company Setup", _xpath, log)' in block
+    assert '"COMPANY_LIST_OPEN_FAILED"' in block
+    assert '"COMPANY_LIST_NOT_OPEN"' not in block
+
+
 def test_supplier_uses_exact_actionable_master_and_company_search():
     assert "def _actionable_master" in SOURCE
     assert "span[onclick], a, button, [role=\"button\"]" in SOURCE
@@ -167,7 +187,8 @@ def test_buyer_search_auto_opens_list_and_resolves_first_edit_link():
         SOURCE.index("def _click_module_menu_on_page", buyer_start)
     ]
     assert "_click_module_menu_on_page" in buyer_block
-    assert "_buyer_search_frame(page, timeout_s=4)" in buyer_block
+    assert "MODULE_CONTEXT_PROBE_SECONDS = 0.75" in SOURCE
+    assert "timeout_s=MODULE_CONTEXT_PROBE_SECONDS" in buyer_block
     assert "đang tự mở List" in buyer_block
     assert '"BUYER_LIST_NOT_OPEN"' not in buyer_block
     assert "a#lnkEdit" in SOURCE
