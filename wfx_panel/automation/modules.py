@@ -6,6 +6,7 @@ Tách nguyên văn từ login.py — không đổi logic.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from wfx_panel.automation._common import (
     _MODULE_GRID_STATE_JS,
@@ -247,6 +248,90 @@ def _grid_root_is_new(
         return True
 
 
+@dataclass
+class _FloatingFilterState:
+    last_click: float = 0.0
+    last_error: Exception | None = None
+    stable_key: tuple[Any, ...] | None = None
+    stable_since: float = 0.0
+    settled_key: tuple[Any, ...] | None = None
+    filter_stable_since: float = 0.0
+    last_grid_state: dict[str, Any] | None = None
+
+
+def _module_grid_settled(
+    frame: Frame,
+    last_state: Mapping[str, Any],
+    state: _FloatingFilterState,
+) -> bool:
+    state_key = (
+        frame.url,
+        last_state["loading"],
+        last_state["noRows"],
+        last_state["renderedRows"],
+    )
+    ready = not last_state["loading"] and (
+        last_state["renderedRows"] > 0 or last_state["noRows"]
+    )
+    now = time.monotonic()
+    if ready and state_key == state.stable_key:
+        settled = now - state.stable_since >= 0.75
+    else:
+        state.stable_key = state_key
+        state.stable_since = now
+        settled = False
+    if settled and state.settled_key != state_key:
+        state.settled_key = state_key
+    return settled
+
+
+def _floating_filter_input_ready(
+    root: Any,
+    last_state: Mapping[str, Any],
+    state: _FloatingFilterState,
+    log: Callable[[str], None],
+) -> bool:
+    if not last_state["filterVisible"]:
+        state.filter_stable_since = 0.0
+        return False
+    now = time.monotonic()
+    if state.filter_stable_since <= 0:
+        state.filter_stable_since = now
+    if now - state.filter_stable_since < MODULE_FILTER_VISIBLE_STABLE_SECONDS:
+        return False
+    inputs = root.locator(
+        ".ag-floating-filter input, .ag-header-row-column-filter input"
+    )
+    visible_input = _first_visible(inputs)
+    if visible_input is None or not visible_input.is_enabled():
+        return False
+    value = visible_input.input_value(timeout=500)
+    _write_log(
+        log,
+        "[FLOATING FILTER] Hàng filter đã hiển thị; "
+        f"inputs={last_state['filterInputCount']}; "
+        f"headerHeight={last_state['headerHeight']}; "
+        f"filterRowHeight={last_state['filterRowHeight']}; "
+        f"value={value!r}.",
+    )
+    return True
+
+
+def _click_floating_filter_if_due(
+    frame: Frame,
+    state: _FloatingFilterState,
+    log: Callable[[str], None],
+) -> None:
+    button = _first_visible(frame.locator("#showfloatingfilter"))
+    now = time.monotonic()
+    if button is None or now - state.last_click < 1.5:
+        return
+    state.last_click = now
+    _write_log(log, "[FLOATING FILTER] Đang click #showfloatingfilter...")
+    # WFX binds the handler to a DIV; DOM click survives header relayout.
+    button.evaluate("element => element.click()")
+
+
 def _show_module_floating_filter(
     page: Page,
     log: Callable[[str], None],
@@ -255,13 +340,7 @@ def _show_module_floating_filter(
 ) -> Frame:
     """Chờ grid mới ổn định, bật filter và xác nhận hàng filter thật sự mở."""
     deadline = time.monotonic() + timeout_s
-    last_click = 0.0
-    last_error: Exception | None = None
-    stable_key: tuple[Any, ...] | None = None
-    stable_since = 0.0
-    settled_key: tuple[Any, ...] | None = None
-    filter_stable_since = 0.0
-    last_state: dict[str, Any] = {}
+    state = _FloatingFilterState()
     while time.monotonic() < deadline:
         for frame in page.frames:
             try:
@@ -272,88 +351,29 @@ def _show_module_floating_filter(
                         frame, root, previous_grids or []
                     ):
                         continue
-                    last_state = root.evaluate(_MODULE_GRID_STATE_JS)
-                    key = (
-                        frame.url,
-                        last_state["loading"],
-                        last_state["noRows"],
-                        last_state["renderedRows"],
-                    )
-                    ready = (
-                        not last_state["loading"]
-                        and (
-                            last_state["renderedRows"] > 0
-                            or last_state["noRows"]
-                        )
-                    )
-                    if ready and key == stable_key:
-                        grid_settled = time.monotonic() - stable_since >= 0.75
-                    else:
-                        stable_key = key
-                        stable_since = time.monotonic()
-                        grid_settled = False
-                    if not grid_settled:
+                    grid_state = root.evaluate(_MODULE_GRID_STATE_JS)
+                    state.last_grid_state = grid_state
+                    previous_settled_key = state.settled_key
+                    if not _module_grid_settled(frame, grid_state, state):
                         continue
-                    if settled_key != key:
-                        settled_key = key
+                    if previous_settled_key != state.settled_key:
                         _write_log(
                             log,
                             "[FLOATING FILTER] Grid đã ổn định; "
-                            f"loading={last_state['loading']}; "
-                            f"noRows={last_state['noRows']}; "
-                            f"renderedRows={last_state['renderedRows']}.",
+                            f"loading={grid_state['loading']}; "
+                            f"noRows={grid_state['noRows']}; "
+                            f"renderedRows={grid_state['renderedRows']}.",
                         )
-
-                    if last_state["filterVisible"]:
-                        if filter_stable_since <= 0:
-                            filter_stable_since = time.monotonic()
-                        if (
-                            time.monotonic() - filter_stable_since
-                            < MODULE_FILTER_VISIBLE_STABLE_SECONDS
-                        ):
-                            continue
-                        inputs = root.locator(
-                            ".ag-floating-filter input, "
-                            ".ag-header-row-column-filter input"
-                        )
-                        visible_input = _first_visible(inputs)
-                        if (
-                            visible_input is not None
-                            and visible_input.is_enabled()
-                        ):
-                            value = visible_input.input_value(timeout=500)
-                            _write_log(
-                                log,
-                                "[FLOATING FILTER] Hàng filter đã hiển thị; "
-                                f"inputs={last_state['filterInputCount']}; "
-                                f"headerHeight={last_state['headerHeight']}; "
-                                f"filterRowHeight={last_state['filterRowHeight']}; "
-                                f"value={value!r}.",
-                            )
-                            return frame
-                    else:
-                        filter_stable_since = 0.0
-
-                    show_button = frame.locator("#showfloatingfilter")
-                    button = _first_visible(show_button)
-                    if (
-                        button is not None
-                        and time.monotonic() - last_click >= 1.5
-                    ):
-                        last_click = time.monotonic()
-                        _write_log(
-                            log,
-                            "[FLOATING FILTER] Đang click #showfloatingfilter...",
-                        )
-                        # WFX gắn handler trực tiếp lên DIV. Native DOM click
-                        # ổn định hơn pointer click khi sidebar/grid vừa relayout.
-                        button.evaluate("element => element.click()")
+                    if _floating_filter_input_ready(root, grid_state, state, log):
+                        return frame
+                    _click_floating_filter_if_due(frame, state, log)
             except (PlaywrightError, PlaywrightTimeoutError) as exc:
-                last_error = exc
+                state.last_error = exc
         _wait(page, MODULE_GRID_POLL_MS)
     raise PlaywrightTimeoutError(
         "Show Floating Filter chưa sẵn sàng; "
-        f"gridState={last_state}; lastError={last_error}"
+        f"gridState={state.last_grid_state or {}}; "
+        f"lastError={state.last_error}"
     )
 
 
@@ -591,6 +611,41 @@ def _search_input_in_frame(
     )
 
 
+def _module_search_is_loading(page: Page) -> bool:
+    overlay_selector = (
+        ".ag-overlay-loading-wrapper, .ag-loading, "
+        ".loading, .loader, [aria-busy='true']"
+    )
+    for frame in page.frames:
+        try:
+            overlays = frame.locator(overlay_selector)
+            if any(
+                overlays.nth(index).is_visible()
+                for index in range(overlays.count())
+            ):
+                return True
+        except PlaywrightError:
+            continue
+    return False
+
+
+def _wait_module_search_stable(
+    page: Page,
+    label: str,
+) -> None:
+    deadline = time.monotonic() + 15
+    stable_since = 0.0
+    while time.monotonic() < deadline:
+        if _module_search_is_loading(page):
+            stable_since = 0.0
+        elif stable_since <= 0:
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since >= 0.8:
+            return
+        _wait(page, 200)
+    raise PlaywrightTimeoutError(f"Kết quả search {label} chưa ổn định.")
+
+
 def _apply_module_search(
     page: Page,
     field: Any,
@@ -615,35 +670,7 @@ def _apply_module_search(
         field.dispatch_event("change")
     except PlaywrightError:
         pass
-
-    deadline = time.monotonic() + 15
-    stable_since = 0.0
-    while time.monotonic() < deadline:
-        loading = False
-        for frame in page.frames:
-            try:
-                overlays = frame.locator(
-                    ".ag-overlay-loading-wrapper, .ag-loading, "
-                    ".loading, .loader, [aria-busy='true']"
-                )
-                if any(
-                    overlays.nth(index).is_visible()
-                    for index in range(overlays.count())
-                ):
-                    loading = True
-                    break
-            except PlaywrightError:
-                continue
-        if loading:
-            stable_since = 0.0
-        elif stable_since <= 0:
-            stable_since = time.monotonic()
-        elif time.monotonic() - stable_since >= 0.8:
-            return
-        _wait(page, 200)
-    raise PlaywrightTimeoutError(
-        f"Kết quả search {label} chưa ổn định."
-    )
+    _wait_module_search_stable(page, label)
 
 
 def _frame_with_visible_context(
@@ -1329,24 +1356,171 @@ def open_sample_new(
             playwright.stop()
 
 
+_COMPANY_FOC_CHECKBOX_SELECTOR = "#chkAllowToMarkFOCQtyOnRMPOASN"
+_COMPANY_MISC_SELECTOR = (
+    'a.clsDataLabel[onclick*="wfx_MyCompanySite.aspx"]'
+    '[onclick*="CurrentTab=4"][onclick*="CurrentItem=12"]'
+)
+_COMPANY_SAVE_SELECTOR = (
+    'td.clsBtnOff[title="Save"] a#lnkSave.clsNavLink, '
+    'a#lnkSave.clsNavLink[onclick*="ChangeAction"][onclick*="SAVE"]'
+)
+
+
+def _company_save_response_handler(
+    save_responses: list[dict[str, Any]],
+) -> Callable[[Any], None]:
+    def record_save_response(response: Any) -> None:
+        try:
+            method = str(response.request.method or "").upper()
+            if method not in {"POST", "PUT", "PATCH"}:
+                return
+            url = str(response.url or "")
+            if "wfx_mycompanysite" not in url.casefold():
+                return
+            save_responses.append(
+                {
+                    "ok": bool(response.ok),
+                    "status": int(response.status),
+                    "url": url,
+                }
+            )
+        except Exception:
+            return
+
+    return record_save_response
+
+
+def _wait_company_foc_saved(
+    page: Page,
+    wanted: bool,
+    snapshot: tuple[Frame | None, str],
+    save_responses: list[dict[str, Any]],
+) -> tuple[bool, bool | None]:
+    deadline = time.monotonic() + 25
+    observed_state: bool | None = None
+    while time.monotonic() < deadline:
+        try:
+            current_frame, current_checkbox = _visible_locator_in_frames(
+                page,
+                _COMPANY_FOC_CHECKBOX_SELECTOR,
+                timeout_s=1,
+            )
+            observed_state = current_checkbox.is_checked(timeout=1_000)
+            document_saved = _document_changed(current_frame, snapshot)
+            request_saved = any(response.get("ok") for response in save_responses)
+            if observed_state == wanted and (document_saved or request_saved):
+                return True, observed_state
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+        _wait(page, 250)
+    return False, observed_state
+
+
+def _unsaved_company_foc_result(
+    previous_mode: str,
+    observed_state: bool | None,
+    save_responses: list[dict[str, Any]],
+) -> dict[str, Any]:
+    failed_statuses = [
+        response["status"]
+        for response in save_responses
+        if not response.get("ok")
+    ]
+    detail = (
+        f" Server trả về HTTP {failed_statuses[-1]}."
+        if failed_statuses
+        else ""
+    )
+    observed_mode = previous_mode
+    if observed_state is True:
+        observed_mode = "FOC cho ASN"
+    elif observed_state is False:
+        observed_mode = "FOC cho GRN"
+    return _result(
+        False,
+        "COMPANY_FOC_SAVE_NOT_CONFIRMED",
+        "Đã đổi checkbox nhưng chưa xác nhận được WFX lưu thành công." + detail,
+        previous_foc_mode=previous_mode,
+        foc_mode=observed_mode,
+        foc_enabled=observed_state,
+        saved=False,
+    )
+
+
+def _toggle_company_foc_setting(
+    page: Page,
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    _frame, checkbox = _visible_locator_in_frames(
+        page,
+        _COMPANY_FOC_CHECKBOX_SELECTOR,
+        timeout_s=20,
+    )
+    previous = checkbox.is_checked(timeout=2_000)
+    wanted = not previous
+    previous_mode = "FOC cho ASN" if previous else "FOC cho GRN"
+    wanted_mode = "FOC cho ASN" if wanted else "FOC cho GRN"
+    _write_log(
+        log,
+        f"[COMPANY SETUP] Đang đổi {previous_mode} → {wanted_mode}...",
+    )
+    checkbox.set_checked(wanted, timeout=4_000)
+    if checkbox.is_checked(timeout=2_000) != wanted:
+        raise PlaywrightTimeoutError(
+            "Checkbox Allow To Mark FOC Qty On RMPO ASN chưa đổi trạng thái."
+        )
+
+    save_responses: list[dict[str, Any]] = []
+    response_handler = _company_save_response_handler(save_responses)
+    page.on("response", response_handler)
+    try:
+        # Reacquire Save after set_checked because WFX may replace the frame.
+        # Stop is deferred across the persistence confirmation critical section.
+        with cancellation_deferred():
+            save_frame, save = _visible_locator_in_frames(
+                page,
+                _COMPANY_SAVE_SELECTOR,
+                timeout_s=12,
+            )
+            snapshot = _mark_document(save_frame, "company-foc-save")
+            _write_log(log, "[COMPANY SETUP] Đang bấm Save...")
+            _click_navigation_control(save)
+            confirmed, observed_state = _wait_company_foc_saved(
+                page,
+                wanted,
+                snapshot,
+                save_responses,
+            )
+    finally:
+        try:
+            page.remove_listener("response", response_handler)
+        except Exception:
+            pass
+    if not confirmed:
+        return _unsaved_company_foc_result(
+            previous_mode,
+            observed_state,
+            save_responses,
+        )
+    _write_log(log, f"[COMPANY SETUP] Đã lưu thành công: {wanted_mode}.")
+    return _result(
+        True,
+        "COMPANY_FOC_CHANGED",
+        f"Đổi FOC thành công. Trạng thái hiện tại: {wanted_mode}.",
+        previous_foc_mode=previous_mode,
+        foc_mode=wanted_mode,
+        foc_enabled=wanted,
+        saved=True,
+    )
+
+
 def toggle_company_foc(
     _xpath: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Đổi FOC giữa ASN/GRN trong Company Setup và xác nhận WFX đã lưu."""
-    checkbox_selector = "#chkAllowToMarkFOCQtyOnRMPOASN"
-    misc_selector = (
-        'a.clsDataLabel[onclick*="wfx_MyCompanySite.aspx"]'
-        '[onclick*="CurrentTab=4"][onclick*="CurrentItem=12"]'
-    )
-    save_selector = (
-        'td.clsBtnOff[title="Save"] a#lnkSave.clsNavLink, '
-        'a#lnkSave.clsNavLink[onclick*="ChangeAction"][onclick*="SAVE"]'
-    )
     playwright: Playwright | None = None
-    response_handler: Callable[[Any], None] | None = None
-    page: Page | None = None
-    save_responses: list[dict[str, Any]] = []
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
@@ -1354,7 +1528,7 @@ def toggle_company_foc(
         try:
             _misc_frame, misc = _visible_locator_in_frames(
                 page,
-                misc_selector,
+                _COMPANY_MISC_SELECTOR,
                 timeout_s=1,
             )
         except PlaywrightTimeoutError:
@@ -1367,7 +1541,7 @@ def toggle_company_foc(
             try:
                 _misc_frame, misc = _visible_locator_in_frames(
                     page,
-                    misc_selector,
+                    _COMPANY_MISC_SELECTOR,
                     timeout_s=20,
                 )
             except PlaywrightTimeoutError:
@@ -1383,119 +1557,7 @@ def toggle_company_foc(
             "đang mở 12. Miscellaneous Settings...",
         )
         _click_navigation_control(misc)
-
-        frame, checkbox = _visible_locator_in_frames(
-            page, checkbox_selector, timeout_s=20
-        )
-        previous = checkbox.is_checked(timeout=2_000)
-        wanted = not previous
-        previous_mode = "FOC cho ASN" if previous else "FOC cho GRN"
-        wanted_mode = "FOC cho ASN" if wanted else "FOC cho GRN"
-        _write_log(
-            log,
-            f"[COMPANY SETUP] Đang đổi {previous_mode} → {wanted_mode}...",
-        )
-        checkbox.set_checked(wanted, timeout=4_000)
-        if checkbox.is_checked(timeout=2_000) != wanted:
-            raise PlaywrightTimeoutError(
-                "Checkbox Allow To Mark FOC Qty On RMPO ASN chưa đổi trạng thái."
-            )
-
-        def record_save_response(response: Any) -> None:
-            try:
-                method = str(response.request.method or "").upper()
-                if method not in {"POST", "PUT", "PATCH"}:
-                    return
-                url = str(response.url or "")
-                if "wfx_mycompanysite" not in url.casefold():
-                    return
-                save_responses.append(
-                    {
-                        "ok": bool(response.ok),
-                        "status": int(response.status),
-                        "url": url,
-                    }
-                )
-            except Exception:
-                return
-
-        response_handler = record_save_response
-        page.on("response", response_handler)
-        # set_checked có thể làm WFX thay document/frame. Không giữ lại `frame`
-        # cũ của checkbox: resolve lại đúng link Save đang hiển thị trên toàn
-        # bộ frame, gồm markup td.clsBtnOff mà trang Company Setup đang dùng.
-        # Từ lúc click Save đến khi xác nhận response/document là critical
-        # section: Stop được ghi nhận nhưng chỉ áp dụng sau bước lưu an toàn.
-        with cancellation_deferred():
-            save_frame, save = _visible_locator_in_frames(
-                page,
-                save_selector,
-                timeout_s=12,
-            )
-            snapshot = _mark_document(save_frame, "company-foc-save")
-            _write_log(log, "[COMPANY SETUP] Đang bấm Save...")
-            _click_navigation_control(save)
-
-            deadline = time.monotonic() + 25
-            confirmed = False
-            observed_state: bool | None = None
-            while time.monotonic() < deadline:
-                try:
-                    current_frame, current_checkbox = _visible_locator_in_frames(
-                        page, checkbox_selector, timeout_s=1
-                    )
-                    observed_state = current_checkbox.is_checked(timeout=1_000)
-                    document_saved = _document_changed(current_frame, snapshot)
-                    request_saved = any(
-                        response.get("ok") for response in save_responses
-                    )
-                    if observed_state == wanted and (
-                        document_saved or request_saved
-                    ):
-                        confirmed = True
-                        break
-                except (PlaywrightError, PlaywrightTimeoutError):
-                    pass
-                _wait(page, 250)
-
-        if not confirmed:
-            failed_statuses = [
-                response["status"]
-                for response in save_responses
-                if not response.get("ok")
-            ]
-            detail = (
-                f" Server trả về HTTP {failed_statuses[-1]}."
-                if failed_statuses
-                else ""
-            )
-            return _result(
-                False,
-                "COMPANY_FOC_SAVE_NOT_CONFIRMED",
-                "Đã đổi checkbox nhưng chưa xác nhận được WFX lưu thành công."
-                + detail,
-                previous_foc_mode=previous_mode,
-                foc_mode=(
-                    "FOC cho ASN"
-                    if observed_state
-                    else "FOC cho GRN"
-                    if observed_state is False
-                    else previous_mode
-                ),
-                foc_enabled=observed_state,
-                saved=False,
-            )
-
-        _write_log(log, f"[COMPANY SETUP] Đã lưu thành công: {wanted_mode}.")
-        return _result(
-            True,
-            "COMPANY_FOC_CHANGED",
-            f"Đổi FOC thành công. Trạng thái hiện tại: {wanted_mode}.",
-            previous_foc_mode=previous_mode,
-            foc_mode=wanted_mode,
-            foc_enabled=wanted,
-            saved=True,
-        )
+        return _toggle_company_foc_setting(page, log)
     except RuntimeError as exc:
         code = str(exc)
         message = (
@@ -1516,10 +1578,5 @@ def toggle_company_foc(
         _write_log(log, message)
         return _result(False, "COMPANY_FOC_FAILED", message)
     finally:
-        if page is not None and response_handler is not None:
-            try:
-                page.remove_listener("response", response_handler)
-            except Exception:
-                pass
         if playwright is not None:
             playwright.stop()
