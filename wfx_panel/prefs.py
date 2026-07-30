@@ -9,28 +9,14 @@ from pathlib import Path
 
 from wfx_panel import hotkey as hotkey_spec
 from wfx_panel import secret
+from wfx_panel.atomic_io import write_json_atomic, write_text_atomic
 
 # save_prefs là read-modify-write. Nó được gọi từ UI thread (Settings), từ
 # automation worker (_refresh_admin_access, scan_catalog_folders) và từ thread
 # poll cập nhật (_check_update_once). Không có khoá thì hai lần ghi song song
-# vừa mất một trong hai thay đổi, vừa dùng CHUNG một file .tmp: bên nào
-# replace() sau sẽ gặp FileNotFoundError vì .tmp đã bị bên kia move đi.
+# mất một trong hai thay đổi (write_text_atomic chỉ chống hỏng file, không
+# chống lost-update của chu trình đọc-sửa-ghi).
 _WRITE_LOCK = threading.RLock()
-
-
-def _atomic_write_text(path: Path, content: str) -> None:
-    """Ghi nguyên tử với .tmp riêng cho từng tiến trình/thread."""
-    temp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-    try:
-        temp.write_text(content, encoding="utf-8")
-        temp.replace(path)
-    finally:
-        # replace() thành công thì temp đã biến mất; chỉ dọn khi ghi lỗi giữa
-        # đường để không để lại rác .tmp trong thư mục dữ liệu người dùng.
-        try:
-            temp.unlink()
-        except OSError:
-            pass
 
 # RESOURCE_DIR: nơi chứa asset chỉ-đọc được đóng gói cùng ứng dụng (ui/, assets/).
 # Khi build bằng PyInstaller (frozen), __file__ nằm trong dist/WFX-Panel/_internal/,
@@ -251,17 +237,14 @@ def save_catalog_folder_cache(
     if not normalised:
         return []
     with _WRITE_LOCK:
-        _atomic_write_text(
+        write_json_atomic(
             _catalog_cache_path(base_dir),
-            json.dumps(
-                {
-                    "user_id": owner,
-                    "category_name": "Apparel",
-                    "folders": normalised,
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ),
+            {
+                "user_id": owner,
+                "category_name": "Apparel",
+                "folders": normalised,
+            },
+            separators=(",", ":"),
         )
     return normalised
 
@@ -366,7 +349,7 @@ def save_account(user_id: str, password: str, base_dir: Path | None = None) -> N
         *[line for line in preserved if line.strip()],
     ]
     with _WRITE_LOCK:
-        _atomic_write_text(path, "\n".join(lines) + "\n")
+        write_text_atomic(path, "\n".join(lines) + "\n")
     # Runtime (session.run) đọc mật khẩu plaintext qua env trong tiến trình; chỉ
     # bản trên đĩa được mã hoá.
     os.environ["WFX_USER_ID"] = user_id
@@ -603,8 +586,5 @@ def _save_prefs_locked(
     _ = hotkey_label
 
     payload = {key: value for key, value in current.items() if key != "hotkey_label"}
-    _atomic_write_text(
-        _prefs_path(base_dir),
-        json.dumps(payload, ensure_ascii=False, indent=2),
-    )
+    write_json_atomic(_prefs_path(base_dir), payload, indent=2)
     return current

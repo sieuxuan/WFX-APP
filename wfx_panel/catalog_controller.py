@@ -851,6 +851,19 @@ class CatalogController:
         file_path: str,
     ) -> dict:
         """Xuất XLSX từ kết quả app hoặc từ riêng tab Costing đang chọn."""
+        return self._panel.run_composite(
+            lambda: self._export_costing_steps(
+                category_name, filter_kind, query, file_path
+            )
+        )
+
+    def _export_costing_steps(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+        file_path: str,
+    ) -> dict:
         panel = self._panel
         category_name = str(category_name or "")
         filter_kind = str(filter_kind or "")
@@ -1060,6 +1073,19 @@ class CatalogController:
         file_path: str,
     ) -> dict:
         """Đọc file + live Costing và trả dry-run; chưa ghi bất kỳ field nào."""
+        return self._panel.run_composite(
+            lambda: self._prepare_costing_import_steps(
+                category_name, filter_kind, query, file_path
+            )
+        )
+
+    def _prepare_costing_import_steps(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+        file_path: str,
+    ) -> dict:
         panel = self._panel
         category_name = str(category_name or "")
         filter_kind = str(filter_kind or "")
@@ -1222,6 +1248,15 @@ class CatalogController:
         article_resolutions: dict | None = None,
     ) -> dict:
         """Áp dụng đúng plan server-side; WebView không được gửi selector/field."""
+        return self._panel.run_composite(
+            lambda: self._apply_costing_steps(plan_token, article_resolutions)
+        )
+
+    def _apply_costing_steps(
+        self,
+        plan_token: str,
+        article_resolutions: dict | None = None,
+    ) -> dict:
         panel = self._panel
         token = str(plan_token or "").strip()
         self._expire_costing_plans()

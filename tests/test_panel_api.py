@@ -1079,14 +1079,29 @@ def test_rejected_prepare_catalog_keeps_active_catalog_context(tmp_path):
     api.prepare_catalog("Apparel")
     assert api._catalog.prepared_category == "Apparel"
 
-    # Giữ lock như thể một workflow khác đang chạy.
-    assert api._run_lock.acquire(blocking=False)
+    # Giữ lock từ MỘT THREAD KHÁC, đúng như một workflow khác đang chạy.
+    # Không tự acquire trên thread test: _run_lock là RLock để composite Costing
+    # giữ khoá xuyên nhiều _run, nên tự giữ rồi tự gọi chỉ là tái nhập hợp lệ
+    # chứ không giả lập được tranh chấp.
+    holding = threading.Event()
+    release = threading.Event()
+
+    def hold_lock():
+        api._run_lock.acquire()
+        holding.set()
+        release.wait(timeout=5)
+        api._run_lock.release()
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
     try:
+        assert holding.wait(timeout=2)
         rejected = api.prepare_catalog("Apparel")
         rejected_browse = api.browse_catalog("Apparel")
         rejected_scan = api.scan_catalog_folders("Apparel", True)
     finally:
-        api._run_lock.release()
+        release.set()
+        holder.join(timeout=5)
 
     assert rejected["code"] == "ACTION_IN_PROGRESS"
     assert rejected_browse["code"] == "ACTION_IN_PROGRESS"
@@ -1896,3 +1911,61 @@ def test_feedback_queues_without_exposing_webhook(tmp_path, monkeypatch):
     assert '"company_id": "psh"' in outbox
     assert "PRO SPORTS - WOVEN HANOI" in outbox
     assert "private-password" not in outbox
+
+
+def test_costing_composite_cannot_be_interrupted_between_steps(tmp_path):
+    """export/import/apply Costing gồm nhiều _run liên tiếp: mở đúng Costing rồi
+    mới scan/ghi. Nếu run lock được nhả giữa các bước, một flow khác có thể đổi
+    module/Division và bước sau thao tác nhầm màn hình — plan token không biết."""
+    api, fake = make_api(tmp_path)
+    rejected: list[dict] = []
+    inside_composite = threading.Event()
+    may_finish = threading.Event()
+
+    def steps() -> dict:
+        # Bước 1 của composite đã chạy xong và đã nhả _run bên trong.
+        api.prepare_catalog("Apparel")
+        inside_composite.set()
+        may_finish.wait(timeout=5)
+        # Bước 2 vẫn phải chạy được trên cùng thread (RLock tái nhập).
+        return api.prepare_catalog("Apparel")
+
+    worker = threading.Thread(
+        target=lambda: rejected.append(api.run_composite(steps))
+    )
+    worker.start()
+    assert inside_composite.wait(timeout=2)
+
+    # Đúng khe hở giữa hai bước: flow khác PHẢI bị từ chối.
+    intruder = api.open_module("0004_0050_0020")
+    assert api.is_action_running() is True
+
+    may_finish.set()
+    worker.join(timeout=5)
+
+    assert intruder["code"] == "ACTION_IN_PROGRESS"
+    assert rejected[0]["code"] == "CATEGORY_SELECTED"
+    assert api.is_action_running() is False
+
+
+def test_run_composite_rejects_when_another_thread_holds_the_lock(tmp_path):
+    api, _fake = make_api(tmp_path)
+    holding = threading.Event()
+    release = threading.Event()
+
+    def hold_lock():
+        api._run_lock.acquire()
+        holding.set()
+        release.wait(timeout=5)
+        api._run_lock.release()
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    try:
+        assert holding.wait(timeout=2)
+        outcome = api.run_composite(lambda: {"ok": True, "code": "NEVER_RAN"})
+    finally:
+        release.set()
+        holder.join(timeout=5)
+
+    assert outcome["code"] == "ACTION_IN_PROGRESS"
