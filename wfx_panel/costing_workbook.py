@@ -161,9 +161,43 @@ STANDARD_ITEM_FIELDS = (
         "data_type": "text",
     },
 )
+MATERIAL_SELECTION_SLOTS = 4
+DEPENDENCY_MAPPING_SLOTS = 6
+_MATERIAL_SLOT_COLUMNS = {
+    "Material Size": tuple(
+        f"Material Size {slot}" for slot in range(2, MATERIAL_SELECTION_SLOTS + 1)
+    ),
+    "Material Color": tuple(
+        f"Material Color {slot}" for slot in range(2, MATERIAL_SELECTION_SLOTS + 1)
+    ),
+}
+_DEPENDENCY_SLOT_COLUMNS = {
+    "Color Mapping": tuple(
+        f"Color Mapping {slot}" for slot in range(2, DEPENDENCY_MAPPING_SLOTS + 1)
+    ),
+    "Size Mapping": tuple(
+        f"Size Mapping {slot}" for slot in range(2, DEPENDENCY_MAPPING_SLOTS + 1)
+    ),
+}
+_EXTRA_SLOT_COLUMNS = {
+    **_MATERIAL_SLOT_COLUMNS,
+    **_DEPENDENCY_SLOT_COLUMNS,
+}
+
+
+def _form_field_columns() -> list[str]:
+    columns: list[str] = []
+    for definition in STANDARD_ITEM_FIELDS:
+        label = str(definition["label"])
+        columns.append(label)
+        columns.extend(_EXTRA_SLOT_COLUMNS.get(label, ()))
+    return columns
+
+
+FORM_FIELD_COLUMNS = _form_field_columns()
 FORM_COLUMNS = [
     *FORM_BASE_COLUMNS,
-    *[str(field["label"]) for field in STANDARD_ITEM_FIELDS],
+    *FORM_FIELD_COLUMNS,
     *FORM_TECH_COLUMNS,
 ]
 OPTIONAL_FORM_COLUMNS = {
@@ -171,6 +205,7 @@ OPTIONAL_FORM_COLUMNS = {
     "Size Mapping",
     "Cons. Qty. Incl. Waste",
     "Value in (USD)",
+    *(column for columns in _EXTRA_SLOT_COLUMNS.values() for column in columns),
 }
 
 _HEADER_FILL = PatternFill("solid", fgColor="0F766E")
@@ -391,9 +426,7 @@ def normalize_document(document: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(item, Mapping)
     ]
     normalized = {
-        "format_version": _text(
-            document.get("format_version") or FORMAT_VERSION
-        ),
+        "format_version": _text(document.get("format_version") or FORMAT_VERSION),
         "style_code": _text(document.get("style_code")),
         "style_name": _text(document.get("style_name")),
         "title": _text(document.get("title")),
@@ -446,9 +479,7 @@ def _standard_section(
 
 
 def _field_is_excluded(field: Mapping[str, Any]) -> bool:
-    field_key = _semantic_token(
-        re.sub(r"__\d+$", "", _text(field.get("field_key")))
-    )
+    field_key = _semantic_token(re.sub(r"__\d+$", "", _text(field.get("field_key"))))
     label = _semantic_token(field.get("label"))
     return (
         any(token in field_key for token in _EXCLUDED_FIELD_TOKENS)
@@ -488,13 +519,8 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
                 "row_order": index + 1,
             },
         )
-    sections = [
-        selected_sections[index]
-        for index in sorted(selected_sections)
-    ]
-    allowed_section_keys = {
-        section["section_key"].casefold() for section in sections
-    }
+    sections = [selected_sections[index] for index in sorted(selected_sections)]
+    allowed_section_keys = {section["section_key"].casefold() for section in sections}
     excluded_section_keys = {
         section["section_key"].casefold()
         for section in normalized["sections"]
@@ -507,13 +533,11 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
         and item["item_type"] == "article"
     ]
     allowed_item_keys = {
-        (item["section_key"].casefold(), item["item_key"].casefold())
-        for item in items
+        (item["section_key"].casefold(), item["item_key"].casefold()) for item in items
     }
     fields = []
     standard_keys = {
-        str(field["field_key"]).casefold()
-        for field in STANDARD_ITEM_FIELDS
+        str(field["field_key"]).casefold() for field in STANDARD_ITEM_FIELDS
     }
     read_only_keys = {
         str(field["field_key"]).casefold()
@@ -528,10 +552,7 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
         ).casefold()
         if (
             field["scope"] != "item"
-            or (
-                not field["editable"]
-                and base_field_key not in read_only_keys
-            )
+            or (not field["editable"] and base_field_key not in read_only_keys)
             or _field_is_excluded(field)
             or base_field_key not in standard_keys
         ):
@@ -539,16 +560,17 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
         section_key = field["section_key"].casefold()
         if field["scope"] in {"section", "item"} and (
             section_key in excluded_section_keys
-            or (
-                allowed_section_keys
-                and section_key not in allowed_section_keys
-            )
+            or (allowed_section_keys and section_key not in allowed_section_keys)
         ):
             continue
-        if field["scope"] == "item" and (
-            section_key,
-            field["item_key"].casefold(),
-        ) not in allowed_item_keys:
+        if (
+            field["scope"] == "item"
+            and (
+                section_key,
+                field["item_key"].casefold(),
+            )
+            not in allowed_item_keys
+        ):
             continue
         fields.append(field)
     return normalize_document(
@@ -616,9 +638,10 @@ def _item_validation_errors(
         item_type = _text(item.get("item_type") or "article").casefold()
         if item_type not in ITEM_TYPES:
             errors.append(f"Item Type không hợp lệ: {item_type}.")
-        if item_type == "article" and action != "SKIP" and not (
-            _text(item.get("article_code"))
-            or _text(item.get("article_name"))
+        if (
+            item_type == "article"
+            and action != "SKIP"
+            and not (_text(item.get("article_code")) or _text(item.get("article_name")))
         ):
             errors.append(f"Article {item_key or '(trống)'} thiếu Code/Name.")
     return errors
@@ -648,9 +671,7 @@ def _field_validation_errors(
                 + " / ".join(part or "-" for part in composite)
             )
         field_keys.add(composite)
-        if scope in {"section", "item"} and not _text(
-            field.get("section_key")
-        ):
+        if scope in {"section", "item"} and not _text(field.get("section_key")):
             errors.append(f"Field {field_key or '(trống)'} thiếu Section Key.")
         if scope == "item" and not _text(field.get("item_key")):
             errors.append(f"Item field {field_key or '(trống)'} thiếu Item Key.")
@@ -814,9 +835,7 @@ def _write_guide(workbook: Workbook, document: Mapping[str, Any]) -> None:
             ", ".join(
                 str(section.get("name") or section.get("section_key") or "")
                 for section in document.get("sections") or ()
-                if str(
-                    section.get("name") or section.get("section_key") or ""
-                ).strip()
+                if str(section.get("name") or section.get("section_key") or "").strip()
             )
             or "—",
         ),
@@ -833,8 +852,14 @@ def _write_guide(workbook: Workbook, document: Mapping[str, Any]) -> None:
         ),
         (
             "Phối Table",
-            "Color/Size Mapping dùng mỗi dòng Nguồn => Đích 1 | Đích 2. "
-            "App scan mapping hiện tại và danh sách Color/Size của từng item.",
+            "Mỗi cột Color/Size Mapping là một cặp Material => Style. "
+            "Chọn thêm ở các cột đánh số; app tự gộp các cặp cùng Material. "
+            "Dropdown lấy trực tiếp Color/Size Style đã scan từ WFX.",
+        ),
+        (
+            "Thêm Material Color/Size",
+            "Chọn lần lượt ở Material Color/Size và các cột đánh số 2–4. "
+            "App tự gộp thành danh sách Material khi import; không cần gõ tay.",
         ),
         (
             "Cột công thức",
@@ -1169,6 +1194,47 @@ def _split_wfx_multiselect(value: Any) -> list[str]:
     return output
 
 
+def _slot_values(label: str, value: Any) -> list[str]:
+    """Expand a multi-value field into user-selectable workbook cells."""
+    text = _text(value)
+    if not text:
+        return []
+    if label in _MATERIAL_SLOT_COLUMNS:
+        return _split_wfx_multiselect(text)
+    if label in _DEPENDENCY_SLOT_COLUMNS:
+        return [line.strip() for line in re.split(r"[;\r\n]+", text) if line.strip()]
+    return [text]
+
+
+def _merge_dependency_mapping_values(values: Iterable[Any]) -> str:
+    """Merge repeated ``Material => Style`` slots into canonical rules."""
+    sources: dict[str, tuple[str, list[str]]] = {}
+    loose_lines: list[str] = []
+    for value in values:
+        for line in _slot_values("Color Mapping", value):
+            if "=>" not in line:
+                if line not in loose_lines:
+                    loose_lines.append(line)
+                continue
+            source, target_text = (part.strip() for part in line.split("=>", 1))
+            if not source:
+                continue
+            key = source.casefold()
+            display, targets = sources.setdefault(key, (source, []))
+            seen_targets = {item.casefold() for item in targets}
+            for target in _split_wfx_multiselect(target_text):
+                folded_target = target.casefold()
+                if folded_target in seen_targets:
+                    continue
+                targets.append(target)
+                seen_targets.add(folded_target)
+            sources[key] = (display, targets)
+    rules = [
+        f"{source} => {' | '.join(targets)}" for source, targets in sources.values()
+    ]
+    return "\n".join([*rules, *loose_lines])
+
+
 def _form_dropdown_options(
     document: Mapping[str, Any],
 ) -> dict[str, list[str]]:
@@ -1256,7 +1322,7 @@ def _add_item_option_dropdowns(
     row_by_item: Mapping[tuple[str, str], int],
     *,
     lookup_column: int,
-) -> None:
+) -> int:
     """Gắn dropdown Material Color/Size đúng option của từng Article row."""
     wanted_fields = {
         "colmaterialcolorlist": "Material Color",
@@ -1291,10 +1357,7 @@ def _add_item_option_dropdowns(
         ws.column_dimensions[lookup_letter].hidden = True
         validation = DataValidation(
             type="list",
-            formula1=(
-                f"=${lookup_letter}$2:"
-                f"${lookup_letter}${len(options) + 1}"
-            ),
+            formula1=(f"=${lookup_letter}$2:${lookup_letter}${len(options) + 1}"),
             allow_blank=True,
         )
         validation.showErrorMessage = False
@@ -1304,9 +1367,100 @@ def _add_item_option_dropdowns(
         )
         validation.showInputMessage = True
         ws.add_data_validation(validation)
-        target_letter = get_column_letter(FORM_COLUMNS.index(label) + 1)
-        validation.add(f"{target_letter}{row}")
+        for target_label in (label, *_MATERIAL_SLOT_COLUMNS[label]):
+            target_letter = get_column_letter(FORM_COLUMNS.index(target_label) + 1)
+            validation.add(f"{target_letter}{row}")
         lookup_column += 1
+    return lookup_column
+
+
+def _add_dependency_mapping_dropdowns(
+    ws: Any,
+    document: Mapping[str, Any],
+    row_by_item: Mapping[tuple[str, str], int],
+    *,
+    lookup_column: int,
+) -> int:
+    """Offer exact ``Material => Style`` pairs in several mapping slots."""
+    fields = list(document.get("fields") or ())
+    by_item = {
+        (
+            _text(field.get("section_key")).casefold(),
+            _text(field.get("item_key")).casefold(),
+            _base_field_key(field.get("field_key")),
+        ): field
+        for field in fields
+    }
+    definitions = {
+        "colcolordependencymapping": (
+            "Color Mapping",
+            "colmaterialcolorlist",
+        ),
+        "colsizedependencymapping": (
+            "Size Mapping",
+            "colmaterialsizelist",
+        ),
+    }
+    for field in fields:
+        definition = definitions.get(_base_field_key(field.get("field_key")))
+        if definition is None:
+            continue
+        label, material_key = definition
+        identity = (
+            _text(field.get("section_key")).casefold(),
+            _text(field.get("item_key")).casefold(),
+        )
+        row = row_by_item.get(identity)
+        material = by_item.get((*identity, material_key), {})
+        existing_rules = _slot_values(label, field.get("value"))
+        sources = _unique_values(
+            [
+                *_split_wfx_multiselect(material.get("value")),
+                *(
+                    rule.split("=>", 1)[0].strip()
+                    for rule in existing_rules
+                    if "=>" in rule
+                ),
+            ]
+        )
+        style_options = _unique_values(field.get("options") or ())
+        choices = _unique_values(
+            [
+                *existing_rules,
+                *(
+                    f"{source} => {style}"
+                    for source in sources
+                    for style in style_options
+                ),
+            ]
+        )
+        if row is None or not choices:
+            continue
+        lookup_letter = get_column_letter(lookup_column)
+        for option_row, option in enumerate(choices, 2):
+            ws.cell(
+                row=option_row,
+                column=lookup_column,
+                value=_excel_safe(option),
+            )
+        ws.column_dimensions[lookup_letter].hidden = True
+        validation = DataValidation(
+            type="list",
+            formula1=(f"=${lookup_letter}$2:${lookup_letter}${len(choices) + 1}"),
+            allow_blank=True,
+        )
+        validation.showErrorMessage = False
+        validation.promptTitle = f"{label} của Article"
+        validation.prompt = (
+            "Chọn từng cặp Material => Style; dùng các cột kế tiếp để thêm phối."
+        )
+        validation.showInputMessage = True
+        ws.add_data_validation(validation)
+        for target_label in (label, *_DEPENDENCY_SLOT_COLUMNS[label]):
+            target_letter = get_column_letter(FORM_COLUMNS.index(target_label) + 1)
+            validation.add(f"{target_letter}{row}")
+        lookup_column += 1
+    return lookup_column
 
 
 @dataclass(frozen=True)
@@ -1355,6 +1509,7 @@ def _form_row_values(
         "" if item is None else item["article_name"],
     ]
     for definition in STANDARD_ITEM_FIELDS:
+        label = str(definition["label"])
         field = field_by_item.get(
             (
                 section_key.casefold(),
@@ -1362,7 +1517,15 @@ def _form_row_values(
                 str(definition["field_key"]).casefold(),
             )
         )
-        values.append("" if field is None else field["value"])
+        value = "" if field is None else field["value"]
+        extra_columns = _EXTRA_SLOT_COLUMNS.get(label, ())
+        if not extra_columns:
+            values.append(value)
+            continue
+        # Preserve the original WFX display in the primary cell. The numbered
+        # cells are additive dropdown slots, so an untouched export remains a
+        # zero-change dry-run even when the live value already has many options.
+        values.extend([value, *([""] * len(extra_columns))])
     values.extend([section_key, item_key, row_order, "article"])
     return values
 
@@ -1440,19 +1603,18 @@ def _form_column_widths() -> dict[int, int]:
         "Purchase Officer": 20,
         "Shrinkage %(LxW)": 20,
     }
-    for offset, definition in enumerate(
-        STANDARD_ITEM_FIELDS,
+    for offset, label in enumerate(
+        FORM_FIELD_COLUMNS,
         len(FORM_BASE_COLUMNS) + 1,
     ):
-        widths[offset] = special_widths.get(str(definition["label"]), 16)
+        base_label = re.sub(r" \d+$", "", label)
+        widths[offset] = special_widths.get(base_label, 16)
     return widths
 
 
 def _style_formula_columns(ws: Any, last_row: int) -> set[int]:
     read_only_definitions = [
-        definition
-        for definition in STANDARD_ITEM_FIELDS
-        if definition.get("read_only")
+        definition for definition in STANDARD_ITEM_FIELDS if definition.get("read_only")
     ]
     read_only_columns: set[int] = set()
     for definition in read_only_definitions:
@@ -1491,9 +1653,7 @@ def _write_costing_formulas(ws: Any, last_row: int) -> None:
     for row in range(2, last_row + 1):
         cons_ref = f"{get_column_letter(columns['Cons. Qty.'])}{row}"
         waste_ref = f"{get_column_letter(columns['Waste %'])}{row}"
-        cons_incl_ref = (
-            f"{get_column_letter(columns['Cons. Qty. Incl. Waste'])}{row}"
-        )
+        cons_incl_ref = f"{get_column_letter(columns['Cons. Qty. Incl. Waste'])}{row}"
         rate_ref = f"{get_column_letter(columns['Rate'])}{row}"
         cons_incl_cell = ws.cell(
             row=row,
@@ -1501,12 +1661,10 @@ def _write_costing_formulas(ws: Any, last_row: int) -> None:
         )
         value_cell = ws.cell(row=row, column=columns["Value in (USD)"])
         cons_incl_cell.value = (
-            f'=IF({cons_ref}="","",{cons_ref}*'
-            f'(1+IF({waste_ref}="",0,{waste_ref})/100))'
+            f'=IF({cons_ref}="","",{cons_ref}*(1+IF({waste_ref}="",0,{waste_ref})/100))'
         )
         value_cell.value = (
-            f'=IF(OR({rate_ref}="",{cons_incl_ref}=""),"",'
-            f"{rate_ref}*{cons_incl_ref})"
+            f'=IF(OR({rate_ref}="",{cons_incl_ref}=""),"",{rate_ref}*{cons_incl_ref})'
         )
         cons_incl_cell.number_format = "0.0000"
         value_cell.number_format = "0.0000"
@@ -1517,13 +1675,13 @@ def _add_dependency_mapping_comments(
     document: Mapping[str, Any],
     row_by_item: Mapping[tuple[str, str], int],
 ) -> None:
-    mapping_columns = {
-        "colcolordependencymapping": FORM_COLUMNS.index("Color Mapping") + 1,
-        "colsizedependencymapping": FORM_COLUMNS.index("Size Mapping") + 1,
+    mapping_labels = {
+        "colcolordependencymapping": "Color Mapping",
+        "colsizedependencymapping": "Size Mapping",
     }
     for field in document.get("fields") or ():
-        column = mapping_columns.get(_base_field_key(field.get("field_key")))
-        if column is None:
+        label = mapping_labels.get(_base_field_key(field.get("field_key")))
+        if label is None:
             continue
         row = row_by_item.get(
             (
@@ -1535,13 +1693,16 @@ def _add_dependency_mapping_comments(
             continue
         choices = _unique_values(field.get("options") or ())
         detail = "\n".join(choices[:100]) or "Chưa scan được option Style."
-        cell = ws.cell(row=row, column=column)
-        cell.comment = Comment(
-            "Mỗi dòng: Material => Style 1 | Style 2\n\n"
-            "Các lựa chọn Style đã scan:\n" + detail,
-            "WFX Smart",
-        )
-        cell.alignment = Alignment(vertical="top", wrap_text=True)
+        for target_label in (label, *_DEPENDENCY_SLOT_COLUMNS[label]):
+            column = FORM_COLUMNS.index(target_label) + 1
+            cell = ws.cell(row=row, column=column)
+            cell.comment = Comment(
+                "Chọn một cặp Material => Style trong mỗi ô. "
+                "Các ô cùng nhóm sẽ được tự gộp khi import.\n\n"
+                "Các lựa chọn Style đã scan:\n" + detail,
+                "WFX Smart",
+            )
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
 
 
 def _style_form_sections(
@@ -1606,9 +1767,9 @@ def _finish_costing_form(
     for mapping_label in ("Color Mapping", "Size Mapping"):
         column = FORM_COLUMNS.index(mapping_label) + 1
         for row in layout.row_by_item.values():
-            line_count = str(ws.cell(row=row, column=column).value or "").count(
-                "\n"
-            ) + 1
+            line_count = (
+                str(ws.cell(row=row, column=column).value or "").count("\n") + 1
+            )
             if line_count > 1:
                 ws.row_dimensions[row].height = max(
                     ws.row_dimensions[row].height or 23,
@@ -1644,20 +1805,31 @@ def _write_costing_form(
         document,
         last_row=last_row,
     )
-    _add_item_option_dropdowns(
+    next_lookup_column = _add_item_option_dropdowns(
         ws,
         document,
         layout.row_by_item,
         lookup_column=next_lookup_column,
     )
-    for offset, definition in enumerate(
-        STANDARD_ITEM_FIELDS,
-        len(FORM_BASE_COLUMNS) + 1,
-    ):
-        ws.cell(row=1, column=offset).comment = Comment(
+    _add_dependency_mapping_dropdowns(
+        ws,
+        document,
+        layout.row_by_item,
+        lookup_column=next_lookup_column,
+    )
+    for definition in STANDARD_ITEM_FIELDS:
+        label = str(definition["label"])
+        column = FORM_COLUMNS.index(label) + 1
+        ws.cell(row=1, column=column).comment = Comment(
             f"WFX Field Key: {definition['field_key']}",
             "WFX Smart",
         )
+        for extra_label in _EXTRA_SLOT_COLUMNS.get(label, ()):
+            extra_column = FORM_COLUMNS.index(extra_label) + 1
+            ws.cell(row=1, column=extra_column).comment = Comment(
+                f"Ô chọn bổ sung cho {label}; tự gộp khi import.",
+                "WFX Smart",
+            )
     _finish_sheet(
         ws,
         _form_column_widths(),
@@ -1762,9 +1934,7 @@ def _read_guide_meta(workbook: Any) -> dict[str, Any]:
         "format_version": version,
         "style_code": _text(values.get("Style Code")),
         "style_name": _text(values.get("Style Name")),
-        "cost_sheet_status": _text(
-            values.get("Costing status lúc export")
-        ),
+        "cost_sheet_status": _text(values.get("Costing status lúc export")),
         "title": "",
         "cost_sheet_type": "Internal Cost Sheets",
         "order_execution_type": "Trading",
@@ -1781,9 +1951,7 @@ class _CostingFormReadState:
     fields: list[dict[str, Any]] = dataclass_field(default_factory=list)
     errors: list[str] = dataclass_field(default_factory=list)
     section_keys: set[str] = dataclass_field(default_factory=set)
-    item_locations: dict[tuple[str, str], int] = dataclass_field(
-        default_factory=dict
-    )
+    item_locations: dict[tuple[str, str], int] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1796,10 +1964,7 @@ class _FormItemMetadata:
 
 
 def _missing_form_columns(ws: Any) -> list[str]:
-    header = [
-        _text(cell.value)
-        for cell in next(ws.iter_rows(min_row=1, max_row=1))
-    ]
+    header = [_text(cell.value) for cell in next(ws.iter_rows(min_row=1, max_row=1))]
     return [
         column
         for column in FORM_COLUMNS
@@ -1851,10 +2016,23 @@ def _register_form_section(
 def _form_row_has_data(row: Mapping[str, Any]) -> bool:
     if _text(row.get("Article Code")) or _text(row.get("Article Name")):
         return True
-    return any(
-        row.get(str(definition["label"]), "") not in (None, "")
-        for definition in STANDARD_ITEM_FIELDS
-    )
+    return any(row.get(label, "") not in (None, "") for label in FORM_FIELD_COLUMNS)
+
+
+def _aggregated_form_value(
+    row: Mapping[str, Any],
+    label: str,
+) -> Any:
+    extra_columns = _EXTRA_SLOT_COLUMNS.get(label, ())
+    if not extra_columns:
+        return row.get(label, "")
+    values = [row.get(column, "") for column in (label, *extra_columns)]
+    if label in _MATERIAL_SLOT_COLUMNS:
+        selections = _unique_values(
+            token for value in values for token in _split_wfx_multiselect(value)
+        )
+        return ",".join(selections)
+    return _merge_dependency_mapping_values(values)
 
 
 def _form_item_key(
@@ -1917,7 +2095,10 @@ def _form_fields_for_item(
     for field_order, definition in enumerate(STANDARD_ITEM_FIELDS):
         if definition.get("read_only"):
             continue
-        value = row.get(str(definition["label"]), "")
+        value = _aggregated_form_value(
+            row,
+            str(definition["label"]),
+        )
         if value in (None, ""):
             continue
         fields.append(
@@ -1967,6 +2148,14 @@ def _read_costing_form_row(
     )
     action = _text(row.get("Action") or "UPSERT").upper()
     item_type = _text(row.get("__Item Type") or "article").casefold()
+    item_fields = _form_fields_for_item(row, section_key, item_key)
+    if action == "UPSERT" and _text(row.get("__Item Key")) and not item_fields:
+        # Older exports could attach a subtotal's read-only value to a hidden
+        # ``>>`` row.  Once formula/read-only columns are ignored, such a row
+        # contains only the exported Article identity and has nothing to apply.
+        # Dropping it also lets already-exported files benefit from the scanner
+        # fix without forcing users to export again.
+        return
     _validate_form_item_row(
         state,
         _FormItemMetadata(
@@ -1992,7 +2181,7 @@ def _read_costing_form_row(
             row_index,
         )
     )
-    state.fields.extend(_form_fields_for_item(row, section_key, item_key))
+    state.fields.extend(item_fields)
 
 
 def _read_costing_form(
@@ -2005,8 +2194,7 @@ def _read_costing_form(
             "COSTING_FORMAT_UNSUPPORTED",
             "Sheet Costing thiếu cột chuẩn của WFX Smart.",
             details=[
-                f"{FORM_SHEET}!hàng 1: thiếu cột “{column}”."
-                for column in missing
+                f"{FORM_SHEET}!hàng 1: thiếu cột “{column}”." for column in missing
             ],
         )
     rows = _costing_form_rows(ws)
@@ -2057,7 +2245,9 @@ def _read_raw_fields(workbook: Any) -> list[dict[str, Any]]:
     return fields
 
 
-def _field_index(fields: Sequence[dict[str, Any]]) -> dict[tuple[str, str, str, str], dict[str, Any]]:
+def _field_index(
+    fields: Sequence[dict[str, Any]],
+) -> dict[tuple[str, str, str, str], dict[str, Any]]:
     return {
         (
             field["scope"],
@@ -2216,8 +2406,7 @@ def _overlay_items(
             if field["editable"]:
                 field["value"] = value
     item_keys = {
-        (item["section_key"].casefold(), item["item_key"].casefold())
-        for item in items
+        (item["section_key"].casefold(), item["item_key"].casefold()) for item in items
     }
     fields[:] = [
         field
