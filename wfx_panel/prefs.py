@@ -416,6 +416,42 @@ def load_prefs(base_dir: Path | None = None) -> dict:
     }
 
 
+def _clean_favorite_module_ids(values: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        module_id = str(value or "").strip()
+        if not module_id or module_id in seen:
+            continue
+        seen.add(module_id)
+        cleaned.append(module_id)
+        if len(cleaned) >= 50:
+            break
+    return cleaned
+
+
+def _apply_simple_preference_updates(
+    current: dict,
+    *,
+    boolean_values: dict[str, bool | None],
+    integer_values: dict[str, int | None],
+) -> None:
+    current.update(
+        {
+            key: bool(value)
+            for key, value in boolean_values.items()
+            if value is not None
+        }
+    )
+    current.update(
+        {
+            key: int(value)
+            for key, value in integer_values.items()
+            if value is not None
+        }
+    )
+
+
 def save_prefs(
     base_dir: Path | None = None,
     *,
@@ -442,52 +478,40 @@ def save_prefs(
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     current = load_prefs(base_dir)
+    _apply_simple_preference_updates(
+        current,
+        boolean_values={
+            "close_after_module": close_after_module,
+            "return_to_list_after_action": return_to_list_after_action,
+            "autostart": autostart,
+            "start_hidden": start_hidden,
+            "toast_enabled": toast_enabled,
+            "focus_chrome_on_module": focus_chrome_on_module,
+            "always_on_top": always_on_top,
+            "admin_mode": admin_mode,
+        },
+        integer_values={
+            "compact_offset_x": compact_offset_x,
+            "compact_offset_y": compact_offset_y,
+            "panel_offset_x": panel_offset_x,
+            "panel_offset_y": panel_offset_y,
+        },
+    )
     if theme is not None:
         current["theme"] = theme if theme in {"light", "dark", "system"} else "light"
-    if close_after_module is not None:
-        current["close_after_module"] = bool(close_after_module)
-    if return_to_list_after_action is not None:
-        current["return_to_list_after_action"] = bool(
-            return_to_list_after_action
-        )
     if favorite_module_ids is not None:
-        cleaned: list[str] = []
-        for value in favorite_module_ids:
-            module_id = str(value or "").strip()
-            if module_id and module_id not in cleaned:
-                cleaned.append(module_id)
-            if len(cleaned) >= 50:
-                break
-        current["favorite_module_ids"] = cleaned
+        current["favorite_module_ids"] = _clean_favorite_module_ids(
+            favorite_module_ids
+        )
     if hotkey is not None:
         current["hotkey"] = hotkey_spec.normalize(hotkey)
         current["hotkey_label"] = hotkey_spec.format_label(current["hotkey"])
-    if autostart is not None:
-        current["autostart"] = bool(autostart)
-    if start_hidden is not None:
-        current["start_hidden"] = bool(start_hidden)
-    if toast_enabled is not None:
-        current["toast_enabled"] = bool(toast_enabled)
-    if focus_chrome_on_module is not None:
-        current["focus_chrome_on_module"] = bool(focus_chrome_on_module)
-    if always_on_top is not None:
-        current["always_on_top"] = bool(always_on_top)
-    if admin_mode is not None:
-        current["admin_mode"] = bool(admin_mode)
     if update_channel is not None:
         current["update_channel"] = (
             "current" if update_channel == "current" else "stable"
         )
     if last_update_notice is not None:
         current["last_update_notice"] = str(last_update_notice)
-    if compact_offset_x is not None:
-        current["compact_offset_x"] = int(compact_offset_x)
-    if compact_offset_y is not None:
-        current["compact_offset_y"] = int(compact_offset_y)
-    if panel_offset_x is not None:
-        current["panel_offset_x"] = int(panel_offset_x)
-    if panel_offset_y is not None:
-        current["panel_offset_y"] = int(panel_offset_y)
     if catalog_default_folder is not None:
         current["catalog_default_folder"] = _normalise_catalog_folder(
             catalog_default_folder
