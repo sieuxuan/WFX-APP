@@ -31,8 +31,7 @@ def test_style_name_comes_from_article_name_value_after_slash():
 
 def test_dependency_mapping_parser_supports_per_material_lines():
     rules = costing._dependency_mapping_rules(
-        "BLACK(BLACK) => BLACK(BLACK) | WHITE(WHITE)\n"
-        "NAVY(NAVY) => NAVY(NAVY)"
+        "BLACK(BLACK) => BLACK(BLACK) | WHITE(WHITE)\nNAVY(NAVY) => NAVY(NAVY)"
     )
 
     assert rules == [
@@ -139,9 +138,7 @@ def test_inventory_preserves_two_rows_of_the_same_article():
     document = costing._inventory_to_document(
         {
             "title": "FOB Main",
-            "sections": [
-                {"sectionKey": "fabric", "name": "Fabric", "rowOrder": 1}
-            ],
+            "sections": [{"sectionKey": "fabric", "name": "Fabric", "rowOrder": 1}],
             "fields": [
                 {
                     "domIndex": 1,
@@ -180,9 +177,7 @@ def test_inventory_preserves_two_rows_of_the_same_article():
     )
 
     matching_items = [
-        item
-        for item in document["items"]
-        if item["article_code"] == "F0000585"
+        item for item in document["items"] if item["article_code"] == "F0000585"
     ]
     matching_fields = [
         field
@@ -203,6 +198,7 @@ def test_inventory_script_carries_article_into_continuation_rows():
     source = costing._COSTING_INVENTORY_JS
 
     assert "articleText === '>>'" in source
+    assert "if (!shown(articleElement))" in source
     assert "effectiveArticleByRow" in source
     assert "articleRowCounts" in source
     assert "itemKey = `${article.code}::${stableRow}::${ordinal}`" in source
@@ -266,10 +262,7 @@ def test_apply_plan_requires_server_side_source_for_article_mutation():
 def test_save_uses_exact_required_xpath_and_cancellation_deferral():
     source = Path(costing.__file__).read_text(encoding="utf-8")
 
-    assert (
-        'xpath=//*[@id="titlebarCostSheet"]/tbody/tr/td[3]/span/div[1]'
-        in source
-    )
+    assert 'xpath=//*[@id="titlebarCostSheet"]/tbody/tr/td[3]/span/div[1]' in source
     assert "with cancellation_deferred():" in source
     assert "def _create_new_costing" not in source
     assert "bring_to_front()" not in source
@@ -285,9 +278,7 @@ def test_numeric_save_verification_accepts_wfx_decimal_format():
 def test_inventory_preserves_safe_click_target_for_composite_wfx_field():
     document = costing._inventory_to_document(
         {
-            "sections": [
-                {"sectionKey": "fabric", "name": "Fabric", "rowOrder": 1}
-            ],
+            "sections": [{"sectionKey": "fabric", "name": "Fabric", "rowOrder": 1}],
             "fields": [
                 {
                     "domIndex": 0,
@@ -400,10 +391,7 @@ def test_active_costing_page_uses_only_visible_focused_tab():
 
         def locator(self, selector):
             return Locator(
-                int(
-                    self.has_costing
-                    and selector == costing.COSTING_DETAIL_SELECTOR
-                )
+                int(self.has_costing and selector == costing.COSTING_DETAIL_SELECTOR)
             )
 
     class Page:
