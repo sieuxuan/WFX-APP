@@ -47,6 +47,11 @@ SESSION_OK = frozenset(
         "CATALOG_FOLDER_FALLBACK",
         "CATALOG_FOLDERS_SCANNED",
         "CATALOG_FOLDERS_CACHED",
+        "COSTING_CONTEXT_INSPECTED",
+        "COSTING_FILE_VALID",
+        "COSTING_EXPORTED",
+        "COSTING_DRY_RUN_READY",
+        "COSTING_APPLIED",
         "MODULE_FILTER_READY",
         "MODULE_SEARCH_APPLIED",
         "MODULE_NEW_READY",
@@ -114,6 +119,46 @@ NON_REPORTABLE_FAILURES = frozenset(
         "HOTKEY_INVALID",
         "JOB_NOT_FOUND",
         "JOB_NOT_RETRYABLE",
+        "COSTING_FILE_REQUIRED",
+        "COSTING_FILE_TYPE_UNSUPPORTED",
+        "COSTING_FILE_TOO_LARGE",
+        "COSTING_FORMAT_UNSUPPORTED",
+        "COSTING_FORMULA_NOT_ALLOWED",
+        "COSTING_VALIDATION_FAILED",
+        "COSTING_REQUIRED_FIELD_MISSING",
+        "COSTING_STYLE_MISMATCH",
+        "COSTING_NOT_OPEN",
+        "COSTING_ARTICLE_NOT_FOUND",
+        "COSTING_ARTICLE_AMBIGUOUS",
+        "COSTING_PLAN_EXPIRED",
+        "COSTING_PLAN_STALE",
+        "COSTING_ARTICLE_FLOW_PENDING",
+        "COSTING_SOURCE_REQUIRED",
+        "COSTING_ACTIVE_TAB_NOT_FOUND",
+        "COSTING_ACTIVE_TAB_AMBIGUOUS",
+        "COSTING_STYLE_NOT_DETECTED",
+    }
+)
+
+# Các flow này điều hướng tab WFX chính ra khỏi Catalog. Xoá dấu "Master đã
+# chuẩn bị" ngay khi flow thành công để lần Search Catalog kế tiếp tự mở đúng
+# List, thay vì thử dùng một grid cũ không còn tồn tại.
+CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
+    {
+        "open_module",
+        "open_sale_asn_new",
+        "search_oc",
+        "search_sample",
+        "open_sample_new",
+        "search_sale_asn",
+        "search_rmpo",
+        "search_indent",
+        "open_module_new",
+        "toggle_company_foc",
+        "open_supplier_category",
+        "find_supplier",
+        "find_supplier_in_category",
+        "find_buyer",
     }
 )
 
@@ -321,6 +366,12 @@ class PanelAPI:
         if code in {"DIVISION_CHANGED", "LOGGED_IN"}:
             self._catalog.reset_context()
 
+        if (
+            result.get("ok")
+            and method_name in CATALOG_CONTEXT_INVALIDATING_METHODS
+        ):
+            self._catalog.reset_context()
+
         if result.get("current_division") is not None:
             self._current_division = str(result["current_division"])
             self._division_label = str(result.get("division_label") or "")
@@ -385,9 +436,11 @@ class PanelAPI:
                 "message": "Kết quả không hợp lệ.",
             }
         elapsed = time.monotonic() - started
+        code = str(result.get("code") or "UNKNOWN")
         screenshot: str | None = None
         if (
             not result.get("ok")
+            and code not in NON_REPORTABLE_FAILURES
             and method_name
             in {
                 "login",
@@ -412,6 +465,9 @@ class PanelAPI:
                 "switch_division",
                 "open_catalog_destination",
                 "download_catalog_file",
+                "export_catalog_costing",
+                "prepare_catalog_costing_import",
+                "apply_catalog_costing",
             }
             and hasattr(self._login, "capture_failure_screenshot")
         ):
@@ -444,7 +500,6 @@ class PanelAPI:
                 "screenshot": screenshot,
             },
         )
-        code = str(result.get("code") or "UNKNOWN")
         if not result.get("ok") and code not in NON_REPORTABLE_FAILURES:
             error_context = telemetry.automation_error_context(
                 method_name,
@@ -495,6 +550,10 @@ class PanelAPI:
             "code": "NO_ACTION_RUNNING",
             "message": "Không có tác vụ automation đang chạy.",
         }
+
+    def is_action_running(self) -> bool:
+        """Nguồn trạng thái native để panel tự thu không phụ thuộc WebView."""
+        return self._run_lock.locked()
 
     def shutdown(self) -> None:
         automation_runtime.shutdown()
@@ -878,19 +937,23 @@ class PanelAPI:
     def find_code(
         self, category_name: str, code: str, destination: str | None = None
     ) -> dict:
-        return self._catalog.find(
-            "find_code", category_name, "code", code, destination
+        return self._catalog.action(
+            category_name,
+            "code",
+            code,
+            destination,
+            method_name="find_code",
         )
 
     def find_buyer_reference(
         self, category_name: str, query: str, destination: str | None = None
     ) -> dict:
-        return self._catalog.find(
-            "find_buyer_reference",
+        return self._catalog.action(
             category_name,
             "buyer_reference",
             query,
             destination,
+            method_name="find_buyer_reference",
         )
 
     def catalog_action(
@@ -911,6 +974,50 @@ class PanelAPI:
 
     def download_catalog_file(self, file_id: str) -> dict:
         return self._catalog.download_file(file_id)
+
+    def export_catalog_costing(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+        file_path: str,
+    ) -> dict:
+        return self._catalog.export_costing(
+            category_name,
+            filter_kind,
+            query,
+            file_path,
+        )
+
+    def inspect_active_catalog_costing(self, category_name: str) -> dict:
+        return self._catalog.inspect_active_costing(category_name)
+
+    def validate_catalog_costing_file(self, file_path: str) -> dict:
+        return self._catalog.validate_costing_file(file_path)
+
+    def prepare_catalog_costing_import(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+        file_path: str,
+    ) -> dict:
+        return self._catalog.prepare_costing_import(
+            category_name,
+            filter_kind,
+            query,
+            file_path,
+        )
+
+    def clear_catalog_costing_plan(self, plan_token: str) -> dict:
+        return self._catalog.clear_costing_plan(plan_token)
+
+    def apply_catalog_costing(
+        self,
+        plan_token: str,
+        article_resolutions: dict | None = None,
+    ) -> dict:
+        return self._catalog.apply_costing(plan_token, article_resolutions)
 
     # -- settings ----------------------------------------------------------
     def save_account(self, user_id: str, password: str) -> dict:

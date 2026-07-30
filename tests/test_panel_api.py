@@ -2,7 +2,7 @@ import json
 import threading
 import time
 
-from wfx_panel import constants, prefs, telemetry
+from wfx_panel import constants, costing_workbook, prefs, telemetry
 from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.panel_api import PanelAPI
 
@@ -277,6 +277,125 @@ class FakeLogin:
             "download_path": f"C:/Downloads/{file_info['file_name']}",
         }
 
+    def scan_open_costing(
+        self,
+        article_code,
+        style_status=None,
+        require_open=True,
+        scan_details=False,
+        log=print,
+    ):
+        del style_status, scan_details, log
+        self.calls.append(("scan_open_costing", article_code))
+        return {
+            "ok": True,
+            "code": "COSTING_SCANNED",
+            "message": "scanned",
+            "costing": {
+                "format_version": costing_workbook.FORMAT_VERSION,
+                "style_code": article_code,
+                "title": "Current",
+                "cost_sheet_status": "Open",
+                "cost_sheet_type": "Internal Cost Sheets",
+                "order_execution_type": "Trading",
+                "season": "SS27",
+                "template": "FOB",
+                "signature": "fake-live",
+                "sections": [
+                    {
+                        "section_key": "fabric",
+                        "name": "Fabric",
+                        "row_order": 1,
+                    }
+                ],
+                "items": [
+                    {
+                        "section_key": "fabric",
+                        "section_name": "Fabric",
+                        "item_key": "fabric-1",
+                        "row_order": 1,
+                        "action": "UPSERT",
+                        "item_type": "article",
+                        "article_code": "FAB-001",
+                        "article_name": "Jersey",
+                    }
+                ],
+                "fields": [
+                    {
+                        "scope": "item",
+                        "section_key": "fabric",
+                        "item_key": "fabric-1",
+                        "field_key": "colConsQty",
+                        "label": "Cons. Qty.",
+                        "value": 1.25,
+                        "data_type": "number",
+                        "editable": True,
+                        "required": False,
+                        "options": [],
+                        "row_order": 1,
+                    }
+                ],
+            },
+        }
+
+    def scan_active_open_costing(
+        self,
+        require_open=True,
+        scan_details=False,
+        log=print,
+    ):
+        del scan_details, log
+        self.calls.append(("scan_active_open_costing", require_open))
+        return self.scan_open_costing(
+            "ACTIVE0001",
+            require_open=require_open,
+        )
+
+    def inspect_active_costing(self, log=print):
+        del log
+        self.calls.append(("inspect_active_costing",))
+        return {
+            "ok": True,
+            "code": "COSTING_CONTEXT_INSPECTED",
+            "message": "inspected",
+            "article_code": "ACTIVE0001",
+            "costing_status": "Open",
+            "style_status": {
+                "code": "ACTIVE0001",
+                "season": "",
+                "internal_costsheet_status": "Open",
+            },
+        }
+
+    def apply_costing_plan(
+        self,
+        article_code,
+        plan,
+        source_document=None,
+        article_resolutions=None,
+        active_tab_only=False,
+        log=print,
+    ):
+        if active_tab_only:
+            self.calls.append(("apply_active_tab_only", article_code))
+        self.calls.append(
+            (
+                "apply_costing_plan",
+                article_code,
+                len(plan.get("fields_to_set") or ()),
+                bool(source_document),
+                dict(article_resolutions or {}),
+            )
+        )
+        return {
+            "ok": True,
+            "code": "COSTING_APPLIED",
+            "message": "saved",
+            "article_code": article_code,
+            "applied_count": len(plan.get("fields_to_set") or ()),
+            "verified": True,
+        }
+
 
 def make_api(tmp_path):
     fake = FakeLogin()
@@ -387,13 +506,34 @@ def test_catalog_destination_rejects_a_stale_style(tmp_path):
     assert not any(call[0] == "open_catalog_destination" for call in fake.calls)
 
 
-def test_catalog_search_requires_prepare_step(tmp_path):
+def test_catalog_search_auto_prepares_master_without_list_step(tmp_path):
     api, fake = make_api(tmp_path)
 
     result = api.find_code("Apparel", "ABC123")
 
-    assert result["code"] == "CATALOG_PREPARE_REQUIRED"
-    assert not any(call[0] == "find_in_open_catalog" for call in fake.calls)
+    assert result["code"] == "RESULT_OPENED"
+    assert fake.calls == [
+        ("prepare_catalog_master", "Apparel", "01"),
+        ("find_in_open_catalog", "Apparel", "code", "ABC123"),
+    ]
+
+
+def test_non_catalog_flow_invalidates_prepared_master_context(tmp_path):
+    api, fake = make_api(tmp_path)
+    api.prepare_catalog("Apparel")
+    fake.calls.clear()
+
+    opened = api.open_module("0004_0050_0020")
+    assert opened["code"] == "MODULE_OPENED"
+    fake.calls.clear()
+
+    result = api.find_code("Apparel", "ABC123")
+
+    assert result["code"] == "RESULT_OPENED"
+    assert fake.calls == [
+        ("prepare_catalog_master", "Apparel", "01"),
+        ("find_in_open_catalog", "Apparel", "code", "ABC123"),
+    ]
 
 
 def test_catalog_direct_costing_is_one_user_action(tmp_path):
@@ -409,6 +549,58 @@ def test_catalog_direct_costing_is_one_user_action(tmp_path):
     ]
 
 
+def test_catalog_direct_costing_prefers_atomic_search_and_popup_open(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    def combined(category, kind, query, destination, log=print):
+        del log
+        fake.calls.append(
+            (
+                "find_and_open_catalog_destination",
+                category,
+                kind,
+                query,
+                destination,
+            )
+        )
+        return {
+            "ok": True,
+            "code": "CATALOG_DESTINATION_OPENED",
+            "message": "opened atomically",
+            "article_code": query,
+            "style_status": {
+                "code": query,
+                "season": "SS27",
+                "internal_costsheet_status": "Open",
+            },
+            "category": category,
+            "filter_kind": kind,
+            "query": query,
+            "destination": destination,
+        }
+
+    fake.find_and_open_catalog_destination = combined
+
+    result = api.catalog_action(
+        "Apparel",
+        "code",
+        "ABC123",
+        "costsheet",
+    )
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert fake.calls == [
+        ("prepare_catalog_master", "Apparel", "01"),
+        (
+            "find_and_open_catalog_destination",
+            "Apparel",
+            "code",
+            "ABC123",
+            "costsheet",
+        ),
+    ]
+
+
 def test_catalog_direct_destination_reuses_matching_popup(tmp_path):
     api, fake = make_api(tmp_path)
     api.catalog_action("Apparel", "code", "ABC123", None)
@@ -420,6 +612,213 @@ def test_catalog_direct_destination_reuses_matching_popup(tmp_path):
     assert fake.calls == [
         ("open_catalog_destination", "ABC123", "bom"),
     ]
+
+
+def test_catalog_costing_export_scans_open_style_and_writes_xlsx(tmp_path):
+    api, fake = make_api(tmp_path)
+    target = tmp_path / "SWN0000001-Costing.xlsx"
+
+    result = api.export_catalog_costing(
+        "Apparel",
+        "code",
+        "SWN0000001",
+        str(target),
+    )
+
+    assert result["code"] == "COSTING_EXPORTED"
+    assert result["file_name"] == target.name
+    assert target.is_file()
+    loaded = costing_workbook.read_costing_xlsx(target)
+    assert loaded["style_code"] == "SWN0000001"
+    assert ("scan_open_costing", "SWN0000001") in fake.calls
+
+
+def test_catalog_costing_export_without_query_scans_only_active_tab(tmp_path):
+    api, fake = make_api(tmp_path)
+    target = tmp_path / "Current-Style-Costing.xlsx"
+
+    result = api.export_catalog_costing(
+        "Apparel",
+        "code",
+        "",
+        str(target),
+    )
+
+    assert result["code"] == "COSTING_EXPORTED"
+    assert result["article_code"] == "ACTIVE0001"
+    assert target.is_file()
+    assert ("scan_active_open_costing", False) in fake.calls
+
+
+def test_catalog_costing_inspection_reads_active_tab_before_file_dialog(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.inspect_active_catalog_costing("Apparel")
+
+    assert result["code"] == "COSTING_CONTEXT_INSPECTED"
+    assert result["article_code"] == "ACTIVE0001"
+    assert result["style_status"]["internal_costsheet_status"] == "Open"
+    assert ("inspect_active_costing",) in fake.calls
+
+
+def test_catalog_costing_file_validation_does_not_scan_wfx(tmp_path):
+    api, fake = make_api(tmp_path)
+    target = tmp_path / "valid.xlsx"
+    costing_workbook.write_costing_xlsx(
+        fake.scan_open_costing("SWN0000001")["costing"],
+        target,
+    )
+    fake.calls.clear()
+
+    result = api.validate_catalog_costing_file(str(target))
+
+    assert result["code"] == "COSTING_FILE_VALID"
+    assert result["style_code"] == "SWN0000001"
+    assert result["validation_errors"] == []
+    assert fake.calls == []
+    assert not any(
+        call[0] in {
+            "prepare_catalog_master",
+            "find_in_open_catalog",
+            "open_catalog_destination",
+        }
+        for call in fake.calls
+    )
+
+
+def test_catalog_costing_file_actions_reuse_open_costing_without_reopening(
+    tmp_path,
+):
+    api, fake = make_api(tmp_path)
+    opened = api.catalog_action(
+        "Apparel",
+        "code",
+        "SWN0000001",
+        "costsheet",
+    )
+    assert opened["code"] == "CATALOG_DESTINATION_OPENED"
+    fake.calls.clear()
+
+    target = tmp_path / "SWN0000001-Costing.xlsx"
+    exported = api.export_catalog_costing(
+        "Apparel",
+        "code",
+        "SWN0000001",
+        str(target),
+    )
+    prepared = api.prepare_catalog_costing_import(
+        "Apparel",
+        "code",
+        "SWN0000001",
+        str(target),
+    )
+    applied = api.apply_catalog_costing(prepared["plan_token"], {})
+
+    assert exported["code"] == "COSTING_EXPORTED"
+    assert prepared["code"] == "COSTING_DRY_RUN_READY"
+    assert applied["code"] == "COSTING_APPLIED"
+    assert not any(
+        call[0] == "open_catalog_destination" for call in fake.calls
+    )
+
+
+def test_catalog_costing_import_returns_dry_run_token_without_writing(tmp_path):
+    api, fake = make_api(tmp_path)
+    source = tmp_path / "SWN0000001-edit.xlsx"
+    scanned = fake.scan_open_costing("SWN0000001")["costing"]
+    scanned["fields"][0]["value"] = "Edited"
+    scanned["title"] = "Edited"
+    costing_workbook.write_costing_xlsx(scanned, source)
+    fake.calls.clear()
+
+    result = api.prepare_catalog_costing_import(
+        "Apparel",
+        "code",
+        "SWN0000001",
+        str(source),
+    )
+
+    assert result["code"] == "COSTING_DRY_RUN_READY"
+    assert len(result["plan_token"]) == 32
+    assert result["counts"]["fields_to_set"] == 1
+    assert ("scan_open_costing", "SWN0000001") in fake.calls
+    assert not any(call[0].startswith("apply") for call in fake.calls)
+
+    cleared = api.clear_catalog_costing_plan(result["plan_token"])
+    assert cleared["code"] == "COSTING_PLAN_CLEARED"
+
+
+def test_catalog_costing_import_without_query_uses_active_tab_through_apply(
+    tmp_path,
+):
+    api, fake = make_api(tmp_path)
+    source = tmp_path / "active-edit.xlsx"
+    document = fake.scan_open_costing("ACTIVE0001")["costing"]
+    costing_workbook.write_costing_xlsx(document, source)
+    fake.calls.clear()
+
+    prepared = api.prepare_catalog_costing_import(
+        "Apparel",
+        "code",
+        "",
+        str(source),
+    )
+    applied = api.apply_catalog_costing(prepared["plan_token"], {})
+
+    assert prepared["code"] == "COSTING_DRY_RUN_READY"
+    assert prepared["article_code"] == "ACTIVE0001"
+    assert applied["code"] == "COSTING_APPLIED"
+    assert ("scan_active_open_costing", True) in fake.calls
+    assert ("apply_active_tab_only", "ACTIVE0001") in fake.calls
+    assert not any(
+        call[0] in {
+            "prepare_catalog_master",
+            "find_in_open_catalog",
+            "open_catalog_destination",
+        }
+        for call in fake.calls
+    )
+
+
+def test_catalog_costing_apply_uses_cached_server_side_plan_once(tmp_path):
+    api, fake = make_api(tmp_path)
+    source = tmp_path / "SWN0000001-edit.xlsx"
+    scanned = fake.scan_open_costing("SWN0000001")["costing"]
+    scanned["fields"][0]["value"] = "Edited"
+    scanned["title"] = "Edited"
+    costing_workbook.write_costing_xlsx(scanned, source)
+    fake.calls.clear()
+    prepared = api.prepare_catalog_costing_import(
+        "Apparel",
+        "code",
+        "SWN0000001",
+        str(source),
+    )
+
+    applied = api.apply_catalog_costing(prepared["plan_token"], {})
+    repeated = api.apply_catalog_costing(prepared["plan_token"], {})
+
+    assert applied["code"] == "COSTING_APPLIED"
+    assert repeated["code"] == "COSTING_PLAN_EXPIRED"
+    assert ("apply_costing_plan", "SWN0000001", 1, True, {}) in fake.calls
+
+
+def test_catalog_costing_import_blocks_file_for_other_style(tmp_path):
+    api, fake = make_api(tmp_path)
+    source = tmp_path / "other.xlsx"
+    scanned = fake.scan_open_costing("OTHER")["costing"]
+    costing_workbook.write_costing_xlsx(scanned, source)
+    fake.calls.clear()
+
+    result = api.prepare_catalog_costing_import(
+        "Apparel",
+        "code",
+        "SWN0000001",
+        str(source),
+    )
+
+    assert result["code"] == "COSTING_STYLE_MISMATCH"
+    assert fake.calls == []
 
 
 def test_catalog_folder_scan_and_default_are_scoped_to_user(tmp_path):
@@ -1078,6 +1477,37 @@ def test_failed_automation_records_local_screenshot(tmp_path):
     assert job["run_id"] == result["run_id"]
     assert job["has_screenshot"] is True
     assert "password" not in str(job).lower()
+
+
+def test_expected_no_results_does_not_capture_diagnostic_screenshot(tmp_path):
+    class NoResultsLogin(FakeLogin):
+        def find_in_open_catalog(
+            self,
+            category_name,
+            filter_kind,
+            query,
+            log=print,
+        ):
+            del category_name, filter_kind, query, log
+            return {
+                "ok": False,
+                "code": "NO_RESULTS",
+                "message": "not found",
+            }
+
+        def capture_failure_screenshot(self, path, log=print):
+            raise AssertionError("NO_RESULTS không phải lỗi kỹ thuật")
+
+    api = PanelAPI(
+        login_module=NoResultsLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+
+    result = api.find_code("Apparel", "MISSING")
+
+    assert result["code"] == "NO_RESULTS"
+    assert api.get_job_history()["jobs"][0]["has_screenshot"] is False
 
 
 def test_failed_automation_webhook_contains_human_readable_context(

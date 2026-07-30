@@ -37,6 +37,11 @@ METHOD_LABELS = {
     "find_buyer_reference": "Tìm Buyer Reference",
     "open_catalog_destination": "Mở Costing/BOM",
     "download_catalog_file": "Tải file Catalog",
+    "inspect_active_catalog_costing": "Nhận tab Costing hiện tại",
+    "export_catalog_costing": "Tải Costing",
+    "validate_catalog_costing_file": "Kiểm tra file Costing",
+    "prepare_catalog_costing_import": "Kiểm tra file Costing",
+    "apply_catalog_costing": "Áp dụng Costing",
     "open_sale_asn_new": "Mở Sale ASN mới",
     "open_sample_new": "Mở Sample Order mới",
     "search_oc": "Tìm trong OC List",
@@ -142,6 +147,58 @@ ERROR_CODE_INFO.update(
             "WFX phản hồi chậm khi tải cây Catalog",
             "Chờ cây Catalog hiển thị rồi quét lại.",
         ),
+        "COSTING_CONTEXT_NOT_FOUND": (
+            "Không tìm thấy màn Costing",
+            "Mở lại đúng style trong Catalog rồi thử lại.",
+        ),
+        "COSTING_ACTIVE_TAB_NOT_FOUND": (
+            "Tab đang chọn chưa ở màn Costing",
+            "Mở Style > Costing cần xuất và giữ đúng tab đó đang hiển thị.",
+        ),
+        "COSTING_ACTIVE_TAB_AMBIGUOUS": (
+            "Có nhiều cửa sổ Costing cùng hiển thị",
+            "Chỉ giữ cửa sổ cần xuất ở trạng thái đang chọn rồi thử lại.",
+        ),
+        "COSTING_STYLE_NOT_DETECTED": (
+            "Chưa đọc được Style Code từ tab Costing",
+            "Giữ phần thông tin Style trên tab Costing rồi thử export lại.",
+        ),
+        "COSTING_OPEN_NOT_LOADED": (
+            "Costing Open chưa tải xong dữ liệu",
+            "Chờ lưới Costing hiển thị đầy đủ rồi thử export/import lại.",
+        ),
+        "COSTING_SCAN_FAILED": (
+            "Không thể đọc cấu trúc Costing",
+            "Mở Log kỹ thuật và kiểm tra Costing của style vẫn đang hiển thị.",
+        ),
+        "COSTING_APPLY_FAILED": (
+            "Không thể áp dụng Costing",
+            "Dry-run lại file và kiểm tra các field WFX trước khi Save.",
+        ),
+        "COSTING_FIELD_APPLY_FAILED": (
+            "WFX không nhận một field Costing",
+            "Xem field/Article được báo trong Log kỹ thuật rồi kiểm tra lại file.",
+        ),
+        "COSTING_NEW_DIALOG_NOT_FOUND": (
+            "Không tìm thấy cửa sổ New Costing",
+            "Mở lại Costing của style chưa có Cost Sheet rồi thử lại.",
+        ),
+        "COSTING_NEW_FAILED": (
+            "Không thể tạo Costing mới",
+            "Kiểm tra quyền tạo Internal Cost Sheet và template FOB.",
+        ),
+        "COSTING_SAVE_NOT_FOUND": (
+            "Không tìm thấy nút Save Costing",
+            "Mở lại Cost Sheet đang trạng thái Open rồi thử lại.",
+        ),
+        "COSTING_SAVE_ALERT": (
+            "WFX từ chối Save Costing",
+            "Kiểm tra field bắt buộc trong thông báo WFX rồi dry-run lại.",
+        ),
+        "COSTING_VERIFY_FAILED": (
+            "WFX chưa xác nhận dữ liệu Costing sau Save",
+            "Kiểm tra các field báo sai trong Log rồi dry-run lại.",
+        ),
         "CATALOG_NOT_OPEN": (
             "Catalog Master chưa sẵn sàng",
             "Bấm Mở Catalog và chờ Master/Floating Filter hiển thị.",
@@ -169,6 +226,10 @@ ERROR_CODE_INFO.update(
         "COMPANY_FOC_FAILED": (
             "Không thể đổi cấu hình FOC",
             "Mở lại Company Setup và kiểm tra quyền chỉnh sửa.",
+        ),
+        "COMPANY_LIST_OPEN_FAILED": (
+            "Không thể tự mở Company Setup",
+            "Kiểm tra quyền Company Setup và trạng thái menu WFX rồi thử lại.",
         ),
         "COMPANY_FOC_NOT_READY": (
             "Màn cấu hình FOC chưa sẵn sàng",
@@ -217,6 +278,10 @@ ERROR_CODE_INFO.update(
         "MODULE_NOT_FOUND": (
             "Không tìm thấy module trên menu WFX",
             "Kiểm tra quyền tài khoản và menu module.",
+        ),
+        "MODULE_OPEN_NOT_CONFIRMED": (
+            "WFX chưa xác nhận mở module",
+            "Kiểm tra trang có đang tải hoặc có hộp thoại chờ xác nhận rồi thử lại.",
         ),
         "QUICK_SEARCH_FAILED": (
             "Quick Search gặp lỗi",

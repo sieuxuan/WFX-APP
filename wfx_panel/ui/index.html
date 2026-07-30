@@ -122,8 +122,8 @@
 
         <div class="catalog-workspace" data-module-view="catalog">
           <div class="catalog-browse-card">
-            <div class="catalog-category-row">
-              <label><span>Category</span>
+            <div class="catalog-topbar">
+              <label class="catalog-category-row"><span>Category</span>
                 <select class="catalog-category">
                   <option value="Apparel">Apparel</option>
                   <option value="Fixed Asset">Fixed Asset</option>
@@ -133,6 +133,10 @@
                   <option value="Trims">Trims</option>
                 </select>
               </label>
+              <button class="catalog-browse-button" type="button" data-catalog-action="browse" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6l2 2h8v11H4V6Z"/><path d="m10 12 2 2 3-4"/></svg>
+                <span class="catalog-browse-label">Mở Master</span>
+              </button>
             </div>
             <button class="catalog-folder-summary" type="button" aria-expanded="false">
               <span>Vị trí mặc định</span>
@@ -154,13 +158,6 @@
                 <div class="catalog-folder-empty">Đang tải danh sách…</div>
               </div>
             </div>
-            <button class="catalog-browse-button" type="button" data-catalog-action="browse" disabled>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6l2 2h8v11H4V6Z"/><path d="m10 12 2 2 3-4"/></svg>
-              <span class="catalog-browse-label">Mở Master</span>
-            </button>
-          </div>
-          <div class="catalog-search-heading">
-            <strong>Tìm trong Master</strong>
           </div>
           <div class="catalog-search">
             <div class="segmented catalog-kind" role="group" aria-label="Kiểu tìm Catalog">
@@ -169,12 +166,12 @@
             </div>
             <div class="catalog-query-row">
               <input class="catalog-query" type="text" autocomplete="off" placeholder="Ví dụ: ABC123" aria-label="Nội dung tìm Catalog" />
-              <div class="catalog-query-actions">
-                <button type="button" class="catalog-primary-action" data-catalog-action="find">Tìm</button>
-                <button type="button" class="catalog-secondary-action" data-catalog-action="costsheet">Costing</button>
-                <button type="button" class="catalog-secondary-action" data-catalog-action="bom">BOM</button>
-                <button type="button" class="catalog-secondary-action" data-catalog-action="files">File</button>
-              </div>
+              <button type="button" class="catalog-primary-action" data-catalog-action="find">Tìm</button>
+            </div>
+            <div class="catalog-query-actions" aria-label="Mở dữ liệu Style">
+              <button type="button" class="catalog-secondary-action" data-catalog-action="costsheet">Costing</button>
+              <button type="button" class="catalog-secondary-action" data-catalog-action="bom">BOM</button>
+              <button type="button" class="catalog-secondary-action" data-catalog-action="files">File</button>
             </div>
           </div>
           <div class="catalog-results" aria-live="polite" hidden>
@@ -189,6 +186,45 @@
             <span>Season <b class="style-status-season">—</b></span>
             <span>CostSheet <b class="style-status-costsheet">—</b></span>
           </div>
+          <section class="catalog-costing-card" aria-labelledby="catalog-costing-title">
+            <div class="catalog-costing-heading">
+              <span>
+                <strong id="catalog-costing-title">Costing file</strong>
+                <small>Luôn dùng đúng tab Costing đang hiển thị trên WFX.</small>
+              </span>
+              <span class="catalog-costing-state" data-ready="false">Quét tab Costing hiện tại</span>
+            </div>
+            <div class="catalog-costing-current" aria-live="polite" hidden>
+              <span>Tab hiện tại</span>
+              <strong class="catalog-costing-current-code"></strong>
+              <b class="catalog-costing-current-status">—</b>
+            </div>
+            <div class="catalog-costing-actions">
+              <button type="button" data-costing-action="export-xlsx">Tải XLSX</button>
+              <button type="button" data-costing-action="validate-file">Kiểm tra file</button>
+              <button type="button" class="catalog-costing-import" data-costing-action="import">Import</button>
+            </div>
+            <div class="catalog-costing-file-check" aria-live="polite" hidden></div>
+            <p class="catalog-costing-note">
+              Mọi status đều tải XLSX được; Import/Save cần <b>Open</b>.
+              Ô trống giữ nguyên; chỉ xóa Article khi Action là <b>DELETE</b>.
+            </p>
+            <div class="catalog-costing-plan" aria-live="polite" hidden>
+              <div class="catalog-costing-plan-heading">
+                <span>
+                  <strong class="catalog-costing-plan-title">Dry-run</strong>
+                  <small class="catalog-costing-plan-file"></small>
+                </span>
+                <button type="button" data-costing-action="cancel-plan" aria-label="Huỷ dry-run Costing">×</button>
+              </div>
+              <div class="catalog-costing-counts"></div>
+              <div class="catalog-costing-warnings" hidden></div>
+              <div class="catalog-costing-resolutions" hidden></div>
+              <div class="catalog-costing-plan-actions">
+                <button type="button" class="catalog-costing-apply" data-costing-action="apply">Áp dụng &amp; Save</button>
+              </div>
+            </div>
+          </section>
         </div>
 
         <div class="special-module-workspace" data-module-view="oc" hidden>
@@ -489,6 +525,6 @@
       </div>
     </div>
   </aside>
-  <script src="panel.js?v=20260729-12"></script>
+  <script src="panel.js?v=20260730-3"></script>
 </body>
 </html>

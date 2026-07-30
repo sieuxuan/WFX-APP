@@ -61,6 +61,7 @@
   const CALL_WATCHDOG_MS = 180000;
   let busy = false;
   let hidePanelWhenIdle = false;
+  let pointerInsidePanel = false;
   let returnToListAfterAction = false;
   let favoriteModuleIds = new Set();
   let hotkeyLabel = "Ctrl + Shift + X";
@@ -78,8 +79,13 @@
   let bootstrapReceived = false;
   let toastEnabled = true;
   let lastCatalogResult = null;
+  let currentCostingStatus = "";
   let catalogKind = "code";
   let catalogPendingDestination = null;
+  let costingPlanToken = "";
+  let costingPlanDeleteCount = 0;
+  let costingArticleResolutions = {};
+  let checkedCostingFile = null;
   let catalogThemeChoice = "light";
   let catalogDefaultFolder = null;
   const catalogFoldersByCategory = new Map();
@@ -105,6 +111,12 @@
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
   ]);
+  const INTERACTIVE_RESULT_CODES = new Set([
+    "MULTIPLE_RESULTS",
+    "CATALOG_FILES_SCANNED",
+    "COSTING_DRY_RUN_READY",
+    "COSTING_ARTICLE_AMBIGUOUS",
+  ]);
   const BUSY_MESSAGES = {
     open_chrome: "Đang mở và đăng nhập WFX…",
     retry_job: "Đang chạy lại tác vụ…",
@@ -117,6 +129,11 @@
     find_buyer_reference: "Đang tìm Buyer Reference…",
     open_catalog_destination: "Đang mở dữ liệu style…",
     download_catalog_file: "Đang tải file đính kèm…",
+    export_catalog_costing: "Đang đọc và tải Costing…",
+    inspect_active_catalog_costing: "Đang nhận tab Costing hiện tại…",
+    validate_catalog_costing_file: "Đang kiểm tra cấu trúc file…",
+    prepare_catalog_costing_import: "Đang kiểm tra file và lập dry-run…",
+    apply_catalog_costing: "Đang áp dụng Costing và Save…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
     open_sample_new: "Đang mở Sample Order mới…",
     search_oc: "Đang tìm OC…",
@@ -147,6 +164,11 @@
     find_buyer_reference: "Tìm Buyer Reference",
     open_catalog_destination: "Mở Costing / BOM",
     download_catalog_file: "Tải file đính kèm",
+    export_catalog_costing: "Tải Costing",
+    inspect_active_catalog_costing: "Nhận tab Costing",
+    validate_catalog_costing_file: "Kiểm tra file Costing",
+    prepare_catalog_costing_import: "Dry-run Costing",
+    apply_catalog_costing: "Áp dụng Costing",
     open_sale_asn_new: "Sale ASN mới",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
@@ -294,6 +316,16 @@
     }
   }
   window.wfxSetBusy = setBusy;
+
+  function settleBusyUi() {
+    setBusy(false);
+    if (hidePanelWhenIdle && !pointerInsidePanel) {
+      hidePanelWhenIdle = false;
+      window.setTimeout(() => api()?.request_panel_hide?.(), 60);
+    } else if (pointerInsidePanel) {
+      hidePanelWhenIdle = false;
+    }
+  }
 
   const OVERLAY_SPECS = [
     { el: () => feedbackOverlay(), openClass: "feedback-open" },
@@ -686,15 +718,32 @@
 
   function setStyleStatus(style) {
     const node = $(".style-status");
+    const costingCurrent = $(".catalog-costing-current");
     if (!node) return;
     if (!style || !style.code) {
+      currentCostingStatus = "";
       node.hidden = true;
+      if (costingCurrent) costingCurrent.hidden = true;
+      syncCatalogStepButtons();
       return;
     }
+    currentCostingStatus = String(
+      style.internal_costsheet_status || "",
+    ).trim();
     $(".style-status-code").textContent = style.code;
     $(".style-status-season").textContent = style.season || "—";
     $(".style-status-costsheet").textContent = style.internal_costsheet_status || "—";
     node.hidden = false;
+    if (costingCurrent) {
+      $(".catalog-costing-current-code").textContent = style.code;
+      const statusNode = $(".catalog-costing-current-status");
+      statusNode.textContent = style.internal_costsheet_status || "Unknown";
+      statusNode.dataset.open = String(
+        currentCostingStatus.toLowerCase() === "open",
+      );
+      costingCurrent.hidden = false;
+    }
+    syncCatalogStepButtons();
   }
   window.wfxSetStyleStatus = setStyleStatus;
 
@@ -707,6 +756,7 @@
   function clearCatalogPreparation() {
     clearCatalogResult();
     catalogPendingDestination = null;
+    discardCostingPlan();
   }
 
   function syncCatalogStepButtons() {
@@ -767,7 +817,24 @@
       $(".catalog-folder-refresh").disabled =
         busy || catalogFolderScanning || catalogFolderSaving;
     }
-    $$(".catalog-query-actions button").forEach((button) => {
+    $$(".catalog-query-row > button, .catalog-query-actions button").forEach((button) => {
+      button.disabled = busy || catalogFolderScanning;
+    });
+    if ($(".catalog-costing-card")) {
+      $(".catalog-costing-card").hidden = !supportsDefault;
+    }
+    const costingOpen = currentCostingStatus.toLowerCase() === "open";
+    const costingStatusKnown = Boolean(currentCostingStatus.trim());
+    const costingState = $(".catalog-costing-state");
+    if (costingState) {
+      costingState.textContent = costingOpen
+        ? "Open · sẵn sàng Import"
+        : costingStatusKnown
+          ? "Có thể Export · Import cần Open"
+          : "Có thể Export/Import tab Costing hiện tại";
+      costingState.dataset.ready = String(costingOpen);
+    }
+    $$("[data-costing-action]").forEach((button) => {
       button.disabled = busy || catalogFolderScanning;
     });
   }
@@ -845,6 +912,9 @@
 
   function handleResult(result) {
     if (!result) return;
+    if (INTERACTIVE_RESULT_CODES.has(result.code)) {
+      hidePanelWhenIdle = false;
+    }
     const cancelled = result.code === "ACTION_CANCELLED";
     setStatus(
       cancelled ? "warning" : (result.ok ? "success" : "error"),
@@ -883,6 +953,13 @@
     ].includes(result.code)) {
       renderCatalogResults(result);
     }
+    if (result.code === "COSTING_DRY_RUN_READY") {
+      renderCostingPlan(result);
+    } else if (result.code === "COSTING_ARTICLE_AMBIGUOUS") {
+      renderCostingAmbiguities(result);
+    } else if (result.code === "COSTING_APPLIED") {
+      resetCostingPlan();
+    }
     if (result.default_folder !== undefined) {
       catalogDefaultFolder = result.default_folder;
       $(".catalog-folder-current").textContent =
@@ -904,7 +981,14 @@
       clearCredentialPrompt();
     }
   }
-  window.wfxHandleBackendResult = handleResult;
+  window.wfxHandleBackendResult = (result) => {
+    handleResult(result);
+    // Result sink là đường hồi phục độc lập với Promise của pywebview. Trên
+    // một số phiên WebView2 chạy lâu, backend đã xong và log đã có kết quả
+    // nhưng Promise bridge không resolve; nếu không nhả busy tại đây, toàn bộ
+    // workflow tiếp theo vẫn bị disabled tới watchdog.
+    settleBusyUi();
+  };
 
   async function call(method, ...args) {
     const bridge = api();
@@ -950,11 +1034,7 @@
       return null;
     } finally {
       window.clearTimeout(watchdog);
-      setBusy(false);
-      if (hidePanelWhenIdle) {
-        hidePanelWhenIdle = false;
-        window.setTimeout(() => api()?.request_panel_hide?.(), 60);
-      }
+      settleBusyUi();
     }
   }
 
@@ -1637,6 +1717,256 @@
     );
   }
 
+  function resetCostingPlan() {
+    costingPlanToken = "";
+    costingPlanDeleteCount = 0;
+    costingArticleResolutions = {};
+    const plan = $(".catalog-costing-plan");
+    if (plan) plan.hidden = true;
+    if ($(".catalog-costing-counts")) {
+      $(".catalog-costing-counts").innerHTML = "";
+    }
+    if ($(".catalog-costing-warnings")) {
+      $(".catalog-costing-warnings").hidden = true;
+      $(".catalog-costing-warnings").textContent = "";
+    }
+    const resolutions = $(".catalog-costing-resolutions");
+    if (resolutions) {
+      resolutions.hidden = true;
+      resolutions.innerHTML = "";
+    }
+  }
+
+  function discardCostingPlan() {
+    const token = costingPlanToken;
+    resetCostingPlan();
+    if (token) {
+      Promise.resolve(
+        callQuiet("clear_catalog_costing_plan", token)
+      ).catch(() => {});
+    }
+  }
+
+  function renderCostingPlan(result) {
+    costingPlanToken = String(result?.plan_token || "");
+    costingPlanDeleteCount = Number(result?.counts?.deletes || 0);
+    costingArticleResolutions = {};
+    const plan = $(".catalog-costing-plan");
+    if (!plan || !costingPlanToken) return;
+    const counts = result.counts || {};
+    $(".catalog-costing-plan-title").textContent =
+      "Dry-run · cập nhật Costing Open";
+    $(".catalog-costing-plan-file").textContent =
+      `${result.file_name || "Costing"} · ${result.style_code || ""}`;
+    const countItems = [
+      ["Field", counts.fields_to_set || 0],
+      ["Thêm", counts.additions || 0],
+      ["Split", counts.splits || 0],
+      ["Cập nhật", counts.updates || 0],
+      ["Xóa", counts.deletes || 0],
+      ["Bỏ qua", counts.skips || 0],
+      ["Cảnh báo", (counts.warnings || 0) + (counts.unsupported_fields || 0)],
+    ];
+    $(".catalog-costing-counts").innerHTML = countItems.map(
+      ([label, value]) => `<span><b>${Number(value)}</b>${escapeHtml(label)}</span>`
+    ).join("");
+    const warningCount = (
+      (counts.warnings || 0)
+      + (counts.unsupported_fields || 0)
+      + (Array.isArray(result.missing_sections) ? result.missing_sections.length : 0)
+    );
+    const warning = $(".catalog-costing-warnings");
+    warning.hidden = warningCount === 0;
+    warning.textContent = warningCount
+      ? `${warningCount} mục sẽ không được ghi. Xem Log kỹ thuật trước khi áp dụng.`
+      : "";
+    $(".catalog-costing-apply").disabled =
+      !costingPlanToken
+      || (Array.isArray(result.ambiguous_articles)
+        && result.ambiguous_articles.length > 0);
+    plan.hidden = false;
+  }
+
+  function renderCostingAmbiguities(result) {
+    const ambiguities = Array.isArray(result?.ambiguous_articles)
+      ? result.ambiguous_articles : [];
+    if (!ambiguities.length) return;
+    costingPlanToken = String(result?.plan_token || costingPlanToken);
+    costingArticleResolutions = {};
+    const host = $(".catalog-costing-resolutions");
+    if (!host) return;
+    host.innerHTML = ambiguities.map((item, index) => {
+      const itemKey = String(item.import_item_key || item.item_key || `item-${index}`);
+      const options = (item.candidates || []).map((candidate) => {
+        const code = String(candidate.article_code || "");
+        const name = String(candidate.article_name || "");
+        return `<option value="${escapeHtml(code)}">`
+          + `${escapeHtml(code)} · ${escapeHtml(name)}</option>`;
+      }).join("");
+      return `<label class="catalog-costing-resolution">
+        <strong>${escapeHtml(item.article_name || item.article_code || itemKey)}</strong>
+        <select data-costing-resolution="${escapeHtml(itemKey)}">
+          <option value="">Chọn đúng Article Code…</option>${options}
+        </select>
+      </label>`;
+    }).join("");
+    host.querySelectorAll("[data-costing-resolution]").forEach((select) => {
+      select.addEventListener("change", () => {
+        const key = String(select.dataset.costingResolution || "");
+        const value = String(select.value || "");
+        if (value) costingArticleResolutions[key] = value;
+        else delete costingArticleResolutions[key];
+        $(".catalog-costing-apply").disabled =
+          Object.keys(costingArticleResolutions).length !== ambiguities.length;
+      });
+    });
+    host.hidden = false;
+    const warning = $(".catalog-costing-warnings");
+    warning.hidden = false;
+    warning.textContent =
+      "WFX tìm thấy nhiều Article trùng tên. Chọn đúng Article Code để tiếp tục.";
+    $(".catalog-costing-apply").disabled = true;
+    $(".catalog-costing-plan").hidden = false;
+  }
+
+  function renderCostingFileCheck(result, fileName = "") {
+    const host = $(".catalog-costing-file-check");
+    if (!host) return;
+    const errors = Array.isArray(result?.validation_errors)
+      ? result.validation_errors.filter(Boolean)
+      : [];
+    host.dataset.valid = String(Boolean(result?.ok));
+    if (result?.ok) {
+      host.innerHTML =
+        `<strong>${escapeHtml(fileName || result.file_name || "File")} hợp lệ</strong>`
+        + `${Number(result.section_count || 0)} section · `
+        + `${Number(result.item_count || 0)} Article · `
+        + `${Number(result.field_count || 0)} field`;
+    } else {
+      const details = errors.length
+        ? `<ul>${errors.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+        : "";
+      host.innerHTML =
+        `<strong>${escapeHtml(result?.message || "File chưa hợp lệ")}</strong>`
+        + details;
+    }
+    host.hidden = false;
+  }
+
+  async function inspectCurrentCosting() {
+    return call(
+      "inspect_active_catalog_costing",
+      $(".catalog-category").value,
+    );
+  }
+
+  async function exportCatalogCosting() {
+    const inspected = await inspectCurrentCosting();
+    if (!inspected?.ok) return inspected;
+    const preferredName = inspected.article_code || "Current-Style";
+    const selected = await callQuiet(
+      "choose_costing_export_file",
+      preferredName,
+    );
+    if (!selected?.ok) {
+      if (selected?.code !== "COSTING_FILE_DIALOG_CANCELLED") {
+        handleResult(selected);
+      }
+      return selected;
+    }
+    return runSelectedModuleAction(
+      "export_catalog_costing",
+      $(".catalog-category").value,
+      catalogKind,
+      "",
+      selected.file_path,
+    );
+  }
+
+  async function validateCatalogCostingFile() {
+    const selected = await callQuiet("choose_costing_import_file");
+    if (!selected?.ok) {
+      if (selected?.code !== "COSTING_FILE_DIALOG_CANCELLED") {
+        handleResult(selected);
+      }
+      return selected;
+    }
+    checkedCostingFile = {
+      path: selected.file_path,
+      name: selected.file_name,
+      valid: false,
+    };
+    const result = await call(
+      "validate_catalog_costing_file",
+      selected.file_path,
+    );
+    checkedCostingFile.valid = Boolean(result?.ok);
+    renderCostingFileCheck(result, selected.file_name);
+    return result;
+  }
+
+  async function importCatalogCosting() {
+    discardCostingPlan();
+    const inspected = await inspectCurrentCosting();
+    if (!inspected?.ok) return inspected;
+    if (String(
+      inspected.style_status?.internal_costsheet_status || "",
+    ).toLowerCase() !== "open") {
+      const blocked = {
+        ok: false,
+        code: "COSTING_NOT_OPEN",
+        message: "Chỉ CostSheet Open mới được Import/Apply.",
+        style_status: inspected.style_status,
+      };
+      handleResult(blocked);
+      return blocked;
+    }
+    const selected = checkedCostingFile?.valid
+      ? {
+          ok: true,
+          file_path: checkedCostingFile.path,
+          file_name: checkedCostingFile.name,
+        }
+      : await callQuiet("choose_costing_import_file");
+    if (!selected?.ok) {
+      if (selected?.code !== "COSTING_FILE_DIALOG_CANCELLED") {
+        handleResult(selected);
+      }
+      return selected;
+    }
+    return runSelectedModuleAction(
+      "prepare_catalog_costing_import",
+      $(".catalog-category").value,
+      catalogKind,
+      "",
+      selected.file_path,
+    );
+  }
+
+  async function applyCatalogCosting() {
+    if (!costingPlanToken) return null;
+    if (costingPlanDeleteCount > 0) {
+      const confirmed = window.confirm(
+        `Costing sẽ xóa ${costingPlanDeleteCount} Article đã đánh dấu DELETE. `
+          + "Chỉ tiếp tục khi bạn đã kiểm tra đúng các dòng cần xóa.",
+      );
+      if (!confirmed) return null;
+    }
+    return runSelectedModuleAction(
+      "apply_catalog_costing",
+      costingPlanToken,
+      costingArticleResolutions,
+    );
+  }
+
+  const costingActions = {
+    "export-xlsx": () => exportCatalogCosting(),
+    "validate-file": () => validateCatalogCostingFile(),
+    "import": () => importCatalogCosting(),
+    "cancel-plan": () => discardCostingPlan(),
+    "apply": () => applyCatalogCosting(),
+  };
+
   const catalogActions = {
     "refresh-folders": () => scanCatalogFolders(true),
     "browse": () => browseCatalog(),
@@ -1721,6 +2051,9 @@
     $$("[data-catalog-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(button, () => catalogActions[button.dataset.catalogAction]?.())));
+    $$("[data-costing-action]").forEach((button) =>
+      button.addEventListener("click", () =>
+        withButtonLoading(button, () => costingActions[button.dataset.costingAction]?.())));
     $$(".catalog-kind-button").forEach((button) =>
       button.addEventListener("click", () => {
         catalogKind = button.dataset.catalogKind === "buyer_reference"
@@ -1729,6 +2062,7 @@
         syncCatalogKind();
         clearCatalogResult();
         catalogPendingDestination = null;
+        discardCostingPlan();
         hideCatalogResults();
         $(".catalog-query")?.focus();
       }));
@@ -1807,7 +2141,18 @@
     // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble.
     // Bỏ qua khi đang chạy module (busy) để panel không biến mất giữa chừng;
     // backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.
+    document.documentElement.addEventListener("pointerenter", () => {
+      pointerInsidePanel = true;
+      hidePanelWhenIdle = false;
+    });
+    document.documentElement.addEventListener("pointerleave", () => {
+      pointerInsidePanel = false;
+    });
     window.addEventListener("blur", () => {
+      if (pointerInsidePanel) {
+        hidePanelWhenIdle = false;
+        return;
+      }
       if (busy) {
         hidePanelWhenIdle = true;
         return;
@@ -1847,6 +2192,7 @@
     $(".catalog-query").addEventListener("input", () => {
       clearCatalogResult();
       catalogPendingDestination = null;
+      discardCostingPlan();
       hideCatalogResults();
     });
     $(".search-box input").addEventListener("input", (event) => filterModules(event.target.value));

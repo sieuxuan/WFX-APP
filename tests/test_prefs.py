@@ -45,6 +45,20 @@ def test_prefs_partial_update_preserves_others(tmp_path: Path):
     assert loaded["favorite_module_ids"] == ["0003_6200", "0004_0050_0020"]
 
 
+def test_costing_export_directory_round_trip(tmp_path: Path):
+    export_dir = tmp_path / "Costing exports"
+    export_dir.mkdir()
+
+    prefs.save_prefs(
+        base_dir=tmp_path,
+        costing_export_dir=str(export_dir),
+    )
+
+    assert prefs.load_prefs(base_dir=tmp_path)["costing_export_dir"] == str(
+        export_dir
+    )
+
+
 def test_save_account_temp_file_uses_dot_env_tmp_suffix(tmp_path: Path):
     # .env is a leading-dot name with no suffix, so Path.with_suffix(".env.tmp")
     # APPENDS rather than replaces, producing ".env.env.tmp" (a plaintext-password

@@ -21,8 +21,8 @@ lập trình.
 - Tùy chọn `Luôn trên cùng` giữ panel phía trên các cửa sổ khác.
 - Bản EXE mặc định khởi động cùng Windows. Có thể tắt `Khởi động cùng Windows`
   trong Settings; app sẽ nhớ lựa chọn này.
-- Panel tự thu khi click ra ngoài. Nếu tác vụ đang chạy, panel chờ hoàn tất rồi
-  mới thu.
+- Panel tự thu khi click ra ngoài, kể cả khi WebView bỏ lỡ sự kiện mất focus.
+  Nếu tác vụ đang chạy, panel chờ hoàn tất rồi mới thu.
 - Chuyển giữa danh sách/module và thanh tiến trình có chuyển động ngắn để dễ
   theo dõi; app tự hạn chế animation khi Windows bật chế độ giảm chuyển động.
 
@@ -58,12 +58,14 @@ lập trình.
 
 ## 5. Quy tắc sử dụng các workflow
 
-Các nút `List`, `Search`, `New` và nút thao tác khác là các flow riêng:
+Các nút `List`, `Search`, `New` và nút thao tác khác là các flow riêng. App chỉ
+báo `Đã mở` sau khi WFX thật sự đổi màn hình:
 
 1. Bấm `List` để chủ động mở màn danh sách.
 2. Hoặc nhập nội dung và bấm `Tìm` ngay; app tự mở đúng List, chờ
    List/Floating Filter tải xong rồi áp dụng search.
-3. Với `New` và thao tác thay đổi dữ liệu, mở List trước để xác nhận đúng màn.
+3. Với `New`, mở List trước để xác nhận đúng màn. Riêng `Đổi FOC` có thể bấm
+   trực tiếp; app sẽ tự mở Company Setup nếu cần.
 
 Nếu đúng List đã mở, Search dùng lại màn hiện tại để nhanh hơn. Nếu đang ở màn
 khác, app tự điều hướng; không báo lỗi yêu cầu người dùng bấm List.
@@ -81,12 +83,56 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 - Tìm theo:
   - Style Code.
   - Buyer Reference.
+- Có thể nhập rồi bấm Tìm/Costing/BOM ngay; app tự mở Catalog > Category >
+  Master nếu cần. Nút mở List/Master chỉ dùng khi muốn xem trước màn hình.
 - Khi chỉ có một Style Code, app tự mở Article.
 - Trước khi mở Costing, BOM hoặc File, app tự đồng bộ lại popup Article để
   không dùng nhầm frame cũ khi WFX reload cùng một style.
 - Khi có nhiều kết quả, app giữ danh sách để người dùng chọn.
 - Hiển thị Season và Internal CostSheet Status khi đọc được từ grid.
 - Mở Costing.
+- Trong Category Apparel, khu vực **Costing file** cho phép:
+  - quét nhanh và hiển thị Style Code/status của đúng tab Costing hiện tại
+    trước khi mở hộp thoại lưu;
+  - tải Costing đang mở thành Excel `.xlsx`;
+  - nhớ thư mục export gần nhất;
+  - dùng nút **Kiểm tra file** để xem lỗi kèm sheet/ô trước khi tạo dry-run;
+  - nhập trực tiếp vào form cột chuẩn trên sheet `Costing` rồi import lại;
+  - scan Material Color/Size theo từng Article, mapping Table hiện tại và danh
+    sách Style Color/Size; Material Color/Size có dropdown riêng theo item;
+  - phối trực tiếp trong `Color Mapping`/`Size Mapping` theo từng dòng
+    `Material => Style 1 | Style 2`, rồi app tick exact trong popup Table;
+  - lấy Style Name chuẩn từ phần sau dấu `/` của `#lblArticleNameValue`;
+  - hiển thị hai cột công thức màu đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
+    `Value in (USD)`; hai cột này không được import ngược;
+  - xem dry-run số field cập nhật, Article thêm/bỏ qua/xóa và cảnh báo trước
+    khi WFX bị thay đổi;
+  - export Costing ở mọi status; chỉ import/apply khi CostSheet đang `Open`;
+    nếu chưa có Costing, người dùng tự tạo trong WFX trước;
+  - tự đặt mọi field Minutes thành `1`, Save một lần và đọc lại để xác nhận.
+- Export và Import luôn chỉ dùng tab Costing đang hiển thị, kể cả khi có nhiều
+  tab Costing, không phụ thuộc ô Style Code và không bắt người dùng tìm lại
+  style. Apply tiếp tục khóa vào đúng
+  tab/style đã dry-run, không tự chuyển tab hoặc reload màn hình. Workbook có
+  đúng hai sheet `Hướng dẫn` và `Costing`, không có sheet `Cost Sheet`. Form
+  chuẩn chỉ hiển thị hai field chỉ đọc cần thiết dưới dạng cột đỏ, giữ sáu
+  section nguyên vật liệu/trims chuẩn; bỏ ba section `CM Costs`,
+  `Production Costs`, `Indirect Costs` và các cột
+  tổng hợp đã loại khỏi phạm vi import.
+- Import mặc định là merge/upsert. Ô trống nghĩa là giữ nguyên; nhập
+  `__CLEAR__` để chủ động xóa giá trị. Chỉ dòng có Action `DELETE` mới được xóa
+  Article và app luôn yêu cầu chọn đúng item trước khi xóa.
+- Khi Material Search không có Article, app bỏ qua và báo lại. Nếu có nhiều kết
+  quả, app dừng để người dùng chọn, không tự lấy dòng đầu tiên.
+- Có thể tải một style đã có Costing, sửa file rồi import lại để làm nhanh cho
+  cùng style. Style Code trong file phải khớp style đang mở.
+- Nếu cùng một Article Code xuất hiện trên nhiều dòng Costing, file Excel giữ
+  nguyên từng dòng riêng để Material Color và các thông số không bị gộp nhầm.
+  Nếu file thêm các dòng cùng Article liền nhau, app tự dùng nút Splitter để tạo
+  đủ dòng `>>`; file đã xuất bằng bản cũ vẫn được ghép từng cột về dòng WFX phù
+  hợp khi import.
+- Dry-run chặn sớm nếu dòng bắt buộc còn thiếu `Purchase Officer`, tránh điền
+  xong nhiều field rồi mới bị WFX từ chối ở bước Save.
 - Mở BOM.
 - Xem và tải file đính kèm theo các nhóm Images/Documents.
 
@@ -140,7 +186,8 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 ## 12. Company Setup
 
 - Mở Company Setup bằng nút `List`.
-- Đổi nơi áp dụng FOC giữa ASN và GRN.
+- Đổi nơi áp dụng FOC giữa ASN và GRN; nút này tự mở lại đúng Company Setup và
+  `12. Miscellaneous Settings` nếu người dùng vừa làm ở module khác.
 - Bấm Save và chỉ báo thành công sau khi WFX xác nhận trạng thái đã lưu.
 
 ## 13. Module khác
