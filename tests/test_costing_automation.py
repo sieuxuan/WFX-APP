@@ -44,6 +44,33 @@ def test_dependency_mapping_parser_supports_per_material_lines():
     )
 
 
+def test_dependency_option_indexes_match_codes_or_labels():
+    options = [
+        {"index": 0, "label": "Black", "code": "BLK"},
+        {"index": 1, "label": "White", "code": "WHT"},
+        {"index": 2, "label": "Navy", "code": "NVY"},
+    ]
+
+    assert costing._dependency_option_indexes(options, ["BLK", "White"]) == {
+        0,
+        1,
+    }
+
+
+def test_dependency_rule_matching_rejects_multiple_source_rules():
+    rules = [
+        ("BLACK(BLK)", ["White"]),
+        ("BLK", ["Navy"]),
+    ]
+
+    try:
+        costing._matching_dependency_rule("BLACK (BLK)", rules)
+    except RuntimeError as error:
+        assert str(error) == "COSTING_DEPENDENCY_SOURCE_AMBIGUOUS"
+    else:
+        raise AssertionError("Expected an ambiguous dependency source")
+
+
 def test_inventory_builds_sections_items_and_stable_duplicate_field_keys():
     document = costing._inventory_to_document(
         {

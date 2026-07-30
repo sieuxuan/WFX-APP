@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import Any
 
 from wfx_panel.automation._common import (
@@ -2338,179 +2340,231 @@ def _dependency_mapping_rules(
     return [(None, targets)] if targets else []
 
 
-def _set_dependency_mapping(
+def _ensure_table_dependency_mode(
     frame: Frame,
     live_field: Mapping[str, Any],
     value: Any,
-) -> None:
-    """Chọn mapping thật trong popup Table thay vì chỉ ghi chữ ``[Table]``."""
-    kind = _dependency_kind(live_field, value)
-    if not kind:
+) -> str:
+    dependency_kind = _dependency_kind(live_field, value)
+    if not dependency_kind:
         raise RuntimeError("COSTING_DEPENDENCY_VALUE_INVALID")
-    rules = _dependency_mapping_rules(value)
-    if not rules:
-        raise RuntimeError("COSTING_DEPENDENCY_VALUE_INVALID")
-
     live_metadata = live_field.get("_live") or {}
-    current = str(
-        live_metadata.get("dependency_mode")
-        or live_field.get("value")
-        or ""
+    current_mode = str(
+        live_metadata.get("dependency_mode") or live_field.get("value") or ""
     ).strip()
-    if current.casefold() != "[table]":
-        control = _resolve_live_field(frame, live_field)
-        _edit_wfx_label(frame, control, live_field, "[Table]")
-        _sleep(0.2)
+    if current_mode.casefold() == "[table]":
+        return dependency_kind
+    control = _resolve_live_field(frame, live_field)
+    _edit_wfx_label(frame, control, live_field, "[Table]")
+    _sleep(0.2)
+    return dependency_kind
 
-    live = live_metadata
-    row_index = int(live.get("row_index") or 0)
+
+def _open_dependency_popup(
+    frame: Frame,
+    live_field: Mapping[str, Any],
+    dependency_kind: str,
+) -> Any:
+    row_index = int((live_field.get("_live") or {}).get("row_index") or 0)
     grid = _visible_costing_grid(frame)
     if grid is None:
         raise RuntimeError("COSTING_DEPENDENCY_ROW_NOT_FOUND")
     rows = grid.locator(":scope > tbody > tr")
     if row_index < 0 or row_index >= rows.count():
         raise RuntimeError("COSTING_DEPENDENCY_ROW_NOT_FOUND")
-    row = rows.nth(row_index)
-    link_id = f"lnk{kind}Dependency"
-    links = row.locator(f'[id="{link_id}"]')
-    links = [
-        links.nth(index)
-        for index in range(links.count())
-        if links.nth(index).is_visible()
-    ]
-    if len(links) != 1:
+    links = rows.nth(row_index).locator(
+        f'[id="lnk{dependency_kind}Dependency"]:visible'
+    )
+    if links.count() != 1:
         raise RuntimeError("COSTING_DEPENDENCY_LINK_NOT_FOUND")
     try:
-        links[0].click(timeout=3_000)
+        links.first.click(timeout=3_000)
     except PlaywrightError:
-        links[0].evaluate("element => element.click()")
-
-    prefix = kind
+        links.first.evaluate("element => element.click()")
     popup = frame.locator(
-        f'div#section{prefix}DepUsage.Targetblock:visible'
+        f"div#section{dependency_kind}DepUsage.Targetblock:visible"
     )
-    try:
-        popup.wait_for(state="visible", timeout=3_000)
-        mapping_rows = popup.locator(
-            f"#grid{prefix}DepUsage_tblGridContent > tbody > tr"
+    popup.wait_for(state="visible", timeout=3_000)
+    return popup
+
+
+def _dependency_source_label(mapping_row: Any) -> str:
+    source_cell = mapping_row.locator("#colMaterialArticleSDU")
+    source_node = source_cell.locator("[title]")
+    return str(
+        (
+            source_node.first.get_attribute("title")
+            if source_node.count()
+            else ""
         )
-        if mapping_rows.count() < 1:
-            raise RuntimeError("COSTING_DEPENDENCY_TABLE_EMPTY")
-        matched_rule_indexes: set[int] = set()
-        for index in range(mapping_rows.count()):
-            mapping_row = mapping_rows.nth(index)
-            source_cell = mapping_row.locator("#colMaterialArticleSDU")
-            source_node = source_cell.locator("[title]")
-            source_label = str(
-                (
-                    source_node.first.get_attribute("title")
-                    if source_node.count()
-                    else ""
-                )
-                or source_cell.inner_text()
-                or ""
-            ).strip()
-            source_tokens = _dependency_match_tokens(source_label)
-            applicable: list[tuple[int, list[str]]] = []
-            for rule_index, (source, targets) in enumerate(rules):
-                if source is None or (
-                    source_tokens & _dependency_match_tokens(source)
-                ):
-                    applicable.append((rule_index, targets))
-            if not applicable:
-                # Mapping cụ thể được phép chỉ cập nhật một phần; dòng nguồn
-                # không được nhắc tới giữ nguyên lựa chọn hiện tại.
+        or source_cell.inner_text()
+        or ""
+    ).strip()
+
+
+def _matching_dependency_rule(
+    source_label: str,
+    rules: Sequence[tuple[str | None, list[str]]],
+) -> tuple[int, list[str]] | None:
+    source_tokens = _dependency_match_tokens(source_label)
+    matches = [
+        (rule_index, targets)
+        for rule_index, (source, targets) in enumerate(rules)
+        if source is None or source_tokens & _dependency_match_tokens(source)
+    ]
+    if not matches:
+        return None
+    if len(matches) > 1:
+        raise RuntimeError("COSTING_DEPENDENCY_SOURCE_AMBIGUOUS")
+    return matches[0]
+
+
+_DEPENDENCY_OPTIONS_JS = """nodes => nodes.map((node, index) => {
+    const anchor = node.querySelector('a');
+    const checkbox = node.querySelector('input[type="checkbox"]');
+    return {
+        index,
+        label: String(anchor?.getAttribute('title') || node.textContent || '').trim(),
+        code: String(checkbox?.value || '').trim(),
+        checked: Boolean(checkbox?.checked)
+    };
+})"""
+
+
+def _dependency_option_indexes(
+    option_snapshot: Sequence[Mapping[str, Any]],
+    wanted_values: Sequence[str],
+) -> set[int]:
+    matched_indexes: dict[str, int] = {}
+    for option in option_snapshot:
+        label = str(option.get("label") or "").casefold()
+        code = str(option.get("code") or "").casefold()
+        for wanted_value in wanted_values:
+            normalized_value = wanted_value.casefold()
+            if normalized_value not in {label, code}:
                 continue
-            if len(applicable) != 1:
-                raise RuntimeError("COSTING_DEPENDENCY_SOURCE_AMBIGUOUS")
-            rule_index, wanted = applicable[0]
-            matched_rule_indexes.add(rule_index)
-            target_cell = mapping_row.locator("#colStyleSDU")
-            editable = target_cell.locator(".lblEditable")
-            if editable.count() != 1:
-                raise RuntimeError("COSTING_DEPENDENCY_TARGET_NOT_FOUND")
-            editable.click(timeout=2_000)
-            editor_id = f"ddlStyle{prefix}ListSDU"
-            editor = target_cell.locator(f'#{editor_id}:visible')
-            editor.wait_for(state="visible", timeout=2_000)
-            editor.click(timeout=2_000)
-            option_list = frame.locator(
-                f'#{editor_id}ListItems:visible'
-            )
-            option_list.wait_for(state="visible", timeout=2_000)
-            options = option_list.locator("li.clsMultiSelectContent")
-            matches: dict[str, int] = {}
-            available: list[str] = []
-            for option_index in range(options.count()):
-                option = options.nth(option_index)
-                label = str(
-                    option.locator("a").get_attribute("title")
-                    or option.inner_text()
-                    or ""
-                ).strip()
-                checkbox = option.locator("input[type='checkbox']")
-                code = str(checkbox.get_attribute("value") or "").strip()
-                if label:
-                    available.append(label)
-                for candidate in wanted:
-                    if candidate.casefold() in {
-                        label.casefold(),
-                        code.casefold(),
-                    }:
-                        if candidate.casefold() in matches:
-                            raise RuntimeError(
-                                "COSTING_DEPENDENCY_OPTION_AMBIGUOUS"
-                            )
-                        matches[candidate.casefold()] = option_index
-            missing = [
-                candidate
-                for candidate in wanted
-                if candidate.casefold() not in matches
-            ]
-            if missing:
-                raise RuntimeError(
-                    "COSTING_DEPENDENCY_OPTION_NOT_FOUND:"
-                    + ",".join(missing[:3])
-                )
-            wanted_option_indexes = {
-                matches[item.casefold()] for item in wanted
-            }
-            for option_index in range(options.count()):
-                checkbox = options.nth(option_index).locator(
-                    "input[type='checkbox']"
-                )
-                should_check = option_index in wanted_option_indexes
-                if checkbox.is_checked() != should_check:
-                    checkbox.click(timeout=2_000)
-            selected_indexes = {
-                option_index
-                for option_index in range(options.count())
-                if options.nth(option_index)
-                .locator("input[type='checkbox']")
-                .is_checked()
-            }
-            if selected_indexes != wanted_option_indexes:
-                raise RuntimeError("COSTING_DEPENDENCY_NOT_CONFIRMED")
-            editor.press("Tab")
-        missing_sources = [
-            source
-            for rule_index, (source, _targets) in enumerate(rules)
-            if source is not None and rule_index not in matched_rule_indexes
-        ]
-        if missing_sources:
-            raise RuntimeError(
-                "COSTING_DEPENDENCY_SOURCE_NOT_FOUND:"
-                + ",".join(missing_sources[:3])
-            )
+            if normalized_value in matched_indexes:
+                raise RuntimeError("COSTING_DEPENDENCY_OPTION_AMBIGUOUS")
+            matched_indexes[normalized_value] = int(option["index"])
+    missing_values = [
+        value for value in wanted_values if value.casefold() not in matched_indexes
+    ]
+    if missing_values:
+        raise RuntimeError(
+            "COSTING_DEPENDENCY_OPTION_NOT_FOUND:"
+            + ",".join(missing_values[:3])
+        )
+    return {matched_indexes[value.casefold()] for value in wanted_values}
+
+
+def _set_dependency_row_options(
+    frame: Frame,
+    mapping_row: Any,
+    dependency_kind: str,
+    wanted_values: Sequence[str],
+) -> None:
+    target_cell = mapping_row.locator("#colStyleSDU")
+    editable = target_cell.locator(".lblEditable")
+    if editable.count() != 1:
+        raise RuntimeError("COSTING_DEPENDENCY_TARGET_NOT_FOUND")
+    editable.click(timeout=2_000)
+    editor_id = f"ddlStyle{dependency_kind}ListSDU"
+    editor = target_cell.locator(f"#{editor_id}:visible")
+    editor.wait_for(state="visible", timeout=2_000)
+    editor.click(timeout=2_000)
+    option_list = frame.locator(f"#{editor_id}ListItems:visible")
+    option_list.wait_for(state="visible", timeout=2_000)
+    options = option_list.locator("li.clsMultiSelectContent")
+    option_snapshot = options.evaluate_all(_DEPENDENCY_OPTIONS_JS)
+    wanted_indexes = _dependency_option_indexes(
+        option_snapshot,
+        wanted_values,
+    )
+    for option in option_snapshot:
+        option_index = int(option["index"])
+        should_check = option_index in wanted_indexes
+        if bool(option.get("checked")) == should_check:
+            continue
+        options.nth(option_index).locator("input[type='checkbox']").click(
+            timeout=2_000
+        )
+    confirmed_snapshot = options.evaluate_all(_DEPENDENCY_OPTIONS_JS)
+    confirmed_indexes = {
+        int(option["index"])
+        for option in confirmed_snapshot
+        if option.get("checked")
+    }
+    if confirmed_indexes != wanted_indexes:
+        raise RuntimeError("COSTING_DEPENDENCY_NOT_CONFIRMED")
+    editor.press("Tab")
+
+
+def _apply_dependency_rules(
+    frame: Frame,
+    popup: Any,
+    dependency_kind: str,
+    rules: Sequence[tuple[str | None, list[str]]],
+) -> None:
+    mapping_rows = popup.locator(
+        f"#grid{dependency_kind}DepUsage_tblGridContent > tbody > tr"
+    )
+    if mapping_rows.count() < 1:
+        raise RuntimeError("COSTING_DEPENDENCY_TABLE_EMPTY")
+    matched_rule_indexes: set[int] = set()
+    for row_index in range(mapping_rows.count()):
+        mapping_row = mapping_rows.nth(row_index)
+        matching_rule = _matching_dependency_rule(
+            _dependency_source_label(mapping_row),
+            rules,
+        )
+        if matching_rule is None:
+            continue
+        rule_index, wanted_values = matching_rule
+        matched_rule_indexes.add(rule_index)
+        _set_dependency_row_options(
+            frame,
+            mapping_row,
+            dependency_kind,
+            wanted_values,
+        )
+    missing_sources = [
+        source
+        for rule_index, (source, _targets) in enumerate(rules)
+        if source is not None and rule_index not in matched_rule_indexes
+    ]
+    if missing_sources:
+        raise RuntimeError(
+            "COSTING_DEPENDENCY_SOURCE_NOT_FOUND:"
+            + ",".join(missing_sources[:3])
+        )
+
+
+def _cancel_dependency_popup(popup: Any) -> None:
+    try:
+        cancel = popup.locator(".clsSectionTitleBarToolCancel")
+        if cancel.count() and cancel.is_visible():
+            cancel.click(timeout=1_000)
+    except PlaywrightError:
+        pass
+
+
+def _set_dependency_mapping(
+    frame: Frame,
+    live_field: Mapping[str, Any],
+    value: Any,
+) -> None:
+    """Chọn mapping thật trong popup Table thay vì chỉ ghi chữ ``[Table]``."""
+    rules = _dependency_mapping_rules(value)
+    if not rules:
+        raise RuntimeError("COSTING_DEPENDENCY_VALUE_INVALID")
+    dependency_kind = _ensure_table_dependency_mode(frame, live_field, value)
+    popup = _open_dependency_popup(frame, live_field, dependency_kind)
+    try:
+        _apply_dependency_rules(frame, popup, dependency_kind, rules)
         popup.locator(".clsSectionTitleBarToolOk").click(timeout=3_000)
         popup.wait_for(state="hidden", timeout=3_000)
     except Exception:
-        try:
-            cancel = popup.locator(".clsSectionTitleBarToolCancel")
-            if cancel.count() and cancel.is_visible():
-                cancel.click(timeout=1_000)
-        except PlaywrightError:
-            pass
+        _cancel_dependency_popup(popup)
         raise
 
 
@@ -2694,6 +2748,544 @@ def _save_costing(
     )
 
 
+class CostingApplyAbort(RuntimeError):
+    """Stop an apply workflow while preserving its structured panel result."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__(str(result.get("code") or "COSTING_APPLY_FAILED"))
+        self.result = result
+
+
+@dataclass
+class _CostingApplySession:
+    article_code: str
+    browser: Any
+    context: Any
+    costing_page: Page
+    frame: Frame
+    scoped_pages: Sequence[Page] | None
+    live: dict[str, Any]
+    working_plan: dict[str, Any]
+    source_document: Mapping[str, Any] | None
+    log: Callable[[str], None]
+
+
+@dataclass
+class _CostingApplyProgress:
+    preflight: dict[str, Any] = dataclass_field(default_factory=dict)
+    added: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    deleted: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    split: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    applied: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    skipped: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    dependency_confirmed: set[tuple[str, str, str, str]] = dataclass_field(
+        default_factory=set
+    )
+
+
+def _validate_costing_apply_request(
+    article_code: str,
+    plan: Mapping[str, Any],
+    source_document: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if plan.get("new_required"):
+        return _result(
+            False,
+            "COSTING_NOT_OPEN",
+            "CostSheet phải ở trạng thái Open trước khi import.",
+            article_code=article_code,
+        )
+    article_mutations = (
+        plan.get("additions") or plan.get("splits") or plan.get("deletes")
+    )
+    if not article_mutations or source_document is not None:
+        return None
+    return _result(
+        False,
+        "COSTING_SOURCE_REQUIRED",
+        "Plan thêm/split/xóa Article thiếu dữ liệu nguồn server-side.",
+        additions=list(plan.get("additions") or ()),
+        splits=list(plan.get("splits") or ()),
+        deletes=list(plan.get("deletes") or ()),
+    )
+
+
+def _costing_plan_has_changes(plan: Mapping[str, Any]) -> bool:
+    return any(
+        plan.get(key)
+        for key in ("additions", "splits", "deletes", "fields_to_set")
+    )
+
+
+def _costing_apply_scope(
+    context: Any,
+    article_code: str,
+    active_tab_only: bool,
+) -> Sequence[Page] | None:
+    if not active_tab_only:
+        return None
+    active_page = _active_costing_page(context)
+    detected_code = _article_code_from_page(active_page)
+    if not detected_code:
+        raise CostingApplyAbort(
+            _result(
+                False,
+                "COSTING_STYLE_NOT_DETECTED",
+                "Không đọc được Style Code từ tab Costing đang chọn.",
+            )
+        )
+    if detected_code.casefold() == article_code.casefold():
+        return [active_page]
+    raise CostingApplyAbort(
+        _result(
+            False,
+            "COSTING_STYLE_MISMATCH",
+            (
+                "Tab Costing đang chọn không còn khớp file dry-run. "
+                "Hãy quay lại đúng style rồi thử lại."
+            ),
+            file_style=article_code,
+            live_style=detected_code,
+        )
+    )
+
+
+def _open_costing_apply_session(
+    browser: Any,
+    article_code: str,
+    plan: Mapping[str, Any],
+    source_document: Mapping[str, Any] | None,
+    active_tab_only: bool,
+    log: Callable[[str], None],
+) -> _CostingApplySession:
+    context = browser.contexts[0]
+    scoped_pages = _costing_apply_scope(
+        context,
+        article_code,
+        active_tab_only,
+    )
+    costing_page, frame = _costing_frame(context, pages=scoped_pages)
+    live = _inventory_costing_frame(
+        frame,
+        article_code,
+        costing_status=str(plan.get("costing_status") or ""),
+        title=_selected_costing_title(context, pages=scoped_pages),
+    )
+    if str(live.get("cost_sheet_status") or "").casefold() != "open":
+        raise CostingApplyAbort(
+            _result(
+                False,
+                "COSTING_NOT_OPEN",
+                "CostSheet không còn ở trạng thái Open. Hãy mở/tạo Costing trước.",
+                article_code=article_code,
+            )
+        )
+    if str(plan.get("live_signature") or "") != live_signature(live):
+        raise CostingApplyAbort(
+            _result(
+                False,
+                "COSTING_PLAN_STALE",
+                "Costing đã thay đổi sau dry-run. Hãy import và kiểm tra lại.",
+            )
+        )
+    return _CostingApplySession(
+        article_code=article_code,
+        browser=browser,
+        context=context,
+        costing_page=costing_page,
+        frame=frame,
+        scoped_pages=scoped_pages,
+        live=live,
+        working_plan=dict(plan),
+        source_document=source_document,
+        log=log,
+    )
+
+
+def _refresh_apply_inventory(
+    session: _CostingApplySession,
+    *,
+    wait_ms: int = 0,
+    rebuild_plan: bool = True,
+) -> None:
+    if wait_ms:
+        _wait(session.costing_page, wait_ms)
+    session.live = _inventory_costing_frame(
+        session.frame,
+        session.article_code,
+        costing_status="Open",
+        title=_selected_costing_title(
+            session.context,
+            pages=session.scoped_pages,
+        ),
+    )
+    if rebuild_plan and session.source_document is not None:
+        session.working_plan = build_costing_plan(
+            session.source_document,
+            session.live,
+        )
+
+
+def _normalize_article_resolutions(
+    article_resolutions: Mapping[str, str] | None,
+) -> dict[str, str]:
+    return {
+        str(key): str(value).strip()
+        for key, value in dict(article_resolutions or {}).items()
+        if str(key).strip() and str(value).strip()
+    }
+
+
+def _prepare_costing_articles(
+    session: _CostingApplySession,
+    progress: _CostingApplyProgress,
+    article_resolutions: Mapping[str, str] | None,
+) -> None:
+    _write_log(
+        session.log,
+        "[COSTING] Đang kiểm tra Article trước khi điền field.",
+    )
+    progress.preflight = _preflight_article_additions(
+        session.context,
+        session.frame,
+        session.working_plan.get("additions") or (),
+        _normalize_article_resolutions(article_resolutions),
+        session.log,
+    )
+    if progress.preflight["ambiguous"]:
+        raise CostingApplyAbort(
+            _result(
+                False,
+                "COSTING_ARTICLE_AMBIGUOUS",
+                "Có Article trùng kết quả. Chọn đúng Article Code rồi áp dụng lại.",
+                ambiguous_articles=progress.preflight["ambiguous"],
+                missing_articles=progress.preflight["missing"],
+            )
+        )
+    progress.deleted = _delete_articles(
+        session.costing_page,
+        session.frame,
+        session.live,
+        session.working_plan.get("deletes") or (),
+        session.log,
+    )
+    progress.added = _add_articles(
+        session.context,
+        session.frame,
+        progress.preflight,
+        session.log,
+    )
+    if progress.added or progress.deleted:
+        _refresh_apply_inventory(session, wait_ms=500)
+
+
+def _missing_article_codes(preflight: Mapping[str, Any]) -> set[str]:
+    return {
+        str(item.get("article_code") or item.get("article_name") or "").casefold()
+        for item in preflight.get("missing") or ()
+    }
+
+
+def _apply_costing_splits(
+    session: _CostingApplySession,
+    progress: _CostingApplyProgress,
+) -> None:
+    missing_codes = _missing_article_codes(progress.preflight)
+    pending_splits = [
+        request
+        for request in session.working_plan.get("splits") or ()
+        if str(
+            request.get("article_code") or request.get("article_name") or ""
+        ).casefold()
+        not in missing_codes
+    ]
+    if pending_splits:
+        _write_log(
+            session.log,
+            "[COSTING] Đang Splitter "
+            f"{len(pending_splits)} dòng Article liền nhau.",
+        )
+    for request in pending_splits:
+        checkpoint()
+        _split_article_row(session.frame, session.live, request)
+        progress.split.append(dict(request))
+        _refresh_apply_inventory(
+            session,
+            wait_ms=250,
+            rebuild_plan=False,
+        )
+    if progress.split and session.source_document is not None:
+        session.working_plan = build_costing_plan(
+            session.source_document,
+            session.live,
+        )
+
+
+def _costing_change_key(
+    change: Mapping[str, Any],
+) -> tuple[str, str, str, str]:
+    return (
+        str(change.get("scope") or "").casefold(),
+        str(change.get("section_key") or "").casefold(),
+        str(change.get("item_key") or "").casefold(),
+        str(change.get("field_key") or "").casefold(),
+    )
+
+
+def _change_belongs_to_missing_article(
+    change: Mapping[str, Any],
+    missing_item_keys: set[str],
+) -> bool:
+    return (
+        str(change.get("scope") or "").casefold() == "item"
+        and str(change.get("item_key") or "").casefold() in missing_item_keys
+    )
+
+
+def _apply_single_costing_field(
+    session: _CostingApplySession,
+    progress: _CostingApplyProgress,
+    live_fields: Mapping[tuple[str, str, str, str], Mapping[str, Any]],
+    change: Mapping[str, Any],
+    change_index: int,
+    change_count: int,
+) -> None:
+    key = _costing_change_key(change)
+    live_field = live_fields.get(key)
+    if live_field is None or not live_field.get("editable"):
+        progress.skipped.append({**change, "reason": "not_found_or_read_only"})
+        return
+    try:
+        if _dependency_kind(live_field, change.get("value")):
+            _set_dependency_mapping(
+                session.frame,
+                live_field,
+                change.get("value"),
+            )
+            progress.dependency_confirmed.add(key)
+        else:
+            _set_live_field(session.frame, live_field, change.get("value"))
+    except (PlaywrightError, RuntimeError) as error:
+        field_key = str(change.get("field_key") or "")
+        item_key = str(change.get("item_key") or "")
+        reason = str(error).splitlines()[0][:160]
+        _write_log(
+            session.log,
+            "[COSTING] Không thể điền field "
+            f"{change_index}/{change_count} "
+            f"{field_key} ({item_key}): {reason}",
+        )
+        raise CostingFieldApplyError(field_key, item_key, reason) from error
+    progress.applied.append(dict(change))
+
+
+def _apply_costing_fields(
+    session: _CostingApplySession,
+    progress: _CostingApplyProgress,
+) -> None:
+    live_fields = _live_field_index(session.live)
+    missing_item_keys = {
+        str(item.get("import_item_key") or "").casefold()
+        for item in progress.preflight.get("missing") or ()
+    }
+    ordered_changes = sorted(
+        session.working_plan.get("fields_to_set") or (),
+        key=_field_application_priority,
+    )
+    change_count = len(ordered_changes)
+    if change_count:
+        _write_log(
+            session.log,
+            f"[COSTING] Bắt đầu điền {change_count} field.",
+        )
+    for change_index, change in enumerate(ordered_changes, 1):
+        checkpoint()
+        if _change_belongs_to_missing_article(change, missing_item_keys):
+            progress.skipped.append({**change, "reason": "article_not_found"})
+            continue
+        _apply_single_costing_field(
+            session,
+            progress,
+            live_fields,
+            change,
+            change_index,
+            change_count,
+        )
+        if change_index == 1 or change_index % 10 == 0:
+            _write_log(
+                session.log,
+                f"[COSTING] Đã điền {change_index}/{change_count} field.",
+            )
+
+
+def _field_verification_mismatches(
+    verified: Mapping[str, Any],
+    progress: _CostingApplyProgress,
+) -> list[dict[str, Any]]:
+    verified_fields = _live_field_index(verified)
+    mismatches: list[dict[str, Any]] = []
+    for change in progress.applied:
+        key = _costing_change_key(change)
+        if key in progress.dependency_confirmed:
+            # Main inventory only renders [Table]; the popup was checked exactly.
+            continue
+        actual = verified_fields.get(key, {}).get("value")
+        if _field_value_matches(
+            actual,
+            change.get("value"),
+            str(change.get("data_type") or "text"),
+        ):
+            continue
+        mismatches.append(
+            {
+                "field_key": change.get("field_key"),
+                "expected": change.get("value"),
+                "actual": actual,
+            }
+        )
+    return mismatches
+
+
+def _article_verification_mismatches(
+    verified: Mapping[str, Any],
+    progress: _CostingApplyProgress,
+) -> list[dict[str, Any]]:
+    mismatches: list[dict[str, Any]] = []
+    verified_codes = {
+        str(item.get("article_code") or "").casefold()
+        for item in verified.get("items") or ()
+        if str(item.get("article_code") or "").strip()
+    }
+    for addition in progress.added:
+        code = str(addition.get("resolved_code") or "").strip()
+        if code and code.casefold() not in verified_codes:
+            mismatches.append(
+                {
+                    "field_key": f"Article:{code}",
+                    "expected": "present",
+                    "actual": "missing_after_save",
+                }
+            )
+    for deletion in progress.deleted:
+        code = str(deletion.get("article_code") or "").strip()
+        if code and code.casefold() in verified_codes:
+            mismatches.append(
+                {
+                    "field_key": f"Article:{code}",
+                    "expected": "deleted",
+                    "actual": "still_present_after_save",
+                }
+            )
+    return mismatches
+
+
+def _split_verification_mismatches(
+    verified: Mapping[str, Any],
+    split_requests: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    identity_counts: dict[tuple[str, str], int] = {}
+    for item in verified.get("items") or ():
+        identity = _article_identity(item)
+        identity_counts[identity] = identity_counts.get(identity, 0) + 1
+    mismatches: list[dict[str, Any]] = []
+    for split_request in split_requests:
+        expected_count = int(split_request.get("occurrence") or 2)
+        actual_count = identity_counts.get(_article_identity(split_request), 0)
+        if actual_count >= expected_count:
+            continue
+        article_identity = str(
+            split_request.get("article_code")
+            or split_request.get("article_name")
+            or ""
+        )
+        mismatches.append(
+            {
+                "field_key": f"Splitter:{article_identity}",
+                "expected": expected_count,
+                "actual": actual_count,
+            }
+        )
+    return mismatches
+
+
+def _verify_costing_apply(
+    session: _CostingApplySession,
+    progress: _CostingApplyProgress,
+) -> list[dict[str, Any]]:
+    _wait(session.costing_page, 500)
+    session.costing_page, session.frame = _costing_frame(
+        session.context,
+        timeout_seconds=10,
+        pages=session.scoped_pages,
+    )
+    verified = _inventory_costing_frame(
+        session.frame,
+        session.article_code,
+        costing_status="Open",
+        title=_selected_costing_title(
+            session.context,
+            pages=session.scoped_pages,
+        ),
+    )
+    return [
+        *_field_verification_mismatches(verified, progress),
+        *_article_verification_mismatches(verified, progress),
+        *_split_verification_mismatches(verified, progress.split),
+    ]
+
+
+def _no_change_apply_result(article_code: str) -> dict[str, Any]:
+    return _result(
+        True,
+        "COSTING_APPLIED",
+        f"Costing style {article_code} đã khớp file; không cần Save.",
+        article_code=article_code,
+        applied_count=0,
+        added_count=0,
+        split_count=0,
+        deleted_count=0,
+        skipped_fields=[],
+        verified=True,
+        no_changes=True,
+    )
+
+
+def _run_costing_apply(
+    session: _CostingApplySession,
+    article_resolutions: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    if not _costing_plan_has_changes(session.working_plan):
+        return _no_change_apply_result(session.article_code)
+    progress = _CostingApplyProgress()
+    _prepare_costing_articles(session, progress, article_resolutions)
+    _apply_costing_splits(session, progress)
+    _apply_costing_fields(session, progress)
+    _save_costing(session.costing_page, session.frame, session.log)
+    mismatches = _verify_costing_apply(session, progress)
+    if mismatches:
+        return _result(
+            False,
+            "COSTING_VERIFY_FAILED",
+            "WFX chưa xác nhận một số field sau Save.",
+            applied_count=len(progress.applied),
+            skipped_fields=progress.skipped,
+            mismatches=mismatches,
+        )
+    return _result(
+        True,
+        "COSTING_APPLIED",
+        f"Đã cập nhật và Save Costing cho style {session.article_code}.",
+        article_code=session.article_code,
+        applied_count=len(progress.applied),
+        added_count=len(progress.added),
+        split_count=len(progress.split),
+        deleted_count=len(progress.deleted),
+        missing_articles=progress.preflight["missing"],
+        skipped_fields=progress.skipped,
+        verified=True,
+    )
+
+
 def apply_costing_plan(
     article_code: str,
     plan: Mapping[str, Any],
@@ -2705,29 +3297,13 @@ def apply_costing_plan(
 ) -> dict[str, Any]:
     """Áp dụng plan Open-only: Material Search, field, Delete và Save."""
     article_code = str(article_code or "").strip()
-    if plan.get("new_required"):
-        return _result(
-            False,
-            "COSTING_NOT_OPEN",
-            "CostSheet phải ở trạng thái Open trước khi import.",
-            article_code=article_code,
-        )
-    if (
-        (
-            plan.get("additions")
-            or plan.get("splits")
-            or plan.get("deletes")
-        )
-        and source_document is None
-    ):
-        return _result(
-            False,
-            "COSTING_SOURCE_REQUIRED",
-            "Plan thêm/split/xóa Article thiếu dữ liệu nguồn server-side.",
-            additions=list(plan.get("additions") or ()),
-            splits=list(plan.get("splits") or ()),
-            deletes=list(plan.get("deletes") or ()),
-        )
+    validation_error = _validate_costing_apply_request(
+        article_code,
+        plan,
+        source_document,
+    )
+    if validation_error is not None:
+        return validation_error
     if not _chrome_is_ready():
         return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
     playwright: Playwright | None = None
@@ -2744,354 +3320,17 @@ def apply_costing_plan(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
-        context = browser.contexts[0]
-        scoped_pages: Sequence[Page] | None = None
-        if active_tab_only:
-            active_page = _active_costing_page(context)
-            detected_code = _article_code_from_page(active_page)
-            if not detected_code:
-                return _result(
-                    False,
-                    "COSTING_STYLE_NOT_DETECTED",
-                    "Không đọc được Style Code từ tab Costing đang chọn.",
-                )
-            if detected_code.casefold() != article_code.casefold():
-                return _result(
-                    False,
-                    "COSTING_STYLE_MISMATCH",
-                    (
-                        "Tab Costing đang chọn không còn khớp file dry-run. "
-                        "Hãy quay lại đúng style rồi thử lại."
-                    ),
-                    file_style=article_code,
-                    live_style=detected_code,
-                )
-            scoped_pages = [active_page]
-        costing_page, frame = _costing_frame(
-            context,
-            pages=scoped_pages,
-        )
-        selected_title = _selected_costing_title(
-            context,
-            pages=scoped_pages,
-        )
-        live = _inventory_costing_frame(
-            frame,
+        session = _open_costing_apply_session(
+            browser,
             article_code,
-            costing_status=str(plan.get("costing_status") or ""),
-            title=selected_title,
-        )
-        if str(live.get("cost_sheet_status") or "").casefold() != "open":
-            return _result(
-                False,
-                "COSTING_NOT_OPEN",
-                "CostSheet không còn ở trạng thái Open. Hãy mở/tạo Costing trước.",
-                article_code=article_code,
-            )
-        if str(plan.get("live_signature") or "") != live_signature(live):
-            return _result(
-                False,
-                "COSTING_PLAN_STALE",
-                "Costing đã thay đổi sau dry-run. Hãy import và kiểm tra lại.",
-            )
-        working_plan = dict(plan)
-        if (
-            not (working_plan.get("additions") or ())
-            and not (working_plan.get("splits") or ())
-            and not (working_plan.get("deletes") or ())
-            and not (working_plan.get("fields_to_set") or ())
-        ):
-            return _result(
-                True,
-                "COSTING_APPLIED",
-                f"Costing style {article_code} đã khớp file; không cần Save.",
-                article_code=article_code,
-                applied_count=0,
-                added_count=0,
-                split_count=0,
-                deleted_count=0,
-                skipped_fields=[],
-                verified=True,
-                no_changes=True,
-            )
-
-        resolutions = {
-            str(key): str(value).strip()
-            for key, value in dict(article_resolutions or {}).items()
-            if str(key).strip() and str(value).strip()
-        }
-        _write_log(
-            log,
-            "[COSTING] Đang kiểm tra Article trước khi điền field.",
-        )
-        preflight = _preflight_article_additions(
-            browser.contexts[0],
-            frame,
-            working_plan.get("additions") or (),
-            resolutions,
+            plan,
+            source_document,
+            active_tab_only,
             log,
         )
-        if preflight["ambiguous"]:
-            return _result(
-                False,
-                "COSTING_ARTICLE_AMBIGUOUS",
-                "Có Article trùng kết quả. Chọn đúng Article Code rồi áp dụng lại.",
-                ambiguous_articles=preflight["ambiguous"],
-                missing_articles=preflight["missing"],
-            )
-
-        deleted = _delete_articles(
-            costing_page,
-            frame,
-            live,
-            working_plan.get("deletes") or (),
-            log,
-        )
-        added = _add_articles(
-            browser.contexts[0],
-            frame,
-            preflight,
-            log,
-        )
-        if added or deleted:
-            _wait(costing_page, 500)
-            live = _inventory_costing_frame(
-                frame,
-                article_code,
-                costing_status="Open",
-                title=_selected_costing_title(
-                    context,
-                    pages=scoped_pages,
-                ),
-            )
-            if source_document is not None:
-                working_plan = build_costing_plan(source_document, live)
-
-        split_done: list[dict[str, Any]] = []
-        missing_article_codes = {
-            str(
-                item.get("article_code")
-                or item.get("article_name")
-                or ""
-            ).casefold()
-            for item in preflight["missing"]
-        }
-        pending_splits = [
-            request
-            for request in working_plan.get("splits") or ()
-            if str(
-                request.get("article_code")
-                or request.get("article_name")
-                or ""
-            ).casefold()
-            not in missing_article_codes
-        ]
-        if pending_splits:
-            _write_log(
-                log,
-                "[COSTING] Đang Splitter "
-                f"{len(pending_splits)} dòng Article liền nhau.",
-            )
-        for request in pending_splits:
-            checkpoint()
-            _split_article_row(frame, live, request)
-            split_done.append(dict(request))
-            _wait(costing_page, 250)
-            live = _inventory_costing_frame(
-                frame,
-                article_code,
-                costing_status="Open",
-                title=_selected_costing_title(
-                    context,
-                    pages=scoped_pages,
-                ),
-            )
-        if split_done and source_document is not None:
-            working_plan = build_costing_plan(source_document, live)
-
-        live_fields = _live_field_index(live)
-        applied: list[dict[str, Any]] = []
-        dependency_confirmed: set[tuple[str, str, str, str]] = set()
-        skipped: list[dict[str, Any]] = []
-        missing_item_keys = {
-            str(item.get("import_item_key") or "").casefold()
-            for item in preflight["missing"]
-        }
-        ordered_changes = sorted(
-            working_plan.get("fields_to_set") or (),
-            key=_field_application_priority,
-        )
-        if ordered_changes:
-            _write_log(
-                log,
-                f"[COSTING] Bắt đầu điền {len(ordered_changes)} field.",
-            )
-        for change_index, change in enumerate(ordered_changes, 1):
-            checkpoint()
-            if (
-                str(change.get("scope") or "").casefold() == "item"
-                and str(change.get("item_key") or "").casefold()
-                in missing_item_keys
-            ):
-                skipped.append({**change, "reason": "article_not_found"})
-                continue
-            key = (
-                str(change.get("scope") or "").casefold(),
-                str(change.get("section_key") or "").casefold(),
-                str(change.get("item_key") or "").casefold(),
-                str(change.get("field_key") or "").casefold(),
-            )
-            field = live_fields.get(key)
-            if field is None or not field.get("editable"):
-                skipped.append({**change, "reason": "not_found_or_read_only"})
-                continue
-            try:
-                if _dependency_kind(field, change.get("value")):
-                    _set_dependency_mapping(
-                        frame,
-                        field,
-                        change.get("value"),
-                    )
-                    dependency_confirmed.add(key)
-                else:
-                    _set_live_field(frame, field, change.get("value"))
-            except (PlaywrightError, RuntimeError) as error:
-                field_key = str(change.get("field_key") or "")
-                item_key = str(change.get("item_key") or "")
-                reason = str(error).splitlines()[0][:160]
-                _write_log(
-                    log,
-                    "[COSTING] Không thể điền field "
-                    f"{change_index}/{len(ordered_changes)} "
-                    f"{field_key} ({item_key}): {reason}",
-                )
-                raise CostingFieldApplyError(
-                    field_key,
-                    item_key,
-                    reason,
-                ) from error
-            applied.append(dict(change))
-            if change_index == 1 or change_index % 10 == 0:
-                _write_log(
-                    log,
-                    "[COSTING] Đã điền "
-                    f"{change_index}/{len(ordered_changes)} field.",
-                )
-
-        _save_costing(costing_page, frame, log)
-        _wait(costing_page, 500)
-        costing_page, frame = _costing_frame(
-            context,
-            timeout_seconds=10,
-            pages=scoped_pages,
-        )
-        verified = _inventory_costing_frame(
-            frame,
-            article_code,
-            costing_status="Open",
-            title=_selected_costing_title(
-                context,
-                pages=scoped_pages,
-            ),
-        )
-        verified_fields = _live_field_index(verified)
-        mismatches = []
-        for change in applied:
-            key = (
-                str(change.get("scope") or "").casefold(),
-                str(change.get("section_key") or "").casefold(),
-                str(change.get("item_key") or "").casefold(),
-                str(change.get("field_key") or "").casefold(),
-            )
-            if key in dependency_confirmed:
-                # Popup Table đã xác nhận exact checkbox trước khi bấm OK.
-                # Inventory chính của WFX chỉ hiển thị lại nhãn [Table].
-                continue
-            actual = verified_fields.get(key, {}).get("value")
-            if not _field_value_matches(
-                actual,
-                change.get("value"),
-                str(change.get("data_type") or "text"),
-            ):
-                mismatches.append(
-                    {
-                        "field_key": change.get("field_key"),
-                        "expected": change.get("value"),
-                        "actual": actual,
-                    }
-                )
-        verified_codes = {
-            str(item.get("article_code") or "").casefold()
-            for item in verified.get("items") or ()
-            if str(item.get("article_code") or "").strip()
-        }
-        for addition in added:
-            code = str(addition.get("resolved_code") or "").strip()
-            if code and code.casefold() not in verified_codes:
-                mismatches.append(
-                    {
-                        "field_key": f"Article:{code}",
-                        "expected": "present",
-                        "actual": "missing_after_save",
-                    }
-                )
-        for deletion in deleted:
-            code = str(deletion.get("article_code") or "").strip()
-            if code and code.casefold() in verified_codes:
-                mismatches.append(
-                    {
-                        "field_key": f"Article:{code}",
-                        "expected": "deleted",
-                        "actual": "still_present_after_save",
-                    }
-                )
-        verified_identity_counts: dict[tuple[str, str], int] = {}
-        for item in verified.get("items") or ():
-            identity = _article_identity(item)
-            verified_identity_counts[identity] = (
-                verified_identity_counts.get(identity, 0) + 1
-            )
-        for split_request in split_done:
-            identity = _article_identity(split_request)
-            expected_count = int(split_request.get("occurrence") or 2)
-            actual_count = verified_identity_counts.get(identity, 0)
-            if actual_count < expected_count:
-                mismatches.append(
-                    {
-                        "field_key": (
-                            "Splitter:"
-                            + str(
-                                split_request.get("article_code")
-                                or split_request.get("article_name")
-                                or ""
-                            )
-                        ),
-                        "expected": expected_count,
-                        "actual": actual_count,
-                    }
-                )
-        if mismatches:
-            return _result(
-                False,
-                "COSTING_VERIFY_FAILED",
-                "WFX chưa xác nhận một số field sau Save.",
-                applied_count=len(applied),
-                skipped_fields=skipped,
-                mismatches=mismatches,
-            )
-        return _result(
-            True,
-            "COSTING_APPLIED",
-            f"Đã cập nhật và Save Costing cho style {article_code}.",
-            article_code=article_code,
-            applied_count=len(applied),
-            added_count=len(added),
-            split_count=len(split_done),
-            deleted_count=len(deleted),
-            missing_articles=preflight["missing"],
-            skipped_fields=skipped,
-            verified=True,
-        )
+        return _run_costing_apply(session, article_resolutions)
+    except CostingApplyAbort as error:
+        return error.result
     except CostingFieldApplyError as error:
         return _result(
             False,
