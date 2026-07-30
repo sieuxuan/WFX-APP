@@ -95,6 +95,27 @@ _STYLE_CODE_CONTROL_SELECTORS = (
     "[name='StyleCode']",
 )
 
+_SPECIAL_COST_SECTION_EDITORS = {
+    "cmcosts": {
+        "header_class": "CMCostHeaderRowType",
+        "row_class": "CMCostDataRowType",
+        "label": "#CostSheetCMCosts_lblSupplierCompany",
+        "editor": "#CostSheetCMCosts_ddlSupplierCompany",
+    },
+    "productioncosts": {
+        "header_class": "ProdProcessHeaderRowType",
+        "row_class": "ProdProcessDataRowType",
+        "label": "#CostSheetProdProcessDetails_lblProcessName",
+        "editor": "#CostSheetProdProcessDetails_ddlProcessName",
+    },
+    "indirectcosts": {
+        "header_class": "ICHeaderRowType",
+        "row_class": "ICDataRowType",
+        "label": "#lblTitle",
+        "editor": "#ddlTitle",
+    },
+}
+
 
 class CostingFieldApplyError(RuntimeError):
     """Giữ context field khi WFX không mở hoặc không nhận editor."""
@@ -848,9 +869,17 @@ def _inventory_to_document(
                         "article_name": str(raw.get("articleName") or "").strip(),
                     }
                 )
-        base_key = _clean_key(
-            raw.get("dataField") or raw.get("domName") or dom_id or raw.get("label"),
-            f"field-{index + 1}",
+        raw_label = str(raw.get("label") or "").strip()
+        base_key = (
+            "Minutes"
+            if raw_label.casefold() == "minutes"
+            else _clean_key(
+                raw.get("dataField")
+                or raw.get("domName")
+                or dom_id
+                or raw_label,
+                f"field-{index + 1}",
+            )
         )
         composite = (
             scope,
@@ -867,7 +896,7 @@ def _inventory_to_document(
                 "section_key": section_key if scope != "cost_sheet" else "",
                 "item_key": item_key if scope == "item" else "",
                 "field_key": field_key,
-                "label": str(raw.get("label") or base_key).strip(),
+                "label": raw_label or base_key,
                 "value": raw.get("value", ""),
                 "data_type": str(raw.get("dataType") or "text").casefold(),
                 "editable": bool(raw.get("editable")),
@@ -931,6 +960,198 @@ def _inventory_to_document(
     return normalized
 
 
+def _costing_semantic_token(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+
+def _add_production_value_fields(document: dict[str, Any]) -> None:
+    """Expose Production header fields on each selectable process row."""
+    production_sections = {
+        str(section.get("section_key") or "").casefold()
+        for section in document.get("sections") or ()
+        if "productioncosts"
+        in _costing_semantic_token(
+            f"{section.get('section_key', '')} {section.get('name', '')}"
+        )
+    }
+    if not production_sections:
+        return
+    items = {
+        (
+            str(item.get("section_key") or "").casefold(),
+            str(item.get("item_key") or "").casefold(),
+        ): item
+        for item in document.get("items") or ()
+    }
+    parent_fields: dict[str, dict[str, Mapping[str, Any]]] = {}
+    for field in document.get("fields") or ():
+        section_key = str(field.get("section_key") or "").casefold()
+        if section_key not in production_sections:
+            continue
+        item = items.get(
+            (section_key, str(field.get("item_key") or "").casefold()),
+            {},
+        )
+        if _costing_semantic_token(item.get("article_name")) != "productioncosts":
+            continue
+        field_key = _base_costing_field_key(field)
+        if field_key == "colvalue":
+            parent_fields.setdefault(section_key, {})["ProductionValue"] = field
+        elif field_key == "minutes":
+            parent_fields.setdefault(section_key, {})[
+                "ProductionHeaderMinutes"
+            ] = field
+    existing = {
+        (
+            str(field.get("section_key") or "").casefold(),
+            str(field.get("item_key") or "").casefold(),
+            str(field.get("field_key") or "").casefold(),
+        )
+        for field in document.get("fields") or ()
+    }
+    additions: list[dict[str, Any]] = []
+    for (section_key, _item_key), item in items.items():
+        if section_key not in parent_fields:
+            continue
+        identity = _costing_semantic_token(
+            item.get("article_name") or item.get("item_key")
+        )
+        if identity in {"productioncosts", "otherprocessescost"}:
+            continue
+        for virtual_key, parent in parent_fields[section_key].items():
+            composite = (
+                section_key,
+                str(item.get("item_key") or "").casefold(),
+                virtual_key.casefold(),
+            )
+            if composite in existing:
+                continue
+            additions.append(
+                {
+                    **parent,
+                    "item_key": str(item.get("item_key") or ""),
+                    "field_key": virtual_key,
+                    "label": (
+                        "Value" if virtual_key == "ProductionValue" else "Minutes"
+                    ),
+                    "_live": dict(parent.get("_live") or {}),
+                }
+            )
+    document.setdefault("fields", []).extend(additions)
+
+
+def _special_section_options(
+    frame: Frame,
+    section: Mapping[str, Any],
+) -> list[str]:
+    token = _costing_semantic_token(
+        f"{section.get('section_key', '')} {section.get('name', '')}"
+    )
+    config = next(
+        (
+            value
+            for name, value in _SPECIAL_COST_SECTION_EDITORS.items()
+            if name in token
+        ),
+        None,
+    )
+    if config is None:
+        return []
+    header = frame.locator(
+        f"tr.cssGridRow{config['header_class']} #imgAdd:visible"
+    )
+    if header.count() != 1:
+        return []
+    row_selector = f"tr.cssGridRow{config['row_class']}"
+    existing_checkboxes = frame.locator(f"{row_selector} #chkSelector")
+    checkbox_state = existing_checkboxes.evaluate_all(
+        "elements => elements.map(element => ({value: element.value, checked: element.checked}))"
+    )
+    before = {str(item.get("value") or "") for item in checkbox_state}
+    checked_before = {
+        str(item.get("value") or "")
+        for item in checkbox_state
+        if item.get("checked")
+    }
+    existing_checkboxes.evaluate_all(
+        "elements => elements.filter(element => element.checked).forEach(element => element.click())"
+    )
+    temporary_value = ""
+    row = None
+    try:
+        header.click(timeout=2_000)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and row is None:
+            rows = frame.locator(row_selector)
+            for index in range(rows.count()):
+                candidate = rows.nth(index)
+                checkbox = candidate.locator("#chkSelector")
+                value = (
+                    str(checkbox.get_attribute("value") or "")
+                    if checkbox.count()
+                    else ""
+                )
+                if value not in before and value.startswith("-10"):
+                    row = candidate
+                    temporary_value = value
+                    break
+            if row is None:
+                _sleep(0.1)
+        if row is None:
+            raise RuntimeError("COSTING_SPECIAL_OPTION_ROW_NOT_FOUND")
+        row.locator(str(config["label"])).click(timeout=2_000)
+        editor = row.locator(str(config["editor"]))
+        editor.wait_for(state="visible", timeout=3_000)
+        editor.dispatch_event("mousedown")
+        deadline = time.monotonic() + 5
+        options: list[str] = []
+        while time.monotonic() < deadline:
+            options = [
+                str(value).strip()
+                for value in editor.locator("option").all_inner_texts()
+                if str(value).strip() not in {"", "[Select]", "[ALL]"}
+            ]
+            if options:
+                break
+            _sleep(0.1)
+        return list(dict.fromkeys(options))
+    finally:
+        try:
+            frame.locator("body").press("Escape")
+        except PlaywrightError:
+            pass
+        if row is not None and temporary_value:
+            checkbox = row.locator("#chkSelector")
+            try:
+                if checkbox.count() and not checkbox.is_checked():
+                    checkbox.evaluate("element => element.click()")
+                delete = frame.locator(
+                    f"tr.cssGridRow{config['header_class']} #imgDelete:visible"
+                )
+                if delete.count() == 1:
+                    delete.evaluate("element => element.click()")
+                    _sleep(0.25)
+            except PlaywrightError as error:
+                raise RuntimeError("COSTING_SPECIAL_OPTION_CLEANUP_FAILED") from error
+        remaining = frame.locator(f"{row_selector} #chkSelector")
+        remaining.evaluate_all(
+            """(elements, values) => elements
+                .filter(element => values.includes(String(element.value)) && !element.checked)
+                .forEach(element => element.click())""",
+            sorted(checked_before),
+        )
+
+
+def _scan_special_cost_options(
+    frame: Frame,
+    document: dict[str, Any],
+) -> None:
+    for section in document.get("sections") or ():
+        options = _special_section_options(frame, section)
+        if options:
+            section["article_options"] = options
+
+
 def _inventory_costing_frame(
     frame: Frame,
     article_code: str,
@@ -976,8 +1197,10 @@ def _inventory_costing_frame(
         season=season,
         style_name=style_name,
     )
+    _add_production_value_fields(document)
     _ensure_dependency_mapping_fields(document)
     if scan_details:
+        _scan_special_cost_options(frame, document)
         _scan_costing_item_options(frame, document)
         _scan_costing_dependency_tables(frame, document)
         if _dependency_scan_incomplete(document):
@@ -1317,6 +1540,115 @@ def _add_articles(
             _sleep(0.25)
     if added:
         _write_log(log, f"[COSTING] Đã thêm {len(added)} Article.")
+    return added
+
+
+def _special_cost_config(request: Mapping[str, Any]) -> Mapping[str, str]:
+    semantic = _costing_semantic_token(
+        f"{request.get('section_key', '')} {request.get('section_name', '')}"
+    )
+    matches = [
+        config
+        for token, config in _SPECIAL_COST_SECTION_EDITORS.items()
+        if token in semantic
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("COSTING_SPECIAL_SECTION_NOT_SUPPORTED")
+    return matches[0]
+
+
+def _new_special_cost_row(
+    frame: Frame,
+    request: Mapping[str, Any],
+) -> Any:
+    config = _special_cost_config(request)
+    row_selector = f"tr.cssGridRow{config['row_class']}"
+    before = set(
+        frame.locator(f"{row_selector} #chkSelector").evaluate_all(
+            "elements => elements.map(element => element.value)"
+        )
+    )
+    _section_action(
+        frame,
+        str(request.get("section_key") or ""),
+        "imgAdd",
+    ).click(timeout=2_000)
+    deadline = time.monotonic() + 4
+    while time.monotonic() < deadline:
+        rows = frame.locator(row_selector)
+        for index in range(rows.count()):
+            row = rows.nth(index)
+            checkbox = row.locator("#chkSelector")
+            value = (
+                str(checkbox.get_attribute("value") or "")
+                if checkbox.count()
+                else ""
+            )
+            if value not in before and value.startswith("-10"):
+                return row
+        _sleep(0.1)
+    raise RuntimeError("COSTING_SPECIAL_ROW_NOT_ADDED")
+
+
+def _select_special_cost_article(
+    row: Any,
+    request: Mapping[str, Any],
+) -> None:
+    config = _special_cost_config(request)
+    wanted = str(request.get("article_name") or "").strip()
+    if not wanted:
+        raise RuntimeError("COSTING_SPECIAL_ARTICLE_REQUIRED")
+    row.locator(str(config["label"])).click(timeout=2_000)
+    editor = row.locator(str(config["editor"]))
+    editor.wait_for(state="visible", timeout=3_000)
+    editor.dispatch_event("mousedown")
+    deadline = time.monotonic() + 5
+    matched_values: list[str] = []
+    while time.monotonic() < deadline:
+        matched_values = editor.locator("option").evaluate_all(
+            """(options, wanted) => options
+                .filter(option => [option.textContent, option.value]
+                    .some(value => String(value || '').trim().toLowerCase()
+                        === wanted.trim().toLowerCase()))
+                .map(option => String(option.value || '').trim())""",
+            wanted,
+        )
+        if matched_values:
+            break
+        _sleep(0.1)
+    if len(matched_values) != 1:
+        raise RuntimeError("COSTING_SPECIAL_ARTICLE_NOT_FOUND")
+    _apply_inline_select_option(editor, matched_values[0])
+    editor.press("Tab")
+
+
+def _add_special_cost_lines(
+    frame: Frame,
+    additions: Sequence[Mapping[str, Any]],
+    log: Callable[[str], None],
+) -> list[dict[str, Any]]:
+    added: list[dict[str, Any]] = []
+    for addition in additions:
+        checkpoint()
+        row = _new_special_cost_row(frame, addition)
+        try:
+            _select_special_cost_article(row, addition)
+        except Exception:
+            try:
+                checkbox = row.locator("#chkSelector")
+                if checkbox.count() == 1 and not checkbox.is_checked():
+                    checkbox.evaluate("element => element.click()")
+                _section_action(
+                    frame,
+                    str(addition.get("section_key") or ""),
+                    "imgDelete",
+                ).evaluate("element => element.click()")
+            except PlaywrightError:
+                pass
+            raise
+        added.append(dict(addition))
+    if added:
+        _write_log(log, f"[COSTING] Đã thêm {len(added)} dòng chi phí.")
     return added
 
 
@@ -2587,8 +2919,12 @@ def _field_application_priority(field: Mapping[str, Any]) -> int:
         semantic,
     ):
         return 10
-    if "supplier" in semantic:
+    if "minutes" in semantic:
+        return 15
+    if "productionvalue" in semantic:
         return 20
+    if "supplier" in semantic:
+        return 25
     if re.search(r"delivery.?term|currency", semantic):
         return 30
     if re.search(r"(?:^|[^a-z])rate(?:[^a-z]|$)|price", semantic):
@@ -2736,6 +3072,7 @@ class _CostingApplySession:
 class _CostingApplyProgress:
     preflight: dict[str, Any] = dataclass_field(default_factory=dict)
     added: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    cost_line_added: list[dict[str, Any]] = dataclass_field(default_factory=list)
     deleted: list[dict[str, Any]] = dataclass_field(default_factory=list)
     split: list[dict[str, Any]] = dataclass_field(default_factory=list)
     applied: list[dict[str, Any]] = dataclass_field(default_factory=list)
@@ -2758,7 +3095,10 @@ def _validate_costing_apply_request(
             article_code=article_code,
         )
     article_mutations = (
-        plan.get("additions") or plan.get("splits") or plan.get("deletes")
+        plan.get("additions")
+        or plan.get("cost_line_additions")
+        or plan.get("splits")
+        or plan.get("deletes")
     )
     if not article_mutations or source_document is not None:
         return None
@@ -2767,6 +3107,7 @@ def _validate_costing_apply_request(
         "COSTING_SOURCE_REQUIRED",
         "Plan thêm/split/xóa Article thiếu dữ liệu nguồn server-side.",
         additions=list(plan.get("additions") or ()),
+        cost_line_additions=list(plan.get("cost_line_additions") or ()),
         splits=list(plan.get("splits") or ()),
         deletes=list(plan.get("deletes") or ()),
     )
@@ -2774,7 +3115,14 @@ def _validate_costing_apply_request(
 
 def _costing_plan_has_changes(plan: Mapping[str, Any]) -> bool:
     return any(
-        plan.get(key) for key in ("additions", "splits", "deletes", "fields_to_set")
+        plan.get(key)
+        for key in (
+            "additions",
+            "cost_line_additions",
+            "splits",
+            "deletes",
+            "fields_to_set",
+        )
     )
 
 
@@ -2938,6 +3286,13 @@ def _prepare_costing_articles(
     )
     if progress.added or progress.deleted:
         _refresh_apply_inventory(session, wait_ms=500)
+    progress.cost_line_added = _add_special_cost_lines(
+        session.frame,
+        session.working_plan.get("cost_line_additions") or (),
+        session.log,
+    )
+    if progress.cost_line_added:
+        _refresh_apply_inventory(session, wait_ms=350)
 
 
 def _missing_article_codes(preflight: Mapping[str, Any]) -> set[str]:
@@ -3139,6 +3494,33 @@ def _article_verification_mismatches(
     return mismatches
 
 
+def _cost_line_verification_mismatches(
+    verified: Mapping[str, Any],
+    additions: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    identities = {
+        (
+            str(item.get("section_key") or "").casefold(),
+            str(item.get("article_name") or "").casefold(),
+        )
+        for item in verified.get("items") or ()
+        if str(item.get("item_type") or "").casefold() == "cost_line"
+    }
+    return [
+        {
+            "field_key": f"Cost line:{addition.get('article_name', '')}",
+            "expected": "present",
+            "actual": "missing_after_save",
+        }
+        for addition in additions
+        if (
+            str(addition.get("section_key") or "").casefold(),
+            str(addition.get("article_name") or "").casefold(),
+        )
+        not in identities
+    ]
+
+
 def _split_verification_mismatches(
     verified: Mapping[str, Any],
     split_requests: Sequence[Mapping[str, Any]],
@@ -3188,6 +3570,10 @@ def _verify_costing_apply(
     return [
         *_field_verification_mismatches(verified, progress),
         *_article_verification_mismatches(verified, progress),
+        *_cost_line_verification_mismatches(
+            verified,
+            progress.cost_line_added,
+        ),
         *_split_verification_mismatches(verified, progress.split),
     ]
 
@@ -3200,6 +3586,7 @@ def _no_change_apply_result(article_code: str) -> dict[str, Any]:
         article_code=article_code,
         applied_count=0,
         added_count=0,
+        cost_line_added_count=0,
         split_count=0,
         deleted_count=0,
         skipped_fields=[],
@@ -3236,6 +3623,7 @@ def _run_costing_apply(
         article_code=session.article_code,
         applied_count=len(progress.applied),
         added_count=len(progress.added),
+        cost_line_added_count=len(progress.cost_line_added),
         split_count=len(progress.split),
         deleted_count=len(progress.deleted),
         missing_articles=progress.preflight["missing"],
@@ -3350,6 +3738,7 @@ def _scan_open_costing_context(
                 "Hãy tự tạo hoặc mở Costing đầy đủ trước."
             ),
             article_code=article_code,
+            style_name=_style_name_from_page(_page),
             costing_status=status or "Unknown",
         )
     season = str((style_status or {}).get("season") or "").strip()
@@ -3592,6 +3981,7 @@ def inspect_active_costing(
             "COSTING_CONTEXT_INSPECTED",
             f"Đã nhận tab Costing {article_code}.",
             article_code=article_code,
+            style_name=_style_name_from_page(active_page),
             costing_status=status or "Unknown",
             style_status={
                 "code": article_code,

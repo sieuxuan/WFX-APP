@@ -22,7 +22,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-FORMAT_VERSION = "2.0"
+FORMAT_VERSION = "2.1"
 SUPPORTED_EXTENSIONS = {".xlsx"}
 MAX_FILE_BYTES = 12 * 1024 * 1024
 MAX_XLSX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
@@ -45,7 +45,7 @@ COST_SHEET = "Cost Sheet"
 SECTIONS_SHEET = "Sections"
 
 FIELD_SCOPES = {"cost_sheet", "section", "item"}
-ITEM_ACTIONS = {"UPSERT", "SKIP", "DELETE"}
+ITEM_ACTIONS = {"UPSERT", "DELETE"}
 ITEM_TYPES = {"article", "cost_line"}
 FIELD_COLUMNS = [
     "scope",
@@ -119,6 +119,11 @@ STANDARD_ITEM_FIELDS = (
         "data_type": "number",
     },
     {
+        "field_key": "Minutes",
+        "label": "Minutes",
+        "data_type": "number",
+    },
+    {
         "field_key": "colConsPlusWastageQty",
         "label": "Cons. Qty. Incl. Waste",
         "data_type": "number",
@@ -137,6 +142,11 @@ STANDARD_ITEM_FIELDS = (
     {
         "field_key": "colRate1",
         "label": "Rate",
+        "data_type": "number",
+    },
+    {
+        "field_key": "colValue",
+        "label": "Value",
         "data_type": "number",
     },
     {
@@ -188,11 +198,6 @@ _STRUCTURE_BORDER = Border(bottom=_THIN_GRAY)
 _SECTION_BORDER = Border(top=_SECTION_SIDE, bottom=_THIN_GRAY)
 _DANGEROUS_EXCEL_PREFIXES = ("=", "+", "-", "@")
 _DYNAMIC_HEADER_RE = re.compile(r"^(.*?)\s*\[([^\[\]]+)\]\s*$")
-_EXCLUDED_SECTION_TOKENS = {
-    "cmcosts",
-    "productioncosts",
-    "indirectcosts",
-}
 STANDARD_SECTIONS = (
     ("fabricshell", "FABRIC- SHELL"),
     ("fabriclining", "FABRIC - LINING"),
@@ -200,7 +205,16 @@ STANDARD_SECTIONS = (
     ("fabricpadding", "FABRIC - PADDING"),
     ("sewingtrims", "SEWING TRIMS"),
     ("packingtrims", "PACKING TRIMS"),
+    ("cmcosts", "CM Costs"),
+    ("productioncosts", "Production Costs"),
+    ("indirectcosts", "Indirect Costs"),
 )
+ARTICLE_SECTION_TOKENS = frozenset(token for token, _name in STANDARD_SECTIONS[:6])
+SPECIAL_COST_SECTION_ROWS = {
+    "cmcosts": 1,
+    "productioncosts": 1,
+    "indirectcosts": 2,
+}
 _EXCLUDED_FIELD_TOKENS = {
     "deliveryterms",
     "processrequired",
@@ -355,6 +369,7 @@ def _normalized_section(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
         "section_key": _text(raw.get("section_key")),
         "name": _text(raw.get("name") or raw.get("section_name")),
         "row_order": _order(raw.get("row_order"), index),
+        "article_options": _options(raw.get("article_options")),
     }
 
 
@@ -419,16 +434,6 @@ def _semantic_token(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", _text(value).casefold())
 
 
-def _section_is_excluded(section: Mapping[str, Any]) -> bool:
-    semantic = " ".join(
-        (
-            _semantic_token(section.get("section_key")),
-            _semantic_token(section.get("name")),
-        )
-    )
-    return any(token in semantic for token in _EXCLUDED_SECTION_TOKENS)
-
-
 def _standard_section(
     section: Mapping[str, Any],
 ) -> tuple[int, str] | None:
@@ -445,6 +450,45 @@ def _standard_section(
     return None
 
 
+def _standard_section_token(section: Mapping[str, Any]) -> str:
+    standard = _standard_section(section)
+    return "" if standard is None else STANDARD_SECTIONS[standard[0]][0]
+
+
+def _section_item_type(section: Mapping[str, Any]) -> str:
+    return (
+        "article"
+        if _standard_section_token(section) in ARTICLE_SECTION_TOKENS
+        else "cost_line"
+    )
+
+
+def _template_row_count(section: Mapping[str, Any]) -> int:
+    return SPECIAL_COST_SECTION_ROWS.get(
+        _standard_section_token(section),
+        DEFAULT_NEW_ITEM_ROWS_PER_SECTION,
+    )
+
+
+def _production_summary_item(item: Mapping[str, Any]) -> bool:
+    identity = _semantic_token(
+        item.get("article_name") or item.get("item_key")
+    )
+    return identity in {"productioncosts", "otherprocessescost"}
+
+
+def _form_field_key(
+    definition: Mapping[str, Any],
+    section: Mapping[str, Any],
+) -> str:
+    if (
+        definition.get("label") == "Value"
+        and _standard_section_token(section) == "productioncosts"
+    ):
+        return "ProductionValue"
+    return str(definition["field_key"])
+
+
 def _field_is_excluded(field: Mapping[str, Any]) -> bool:
     field_key = _semantic_token(
         re.sub(r"__\d+$", "", _text(field.get("field_key")))
@@ -459,16 +503,12 @@ def _field_is_excluded(field: Mapping[str, Any]) -> bool:
 
 
 def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
-    """Giữ đúng phần người dùng được nhập trong workbook Costing.
-
-    Read-only field và các cột/section tổng hợp bị loại ở cả export lẫn import,
-    kể cả khi người dùng import lại workbook được tạo bởi phiên bản cũ.
-    """
+    """Giữ đúng các dòng và ô người dùng được phép sửa trong file Costing."""
     normalized = normalize_document(document)
     selected_sections: dict[int, dict[str, Any]] = {}
     for section in normalized["sections"]:
         standard = _standard_section(section)
-        if standard is None or _section_is_excluded(section):
+        if standard is None:
             continue
         index, name = standard
         selected_sections.setdefault(
@@ -495,16 +535,22 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
     allowed_section_keys = {
         section["section_key"].casefold() for section in sections
     }
-    excluded_section_keys = {
-        section["section_key"].casefold()
-        for section in normalized["sections"]
-        if _section_is_excluded(section)
+    section_by_key = {
+        section["section_key"].casefold(): section for section in sections
     }
     items = [
         item
         for item in normalized["items"]
-        if item["section_key"].casefold() not in excluded_section_keys
-        and item["item_type"] == "article"
+        if item["section_key"].casefold() in allowed_section_keys
+        and item["item_type"]
+        == _section_item_type(section_by_key[item["section_key"].casefold()])
+        and not (
+            _standard_section_token(
+                section_by_key[item["section_key"].casefold()]
+            )
+            == "productioncosts"
+            and _production_summary_item(item)
+        )
     ]
     allowed_item_keys = {
         (item["section_key"].casefold(), item["item_key"].casefold())
@@ -514,7 +560,7 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
     standard_keys = {
         str(field["field_key"]).casefold()
         for field in STANDARD_ITEM_FIELDS
-    }
+    } | {"productionvalue", "productionheaderminutes"}
     read_only_keys = {
         str(field["field_key"]).casefold()
         for field in STANDARD_ITEM_FIELDS
@@ -537,12 +583,10 @@ def workbook_document(document: Mapping[str, Any]) -> dict[str, Any]:
         ):
             continue
         section_key = field["section_key"].casefold()
-        if field["scope"] in {"section", "item"} and (
-            section_key in excluded_section_keys
-            or (
-                allowed_section_keys
-                and section_key not in allowed_section_keys
-            )
+        if (
+            field["scope"] in {"section", "item"}
+            and allowed_section_keys
+            and section_key not in allowed_section_keys
         ):
             continue
         if field["scope"] == "item" and (
@@ -616,11 +660,13 @@ def _item_validation_errors(
         item_type = _text(item.get("item_type") or "article").casefold()
         if item_type not in ITEM_TYPES:
             errors.append(f"Item Type không hợp lệ: {item_type}.")
-        if item_type == "article" and action != "SKIP" and not (
+        if item_type == "article" and not (
             _text(item.get("article_code"))
             or _text(item.get("article_name"))
         ):
             errors.append(f"Article {item_key or '(trống)'} thiếu Code/Name.")
+        if item_type == "cost_line" and not _text(item.get("article_name")):
+            errors.append(f"Dòng chi phí {item_key or '(trống)'} thiếu tên.")
     return errors
 
 
@@ -796,21 +842,19 @@ def _write_guide(workbook: Workbook, document: Mapping[str, Any]) -> None:
     rows = [
         ("Style Code", document["style_code"]),
         ("Style Name", document.get("style_name") or "—"),
-        ("Costing status lúc export", document.get("cost_sheet_status") or "—"),
-        ("Format version", f"v{FORMAT_VERSION}"),
+        ("Trạng thái khi tải", document.get("cost_sheet_status") or "—"),
+        ("Phiên bản file", f"v{FORMAT_VERSION}"),
         (
             "Cách dùng",
-            "Mở sheet Costing và điền trực tiếp vào các cột màu vàng. "
-            f"Mỗi section có {DEFAULT_NEW_ITEM_ROWS_PER_SECTION} dòng vàng đậm "
-            "để thêm Article mới; để trống dòng không dùng.",
+            "Mở sheet Costing và sửa các ô màu vàng. Dòng không dùng thì để trống.",
         ),
         (
             "Phạm vi",
-            "Mọi status đều có thể Export. Chỉ CostSheet Open mới được "
-            "Import/Apply. File không có Cost Sheet header/section chi phí.",
+            "Có thể tải file ở mọi trạng thái. Chỉ Cost Sheet đang Open mới "
+            "được cập nhật lại lên WFX.",
         ),
         (
-            "Section có sẵn",
+            "Các nhóm trong file",
             ", ".join(
                 str(section.get("name") or section.get("section_key") or "")
                 for section in document.get("sections") or ()
@@ -821,20 +865,19 @@ def _write_guide(workbook: Workbook, document: Mapping[str, Any]) -> None:
             or "—",
         ),
         (
-            "Thêm nhiều Article",
-            "Điền lần lượt các dòng vàng đậm trong đúng section. Nếu cần hơn "
-            f"{DEFAULT_NEW_ITEM_ROWS_PER_SECTION} Article mới, sao chép nguyên "
-            "dòng vàng cuối và chèn trước section tiếp theo.",
+            "Thêm nhiều dòng",
+            "Điền lần lượt các dòng vàng trong đúng nhóm. Nếu cần thêm dòng, "
+            "sao chép dòng vàng cuối và chèn trước nhóm tiếp theo.",
         ),
         (
-            "Split màu/size",
-            "Các dòng liền nhau cùng Article Code sẽ được Splitter thành các "
-            "dòng >> riêng trước khi app điền phối, số lượng và giá.",
+            "Tách dòng màu/size",
+            "Hai dòng liền nhau cùng Article Code sẽ được tách thành hai dòng "
+            "riêng trên WFX.",
         ),
         (
-            "Phối Table",
-            "Color/Size Mapping dùng mỗi dòng Nguồn => Đích 1 | Đích 2. "
-            "App scan mapping hiện tại và danh sách Color/Size của từng item.",
+            "Phối màu/size",
+            "Mỗi dòng phối ghi Màu/Size vật tư => Màu/Size của style. Nhiều lựa "
+            "chọn được ngăn bằng dấu |.",
         ),
         (
             "Cột công thức",
@@ -843,27 +886,25 @@ def _write_guide(workbook: Workbook, document: Mapping[str, Any]) -> None:
         ),
         (
             "Purchase Officer",
-            "Chọn từ dropdown khi dòng WFX đang trống. Dry-run sẽ dừng trước "
-            "Apply nếu field bắt buộc này chưa có giá trị.",
+            "Chọn từ danh sách nếu ô này trên WFX đang trống. App sẽ báo trước "
+            "khi còn thiếu.",
         ),
         (
-            "Article Action",
-            "Để trống/UPSERT = thêm hoặc cập nhật; SKIP = bỏ qua; "
-            "DELETE = xóa đúng Article sau dry-run.",
+            "Cột Action",
+            "Để trống = thêm mới hoặc cập nhật. Chọn DELETE chỉ khi muốn xóa dòng.",
         ),
         (
             "Xóa giá trị",
-            f"Ô trống = giữ nguyên. Ghi {CLEAR_MARKER} để xóa có chủ ý.",
+            f"Ô trống sẽ giữ nguyên dữ liệu cũ. Muốn xóa, ghi đúng {CLEAR_MARKER}.",
         ),
         (
             "An toàn",
-            "WFX Smart luôn dry-run trước, không tự chọn khi Material Search "
-            "có nhiều kết quả, và chỉ Save sau khi áp dụng xong.",
+            "App luôn cho xem trước thay đổi và chỉ lưu sau khi điền xong.",
         ),
         (
-            "Minutes",
-            "WFX Smart tự đặt mọi field Minutes editable thành 1 khi Apply. "
-            "CM/Production/Indirect Costs không thuộc file import.",
+            "CM / Production / Indirect",
+            "Chọn tên trong danh sách. CM và Indirect dùng USD. Production tự "
+            "đặt Minutes = 1. Dòng không chọn tên sẽ không được thêm.",
         ),
     ]
     for row, (label, value) in enumerate(rows, 3):
@@ -1091,7 +1132,7 @@ def _write_items(workbook: Workbook, document: Mapping[str, Any]) -> None:
     if ws.max_row >= 2:
         validation = DataValidation(
             type="list",
-            formula1='"UPSERT,SKIP,DELETE"',
+            formula1='"UPSERT,DELETE"',
             allow_blank=True,
         )
         ws.add_data_validation(validation)
@@ -1309,6 +1350,49 @@ def _add_item_option_dropdowns(
         lookup_column += 1
 
 
+def _add_special_article_dropdowns(
+    ws: Any,
+    document: Mapping[str, Any],
+    layout: _CostingFormLayout,
+    *,
+    lookup_column: int,
+) -> int:
+    """Gắn danh sách nhà máy/quy trình/chi phí cho từng block đặc biệt."""
+    article_name_letter = get_column_letter(FORM_COLUMNS.index("Article Name") + 1)
+    ordered_sections = sorted(
+        document["sections"],
+        key=lambda value: value["row_order"],
+    )
+    for section, rows in zip(ordered_sections, layout.section_rows, strict=True):
+        if _section_item_type(section) != "cost_line":
+            continue
+        options = _unique_values(section.get("article_options") or ())
+        if not options or not rows:
+            continue
+        lookup_letter = get_column_letter(lookup_column)
+        for option_row, option in enumerate(options, 2):
+            ws.cell(option_row, lookup_column, _excel_safe(option))
+        ws.column_dimensions[lookup_letter].hidden = True
+        validation = DataValidation(
+            type="list",
+            formula1=(
+                f"=${lookup_letter}$2:"
+                f"${lookup_letter}${len(options) + 1}"
+            ),
+            allow_blank=True,
+        )
+        validation.showErrorMessage = False
+        validation.promptTitle = "Chọn từ WFX"
+        validation.prompt = "Chọn tên đã quét; có thể gõ để tìm trong Excel."
+        validation.showInputMessage = True
+        ws.add_data_validation(validation)
+        validation.add(
+            f"{article_name_letter}{min(rows)}:{article_name_letter}{max(rows)}"
+        )
+        lookup_column += 1
+    return lookup_column
+
+
 @dataclass(frozen=True)
 class _CostingFormLayout:
     section_rows: list[list[int]]
@@ -1350,20 +1434,30 @@ def _form_row_values(
     item_key = "" if item is None else str(item["item_key"])
     values: list[Any] = [
         section["name"],
-        "UPSERT" if item is None else item["action"],
+        "" if item is None or item["action"] == "UPSERT" else item["action"],
         "" if item is None else item["article_code"],
         "" if item is None else item["article_name"],
     ]
     for definition in STANDARD_ITEM_FIELDS:
+        field_key = _form_field_key(definition, section)
         field = field_by_item.get(
             (
                 section_key.casefold(),
                 item_key.casefold(),
-                str(definition["field_key"]).casefold(),
+                field_key.casefold(),
             )
         )
-        values.append("" if field is None else field["value"])
-    values.extend([section_key, item_key, row_order, "article"])
+        value = "" if field is None else field["value"]
+        token = _standard_section_token(section)
+        if definition["label"] == "Minutes" and token == "productioncosts":
+            value = 1
+        elif definition["label"] == "Curr." and token in {
+            "cmcosts",
+            "indirectcosts",
+        }:
+            value = "USD"
+        values.append(value)
+    values.extend([section_key, item_key, row_order, _section_item_type(section)])
     return values
 
 
@@ -1390,7 +1484,7 @@ def _write_form_data_rows(
         current_section_rows: list[int] = []
         rows_to_write = [
             *section_items,
-            *([None] * DEFAULT_NEW_ITEM_ROWS_PER_SECTION),
+            *([None] * _template_row_count(section)),
         ]
         for template_index, item in enumerate(rows_to_write, 1):
             is_template = item is None
@@ -1577,9 +1671,15 @@ def _style_form_templates(
         for column in range(2, visible_column_count + 1):
             if column not in read_only_columns:
                 ws.cell(row=row, column=column).fill = _TEMPLATE_INPUT_FILL
+        section = {"section_key": section_name, "name": section_name}
+        is_cost_line = _section_item_type(section) == "cost_line"
         hint = (
-            f"Dòng thêm Article mới cho section {section_name}. "
-            "Nhập Article Code hoặc Article Name; để trống nếu không dùng."
+            f"Chọn Article Name cho {section_name}; để trống nếu không dùng."
+            if is_cost_line
+            else (
+                f"Dòng thêm Article mới cho {section_name}. "
+                "Nhập Article Code hoặc Article Name; để trống nếu không dùng."
+            )
         )
         ws.cell(row=row, column=article_code_column).comment = Comment(
             hint,
@@ -1634,7 +1734,7 @@ def _write_costing_form(
     last_row = max(form_data_last_row, 200)
     action_validation = DataValidation(
         type="list",
-        formula1='"UPSERT,SKIP,DELETE"',
+        formula1='"DELETE"',
         allow_blank=True,
     )
     ws.add_data_validation(action_validation)
@@ -1643,6 +1743,12 @@ def _write_costing_form(
         ws,
         document,
         last_row=last_row,
+    )
+    next_lookup_column = _add_special_article_dropdowns(
+        ws,
+        document,
+        layout,
+        lookup_column=next_lookup_column,
     )
     _add_item_option_dropdowns(
         ws,
@@ -1757,14 +1863,12 @@ def _read_guide_meta(workbook: Any) -> dict[str, Any]:
         )
         if len(row) >= 2 and _text(row[0])
     }
-    version = _text(values.get("Format version")).removeprefix("v")
+    version = _text(values.get("Phiên bản file")).removeprefix("v")
     return {
         "format_version": version,
         "style_code": _text(values.get("Style Code")),
         "style_name": _text(values.get("Style Name")),
-        "cost_sheet_status": _text(
-            values.get("Costing status lúc export")
-        ),
+        "cost_sheet_status": _text(values.get("Trạng thái khi tải")),
         "title": "",
         "cost_sheet_type": "Internal Cost Sheets",
         "order_execution_type": "Trading",
@@ -1849,6 +1953,10 @@ def _register_form_section(
 
 
 def _form_row_has_data(row: Mapping[str, Any]) -> bool:
+    if _text(row.get("__Item Type")).casefold() == "cost_line":
+        # Các dòng mẫu đặc biệt có sẵn Minutes/Curr.; chỉ tạo dòng khi người
+        # dùng thật sự chọn tên nhà máy/quy trình/chi phí.
+        return bool(_text(row.get("Article Name")))
     if _text(row.get("Article Code")) or _text(row.get("Article Name")):
         return True
     return any(
@@ -1911,33 +2019,45 @@ def _validate_form_item_row(
 def _form_fields_for_item(
     row: Mapping[str, Any],
     section_key: str,
+    section_name: str,
     item_key: str,
 ) -> list[dict[str, Any]]:
     fields: list[dict[str, Any]] = []
+    section = {"section_key": section_key, "name": section_name}
     for field_order, definition in enumerate(STANDARD_ITEM_FIELDS):
         if definition.get("read_only"):
             continue
         value = row.get(str(definition["label"]), "")
         if value in (None, ""):
             continue
-        fields.append(
-            _normalized_field(
-                {
-                    "scope": "item",
-                    "section_key": section_key,
-                    "item_key": item_key,
-                    "field_key": definition["field_key"],
-                    "label": definition["label"],
-                    "value": value,
-                    "data_type": definition["data_type"],
-                    "editable": True,
-                    "required": False,
-                    "options": [],
-                    "row_order": field_order,
-                },
-                field_order,
+        field_data = {
+            "scope": "item",
+            "section_key": section_key,
+            "item_key": item_key,
+            "field_key": _form_field_key(definition, section),
+            "label": definition["label"],
+            "value": value,
+            "data_type": definition["data_type"],
+            "editable": True,
+            "required": False,
+            "options": [],
+            "row_order": field_order,
+        }
+        fields.append(_normalized_field(field_data, field_order))
+        if (
+            _standard_section_token(section) == "productioncosts"
+            and definition["label"] == "Minutes"
+        ):
+            fields.append(
+                _normalized_field(
+                    {
+                        **field_data,
+                        "field_key": "ProductionHeaderMinutes",
+                        "row_order": field_order - 1,
+                    },
+                    field_order,
+                )
             )
-        )
     return fields
 
 
@@ -1967,7 +2087,12 @@ def _read_costing_form_row(
     )
     action = _text(row.get("Action") or "UPSERT").upper()
     item_type = _text(row.get("__Item Type") or "article").casefold()
-    item_fields = _form_fields_for_item(row, section_key, item_key)
+    item_fields = _form_fields_for_item(
+        row,
+        section_key,
+        section_name,
+        item_key,
+    )
     if (
         action == "UPSERT"
         and _text(row.get("__Item Key"))

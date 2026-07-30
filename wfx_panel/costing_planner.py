@@ -158,13 +158,12 @@ class _ItemPlan:
         default_factory=dict
     )
     exact_live_keys: set[ItemKey] = field(default_factory=set)
-    skipped_keys: set[ItemKey] = field(default_factory=set)
     deleted_keys: set[ItemKey] = field(default_factory=set)
     additions: list[dict[str, Any]] = field(default_factory=list)
+    cost_line_additions: list[dict[str, Any]] = field(default_factory=list)
     splits: list[dict[str, Any]] = field(default_factory=list)
     updates: list[dict[str, Any]] = field(default_factory=list)
     deletes: list[dict[str, Any]] = field(default_factory=list)
-    skips: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[dict[str, Any]] = field(default_factory=list)
     missing_sections: set[str] = field(default_factory=set)
 
@@ -300,9 +299,6 @@ def _classify_item_action(
 ) -> None:
     summary = _item_summary(imported_item, live_item)
     action = imported_item["action"]
-    if action == "SKIP":
-        plan.skips.append(summary)
-        return
     if action == "DELETE":
         if imported_item["item_type"] == "cost_line":
             plan.warnings.append(
@@ -317,9 +313,7 @@ def _classify_item_action(
         return
     if imported_item["item_type"] == "cost_line":
         if live_item is None:
-            plan.warnings.append(
-                {**summary, "kind": "cost_line_not_found"}
-            )
+            plan.cost_line_additions.append(summary)
         else:
             plan.updates.append(summary)
         return
@@ -353,9 +347,7 @@ def _plan_items(
     for imported_item in imported_items:
         imported_key = _item_key(imported_item)
         plan.imported_by_key[imported_key] = imported_item
-        if imported_item["action"] == "SKIP":
-            plan.skipped_keys.add(imported_key)
-        elif imported_item["action"] == "DELETE":
+        if imported_item["action"] == "DELETE":
             plan.deleted_keys.add(imported_key)
 
         live_item, is_exact_match = _match_live_item(
@@ -477,7 +469,7 @@ def _plan_fields(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     context = _FieldContext(item_plan=item_plan, live_index=live_index)
     plan = _FieldPlan()
-    ignored_item_keys = item_plan.skipped_keys | item_plan.deleted_keys
+    ignored_item_keys = item_plan.deleted_keys
     for imported_field in imported_fields:
         should_apply, target_value = _target_field_value(imported_field)
         if not should_apply:
@@ -638,6 +630,10 @@ def build_costing_plan(
         live_index,
     )
     ordered_additions = sorted(item_plan.additions, key=_item_sort_key)
+    ordered_cost_line_additions = sorted(
+        item_plan.cost_line_additions,
+        key=_item_sort_key,
+    )
     ordered_splits = sorted(item_plan.splits, key=_item_sort_key)
 
     return {
@@ -653,10 +649,10 @@ def build_costing_plan(
         "fields_to_set": fields_to_set,
         "unchanged_fields": unchanged_fields,
         "additions": ordered_additions,
+        "cost_line_additions": ordered_cost_line_additions,
         "splits": ordered_splits,
         "updates": item_plan.updates,
         "deletes": item_plan.deletes,
-        "skips": item_plan.skips,
         "unsupported_fields": unsupported_fields,
         "warnings": item_plan.warnings,
         "missing_sections": sorted(item_plan.missing_sections),
@@ -673,10 +669,10 @@ def build_costing_plan(
             "fields_to_set": len(fields_to_set),
             "unchanged_fields": len(unchanged_fields),
             "additions": len(item_plan.additions),
+            "cost_line_additions": len(item_plan.cost_line_additions),
             "splits": len(item_plan.splits),
             "updates": len(item_plan.updates),
             "deletes": len(item_plan.deletes),
-            "skips": len(item_plan.skips),
             "unsupported_fields": len(unsupported_fields),
             "warnings": len(item_plan.warnings),
         },

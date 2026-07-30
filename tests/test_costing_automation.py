@@ -320,6 +320,99 @@ def test_supplier_is_applied_before_rate_and_delete_requires_comments():
     assert "sectionCostSheetDeletionReason" in source
 
 
+def test_production_fields_are_applied_in_required_wfx_order():
+    minutes = {"field_key": "Minutes", "label": "Minutes"}
+    header_minutes = {
+        "field_key": "ProductionHeaderMinutes",
+        "label": "Minutes",
+    }
+    value = {"field_key": "ProductionValue", "label": "Value"}
+    rate = {"field_key": "colRate1", "label": "Rate"}
+
+    priorities = [
+        costing._field_application_priority(field)
+        for field in (minutes, header_minutes, value, rate)
+    ]
+
+    assert priorities[0] == priorities[1]
+    assert priorities[1] < priorities[2] < priorities[3]
+
+
+def test_production_child_exposes_parent_minutes_and_value_as_virtual_fields():
+    document = {
+        "sections": [
+            {
+                "section_key": "section-8-Production_Costs",
+                "name": "Production Costs",
+                "row_order": 8,
+            }
+        ],
+        "items": [
+            {
+                "section_key": "section-8-Production_Costs",
+                "section_name": "Production Costs",
+                "item_key": "parent",
+                "row_order": 48,
+                "action": "UPSERT",
+                "item_type": "cost_line",
+                "article_code": "",
+                "article_name": "Production Costs",
+            },
+            {
+                "section_key": "section-8-Production_Costs",
+                "section_name": "Production Costs",
+                "item_key": "child",
+                "row_order": 49,
+                "action": "UPSERT",
+                "item_type": "cost_line",
+                "article_code": "",
+                "article_name": "CM (PRODUCTIONPROCESS100001)",
+            },
+        ],
+        "fields": [
+            {
+                "scope": "item",
+                "section_key": "section-8-Production_Costs",
+                "item_key": "parent",
+                "field_key": "Minutes",
+                "label": "Minutes",
+                "value": 1,
+                "data_type": "number",
+                "editable": True,
+                "required": False,
+                "options": [],
+                "row_order": 48,
+                "_live": {"row_index": 48, "dom_id": "lblMinutes"},
+            },
+            {
+                "scope": "item",
+                "section_key": "section-8-Production_Costs",
+                "item_key": "parent",
+                "field_key": "colValue",
+                "label": "Value",
+                "value": 100,
+                "data_type": "number",
+                "editable": True,
+                "required": False,
+                "options": [],
+                "row_order": 48,
+                "_live": {"row_index": 48, "dom_id": "lblValue"},
+            },
+        ],
+    }
+
+    costing._add_production_value_fields(document)
+
+    virtual = {
+        field["field_key"]: field
+        for field in document["fields"]
+        if field["item_key"] == "child"
+    }
+    assert set(virtual) == {"ProductionHeaderMinutes", "ProductionValue"}
+    assert virtual["ProductionHeaderMinutes"]["_live"]["row_index"] == 48
+    assert virtual["ProductionValue"]["_live"]["dom_id"] == "lblValue"
+
+
 def test_hidden_select2_uses_wfx_change_event_without_select_option():
     calls = []
 
