@@ -19,6 +19,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from wfx_panel.atomic_io import write_json_atomic
+
 DEFAULT_WEBHOOK_URL = "https://n8n.itx.io.vn/webhook/wfx-app"
 ENV_NAME = "WFX_ERROR_WEBHOOK_URL"
 MAX_OUTBOX = 100
@@ -589,12 +591,7 @@ def _write_outbox(base_dir: Path, rows: list[dict[str, Any]]) -> None:
         except OSError:
             pass
         return
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(rows[-MAX_OUTBOX:], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temporary.replace(path)
+    write_json_atomic(path, rows[-MAX_OUTBOX:], indent=2)
 
 
 def _json_safe(value: Any) -> Any:

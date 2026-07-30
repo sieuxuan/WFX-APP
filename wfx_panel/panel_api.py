@@ -186,7 +186,17 @@ class PanelAPI:
         self._division_name: str | None = None
         # Playwright/CDP không được chạy hai workflow song song trên cùng WFX
         # session. Trả về ngay thay vì xếp hàng khiến WebView trông bị treo.
-        self._run_lock = threading.Lock()
+        # RLock chứ không phải Lock: các thao tác Costing là composite gồm NHIỀU
+        # _run liên tiếp (mở Costing rồi export/dry-run/apply). Với Lock thường,
+        # cách duy nhất để chúng chạy được là nhả khoá giữa các bước — và đúng
+        # khe hở đó cho phép flow khác đổi module/Division khiến bước sau thao
+        # tác nhầm màn hình. run_composite() giữ khoá xuyên suốt, các _run lồng
+        # bên trong tái nhập trên cùng thread.
+        self._run_lock = threading.RLock()
+        # Không dùng RLock.locked() cho is_action_running(): API đó chỉ có từ
+        # Python 3.13 mà project khai báo requires-python >=3.11.
+        self._run_depth = 0
+        self._run_depth_lock = threading.Lock()
         # Toàn bộ state + logic Catalog (kết quả tìm, category đã chuẩn bị, cache
         # cây folder) sống trong controller riêng để bridge không phình to.
         self._catalog = CatalogController(self)
@@ -386,6 +396,40 @@ class PanelAPI:
             except Exception:
                 pass
 
+    def _action_in_progress(self) -> dict:
+        return {
+            "ok": False,
+            "code": "ACTION_IN_PROGRESS",
+            "message": "WFX Smart đang xử lý tác vụ trước. Vui lòng chờ hoàn tất.",
+            **self._session_status(),
+            **self._division_state(),
+        }
+
+    def _enter_run(self) -> None:
+        with self._run_depth_lock:
+            self._run_depth += 1
+
+    def _exit_run(self) -> None:
+        with self._run_depth_lock:
+            self._run_depth = max(0, self._run_depth - 1)
+
+    def run_composite(self, steps: Callable[[], dict]) -> dict:
+        """Chạy một chuỗi nhiều ``_run`` như MỘT tác vụ không thể chen ngang.
+
+        Import/export Costing phải mở đúng Costing rồi mới scan/apply. Nếu run
+        lock được nhả giữa hai bước, một flow khác (mở module, đổi Division,
+        tìm Catalog) có thể chen vào và bước sau sẽ thao tác trên màn hình khác
+        hẳn — trong khi plan token 15 phút không hề biết điều đó.
+        """
+        if not self._run_lock.acquire(blocking=False):
+            return self._action_in_progress()
+        self._enter_run()
+        try:
+            return steps()
+        finally:
+            self._exit_run()
+            self._run_lock.release()
+
     def _run(
         self,
         method_name: str,
@@ -393,18 +437,14 @@ class PanelAPI:
         request: dict | None = None,
     ) -> dict:
         if not self._run_lock.acquire(blocking=False):
-            return {
-                "ok": False,
-                "code": "ACTION_IN_PROGRESS",
-                "message": "WFX Smart đang xử lý tác vụ trước. Vui lòng chờ hoàn tất.",
-                **self._session_status(),
-                **self._division_state(),
-            }
+            return self._action_in_progress()
+        self._enter_run()
         try:
             return automation_runtime.run(
                 lambda: self._run_unlocked(method_name, action, request)
             )
         finally:
+            self._exit_run()
             self._run_lock.release()
 
     def _run_unlocked(
@@ -581,7 +621,8 @@ class PanelAPI:
 
     def is_action_running(self) -> bool:
         """Nguồn trạng thái native để panel tự thu không phụ thuộc WebView."""
-        return self._run_lock.locked()
+        with self._run_depth_lock:
+            return self._run_depth > 0
 
     def shutdown(self) -> None:
         automation_runtime.shutdown()

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from wfx_panel import log_bridge
+from wfx_panel.atomic_io import write_json_atomic
 
 MAX_JOBS = 200
 RETENTION_DAYS = 7
@@ -88,13 +89,7 @@ def _load(base_dir: Path) -> list[dict[str, Any]]:
 
 def _write(base_dir: Path, rows: list[dict[str, Any]]) -> None:
     base_dir.mkdir(parents=True, exist_ok=True)
-    path = _history_path(base_dir)
-    temp = path.with_suffix(".tmp")
-    temp.write_text(
-        json.dumps(rows[:MAX_JOBS], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temp.replace(path)
+    write_json_atomic(_history_path(base_dir), rows[:MAX_JOBS], indent=2)
 
 
 def _now() -> datetime:

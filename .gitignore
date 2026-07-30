@@ -10,3 +10,7 @@ __pycache__/
 /dist/
 /build-next/
 /dist-next/
+
+# Runtime artifacts: ảnh lỗi WFX + file xuất ra chứa dữ liệu nghiệp vụ thật
+job-screenshots/
+outputs/

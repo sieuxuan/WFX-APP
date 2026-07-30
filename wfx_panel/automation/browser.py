@@ -5,6 +5,7 @@ Tách nguyên văn từ login.py — không đổi logic.
 
 from __future__ import annotations
 
+from wfx_panel.atomic_io import write_json_atomic
 from wfx_panel.automation._common import (
     CDP_HOST,
     CDP_PORT,
@@ -170,12 +171,7 @@ def _disable_password_manager(profile_dir: Path) -> None:
     preferences["credentials_enable_service"] = False
     preferences["password_manager_leak_detection"] = False
 
-    temporary = preferences_path.with_name(preferences_path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(preferences, ensure_ascii=False, separators=(",", ":")),
-        encoding="utf-8",
-    )
-    temporary.replace(preferences_path)
+    write_json_atomic(preferences_path, preferences, separators=(",", ":"))
 
 
 def _start_persistent_chrome(log: Callable[[str], None]) -> None:
