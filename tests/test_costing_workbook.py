@@ -232,8 +232,7 @@ def test_xlsx_highlights_editable_cells_and_adds_one_template_per_section(
     ]
 
     assert len(template_rows) == (
-        len(costing_workbook.STANDARD_SECTIONS)
-        * costing_workbook.DEFAULT_NEW_ITEM_ROWS_PER_SECTION
+        6 * costing_workbook.DEFAULT_NEW_ITEM_ROWS_PER_SECTION + 1 + 1 + 2
     )
     assert all(
         form.cell(2, column).fill.fgColor.rgb == yellow
@@ -270,10 +269,10 @@ def test_xlsx_highlights_editable_cells_and_adds_one_template_per_section(
         guide.cell(row, 1).value: guide.cell(row, 2).value
         for row in range(1, guide.max_row + 1)
     }
-    assert guide_values["Section có sẵn"] == ", ".join(
+    assert guide_values["Các nhóm trong file"] == ", ".join(
         name for _token, name in costing_workbook.STANDARD_SECTIONS
     )
-    assert "Chỉ CostSheet Open" in guide_values["Phạm vi"]
+    assert "Chỉ Cost Sheet đang Open" in guide_values["Phạm vi"]
 
 
 def test_xlsx_form_edits_values_and_creates_new_item(tmp_path):
@@ -313,6 +312,118 @@ def test_xlsx_form_edits_values_and_creates_new_item(tmp_path):
         "colSupplierCompanyName",
         new_item["item_key"],
     )["value"] == "Supplier B"
+
+
+def test_special_cost_sections_use_fixed_rows_dropdowns_and_safe_defaults(
+    tmp_path,
+):
+    document = sample_document()
+    document["sections"].extend(
+        [
+            {
+                "section_key": "cm",
+                "name": "CM Costs",
+                "row_order": 7,
+                "article_options": ["FACTORY A", "FACTORY B"],
+            },
+            {
+                "section_key": "production",
+                "name": "Production Costs",
+                "row_order": 8,
+                "article_options": ["CM (PRODUCTIONPROCESS100001)"],
+            },
+            {
+                "section_key": "indirect",
+                "name": "Indirect Costs",
+                "row_order": 9,
+                "article_options": ["Air charge", "Commission Fee"],
+            },
+        ]
+    )
+    target = tmp_path / "special-costs.xlsx"
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    rows_by_section = {
+        section: [
+            row
+            for row in range(2, form.max_row + 1)
+            if form.cell(row, header["Section"]).value == section
+        ]
+        for section in ("CM Costs", "Production Costs", "Indirect Costs")
+    }
+
+    assert {name: len(rows) for name, rows in rows_by_section.items()} == {
+        "CM Costs": 1,
+        "Production Costs": 1,
+        "Indirect Costs": 2,
+    }
+    cm_row = rows_by_section["CM Costs"][0]
+    production_row = rows_by_section["Production Costs"][0]
+    indirect_row = rows_by_section["Indirect Costs"][0]
+    assert form.cell(cm_row, header["Curr."]).value == "USD"
+    assert form.cell(production_row, header["Minutes"]).value == 1
+    assert form.cell(indirect_row, header["Curr."]).value == "USD"
+    assert all(
+        form.cell(row, header["Action"]).value is None
+        for rows in rows_by_section.values()
+        for row in rows
+    )
+    article_validations = [
+        validation
+        for validation in form.data_validations.dataValidation
+        if any(
+            cell_range.min_col == header["Article Name"]
+            for cell_range in validation.ranges.ranges
+        )
+    ]
+    assert len(article_validations) == 3
+    hidden_values = {
+        str(form.cell(row, column).value)
+        for column in range(len(costing_workbook.FORM_COLUMNS) + 1, form.max_column + 1)
+        for row in range(2, form.max_row + 1)
+        if form.cell(row, column).value
+    }
+    assert {
+        "FACTORY A",
+        "CM (PRODUCTIONPROCESS100001)",
+        "Air charge",
+    } <= hidden_values
+
+    form.cell(cm_row, header["Article Name"], "FACTORY A")
+    form.cell(cm_row, header["Value"], 10)
+    form.cell(production_row, header["Article Name"], "CM (PRODUCTIONPROCESS100001)")
+    form.cell(production_row, header["Value"], 100)
+    form.cell(production_row, header["Rate"], 2)
+    form.cell(indirect_row, header["Article Name"], "Air charge")
+    form.cell(indirect_row, header["Value"], 5)
+    workbook.save(target)
+
+    loaded = costing_workbook.read_costing_xlsx(target)
+    special_items = [
+        item for item in loaded["items"] if item["item_type"] == "cost_line"
+    ]
+    assert [item["article_name"] for item in special_items] == [
+        "FACTORY A",
+        "CM (PRODUCTIONPROCESS100001)",
+        "Air charge",
+    ]
+    production_item = special_items[1]
+    production_fields = {
+        field["field_key"]: field["value"]
+        for field in loaded["fields"]
+        if field["item_key"] == production_item["item_key"]
+    }
+    assert production_fields == {
+        "Minutes": 1,
+        "ProductionHeaderMinutes": 1,
+        "colRate1": 2,
+        "ProductionValue": 100,
+    }
+    assert sum(
+        item["section_name"] == "Indirect Costs" for item in special_items
+    ) == 1
 
 
 def test_form_adds_live_color_size_and_purchase_officer_dropdowns(tmp_path):
@@ -529,7 +640,7 @@ def test_only_xlsx_is_accepted(tmp_path):
     assert captured.value.code == "COSTING_FILE_TYPE_UNSUPPORTED"
 
 
-def test_workbook_filters_excluded_sections_columns_and_readonly_fields(
+def test_workbook_keeps_special_sections_and_filters_unsupported_fields(
     tmp_path,
 ):
     document = sample_document()
@@ -609,9 +720,7 @@ def test_workbook_filters_excluded_sections_columns_and_readonly_fields(
         if cell.value is not None
     }
     assert "Cost Sheet" not in workbook.sheetnames
-    assert "CM Costs" not in visible_text
-    assert "Production Costs" not in visible_text
-    assert "Indirect Costs" not in visible_text
+    assert {"CM Costs", "Production Costs", "Indirect Costs"} <= visible_text
     assert not any("Delivery Terms" in value for value in visible_text)
 
 

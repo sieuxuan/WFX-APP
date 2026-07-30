@@ -420,6 +420,63 @@ def test_new_duplicate_article_is_added_once_then_split():
     assert [item["article_code"] for item in plan["splits"]] == ["FAB-NEW"]
 
 
+def test_missing_cost_line_is_planned_as_special_addition():
+    imported, live = documents()
+    section = {
+        "section_key": "production",
+        "name": "Production Costs",
+        "row_order": 8,
+    }
+    live["sections"].append(section)
+    imported["items"] = [
+        {
+            "section_key": "production",
+            "section_name": "Production Costs",
+            "item_key": "new:production:CM:row-20",
+            "row_order": 20,
+            "action": "UPSERT",
+            "item_type": "cost_line",
+            "article_code": "",
+            "article_name": "CM (PRODUCTIONPROCESS100001)",
+        }
+    ]
+    imported["fields"] = [
+        {
+            "scope": "item",
+            "section_key": "production",
+            "item_key": "new:production:CM:row-20",
+            "field_key": key,
+            "label": label,
+            "value": value,
+            "data_type": "number",
+            "editable": True,
+            "required": False,
+            "row_order": index,
+        }
+        for index, (key, label, value) in enumerate(
+            [
+                ("ProductionHeaderMinutes", "Minutes", 1),
+                ("Minutes", "Minutes", 1),
+                ("ProductionValue", "Value", 100),
+                ("colRate1", "Rate", 2),
+            ]
+        )
+    ]
+
+    plan = build_costing_plan(imported, live)
+
+    assert plan["additions"] == []
+    assert len(plan["cost_line_additions"]) == 1
+    assert plan["cost_line_additions"][0]["article_name"].startswith("CM (")
+    assert plan["counts"]["cost_line_additions"] == 1
+    assert {field["field_key"] for field in plan["fields_to_set"]} == {
+        "ProductionHeaderMinutes",
+        "Minutes",
+        "ProductionValue",
+        "colRate1",
+    }
+
+
 def test_missing_mandatory_purchase_officer_is_blocked_during_dry_run():
     imported, live = documents()
     live["fields"].append(
