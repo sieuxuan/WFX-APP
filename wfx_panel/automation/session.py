@@ -37,6 +37,8 @@ from wfx_panel.automation.browser import (
 DIVISION_CONFIRM_TIMEOUT_SECONDS = 8
 DIVISION_RETRY_AFTER_SECONDS = 2.5
 DIVISION_ROUTE_SETTLE_SECONDS = 0.75
+LOGIN_PAGE_TIMEOUT_MS = 45_000
+AUTH_SURFACE_WAIT_SECONDS = 15
 
 
 def login(
@@ -45,19 +47,28 @@ def login(
     password: str,
     company_id: str = COMPANY_ID,
 ) -> None:
-    page.goto(URL, wait_until="domcontentloaded")
-    page.locator("#txtUserID").fill(user_id)
+    page.goto(
+        URL,
+        wait_until="domcontentloaded",
+        timeout=LOGIN_PAGE_TIMEOUT_MS,
+    )
+    user_input = page.locator("#txtUserID")
+    user_input.wait_for(state="visible", timeout=LOGIN_PAGE_TIMEOUT_MS)
+    user_input.fill(user_id)
     page.locator("#txtCompany").fill(company_id)
     _click(page.locator("#btlLogin[value='Next']"))
 
     password_input = page.locator("#txtPassword")
-    password_input.wait_for(state="visible")
+    password_input.wait_for(state="visible", timeout=LOGIN_PAGE_TIMEOUT_MS)
     password_input.fill(password)
     _click(page.locator("#btlLogin[value='Log In']"))
 
     # Catalog là menu phổ thông. Không dùng một menu Admin làm điều kiện login:
     # tài khoản thường có thể đăng nhập hợp lệ nhưng không có System Coding.
-    page.locator(f"xpath={CATALOG_XPATH}").wait_for(state="attached")
+    page.locator(f"xpath={CATALOG_XPATH}").wait_for(
+        state="attached",
+        timeout=LOGIN_PAGE_TIMEOUT_MS,
+    )
 
 
 def _session_is_active(page: Page) -> bool:
@@ -65,6 +76,22 @@ def _session_is_active(page: Page) -> bool:
         return page.locator('xpath=//*[@id="0003_6200"]/a').count() > 0
     except PlaywrightError:
         return False
+
+
+def _wait_for_auth_surface(page: Page, timeout_s: float) -> str:
+    """Wait through a cold Chrome restore for session menu or login form."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _session_is_active(page):
+            return "session"
+        try:
+            user_input = page.locator("#txtUserID")
+            if user_input.count() and user_input.first.is_visible():
+                return "login"
+        except PlaywrightError:
+            pass
+        _wait(page, 250)
+    return "unknown"
 
 
 def _division_for_text(value: str | None) -> dict[str, str] | None:
@@ -457,12 +484,18 @@ def run(
     user_id = (user_id or os.getenv("WFX_USER_ID", "")).strip()
     password = password or os.getenv("WFX_PASSWORD", "")
     playwright: Playwright | None = None
+    page: Page | None = None
     try:
         _start_persistent_chrome(log)
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
         _attach_dialog_handler(page, log)
-        if _session_is_active(page):
+        _write_log(log, "[SESSION] Đang chờ trang WFX sẵn sàng...")
+        auth_surface = _wait_for_auth_surface(
+            page,
+            AUTH_SURFACE_WAIT_SECONDS,
+        )
+        if auth_surface == "session":
             _write_log(log, "[SESSION] Phiên WFX vẫn còn hiệu lực, không login lại.")
             return _result(
                 True,
@@ -477,6 +510,11 @@ def run(
                 "MISSING_CREDENTIALS",
                 "Chưa lưu User ID và Password trong Settings.",
             )
+        if auth_surface == "unknown":
+            _write_log(
+                log,
+                "[SESSION] Trang cũ không phản hồi; đang tải lại màn đăng nhập...",
+            )
         login(page, user_id, password, company_id)
         _write_log(log, "Đăng nhập thành công.")
         return _result(
@@ -486,8 +524,24 @@ def run(
             url=page.url,
             **_division_state_for_page(page),
         )
-    except PlaywrightTimeoutError:
-        message = "Đăng nhập không thành công hoặc trang WFX phản hồi quá chậm."
+    except PlaywrightTimeoutError as exc:
+        if page is not None and _wait_for_auth_surface(page, 10) == "session":
+            _write_log(
+                log,
+                "[SESSION] WFX phản hồi trễ nhưng đã xác nhận đăng nhập.",
+            )
+            return _result(
+                True,
+                "LOGGED_IN_AFTER_DELAY",
+                "Đăng nhập thành công sau khi WFX tải chậm.",
+                url=page.url,
+                **_division_state_for_page(page),
+            )
+        detail = str(exc).splitlines()[0][:160]
+        message = (
+            "Đăng nhập không thành công hoặc trang WFX phản hồi quá chậm."
+            f" Chi tiết: {detail}"
+        )
         _write_log(log, message)
         return _result(False, "LOGIN_TIMEOUT", message)
     except Exception as exc:
