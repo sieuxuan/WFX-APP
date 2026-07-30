@@ -198,7 +198,13 @@ _COSTING_INVENTORY_JS = r"""grid => {
         return clean(title || element.textContent);
     };
     const articleFromRow = row => {
-        const articleText = clean(row.querySelector('#lblArticle')?.textContent);
+        const articleElement = row.querySelector('#lblArticle');
+        // WFX keeps a hidden ``lblArticle`` containing ">>" on subtotal and
+        // total rows.  Only a visible label represents an Article usage row;
+        // inheriting from hidden labels turns the final subtotal into a fake
+        // split row for the preceding Article.
+        if (!shown(articleElement)) return {code: '', name: ''};
+        const articleText = clean(articleElement.textContent);
         if (!articleText || articleText === '>>') return {code: '', name: ''};
         const codeMatch = articleText.match(/\(([A-Z][A-Z0-9_-]*\d[A-Z0-9_-]*)\)\s*$/i);
         return {
@@ -245,9 +251,10 @@ _COSTING_INVENTORY_JS = r"""grid => {
             return;
         }
         const rawArticle = articleFromRow(row);
-        const articleText = clean(
-            row.querySelector('#lblArticle')?.textContent
-        );
+        const articleElement = row.querySelector('#lblArticle');
+        const articleText = shown(articleElement)
+            ? clean(articleElement.textContent)
+            : '';
         if (rawArticle.code) previousArticle = rawArticle;
         const article = (
             !rawArticle.code && articleText === '>>' && previousArticle.code
@@ -468,11 +475,7 @@ def _status_from_tree(frame: Frame) -> str:
         locator = frame.locator(selector)
         try:
             for index in range(locator.count()):
-                item = (
-                    locator.nth(index)
-                    if hasattr(locator, "nth")
-                    else locator
-                )
+                item = locator.nth(index) if hasattr(locator, "nth") else locator
                 text = item.inner_text(timeout=1_000).strip()
                 if text:
                     texts.append(text)
@@ -514,7 +517,9 @@ def _costing_frame(
                         if details.nth(index).is_visible():
                             detail_score = 20
                             break
-                    tree_score = 10 if frame.locator(COSTING_TREE_SELECTOR).count() else 0
+                    tree_score = (
+                        10 if frame.locator(COSTING_TREE_SELECTOR).count() else 0
+                    )
                     new_score = 5 if frame.locator(COSTING_NEW_SELECTOR).count() else 0
                     score = grid_score + detail_score + tree_score + new_score
                     if score:
@@ -539,9 +544,7 @@ def _selected_costing_title(
     for page in reversed(source_pages):
         for frame in page.frames:
             try:
-                selected = frame.locator(
-                    "#treeCostSheet .clsTreeSelectedNode"
-                )
+                selected = frame.locator("#treeCostSheet .clsTreeSelectedNode")
                 for index in range(selected.count()):
                     text = (selected.nth(index).inner_text() or "").strip()
                     if text:
@@ -607,9 +610,7 @@ def _active_costing_page(context: Any) -> Page:
                 session = context.new_cdp_session(page)
                 try:
                     info = session.send("Target.getTargetInfo")
-                    target_id = str(
-                        info.get("targetInfo", {}).get("targetId") or ""
-                    )
+                    target_id = str(info.get("targetInfo", {}).get("targetId") or "")
                     if target_id:
                         target_ids[id(page)] = target_id
                     if not target_order:
@@ -640,8 +641,7 @@ def _active_costing_page(context: Any) -> Page:
 
 def _style_codes_from_text(value: Any) -> list[str]:
     return [
-        match.group(1).upper()
-        for match in _STYLE_CODE_RE.finditer(str(value or ""))
+        match.group(1).upper() for match in _STYLE_CODE_RE.finditer(str(value or ""))
     ]
 
 
@@ -841,18 +841,15 @@ def _inventory_to_document(
                         "item_key": item_key,
                         "row_order": int(raw.get("rowOrder") or len(items)),
                         "action": "UPSERT",
-                        "item_type": str(
-                            raw.get("itemType") or "article"
-                        ).strip().casefold(),
+                        "item_type": str(raw.get("itemType") or "article")
+                        .strip()
+                        .casefold(),
                         "article_code": str(raw.get("articleCode") or "").strip(),
                         "article_name": str(raw.get("articleName") or "").strip(),
                     }
                 )
         base_key = _clean_key(
-            raw.get("dataField")
-            or raw.get("domName")
-            or dom_id
-            or raw.get("label"),
+            raw.get("dataField") or raw.get("domName") or dom_id or raw.get("label"),
             f"field-{index + 1}",
         )
         composite = (
@@ -882,9 +879,7 @@ def _inventory_to_document(
                 "_live": {
                     "dom_index": int(raw.get("domIndex") or index),
                     "dom_id": dom_id,
-                    "click_dom_id": str(
-                        raw.get("clickDomId") or dom_id
-                    ).strip(),
+                    "click_dom_id": str(raw.get("clickDomId") or dom_id).strip(),
                     "tag": str(raw.get("tag") or "").casefold(),
                     "input_type": str(raw.get("inputType") or "").casefold(),
                     "option_values": list(raw.get("optionValues") or ()),
@@ -1031,9 +1026,7 @@ def _section_row_index(grid: Any, section_key: str) -> int:
         if live_key.casefold() == str(section_key or "").casefold():
             matches.append(index)
     if len(matches) != 1:
-        raise RuntimeError(
-            f"COSTING_SECTION_NOT_FOUND:{section_key}:{len(matches)}"
-        )
+        raise RuntimeError(f"COSTING_SECTION_NOT_FOUND:{section_key}:{len(matches)}")
     return matches[0]
 
 
@@ -1172,8 +1165,7 @@ def _search_material(
         checkpoint()
         latest = _material_rows(frame)
         searchable = [
-            row["article_code"] if code else row["article_name"]
-            for row in latest
+            row["article_code"] if code else row["article_name"] for row in latest
         ]
         filtered = not latest or all(
             value.casefold() == wanted.casefold() for value in searchable
@@ -1221,9 +1213,7 @@ def _preflight_article_additions(
     ambiguous: list[dict[str, Any]] = []
     grouped: dict[str, list[Mapping[str, Any]]] = {}
     for addition in additions:
-        grouped.setdefault(str(addition.get("section_key") or ""), []).append(
-            addition
-        )
+        grouped.setdefault(str(addition.get("section_key") or ""), []).append(addition)
     for section_key, section_items in grouped.items():
         _section_action(frame, section_key, "imgAdd").click()
         _page, search_frame = _material_search_frame(context)
@@ -1297,9 +1287,7 @@ def _add_articles(
     found = list(preflight.get("found") or ())
     grouped: dict[str, list[Mapping[str, Any]]] = {}
     for addition in found:
-        grouped.setdefault(str(addition.get("section_key") or ""), []).append(
-            addition
-        )
+        grouped.setdefault(str(addition.get("section_key") or ""), []).append(addition)
     added = []
     for section_key, section_items in grouped.items():
         _section_action(frame, section_key, "imgAdd").click()
@@ -1338,9 +1326,7 @@ def _delete_row_index(
 ) -> int:
     section_key = str(deletion.get("section_key") or "").casefold()
     item_key = str(
-        deletion.get("live_item_key")
-        or deletion.get("import_item_key")
-        or ""
+        deletion.get("live_item_key") or deletion.get("import_item_key") or ""
     ).casefold()
     indices = {
         int((field.get("_live") or {}).get("row_index") or 0)
@@ -1394,9 +1380,11 @@ def _delete_articles(
             name = str(deletion.get("article_name") or "").strip()
             if code and f"({code})".casefold() not in str(article_text).casefold():
                 raise RuntimeError("COSTING_DELETE_TARGET_CHANGED")
-            if not code and name and name.casefold() not in str(
-                article_text
-            ).casefold():
+            if (
+                not code
+                and name
+                and name.casefold() not in str(article_text).casefold()
+            ):
                 raise RuntimeError("COSTING_DELETE_TARGET_CHANGED")
             checkbox = row.locator("#chkSelector")
             if checkbox.count() != 1 or not checkbox.is_visible():
@@ -1453,8 +1441,7 @@ def _delete_articles(
         for _row_index, deletion in targets:
             code = str(deletion.get("article_code") or "").strip()
             if code and any(
-                f"({code})".casefold() in text.casefold()
-                for text in remaining_text
+                f"({code})".casefold() in text.casefold() for text in remaining_text
             ):
                 raise RuntimeError("COSTING_DELETE_NOT_CONFIRMED")
         _write_log(
@@ -1468,11 +1455,7 @@ def _delete_articles(
 def _article_identity(item: Mapping[str, Any]) -> tuple[str, str]:
     return (
         str(item.get("section_key") or "").casefold(),
-        str(
-            item.get("article_code")
-            or item.get("article_name")
-            or ""
-        ).casefold(),
+        str(item.get("article_code") or item.get("article_name") or "").casefold(),
     )
 
 
@@ -1507,9 +1490,7 @@ def _split_article_row(
     ]
     if not source_fields:
         raise RuntimeError("COSTING_SPLIT_SOURCE_NOT_FOUND")
-    row_index = int(
-        (source_fields[0].get("_live") or {}).get("row_index") or 0
-    )
+    row_index = int((source_fields[0].get("_live") or {}).get("row_index") or 0)
     grid = _visible_costing_grid(frame)
     if grid is None:
         raise RuntimeError("COSTING_SPLIT_SOURCE_NOT_FOUND")
@@ -1517,9 +1498,7 @@ def _split_article_row(
     if row_index < 0 or row_index >= rows.count():
         raise RuntimeError("COSTING_SPLIT_SOURCE_NOT_FOUND")
     row = rows.nth(row_index)
-    splitters = row.locator(
-        '#colSplitterForUsage [id="imgSplitterForUsage"]'
-    )
+    splitters = row.locator('#colSplitterForUsage [id="imgSplitterForUsage"]')
     visible = [
         splitters.nth(index)
         for index in range(splitters.count())
@@ -1536,7 +1515,10 @@ def _split_article_row(
     while time.monotonic() < deadline:
         checkpoint()
         current = _visible_costing_grid(frame)
-        if current is not None and current.locator(":scope > tbody > tr").count() > before:
+        if (
+            current is not None
+            and current.locator(":scope > tbody > tr").count() > before
+        ):
             return
         _sleep(0.1)
     raise RuntimeError("COSTING_SPLIT_NOT_CONFIRMED")
@@ -1556,7 +1538,9 @@ def _visible_controls(frame: Frame, selector: str) -> list[Any]:
     return controls
 
 
-def _live_field_index(document: Mapping[str, Any]) -> dict[tuple[str, str, str, str], dict[str, Any]]:
+def _live_field_index(
+    document: Mapping[str, Any],
+) -> dict[tuple[str, str, str, str], dict[str, Any]]:
     return {
         (
             str(field.get("scope") or "").casefold(),
@@ -1607,10 +1591,7 @@ def _resolve_live_field(frame: Frame, field: Mapping[str, Any]) -> Any:
     for index in range(candidates.count()):
         candidate = candidates.nth(index)
         try:
-            if (
-                candidate.get_attribute("id") == click_dom_id
-                and candidate.is_visible()
-            ):
+            if candidate.get_attribute("id") == click_dom_id and candidate.is_visible():
                 matches.append(candidate)
         except PlaywrightError:
             continue
@@ -1710,10 +1691,10 @@ def _scan_multiselect_field_options(
     editor = None
     try:
         control.click(timeout=2_000)
-        editor = row.locator(f'#{editor_id}:visible')
+        editor = row.locator(f"#{editor_id}:visible")
         editor.wait_for(state="visible", timeout=2_000)
         editor.click(timeout=3_000)
-        option_list = frame.locator(f'#{editor_id}ListItems:visible')
+        option_list = frame.locator(f"#{editor_id}ListItems:visible")
         option_list.wait_for(state="visible", timeout=4_000)
         options = option_list.locator("li.clsMultiSelectContent")
         labels: list[str] = []
@@ -1847,13 +1828,11 @@ def _scan_dependency_table(
     link = rows.nth(row_index).locator(f'[id="lnk{kind}Dependency"]:visible')
     if link.count() != 1:
         return "", []
-    popup = frame.locator(f'div#section{kind}DepUsage.Targetblock:visible')
+    popup = frame.locator(f"div#section{kind}DepUsage.Targetblock:visible")
     try:
         link.click(timeout=3_000)
         popup.wait_for(state="visible", timeout=3_000)
-        mapping_rows = popup.locator(
-            f"#grid{kind}DepUsage_tblGridContent > tbody > tr"
-        )
+        mapping_rows = popup.locator(f"#grid{kind}DepUsage_tblGridContent > tbody > tr")
         lines: list[str] = []
         all_options: list[str] = list(known_options)
         editor_id = f"ddlStyle{kind}ListSDU"
@@ -1862,7 +1841,11 @@ def _scan_dependency_table(
             source_cell = mapping_row.locator("#colMaterialArticleSDU")
             source_node = source_cell.locator("[title]")
             source = str(
-                (source_node.first.get_attribute("title") if source_node.count() else "")
+                (
+                    source_node.first.get_attribute("title")
+                    if source_node.count()
+                    else ""
+                )
                 or source_cell.inner_text()
                 or ""
             ).strip()
@@ -1871,28 +1854,22 @@ def _scan_dependency_table(
             if not source or editable.count() != 1:
                 continue
             selected_text = str(
-                editable.get_attribute("title")
-                or editable.inner_text()
-                or ""
+                editable.get_attribute("title") or editable.inner_text() or ""
             ).strip()
             selected = _split_dependency_display_values(selected_text)
             if not all_options:
                 editable.click(timeout=2_000)
-                editor = target_cell.locator(f'#{editor_id}:visible')
+                editor = target_cell.locator(f"#{editor_id}:visible")
                 editor.wait_for(state="visible", timeout=2_000)
                 editor.click(timeout=2_000)
-                option_list = frame.locator(f'#{editor_id}ListItems:visible')
+                option_list = frame.locator(f"#{editor_id}ListItems:visible")
                 option_list.wait_for(state="visible", timeout=2_000)
                 options = option_list.locator("li.clsMultiSelectContent")
                 for option_index in range(options.count()):
                     option = options.nth(option_index)
                     anchor = option.locator("a")
                     label = str(
-                        (
-                            anchor.get_attribute("title")
-                            if anchor.count()
-                            else ""
-                        )
+                        (anchor.get_attribute("title") if anchor.count() else "")
                         or option.inner_text()
                         or ""
                     ).strip()
@@ -2021,10 +1998,13 @@ def _scan_costing_dependency_tables(
         (
             str(field.get("section_key") or "").casefold(),
             str(field.get("item_key") or "").casefold(),
-            "Color" if _base_costing_field_key(field) == "colcolordependency" else "Size",
+            "Color"
+            if _base_costing_field_key(field) == "colcolordependency"
+            else "Size",
         ): str(field.get("value") or "")
         for field in document.get("fields") or ()
-        if _base_costing_field_key(field) in {
+        if _base_costing_field_key(field)
+        in {
             "colcolordependency",
             "colsizedependency",
         }
@@ -2136,8 +2116,7 @@ def _dependency_scan_incomplete(document: Mapping[str, Any]) -> bool:
 def _option_value(field: Mapping[str, Any], value: Any) -> str:
     labels = [str(item) for item in field.get("options") or ()]
     values = [
-        str(item)
-        for item in (field.get("_live") or {}).get("option_values") or ()
+        str(item) for item in (field.get("_live") or {}).get("option_values") or ()
     ]
     wanted = str(value or "").strip().casefold()
     matches = [
@@ -2320,11 +2299,7 @@ def _dependency_mapping_rules(
     value: Any,
 ) -> list[tuple[str | None, list[str]]]:
     text = str(value or "").strip()
-    lines = [
-        line.strip()
-        for line in re.split(r"[;\n]+", text)
-        if line.strip()
-    ]
+    lines = [line.strip() for line in re.split(r"[;\n]+", text) if line.strip()]
     rules: list[tuple[str | None, list[str]]] = []
     for line in lines:
         match = re.match(r"^(.*?)\s*(?:=>|->|→)\s*(.*)$", line)
@@ -2382,9 +2357,7 @@ def _open_dependency_popup(
         links.first.click(timeout=3_000)
     except PlaywrightError:
         links.first.evaluate("element => element.click()")
-    popup = frame.locator(
-        f"div#section{dependency_kind}DepUsage.Targetblock:visible"
-    )
+    popup = frame.locator(f"div#section{dependency_kind}DepUsage.Targetblock:visible")
     popup.wait_for(state="visible", timeout=3_000)
     return popup
 
@@ -2393,11 +2366,7 @@ def _dependency_source_label(mapping_row: Any) -> str:
     source_cell = mapping_row.locator("#colMaterialArticleSDU")
     source_node = source_cell.locator("[title]")
     return str(
-        (
-            source_node.first.get_attribute("title")
-            if source_node.count()
-            else ""
-        )
+        (source_node.first.get_attribute("title") if source_node.count() else "")
         or source_cell.inner_text()
         or ""
     ).strip()
@@ -2452,8 +2421,7 @@ def _dependency_option_indexes(
     ]
     if missing_values:
         raise RuntimeError(
-            "COSTING_DEPENDENCY_OPTION_NOT_FOUND:"
-            + ",".join(missing_values[:3])
+            "COSTING_DEPENDENCY_OPTION_NOT_FOUND:" + ",".join(missing_values[:3])
         )
     return {matched_indexes[value.casefold()] for value in wanted_values}
 
@@ -2486,14 +2454,10 @@ def _set_dependency_row_options(
         should_check = option_index in wanted_indexes
         if bool(option.get("checked")) == should_check:
             continue
-        options.nth(option_index).locator("input[type='checkbox']").click(
-            timeout=2_000
-        )
+        options.nth(option_index).locator("input[type='checkbox']").click(timeout=2_000)
     confirmed_snapshot = options.evaluate_all(_DEPENDENCY_OPTIONS_JS)
     confirmed_indexes = {
-        int(option["index"])
-        for option in confirmed_snapshot
-        if option.get("checked")
+        int(option["index"]) for option in confirmed_snapshot if option.get("checked")
     }
     if confirmed_indexes != wanted_indexes:
         raise RuntimeError("COSTING_DEPENDENCY_NOT_CONFIRMED")
@@ -2535,8 +2499,7 @@ def _apply_dependency_rules(
     ]
     if missing_sources:
         raise RuntimeError(
-            "COSTING_DEPENDENCY_SOURCE_NOT_FOUND:"
-            + ",".join(missing_sources[:3])
+            "COSTING_DEPENDENCY_SOURCE_NOT_FOUND:" + ",".join(missing_sources[:3])
         )
 
 
@@ -2605,21 +2568,19 @@ def _field_value_matches(actual: Any, expected: Any, data_type: str) -> bool:
         "integer",
     }:
         try:
-            return float(str(actual).strip() or 0) == float(
-                str(expected).strip() or 0
-            )
+            return float(str(actual).strip() or 0) == float(str(expected).strip() or 0)
         except ValueError:
             pass
-    return str(actual if actual is not None else "").strip() == str(
-        expected if expected is not None else ""
-    ).strip()
+    return (
+        str(actual if actual is not None else "").strip()
+        == str(expected if expected is not None else "").strip()
+    )
 
 
 def _field_application_priority(field: Mapping[str, Any]) -> int:
     """Apply dependent Article fields in WFX's safe order."""
     semantic = " ".join(
-        str(field.get(key) or "")
-        for key in ("field_key", "label")
+        str(field.get(key) or "") for key in ("field_key", "label")
     ).casefold()
     if re.search(
         r"material.?size|material.?color|color.?dependency|size.?dependency",
@@ -2813,8 +2774,7 @@ def _validate_costing_apply_request(
 
 def _costing_plan_has_changes(plan: Mapping[str, Any]) -> bool:
     return any(
-        plan.get(key)
-        for key in ("additions", "splits", "deletes", "fields_to_set")
+        plan.get(key) for key in ("additions", "splits", "deletes", "fields_to_set")
     )
 
 
@@ -3003,8 +2963,7 @@ def _apply_costing_splits(
     if pending_splits:
         _write_log(
             session.log,
-            "[COSTING] Đang Splitter "
-            f"{len(pending_splits)} dòng Article liền nhau.",
+            f"[COSTING] Đang Splitter {len(pending_splits)} dòng Article liền nhau.",
         )
     for request in pending_splits:
         checkpoint()
@@ -3195,9 +3154,7 @@ def _split_verification_mismatches(
         if actual_count >= expected_count:
             continue
         article_identity = str(
-            split_request.get("article_code")
-            or split_request.get("article_name")
-            or ""
+            split_request.get("article_code") or split_request.get("article_name") or ""
         )
         mismatches.append(
             {
@@ -3346,13 +3303,19 @@ def apply_costing_plan(
             failure_reason=error.reason,
         )
     except PlaywrightTimeoutError as error:
-        code = str(error) if str(error).startswith("COSTING_") else "COSTING_APPLY_FAILED"
+        code = (
+            str(error) if str(error).startswith("COSTING_") else "COSTING_APPLY_FAILED"
+        )
         return _result(False, code, "WFX chưa sẵn sàng để áp dụng Costing.")
     except CostingPlanError as error:
         return error.as_result()
     except Exception as error:
         raw = _first_line(error)
-        code = raw.split(":", 1)[0] if raw.startswith("COSTING_") else "COSTING_APPLY_FAILED"
+        code = (
+            raw.split(":", 1)[0]
+            if raw.startswith("COSTING_")
+            else "COSTING_APPLY_FAILED"
+        )
         _write_log(log, f"[COSTING] {type(error).__name__}: {raw}")
         return _result(
             False,
@@ -3376,9 +3339,7 @@ def _scan_open_costing_context(
 ) -> dict[str, Any]:
     """Quét Costing trong phạm vi Page đã chỉ định."""
     _page, frame = _costing_frame(context, pages=pages)
-    status = str(
-        (style_status or {}).get("internal_costsheet_status") or ""
-    ).strip()
+    status = str((style_status or {}).get("internal_costsheet_status") or "").strip()
     status = status or _status_from_tree(frame)
     if require_open and status.casefold() != "open":
         return _result(
@@ -3624,8 +3585,7 @@ def inspect_active_costing(
         status = _status_from_tree(frame)
         _write_log(
             log,
-            "[COSTING] Tab hiện tại: "
-            f"{article_code}; status={status or 'Unknown'}.",
+            f"[COSTING] Tab hiện tại: {article_code}; status={status or 'Unknown'}.",
         )
         return _result(
             True,
