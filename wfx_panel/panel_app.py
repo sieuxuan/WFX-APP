@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import threading
 import time
@@ -152,13 +153,24 @@ def _reveal_downloaded_file(value: object) -> bool:
         return False
 
 
+def _open_downloaded_file(value: object) -> bool:
+    """Mở file bằng ứng dụng mặc định của Windows."""
+    if os.name != "nt":
+        return False
+    try:
+        target = Path(str(value or "")).resolve()
+        if not target.is_file():
+            return False
+        os.startfile(target)  # type: ignore[attr-defined]
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def _safe_costing_file_stem(value: object) -> str:
-    stem = "".join(
-        character
-        for character in str(value or "").strip()
-        if character.isalnum() or character in {"-", "_"}
-    )
-    return stem[:80] or "Costing"
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', " ", str(value or "").strip())
+    stem = re.sub(r"\s+", " ", stem).strip(" .")
+    return stem[:120].rstrip(" .") or "Costing"
 
 
 def _dialog_selected_path(selected: object) -> Path:
@@ -482,7 +494,7 @@ class PanelApp:
 
     def choose_costing_export_file(
         self,
-        style_code: str,
+        style_name: str,
         file_format: str = "xlsx",
     ) -> dict:
         """Chọn đích lưu XLSX; dùng đúng toàn bộ đường dẫn từ native dialog."""
@@ -499,7 +511,7 @@ class PanelApp:
                 "message": "Costing chỉ hỗ trợ file .xlsx.",
             }
         extension = ".xlsx"
-        stem = _safe_costing_file_stem(style_code)
+        stem = _safe_costing_file_stem(style_name)
         saved_directory = str(
             prefs.load_prefs(self._base_dir).get("costing_export_dir") or ""
         ).strip()
@@ -1231,7 +1243,12 @@ class PanelApp:
         if method == "download_catalog_file" and result.get("ok"):
             _reveal_downloaded_file(result.get("download_path"))
         if method == "export_catalog_costing" and result.get("ok"):
-            _reveal_downloaded_file(result.get("export_path"))
+            preferences = prefs.load_prefs(self._base_dir)
+            export_path = result.get("export_path")
+            if preferences["open_costing_file_after_export"]:
+                _open_downloaded_file(export_path)
+            if preferences["open_costing_folder_after_export"]:
+                _reveal_downloaded_file(export_path)
 
         if method in MODULE_NOTIFICATION_METHODS and not self._panel_visible:
             self._show_notification(

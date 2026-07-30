@@ -28,6 +28,8 @@ def test_prefs_defaults(tmp_path: Path):
     assert loaded["return_to_list_after_action"] is False
     assert loaded["favorite_module_ids"] == []
     assert loaded["hotkey_label"] == "Ctrl + Shift + X"
+    assert loaded["open_costing_file_after_export"] is True
+    assert loaded["open_costing_folder_after_export"] is False
 
 
 def test_prefs_partial_update_preserves_others(tmp_path: Path):
@@ -57,6 +59,18 @@ def test_costing_export_directory_round_trip(tmp_path: Path):
     assert prefs.load_prefs(base_dir=tmp_path)["costing_export_dir"] == str(
         export_dir
     )
+
+
+def test_costing_export_open_options_round_trip(tmp_path: Path):
+    prefs.save_prefs(
+        base_dir=tmp_path,
+        open_costing_file_after_export=False,
+        open_costing_folder_after_export=True,
+    )
+
+    loaded = prefs.load_prefs(base_dir=tmp_path)
+    assert loaded["open_costing_file_after_export"] is False
+    assert loaded["open_costing_folder_after_export"] is True
 
 
 def test_save_account_temp_file_uses_dot_env_tmp_suffix(tmp_path: Path):

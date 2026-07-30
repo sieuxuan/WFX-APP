@@ -18,7 +18,8 @@ WFX Smart không tự tạo New Costing.
 1. Chọn `Apparel`. Có thể tìm style bằng app, hoặc tự mở Style > Costing trong
    WFX và giữ chính tab đó đang hiển thị.
 2. Bấm **Tải XLSX** và chọn chính xác nơi lưu. App chỉ quét tab Costing đang
-   hiển thị; ô Style Code chỉ dùng cho thao tác Tìm/Mở.
+   hiển thị; tên file lấy theo Style Name. Sau khi tải, app có thể mở file hoặc
+   thư mục theo hai công tắc trong Settings.
 3. Mở file, vào sheet `Costing` và điền các ô màu vàng.
    `Material Color`, `Material Size` và `Purchase Officer` có dropdown lấy từ
    đúng Article đang có trên Costing. `Color Mapping`/`Size Mapping` chứa phối
@@ -35,9 +36,9 @@ File có đúng hai sheet:
 - `Hướng dẫn`: Style Code, Style Name lấy sau dấu `/` trong header Article,
   status lúc export, phiên bản form và quy tắc nhập.
 - `Costing`: một form duy nhất với các cột cố định, có sẵn dòng Article hiện tại
-  và ba dòng vàng đậm cho mỗi section để thêm Article.
+  và các dòng vàng để thêm dữ liệu.
 
-Form luôn có đúng sáu section theo thứ tự:
+Form có sáu nhóm nguyên vật liệu, sau đó là ba nhóm chi phí:
 
 - `FABRIC- SHELL`;
 - `FABRIC - LINING`;
@@ -45,13 +46,16 @@ Form luôn có đúng sáu section theo thứ tự:
 - `FABRIC - PADDING`;
 - `SEWING TRIMS`;
 - `PACKING TRIMS`.
+- `CM Costs`: một dòng;
+- `Production Costs`: một dòng;
+- `Indirect Costs`: hai dòng.
 
 Các cột form luôn có sẵn:
 
 - Section, Action, Article Code, Article Name;
 - Material Size, Material Color, Color Dep., Color Mapping, Size Dep., Size Mapping;
-- Shrinkage %(LxW), Cons. Qty., Waste %, `Cons. Qty. Incl. Waste`;
-- Supplier, Curr., Rate, `Value in (USD)`;
+- Shrinkage %(LxW), Cons. Qty., Waste %, Minutes, `Cons. Qty. Incl. Waste`;
+- Supplier, Curr., Rate, Value, `Value in (USD)`;
 - Remarks, Placement, Purchase Officer.
 
 Các key kỹ thuật ở cuối form được ẩn để app nối đúng Article/section. Không xóa
@@ -70,17 +74,23 @@ Hai cột đỏ là công thức WFX và chỉ đọc:
 - `Cons. Qty. Incl. Waste = Cons. Qty. × (1 + Waste %/100)`;
 - `Value in (USD) = Rate × Cons. Qty. Incl. Waste`.
 
-App chỉ round-trip field item có `editable=true`; hai cột công thức được export
-để tham khảo nhưng không bao giờ import ngược. App bỏ các section `CM Costs`,
-`Production Costs`, `Indirect Costs`, và bỏ Delivery Terms, Process Required,
-BOM, SNO, Roll/Lot Avg, Destination Country, Des. Specific, Material Cost và
-Included In.
+Hai cột công thức chỉ để xem và không được gửi ngược lên WFX. App bỏ Delivery
+Terms, Process Required, BOM, SNO, Roll/Lot Avg, Destination Country, Des.
+Specific, Material Cost và Included In.
+
+Ba nhóm chi phí hoạt động như sau:
+
+- `CM Costs`: chọn nhà máy từ danh sách đã quét; Curr. luôn là USD.
+- `Production Costs`: chọn quy trình từ danh sách đã quét; Minutes luôn là 1.
+  Khi cập nhật, app điền Minutes ở cả dòng tổng và dòng quy trình, sau đó điền
+  Value của dòng tổng Production Costs rồi mới điền Rate của quy trình.
+- `Indirect Costs`: chọn loại chi phí từ danh sách đã quét; Curr. luôn là USD.
+- Dòng chưa chọn Article Name được bỏ qua và không tạo dòng mới trên WFX.
 
 ## Action và giá trị
 
-- `UPSERT`: cập nhật Article hiện có hoặc thêm Article mới.
-- `SKIP`: bỏ qua toàn bộ dòng.
-- `DELETE`: xóa đúng Article sau khi app đã chọn item đó.
+- Để trống Action: cập nhật dòng hiện có hoặc thêm dòng mới.
+- `DELETE`: xóa đúng dòng sau khi app đã chọn dòng đó.
 - Ô trống giữ nguyên dữ liệu live.
 - `__CLEAR__` chủ động xóa giá trị của field hỗ trợ.
 - Công thức Excel trong vùng dữ liệu bị từ chối.

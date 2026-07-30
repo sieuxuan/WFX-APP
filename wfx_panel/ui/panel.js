@@ -1761,10 +1761,10 @@
     const countItems = [
       ["Field", counts.fields_to_set || 0],
       ["Thêm", counts.additions || 0],
+      ["Thêm chi phí", counts.cost_line_additions || 0],
       ["Split", counts.splits || 0],
       ["Cập nhật", counts.updates || 0],
       ["Xóa", counts.deletes || 0],
-      ["Bỏ qua", counts.skips || 0],
       ["Cảnh báo", (counts.warnings || 0) + (counts.unsupported_fields || 0)],
     ];
     $(".catalog-costing-counts").innerHTML = countItems.map(
@@ -1863,7 +1863,9 @@
   async function exportCatalogCosting() {
     const inspected = await inspectCurrentCosting();
     if (!inspected?.ok) return inspected;
-    const preferredName = inspected.article_code || "Current-Style";
+    const preferredName = inspected.style_name
+      || inspected.article_code
+      || "Current Style";
     const selected = await callQuiet(
       "choose_costing_export_file",
       preferredName,
@@ -2346,6 +2348,20 @@
         event.target.checked = returnToListAfterAction;
       }
     });
+    [".open-costing-file-input", ".open-costing-folder-input"].forEach(
+      (selector) => $(selector).addEventListener("change", async () => {
+        const result = await callQuiet(
+          "set_costing_export_open_options",
+          $(".open-costing-file-input").checked,
+          $(".open-costing-folder-input").checked,
+        );
+        if (!result?.ok) return;
+        $(".open-costing-file-input").checked =
+          result.open_costing_file_after_export === true;
+        $(".open-costing-folder-input").checked =
+          result.open_costing_folder_after_export === true;
+      }),
+    );
     const hotkeyButton = $(".hotkey-button");
     hotkeyButton.addEventListener("click", () => {
       hotkeyButton.dataset.capturing = "true";
@@ -2530,6 +2546,10 @@
     $(".toast-input").checked = toastEnabled;
     $(".focus-chrome-input").checked =
       state.focus_chrome_on_module !== false;
+    $(".open-costing-file-input").checked =
+      state.open_costing_file_after_export !== false;
+    $(".open-costing-folder-input").checked =
+      state.open_costing_folder_after_export === true;
     $(".always-on-top-input").checked = state.always_on_top !== false;
     catalogDefaultFolder = state.catalog_default_folder || null;
     $(".catalog-folder-current").textContent =
