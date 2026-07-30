@@ -158,6 +158,9 @@ Các workflow riêng hiện có:
   actionability có thể timeout; gán exact option value trên backing select và
   phát native `change` để chạy nguyên onchange/xOnBlur của WFX.
 - Một Article có thể chiếm nhiều dòng DOM; dòng tiếp nối hiển thị `>>`.
+  Chỉ kế thừa Article khi chính `#lblArticle` của dòng `>>` đang visible; WFX
+  cũng đặt `#lblArticle` ẩn trên dòng subtotal/total và các dòng này tuyệt đối
+  không được biến thành Article giả.
   Inventory phải kế thừa Article của dòng trước nhưng tạo `item_key` riêng cho
   từng dòng. Planner ưu tiên exact `item_key`; với workbook cũ từng gộp các
   dòng, phải ánh xạ từng field về dòng live thực sự chứa field đó.
@@ -168,8 +171,10 @@ Các workflow riêng hiện có:
   Dependency Table. Workbook có `Color Mapping`/`Size Mapping`, mỗi dòng theo
   cú pháp `Material => Style 1 | Style 2`; Apply tự đặt `[Table]`, mở đúng
   `#lnkColorDependency`/`#lnkSizeDependency` và tick exact theo từng dòng nguồn.
-  Material Color/Size có dropdown từ giá trị item đã scan; option Style nằm
-  trong comment ô Mapping.
+  Material Color/Size có dropdown từ giá trị item đã scan và các cột đánh số
+  để thêm nhiều lựa chọn mà không gõ tay. `Color Mapping`/`Size Mapping` có
+  nhiều ô dropdown `Material => Style`; reader tự gộp các ô cùng Material,
+  còn comment giữ toàn bộ option Style đã scan để tham khảo.
 - Style Name lấy từ `#lblArticleNameValue`, chính xác phần sau dấu `/` trong
   ngoặc. Form có thêm hai cột đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
   `Value in (USD)`; export giá trị live nhưng import không được tạo field đổi

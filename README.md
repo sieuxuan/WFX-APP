@@ -29,7 +29,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
   đang mở, scan Color/Size và phối Table theo từng item trong XLSX,
   tải `.xlsx` vào thư mục gần nhất, kiểm tra lỗi theo ô trước dry-run, rồi cập
   nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
-  dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
+  dropdown nhiều ô để thêm/phối Material–Style Color/Size không cần gõ tay,
+  đồng thời kiểm tra Purchase Officer bắt buộc.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup.

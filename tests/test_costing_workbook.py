@@ -93,11 +93,7 @@ def find_field(document, field_key, item_key="fabric-1"):
 
 
 def _header_map(sheet):
-    return {
-        str(cell.value): cell.column
-        for cell in sheet[1]
-        if cell.value is not None
-    }
+    return {str(cell.value): cell.column for cell in sheet[1] if cell.value is not None}
 
 
 def test_xlsx_round_trip_uses_two_sheet_standard_form(tmp_path):
@@ -122,12 +118,10 @@ def test_xlsx_round_trip_uses_two_sheet_standard_form(tmp_path):
 
     form = workbook[costing_workbook.FORM_SHEET]
     assert [
-        cell.value
-        for cell in form[1][: len(costing_workbook.FORM_COLUMNS)]
+        cell.value for cell in form[1][: len(costing_workbook.FORM_COLUMNS)]
     ] == costing_workbook.FORM_COLUMNS
     assert all(
-        cell.value is None
-        for cell in form[1][len(costing_workbook.FORM_COLUMNS) :]
+        cell.value is None for cell in form[1][len(costing_workbook.FORM_COLUMNS) :]
     )
     assert "Add To Cost" not in costing_workbook.FORM_COLUMNS
     assert "Cons. UOM" not in costing_workbook.FORM_COLUMNS
@@ -163,9 +157,7 @@ def test_xlsx_round_trip_keeps_duplicate_article_rows_separate(tmp_path):
     loaded = costing_workbook.read_costing_file(target)
 
     matching_items = [
-        item
-        for item in loaded["items"]
-        if item["article_code"] == "FAB-001"
+        item for item in loaded["items"] if item["article_code"] == "FAB-001"
     ]
     assert [item["item_key"] for item in matching_items] == [
         "fabric-1",
@@ -173,6 +165,29 @@ def test_xlsx_round_trip_keeps_duplicate_article_rows_separate(tmp_path):
     ]
     assert find_field(loaded, "colConsQty", "fabric-1")["value"] == 1.25
     assert find_field(loaded, "colConsQty", second_key)["value"] == 2.5
+
+
+def test_import_ignores_legacy_exported_identity_only_phantom_row(tmp_path):
+    document = sample_document()
+    target = tmp_path / "legacy-phantom-row.xlsx"
+    costing_workbook.write_costing_file(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    phantom_row = 3
+    form.cell(phantom_row, header["Section"], "Fabric")
+    form.cell(phantom_row, header["Action"], "UPSERT")
+    form.cell(phantom_row, header["Article Code"], "FAB-001")
+    form.cell(phantom_row, header["Article Name"], "Cotton Jersey")
+    form.cell(phantom_row, header["__Section Key"], "fabric")
+    form.cell(phantom_row, header["__Item Key"], "FAB-001::row::3")
+    form.cell(phantom_row, header["__Row Order"], 99)
+    form.cell(phantom_row, header["__Item Type"], "article")
+    workbook.save(target)
+
+    loaded = costing_workbook.read_costing_file(target)
+
+    assert [item["item_key"] for item in loaded["items"]] == ["fabric-1"]
 
 
 def test_xlsx_highlights_editable_cells_and_adds_one_template_per_section(
@@ -236,9 +251,7 @@ def test_xlsx_highlights_editable_cells_and_adds_one_template_per_section(
         form.cell(row, header["Article Code"]).comment is not None
         for row in template_rows
     )
-    assert {
-        form.cell(row, header["Section"]).value for row in template_rows
-    } == {
+    assert {form.cell(row, header["Section"]).value for row in template_rows} == {
         name for _token, name in costing_workbook.STANDARD_SECTIONS
     }
 
@@ -280,16 +293,22 @@ def test_xlsx_form_edits_values_and_creates_new_item(tmp_path):
         item for item in loaded["items"] if item["article_code"] == "FAB-002"
     )
     assert new_item["item_key"].startswith("new:fabric:")
-    assert find_field(
-        loaded,
-        "colConsQty",
-        new_item["item_key"],
-    )["value"] == 0.75
-    assert find_field(
-        loaded,
-        "colSupplierCompanyName",
-        new_item["item_key"],
-    )["value"] == "Supplier B"
+    assert (
+        find_field(
+            loaded,
+            "colConsQty",
+            new_item["item_key"],
+        )["value"]
+        == 0.75
+    )
+    assert (
+        find_field(
+            loaded,
+            "colSupplierCompanyName",
+            new_item["item_key"],
+        )["value"]
+        == "Supplier B"
+    )
 
 
 def test_form_adds_live_color_size_and_purchase_officer_dropdowns(tmp_path):
@@ -340,6 +359,102 @@ def test_form_adds_live_color_size_and_purchase_officer_dropdowns(tmp_path):
     assert {"JL NAVY(6855)", "M", "HanhNgoThi"} <= hidden_values
 
 
+def test_material_slots_allow_multiple_dropdown_selections_without_typing(
+    tmp_path,
+):
+    document = sample_document()
+    color = _field(
+        "colMaterialColorList",
+        "Material Color",
+        "NAVY(NVY) | WHITE(WHT)",
+        row_order=4,
+    )
+    color["options"] = ["NAVY(NVY)", "WHITE(WHT)", "BLACK(BLK)"]
+    document["fields"].append(color)
+    target = tmp_path / "material-slots.xlsx"
+
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+
+    assert form.cell(2, header["Material Color"]).value == ("NAVY(NVY) | WHITE(WHT)")
+    assert form.cell(2, header["Material Color 2"]).value is None
+    validation_columns = {
+        cell_range.min_col
+        for validation in form.data_validations.dataValidation
+        for cell_range in validation.ranges.ranges
+    }
+    assert header["Material Color 2"] in validation_columns
+    form.cell(2, header["Material Color 3"], "BLACK(BLK)")
+    workbook.save(target)
+
+    loaded = costing_workbook.read_costing_xlsx(target)
+    assert find_field(loaded, "colMaterialColorList")["value"] == (
+        "NAVY(NVY),WHITE(WHT),BLACK(BLK)"
+    )
+
+
+def test_dependency_slots_expose_style_options_and_merge_same_source(tmp_path):
+    document = sample_document()
+    document["fields"].append(
+        _field(
+            "colMaterialColorList",
+            "Material Color",
+            "NAVY MULTI(NAVYMULTI)",
+            row_order=4,
+        )
+    )
+    mapping = _field(
+        "colColorDependencyMapping",
+        "Color Mapping",
+        "NAVY MULTI(NAVYMULTI) => MOONLESS(MOONLESS)",
+        row_order=5,
+    )
+    mapping["options"] = [
+        "MOONLESS(MOONLESS)",
+        "SAFARI(SAFARI)",
+        "SILVER(SILVER)",
+    ]
+    document["fields"].append(mapping)
+    target = tmp_path / "dependency-slots.xlsx"
+
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    pair = "NAVY MULTI(NAVYMULTI) => SAFARI(SAFARI)"
+    hidden_values = {
+        str(form.cell(row, column).value)
+        for column in range(
+            len(costing_workbook.FORM_COLUMNS) + 1,
+            form.max_column + 1,
+        )
+        for row in range(2, form.max_row + 1)
+        if form.cell(row, column).value
+    }
+    assert pair in hidden_values
+    validation_columns = {
+        cell_range.min_col
+        for validation in form.data_validations.dataValidation
+        for cell_range in validation.ranges.ranges
+    }
+    assert header["Color Mapping 2"] in validation_columns
+
+    form.cell(2, header["Color Mapping 2"], pair)
+    form.cell(
+        2,
+        header["Color Mapping 3"],
+        "NAVY MULTI(NAVYMULTI) => SILVER(SILVER)",
+    )
+    workbook.save(target)
+
+    loaded = costing_workbook.read_costing_xlsx(target)
+    assert find_field(loaded, "colColorDependencyMapping")["value"] == (
+        "NAVY MULTI(NAVYMULTI) => MOONLESS(MOONLESS) | SAFARI(SAFARI) | SILVER(SILVER)"
+    )
+
+
 def test_formula_columns_are_exported_red_and_never_imported(tmp_path):
     document = sample_document()
     document["style_name"] = "KFSWPKN-S200 LN"
@@ -371,9 +486,7 @@ def test_formula_columns_are_exported_red_and_never_imported(tmp_path):
     workbook = load_workbook(target)
     form = workbook[costing_workbook.FORM_SHEET]
     header = _header_map(form)
-    assert form.cell(2, header["Cons. Qty. Incl. Waste"]).value.startswith(
-        "=IF("
-    )
+    assert form.cell(2, header["Cons. Qty. Incl. Waste"]).value.startswith("=IF(")
     assert form.cell(2, header["Value in (USD)"]).value.startswith("=IF(")
     assert (
         form.cell(2, header["Value in (USD)"]).fill.fgColor.rgb
@@ -413,11 +526,7 @@ def test_two_adjacent_new_rows_may_use_the_same_article_for_splitter(tmp_path):
     workbook.save(target)
 
     loaded = costing_workbook.read_costing_xlsx(target)
-    matching = [
-        item
-        for item in loaded["items"]
-        if item["article_code"] == "FAB-SPLIT"
-    ]
+    matching = [item for item in loaded["items"] if item["article_code"] == "FAB-SPLIT"]
 
     assert len(matching) == 2
     assert matching[0]["item_key"] != matching[1]["item_key"]
@@ -461,10 +570,7 @@ def test_import_validation_reports_exact_row_and_column(tmp_path):
         costing_workbook.read_costing_xlsx(target)
 
     assert captured.value.code == "COSTING_VALIDATION_FAILED"
-    assert any(
-        "Costing!B2" in detail
-        for detail in captured.value.details
-    )
+    assert any("Costing!B2" in detail for detail in captured.value.details)
 
 
 def test_export_escapes_formula_like_text(tmp_path):
@@ -575,9 +681,9 @@ def test_workbook_filters_excluded_sections_columns_and_readonly_fields(
     ]
     assert [item["item_key"] for item in loaded["items"]] == ["fabric-1"]
     assert all(field["editable"] for field in loaded["fields"])
-    assert {
-        field["field_key"] for field in loaded["fields"]
-    }.isdisjoint({"colDeliveryTerms"})
+    assert {field["field_key"] for field in loaded["fields"]}.isdisjoint(
+        {"colDeliveryTerms"}
+    )
     visible_text = {
         str(cell.value)
         for sheet in workbook.worksheets
