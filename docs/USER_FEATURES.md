@@ -95,7 +95,8 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - quét nhanh và hiển thị Style Code/status của đúng tab Costing hiện tại
     trước khi mở hộp thoại lưu;
   - tải Costing đang mở thành Excel `.xlsx`;
-  - nhớ thư mục export gần nhất;
+  - đặt tên file theo Style Name, nhớ thư mục gần nhất và có setting riêng để
+    mở file/mở thư mục sau khi tải;
   - dùng nút **Kiểm tra file** để xem lỗi kèm sheet/ô trước khi tạo dry-run;
   - nhập trực tiếp vào form cột chuẩn trên sheet `Costing` rồi import lại;
   - scan Material Color/Size theo từng Article, mapping Table hiện tại và danh
@@ -105,7 +106,10 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - lấy Style Name chuẩn từ phần sau dấu `/` của `#lblArticleNameValue`;
   - hiển thị hai cột công thức màu đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
     `Value in (USD)`; hai cột này không được import ngược;
-  - xem dry-run số field cập nhật, Article thêm/bỏ qua/xóa và cảnh báo trước
+  - có 1 dòng CM, 1 dòng Production và 2 dòng Indirect Costs; danh sách nhà
+    máy/quy trình/chi phí được quét từ WFX, dòng chưa chọn tên được bỏ qua;
+  - với Production, điền Minutes ở hai dòng trước, Value tổng trước Rate;
+  - xem trước số ô cập nhật, Article thêm/xóa và cảnh báo trước
     khi WFX bị thay đổi;
   - export Costing ở mọi status; chỉ import/apply khi CostSheet đang `Open`;
     nếu chưa có Costing, người dùng tự tạo trong WFX trước;
@@ -115,11 +119,9 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   style. Apply tiếp tục khóa vào đúng
   tab/style đã dry-run, không tự chuyển tab hoặc reload màn hình. Workbook có
   đúng hai sheet `Hướng dẫn` và `Costing`, không có sheet `Cost Sheet`. Form
-  chuẩn chỉ hiển thị hai field chỉ đọc cần thiết dưới dạng cột đỏ, giữ sáu
-  section nguyên vật liệu/trims chuẩn; bỏ ba section `CM Costs`,
-  `Production Costs`, `Indirect Costs` và các cột
-  tổng hợp đã loại khỏi phạm vi import.
-- Import mặc định là merge/upsert. Ô trống nghĩa là giữ nguyên; nhập
+  chuẩn chỉ hiển thị hai cột công thức cần thiết dưới dạng cột đỏ, giữ sáu
+  section nguyên vật liệu/trims và thêm CM/Production/Indirect Costs ở cuối.
+- Action để trống nghĩa là thêm/cập nhật. Ô trống nghĩa là giữ nguyên; nhập
   `__CLEAR__` để chủ động xóa giá trị. Chỉ dòng có Action `DELETE` mới được xóa
   Article và app luôn yêu cầu chọn đúng item trước khi xóa.
 - Khi Material Search không có Article, app bỏ qua và báo lại. Nếu có nhiều kết
@@ -129,9 +131,7 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 - Nếu cùng một Article Code xuất hiện trên nhiều dòng Costing, file Excel giữ
   nguyên từng dòng riêng để Material Color và các thông số không bị gộp nhầm.
   Nếu file thêm các dòng cùng Article liền nhau, app tự dùng nút Splitter để tạo
-  đủ dòng `>>`; file đã xuất bằng bản cũ vẫn được ghép từng cột về dòng WFX phù
-  hợp khi import. Dòng subtotal/total có nhãn `>>` ẩn không được tính là split;
-  phantom row chỉ có identity trong file cũ được tự bỏ qua.
+  đủ dòng `>>`. Dòng subtotal/total có nhãn `>>` ẩn không được tính là split.
 - Dry-run chặn sớm nếu dòng bắt buộc còn thiếu `Purchase Officer`, tránh điền
   xong nhiều field rồi mới bị WFX từ chối ở bước Save.
 - Mở BOM.

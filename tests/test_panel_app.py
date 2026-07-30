@@ -223,6 +223,42 @@ def test_reveal_downloaded_excel_opens_exact_parent_folder(tmp_path, monkeypatch
     assert opened == [target.parent.resolve()]
 
 
+def test_costing_export_result_opens_file_and_folder_from_preferences(
+    tmp_path,
+    monkeypatch,
+):
+    app = panel_app.PanelApp()
+    app._base_dir = tmp_path
+    app.window = None
+    app._panel_visible = True
+    opened_files = []
+    opened_folders = []
+    monkeypatch.setattr(
+        panel_app.prefs,
+        "load_prefs",
+        lambda _base_dir: {
+            "open_costing_file_after_export": True,
+            "open_costing_folder_after_export": True,
+        },
+    )
+    monkeypatch.setattr(
+        panel_app,
+        "_open_downloaded_file",
+        lambda path: opened_files.append(path) or True,
+    )
+    monkeypatch.setattr(
+        panel_app,
+        "_reveal_downloaded_file",
+        lambda path: opened_folders.append(path) or True,
+    )
+    result = {"ok": True, "export_path": str(tmp_path / "Style Name.xlsx")}
+
+    app._on_result("export_catalog_costing", result, 1.0)
+
+    assert opened_files == [result["export_path"]]
+    assert opened_folders == [result["export_path"]]
+
+
 def test_costing_file_dialogs_only_return_supported_user_selection(tmp_path):
     class Window:
         def __init__(self):
@@ -258,6 +294,12 @@ def test_costing_file_dialogs_only_return_supported_user_selection(tmp_path):
     assert (
         panel_app.prefs.load_prefs(tmp_path)["costing_export_dir"]
         == str(chosen_folder.resolve())
+    )
+    app.window.selection = str(chosen)
+    app.choose_costing_export_file("KFSWPKN-S200 LN")
+    assert (
+        app.window.calls[-1][1]["save_filename"]
+        == "KFSWPKN-S200 LN-Costing.xlsx"
     )
     app.window.selection = None
     app.choose_costing_export_file("SWN0000001")

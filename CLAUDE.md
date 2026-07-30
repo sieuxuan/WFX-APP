@@ -141,7 +141,7 @@ Các workflow riêng hiện có:
   2. re-scan/chống stale, apply plan server-side, Save trong
      `cancellation_deferred()` và đọc lại field đã đổi để xác nhận.
 - File Costing không được cung cấp selector cho automation. Blank giữ nguyên,
-  `__CLEAR__` mới là xóa giá trị, item mặc định UPSERT; chỉ `DELETE` rõ ràng
+  `__CLEAR__` mới là xóa giá trị, Action trống là UPSERT; chỉ `DELETE` rõ ràng
   mới được chọn đúng row rồi dùng `#imgDelete`.
 - Export được phép ở mọi Costing status. Import và Apply chỉ được bật khi
   Costing hiện tại có status chính xác là `Open`; nếu status khác `Open` hoặc
@@ -184,12 +184,15 @@ Các workflow riêng hiện có:
   frame sau Save. Workbook có đúng hai sheet: `Hướng dẫn` và `Costing`.
   Khi có nhiều tab/popup Costing, phải ưu tiên target đang hoạt động gần nhất,
   không dùng thứ tự tạo trong `context.pages`. Trước hộp thoại export phải quét
-  nhanh Style Code/status, hiển thị ngay trong thẻ Costing và dùng code đó đặt
-  tên file. Hộp thoại nhớ thư mục export gần nhất. Nút `Kiểm tra file` chỉ
+  nhanh Style Code/Style Name/status, hiển thị ngay trong thẻ Costing và dùng
+  Style Name đặt tên file. Hộp thoại nhớ thư mục export gần nhất; Settings có
+  hai lựa chọn độc lập mở file hoặc mở thư mục sau export. Nút `Kiểm tra file` chỉ
   validate XLSX và trả lỗi sheet/ô, không scan WFX hoặc tạo dry-run.
   `Costing` luôn có bộ cột form chuẩn để nhập trực tiếp, chỉ round-trip field
-  item `editable=true`; loại các section `CM Costs`, `Production Costs`,
-  `Indirect Costs` và các cột tổng hợp đã cấu hình. Không có sheet `Cost Sheet`,
+  item `editable=true`. Cuối form có đúng 1 dòng CM Costs, 1 dòng Production
+  Costs và 2 dòng Indirect Costs; scan option Article từ editor đúng block,
+  Curr. CM/Indirect là USD, dòng trống không Add. Production đặt Minutes=1 ở
+  parent và child, rồi Value parent trước Rate child. Không có sheet `Cost Sheet`,
   `Sections`, `_Fields`, `_Meta`; hộp thoại chỉ hỗ trợ `.xlsx`.
 - Costing tuyệt đối không click `#colBodyType label span`, `#imgDeleteSection`,
   `#imgEditSection` hoặc `#imgCopySection`.

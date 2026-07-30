@@ -1367,6 +1367,21 @@ def test_focus_chrome_on_module_defaults_on_and_persists(tmp_path):
     assert prefs.load_prefs(base_dir=tmp_path)["focus_chrome_on_module"] is False
 
 
+def test_costing_export_open_options_are_exposed_and_persisted(tmp_path):
+    api, _ = make_api(tmp_path)
+    initial = api.get_initial_state()
+    assert initial["open_costing_file_after_export"] is True
+    assert initial["open_costing_folder_after_export"] is False
+
+    saved = api.set_costing_export_open_options(False, True)
+
+    assert saved["open_costing_file_after_export"] is False
+    assert saved["open_costing_folder_after_export"] is True
+    loaded = prefs.load_prefs(base_dir=tmp_path)
+    assert loaded["open_costing_file_after_export"] is False
+    assert loaded["open_costing_folder_after_export"] is True
+
+
 def test_initial_state_exposes_new_fields(tmp_path):
     api, _ = make_api(tmp_path)
     state = api.get_initial_state()
@@ -1379,6 +1394,8 @@ def test_initial_state_exposes_new_fields(tmp_path):
         "return_to_list_after_action",
         "favorite_module_ids",
         "focus_chrome_on_module",
+        "open_costing_file_after_export",
+        "open_costing_folder_after_export",
         "chrome_alive",
         "session_active",
         "last_login_at",

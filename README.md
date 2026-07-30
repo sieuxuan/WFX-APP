@@ -27,7 +27,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
 - Đổi Division WOVEN/KNIT/PSSG và chỉ xác nhận khi WFX đổi thành công.
 - Catalog có workspace Costing để nhận đúng Style Code/Style Name/status từ tab
   đang mở, scan Color/Size và phối Table theo từng item trong XLSX,
-  tải `.xlsx` vào thư mục gần nhất, kiểm tra lỗi theo ô trước dry-run, rồi cập
+  tải `.xlsx` với tên Style Name vào thư mục gần nhất, tùy chọn mở file/thư mục,
+  thêm CM/Production/Indirect Costs bằng danh sách quét từ WFX, rồi cập
   nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
   dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,

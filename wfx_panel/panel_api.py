@@ -327,6 +327,12 @@ class PanelAPI:
                 "focus_chrome_on_module"
             ],
             "always_on_top": preferences["always_on_top"],
+            "open_costing_file_after_export": preferences[
+                "open_costing_file_after_export"
+            ],
+            "open_costing_folder_after_export": preferences[
+                "open_costing_folder_after_export"
+            ],
             "catalog_default_folder": (
                 self._catalog.default_folder_for_account(preferences)
             ),
@@ -1161,6 +1167,28 @@ class PanelAPI:
             ),
             "return_to_list_after_action": saved[
                 "return_to_list_after_action"
+            ],
+        }
+
+    def set_costing_export_open_options(
+        self,
+        open_file: bool,
+        open_folder: bool,
+    ) -> dict:
+        saved = self._prefs.save_prefs(
+            base_dir=self._base_dir,
+            open_costing_file_after_export=bool(open_file),
+            open_costing_folder_after_export=bool(open_folder),
+        )
+        return {
+            "ok": True,
+            "code": "PREF_SAVED",
+            "message": "Đã lưu cách mở file Costing sau khi tải.",
+            "open_costing_file_after_export": saved[
+                "open_costing_file_after_export"
+            ],
+            "open_costing_folder_after_export": saved[
+                "open_costing_folder_after_export"
             ],
         }
 

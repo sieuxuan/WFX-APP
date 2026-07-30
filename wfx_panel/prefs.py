@@ -426,6 +426,12 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "costing_export_dir": str(
             data.get("costing_export_dir") or ""
         ).strip()[:32_000],
+        "open_costing_file_after_export": data.get(
+            "open_costing_file_after_export", True
+        ) is not False,
+        "open_costing_folder_after_export": data.get(
+            "open_costing_folder_after_export", False
+        ) is True,
     }
 
 
@@ -488,6 +494,8 @@ def save_prefs(
     panel_offset_y: int | None = None,
     catalog_default_folder: dict | None = None,
     costing_export_dir: str | None = None,
+    open_costing_file_after_export: bool | None = None,
+    open_costing_folder_after_export: bool | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     with _WRITE_LOCK:
@@ -512,6 +520,8 @@ def save_prefs(
             panel_offset_y=panel_offset_y,
             catalog_default_folder=catalog_default_folder,
             costing_export_dir=costing_export_dir,
+            open_costing_file_after_export=open_costing_file_after_export,
+            open_costing_folder_after_export=open_costing_folder_after_export,
             hotkey_label=hotkey_label,
         )
 
@@ -538,6 +548,8 @@ def _save_prefs_locked(
     panel_offset_y: int | None,
     catalog_default_folder: dict | None,
     costing_export_dir: str | None,
+    open_costing_file_after_export: bool | None,
+    open_costing_folder_after_export: bool | None,
     hotkey_label: str | None,
 ) -> dict:
     current = load_prefs(base_dir)
@@ -552,6 +564,8 @@ def _save_prefs_locked(
             "focus_chrome_on_module": focus_chrome_on_module,
             "always_on_top": always_on_top,
             "admin_mode": admin_mode,
+            "open_costing_file_after_export": open_costing_file_after_export,
+            "open_costing_folder_after_export": open_costing_folder_after_export,
         },
         integer_values={
             "compact_offset_x": compact_offset_x,

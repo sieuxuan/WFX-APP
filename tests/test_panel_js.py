@@ -294,7 +294,8 @@ def test_catalog_costing_export_can_scan_current_tab_without_query():
         : JS.index("async function importCatalogCosting()")
     ]
     assert "costingQuery()" not in export_block
-    assert '"Current-Style"' in export_block
+    assert "inspected.style_name" in export_block
+    assert '"Current Style"' in export_block
     assert 'catalogKind,\n      "",' in export_block
     assert "Có thể Export/Import tab Costing hiện tại" in JS
     import_block = JS[
