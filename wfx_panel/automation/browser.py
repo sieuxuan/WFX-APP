@@ -53,6 +53,8 @@ _BROWSER_ENV_KEYS = (
 )
 _DETECTED_BROWSER: BrowserExecutable | None = None
 _DETECTED_FOR_ENV: tuple[str, ...] | None = None
+CHROME_READY_GRACE_SECONDS = 2.5
+CHROME_START_TIMEOUT_SECONDS = 25
 
 
 def _browser_env_signature() -> tuple[str, ...]:
@@ -145,6 +147,17 @@ def _chrome_is_ready() -> bool:
         return False
 
 
+def _wait_for_chrome_ready(timeout_s: float) -> bool:
+    """Tolerate a temporarily busy CDP endpoint before launching Chrome."""
+    deadline = time.monotonic() + max(0, timeout_s)
+    while True:
+        if _chrome_is_ready():
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        _sleep(0.25)
+
+
 def _disable_password_manager(profile_dir: Path) -> None:
     """Tắt Password Manager chỉ trong profile automation của WFX.
 
@@ -174,9 +187,17 @@ def _disable_password_manager(profile_dir: Path) -> None:
     write_json_atomic(preferences_path, preferences, separators=(",", ":"))
 
 
-def _start_persistent_chrome(log: Callable[[str], None]) -> None:
+def _start_persistent_chrome(
+    log: Callable[[str], None],
+    *,
+    grace_checked: bool = False,
+) -> None:
     """Mở Chrome độc lập để Chrome không đóng khi app hoặc Playwright kết thúc."""
-    if _chrome_is_ready():
+    if (
+        _chrome_is_ready()
+        if grace_checked
+        else _wait_for_chrome_ready(CHROME_READY_GRACE_SECONDS)
+    ):
         return
 
     browser = detect_browser()
@@ -224,18 +245,18 @@ def _start_persistent_chrome(log: Callable[[str], None]) -> None:
         f"Đang mở {browser.name} với profile automation riêng.",
     )
 
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        if _chrome_is_ready():
-            return
-        _sleep(0.25)
-    raise TimeoutError(f"Chrome không mở cổng điều khiển {CDP_URL} sau 15 giây.")
+    if _wait_for_chrome_ready(CHROME_START_TIMEOUT_SECONDS):
+        return
+    raise TimeoutError(
+        "Chrome không mở cổng điều khiển "
+        f"{CDP_URL} sau {CHROME_START_TIMEOUT_SECONDS} giây."
+    )
 
 
 def start_chrome(log: Callable[[str], None] = print) -> dict[str, Any]:
     """Mở/focus Chrome automation mà không tự đăng nhập hay đổi trang WFX."""
     try:
-        was_ready = _chrome_is_ready()
+        was_ready = _wait_for_chrome_ready(CHROME_READY_GRACE_SECONDS)
         browser = detect_browser()
         if not was_ready and browser is None:
             return _result(
@@ -246,7 +267,7 @@ def start_chrome(log: Callable[[str], None] = print) -> dict[str, Any]:
                 chrome_alive=False,
                 browser_available=False,
             )
-        _start_persistent_chrome(log)
+        _start_persistent_chrome(log, grace_checked=True)
         return _result(
             True,
             "CHROME_ALREADY_OPEN" if was_ready else "CHROME_OPENED",

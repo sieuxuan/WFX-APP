@@ -391,7 +391,11 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
     command = []
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
-    monkeypatch.setattr(browser, "_chrome_is_ready", lambda: next(calls))
+    monkeypatch.setattr(
+        browser,
+        "_wait_for_chrome_ready",
+        lambda _timeout: next(calls),
+    )
     monkeypatch.setattr(
         browser,
         "detect_browser",
@@ -409,6 +413,77 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
         and "PasswordManagerOnboarding" in arg
         for arg in command
     )
+
+
+def test_chrome_ready_wait_recovers_a_transient_cdp_failure(monkeypatch):
+    checks = iter([False, False, True])
+    monkeypatch.setattr(browser, "_chrome_is_ready", lambda: next(checks))
+    monkeypatch.setattr(browser, "_sleep", lambda _seconds: None)
+
+    assert browser._wait_for_chrome_ready(2.5) is True
+
+
+def test_auth_surface_waits_for_cold_session_restore(monkeypatch):
+    states = iter([False, False, True])
+    monkeypatch.setattr(session, "_session_is_active", lambda _page: next(states))
+    monkeypatch.setattr(session, "_wait", lambda *_args: None)
+
+    class MissingLoginInput:
+        def count(self):
+            return 0
+
+    class Page:
+        def locator(self, selector):
+            assert selector == "#txtUserID"
+            return MissingLoginInput()
+
+    assert session._wait_for_auth_surface(Page(), 2.5) == "session"
+
+
+def test_login_accepts_session_that_appears_after_timeout(monkeypatch):
+    stopped = []
+
+    class Runtime:
+        def stop(self):
+            stopped.append(True)
+
+    class Starter:
+        def start(self):
+            return Runtime()
+
+    page = SimpleNamespace(url="https://example.test/wfx/default.aspx")
+    auth_states = iter(["login", "session"])
+    monkeypatch.setattr(session, "_start_persistent_chrome", lambda _log: None)
+    monkeypatch.setattr(session, "sync_playwright", lambda: Starter())
+    monkeypatch.setattr(
+        session,
+        "_connect_to_chrome",
+        lambda _playwright: (object(), page),
+    )
+    monkeypatch.setattr(session, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(
+        session,
+        "_wait_for_auth_surface",
+        lambda *_args: next(auth_states),
+    )
+    monkeypatch.setattr(
+        session,
+        "login",
+        lambda *_args: (_ for _ in ()).throw(
+            session.PlaywrightTimeoutError("slow WFX")
+        ),
+    )
+    monkeypatch.setattr(
+        session,
+        "_division_state_for_page",
+        lambda _page: session._division_state_for_page_placeholder(),
+    )
+
+    result = session.run("user", "password", log=lambda _line: None)
+
+    assert result["ok"] is True
+    assert result["code"] == "LOGGED_IN_AFTER_DELAY"
+    assert stopped == [True]
 
 
 def test_wfx_dialog_stays_visible_for_user_and_handler_is_not_duplicated():
