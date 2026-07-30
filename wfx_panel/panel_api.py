@@ -1420,53 +1420,48 @@ class PanelAPI:
                     "nội dung tìm kiếm nhạy cảm."
                 ),
             }
-        if method == "login":
-            return self.login()
-        if method == "check_session":
-            return self.check_session()
-        if method == "open_module":
-            return self.open_module(str(request.get("module_id") or ""))
-        if method == "prepare_catalog":
-            return self.prepare_catalog(
-                str(request.get("category_name") or "Apparel")
-            )
-        if method == "scan_catalog_folders":
-            return self.scan_catalog_folders(
-                str(request.get("category_name") or "Apparel"),
+        category_name = str(request.get("category_name") or "Apparel")
+        query = str(request.get("query") or "")
+        destination = request.get("destination")
+        retry_handlers: dict[str, Callable[[], dict]] = {
+            "login": self.login,
+            "check_session": self.check_session,
+            "open_module": lambda: self.open_module(
+                str(request.get("module_id") or "")
+            ),
+            "prepare_catalog": lambda: self.prepare_catalog(category_name),
+            "scan_catalog_folders": lambda: self.scan_catalog_folders(
+                category_name,
                 True,
-            )
-        if method == "browse_catalog":
-            return self.browse_catalog(
-                str(request.get("category_name") or "Apparel")
-            )
-        if method == "catalog_action":
-            return self.catalog_action(
-                str(request.get("category_name") or "Apparel"),
+            ),
+            "browse_catalog": lambda: self.browse_catalog(category_name),
+            "catalog_action": lambda: self.catalog_action(
+                category_name,
                 str(request.get("filter_kind") or "code"),
-                str(request.get("query") or ""),
-                request.get("destination"),
-            )
-        if method == "find_code":
-            return self.find_code(
-                str(request.get("category_name") or "Apparel"),
-                str(request.get("query") or ""),
-                request.get("destination"),
-            )
-        if method == "find_buyer_reference":
-            return self.find_buyer_reference(
-                str(request.get("category_name") or "Apparel"),
-                str(request.get("query") or ""),
-                request.get("destination"),
-            )
-        if method == "open_catalog_destination":
-            return self.open_catalog_destination(
-                str(request.get("destination") or ""),
+                query,
+                destination,
+            ),
+            "find_code": lambda: self.find_code(
+                category_name,
+                query,
+                destination,
+            ),
+            "find_buyer_reference": lambda: self.find_buyer_reference(
+                category_name,
+                query,
+                destination,
+            ),
+            "open_catalog_destination": lambda: self.open_catalog_destination(
+                str(destination or ""),
                 str(request.get("article_code") or ""),
-            )
-        if method == "download_catalog_file":
-            return self.download_catalog_file(
-                str(request.get("file_id") or ""),
-            )
+            ),
+            "download_catalog_file": lambda: self.download_catalog_file(
+                str(request.get("file_id") or "")
+            ),
+        }
+        handler = retry_handlers.get(str(method or ""))
+        if handler is not None:
+            return handler()
         return {
             "ok": False,
             "code": "JOB_NOT_RETRYABLE",
