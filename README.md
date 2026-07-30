@@ -6,6 +6,8 @@ Chromium browser hệ thống qua Playwright/CDP và không phải Chrome Extens
 
 Xem danh sách đầy đủ dành cho người dùng tại
 [`docs/USER_FEATURES.md`](./docs/USER_FEATURES.md).
+Hướng dẫn file Costing nằm tại
+[`docs/CATALOG_COSTING_FILES.md`](./docs/CATALOG_COSTING_FILES.md).
 Benchmark RAM/tốc độ của bản này nằm tại
 [`docs/PERFORMANCE_1.0.15.md`](./docs/PERFORMANCE_1.0.15.md).
 
@@ -23,16 +25,25 @@ Benchmark RAM/tốc độ của bản này nằm tại
   lại ở danh sách bên dưới.
 - Nhớ màn hình đang làm; có setting `Trở về List sau khi thao tác`.
 - Đổi Division WOVEN/KNIT/PSSG và chỉ xác nhận khi WFX đổi thành công.
+- Catalog có workspace Costing để nhận đúng Style Code/Style Name/status từ tab
+  đang mở, scan Color/Size và phối Table theo từng item trong XLSX,
+  tải `.xlsx` vào thư mục gần nhất, kiểm tra lỗi theo ô trước dry-run, rồi cập
+  nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
+  dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup.
+- Panel có fallback Win32 để tự thu ổn định khi click ra ngoài; backend hoàn tất
+  cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm.
+- Mọi flow `List` xác nhận WFX đã đổi màn hình trước khi báo thành công; `Đổi
+  FOC` tự mở lại đúng Company Setup khi context hiện tại đã cũ.
 - Search ưu tiên đúng List đã mở; nếu chưa mở, app tự vào đúng List, chờ
   grid/Floating Filter rồi mới tìm.
 - Flow module bắt đầu automation ngay trong lúc app đưa Chrome lên foreground;
   nhận diện Floating Filter phản hồi nhanh hơn nhưng vẫn xác nhận đúng grid.
-- Playwright/CDP được giữ trên một worker dùng chung giữa các flow, giảm thời
-  gian kết nối lại và tránh tạo nhiều driver đồng thời; tự nhả sau 1 phút không
-  có thao tác để trả RAM cho hệ thống.
+- Playwright/CDP chạy trên một worker tuần tự và được dùng lại giữa các bước
+  trong cùng flow. Driver được nhả ngay khi flow kết thúc để Chrome không bị
+  pause tab; phiên đăng nhập WFX và DOM đang mở vẫn được giữ cho flow sau.
 - Nút `Stop` nằm ngay dòng trạng thái dưới cùng, dừng ở checkpoint an toàn và
   không cắt ngang bước Save của WFX.
 - Chrome/WebView2 được giới hạn số renderer và tắt dịch vụ nền không cần thiết,
@@ -53,8 +64,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
    khoản chỉ hiện trạng thái và nút `Đổi tài khoản`.
 2. Bấm `Mở trình duyệt` để app mở browser automation và đăng nhập WFX.
 3. Chọn Division nếu cần.
-4. Chọn module. Có thể Search ngay; app tự mở List khi cần. Với New/Đổi FOC,
-   bấm `List` trước để kiểm tra đúng màn hình.
+4. Chọn module. Có thể Search hoặc Đổi FOC ngay; app tự mở List khi cần. Với
+   New, bấm `List` trước để kiểm tra đúng màn hình.
 5. Dùng ngôi sao để ghim module thường dùng.
 
 Mật khẩu được DPAPI mã hóa thành `WFX_PASSWORD_ENC`. Bản Windows từ chối lưu

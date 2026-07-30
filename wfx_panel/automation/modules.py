@@ -41,6 +41,7 @@ from wfx_panel.automation.runtime import cancellation_deferred
 
 MODULE_GRID_POLL_MS = 150
 MODULE_FILTER_VISIBLE_STABLE_SECONDS = 0.5
+MODULE_CONTEXT_PROBE_SECONDS = 0.75
 
 
 def open_module(
@@ -55,7 +56,7 @@ def open_module(
             return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
 
         playwright = sync_playwright().start()
-        _browser, page = _connect_to_chrome(playwright)
+        browser, page = _connect_to_chrome(playwright)
         _attach_dialog_handler(page, log)
         _write_log(log, f"[MODULE] Đang tìm menu: {module_name}")
 
@@ -88,7 +89,25 @@ def open_module(
             _write_log(log, "[CATALOG] Đã mở Master và Floating Filter")
             message = "Đã mở Catalog > Master và Floating Filter."
         else:
+            snapshots = _mark_page_documents(page, "module-open")
+            old_frame_ids = {
+                id(snapshot[0])
+                for snapshot in snapshots
+                if snapshot[0] is not None
+            }
+            page_count = len(browser.contexts[0].pages)
             _click(target)
+            if not _wait_for_module_navigation(
+                browser,
+                page,
+                snapshots,
+                old_frame_ids,
+                page_count,
+            ):
+                raise PlaywrightTimeoutError(
+                    "MODULE_OPEN_NOT_CONFIRMED:"
+                    f"WFX chưa xác nhận navigation tới {module_name}."
+                )
             _write_log(log, f"[MODULE] Đã mở: {module_name}")
             message = f"Đã mở {module_name}."
 
@@ -101,9 +120,15 @@ def open_module(
         )
     except PlaywrightTimeoutError as exc:
         detail = str(exc).splitlines()[0]
+        code = (
+            "MODULE_OPEN_NOT_CONFIRMED"
+            if detail.startswith("MODULE_OPEN_NOT_CONFIRMED:")
+            else "MODULE_NOT_FOUND"
+        )
+        detail = detail.removeprefix("MODULE_OPEN_NOT_CONFIRMED:")
         message = f"Timeout khi mở {module_name}: {detail}"
         _write_log(log, message)
-        return _result(False, "MODULE_NOT_FOUND", message, module=module_name)
+        return _result(False, code, message, module=module_name)
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"
         _write_log(log, message)
@@ -134,6 +159,49 @@ def _click_module_menu_on_page(
     target.wait_for(state="attached", timeout=8_000)
     _write_log(log, f"[MODULE] Đang mở {module_name}...")
     _click(target)
+
+
+def _mark_page_documents(
+    page: Page,
+    prefix: str,
+) -> list[tuple[Frame | None, str]]:
+    return [
+        _mark_document(frame, f"{prefix}-{index}")
+        for index, frame in enumerate(page.frames)
+    ]
+
+
+def _wait_for_module_navigation(
+    browser: Any,
+    page: Page,
+    snapshots: list[tuple[Frame | None, str]],
+    old_frame_ids: set[int],
+    page_count: int,
+    *,
+    timeout_s: float = 20,
+) -> bool:
+    """Chỉ báo mở module khi WFX thật sự đổi page/frame/document."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            if len(browser.contexts[0].pages) > page_count:
+                return True
+            current_frames = list(page.frames)
+            current_frame_ids = {id(frame) for frame in current_frames}
+            if any(id(frame) not in old_frame_ids for frame in current_frames):
+                return True
+            if any(
+                snapshot[0] is not None
+                and id(snapshot[0]) in current_frame_ids
+                and _document_changed(snapshot[0], snapshot)
+                for snapshot in snapshots
+            ):
+                return True
+        except PlaywrightError:
+            # Frame detach/navigation cũng là bằng chứng WFX đã nhận click.
+            return True
+        _wait(page, 150)
+    return False
 
 
 def _mark_grid_roots(page: Page) -> list[tuple[Frame, str]]:
@@ -681,7 +749,7 @@ def _search_module_fields(
                 page,
                 context_selector,
                 module_name=module_name,
-                timeout_s=2,
+                timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
             )
         except PlaywrightTimeoutError:
             _write_log(
@@ -822,7 +890,7 @@ def _search_module_list(
                 page,
                 context_selectors,
                 context_aliases,
-                timeout_s=2,
+                timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
             )
         except PlaywrightTimeoutError:
             _write_log(
@@ -1356,25 +1424,37 @@ def toggle_company_foc(
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
 
-        _write_log(
-            log,
-            "[COMPANY SETUP] Đang mở 12. Miscellaneous Settings...",
-        )
         try:
             _misc_frame, misc = _visible_locator_in_frames(
                 page,
                 misc_selector,
-                # Company Setup thường cần 5–8 giây để render checklist sau
-                # khi List đã được click; timeout 4 giây báo nhầm chưa mở List.
-                timeout_s=15,
+                timeout_s=1,
             )
         except PlaywrightTimeoutError:
-            return _result(
-                False,
-                "COMPANY_LIST_NOT_OPEN",
-                "Chưa thấy trang Company Setup. Hãy bấm List, "
-                "chờ trang tải xong rồi mới bấm Đổi FOC.",
+            _write_log(
+                log,
+                "[COMPANY SETUP] Context hiện tại không phải Company Setup; "
+                "đang tự mở List...",
             )
+            _click_module_menu_on_page(page, "Company Setup", _xpath, log)
+            try:
+                _misc_frame, misc = _visible_locator_in_frames(
+                    page,
+                    misc_selector,
+                    timeout_s=20,
+                )
+            except PlaywrightTimeoutError:
+                return _result(
+                    False,
+                    "COMPANY_LIST_OPEN_FAILED",
+                    "App đã tự mở Company Setup nhưng trang thiết lập "
+                    "chưa sẵn sàng.",
+                )
+        _write_log(
+            log,
+            "[COMPANY SETUP] Đã thấy đúng List; "
+            "đang mở 12. Miscellaneous Settings...",
+        )
         _click_navigation_control(misc)
 
         frame, checkbox = _visible_locator_in_frames(

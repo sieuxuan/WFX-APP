@@ -24,11 +24,11 @@ WFX; mục tiêu là kiểm tra xu hướng, không phải cam kết dung lượ
 | Tổng thời gian 3 task | 18,73 s | 14,44 s | −22,9% |
 | Tổng idle ngay sau task | 771,5 MB | 739,1 MB | −4,2% |
 
-App-only idle ngay sau task tăng do 1.0.15 chủ động giữ Playwright/CDP để flow
-kế tiếp không reconnect. Runtime tự nhả connection sau 60 giây không có flow;
-Chrome ngoài và phiên WFX vẫn được giữ. Trong lượt kiểm tra 1.0.15, Chrome có 7
-process tổng cộng, gồm 2 renderer — dưới giới hạn 4 renderer đã cấu hình.
-
-Kiểm tra riêng cơ chế idle bằng một lần mở OC List thật: Working Set app giảm từ
-173,2 MB ngay sau task xuống 45,3 MB sau 65 giây, tức trả lại khoảng 127,9 MB;
-task trả `MODULE_OPENED` và Chrome không bị đóng.
+Ghi chú cập nhật: bản đo trên dùng cơ chế giữ Playwright/CDP giữa các flow
+(persistent connection + nhả sau 60 giây idle). Cơ chế đó đã được BỎ: runtime
+nhả driver/CDP ngay sau mỗi flow, không giữ attach giữa các flow. Lý do là khi
+CDP còn attach, tab người dùng tự mở trong Chrome bị auto-attach pause
+("Debugger paused in another tab") và có thể treo Chrome khi đóng tab đó. Đổi
+lại mỗi flow tự reconnect (chậm hơn chút so với số liệu −22,9% ở trên) nhưng
+người dùng thao tác tay trong WFX không còn bị đứt/treo. Chrome ngoài và phiên
+WFX vẫn được giữ giữa các flow.

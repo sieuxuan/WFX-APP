@@ -23,6 +23,7 @@ from wfx_panel.automation._common import (
     time,
 )
 from wfx_panel.automation.modules import (
+    MODULE_CONTEXT_PROBE_SECONDS,
     _active_wfx_page,
     _click_module_menu_on_page,
     _click_navigation_control,
@@ -370,22 +371,43 @@ def _filter_company_rows(
     log: Callable[[str], None],
     expected_kind: str,
 ) -> tuple[Frame, dict[str, Any]]:
-    field = frame.locator("#txtCompanyName")
-    field.wait_for(state="visible", timeout=5_000)
-    field.fill("")
-    field.type(query, delay=25)
-    if field.input_value(timeout=1_000) != query:
-        raise PlaywrightTimeoutError("WFX không xác nhận Company Name query.")
-    try:
-        field.press("Enter", timeout=2_000)
-    except PlaywrightError:
-        pass
+    current = frame
+    # WFX có thể thay frame Company ngay sau khi Master vừa báo ready. Resolve
+    # lại đúng PartyType một lần thay vì trả lỗi ngẫu nhiên ở field đầu tiên.
+    for attempt in range(2):
+        try:
+            field = current.locator("#txtCompanyName")
+            field.wait_for(state="visible", timeout=5_000)
+            field.fill("")
+            field.type(query, delay=25)
+            if field.input_value(timeout=1_000) != query:
+                raise PlaywrightTimeoutError(
+                    "WFX không xác nhận Company Name query."
+                )
+            try:
+                field.press("Enter", timeout=2_000)
+            except PlaywrightError:
+                pass
+            break
+        except (PlaywrightError, PlaywrightTimeoutError):
+            if attempt:
+                raise
+            replacement = _company_search_frame(
+                page,
+                expected_kind,
+                timeout_s=3,
+            )
+            if replacement is None:
+                raise PlaywrightTimeoutError(
+                    "Frame Company Name đã đổi và chưa sẵn sàng."
+                ) from None
+            current = replacement
+            _write_log(log, "[COMPANY SEARCH] Đã đồng bộ lại frame Company.")
     _write_log(log, f"[COMPANY SEARCH] Đã nhập query={query!r}")
     deadline = time.monotonic() + 18
     stable_key: tuple[Any, ...] | None = None
     stable_since = 0.0
     last: dict[str, Any] = {"rows": [], "noRows": False, "loading": False}
-    current = frame
     while time.monotonic() < deadline:
         try:
             if not _company_marker_matches(
@@ -679,7 +701,10 @@ def find_and_open_buyer(
     try:
         playwright = sync_playwright().start()
         browser, page = _active_wfx_page(playwright, log)
-        frame = _buyer_search_frame(page, timeout_s=4)
+        frame = _buyer_search_frame(
+            page,
+            timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
+        )
         if frame is None:
             _write_log(
                 log,

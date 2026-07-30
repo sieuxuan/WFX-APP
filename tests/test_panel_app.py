@@ -165,6 +165,20 @@ def test_module_results_route_to_external_notification():
     ]
 
 
+def test_module_results_do_not_show_external_notification_while_panel_visible():
+    from wfx_panel.panel_app import PanelApp
+
+    app = PanelApp()
+    sent = []
+    app.window = None
+    app._panel_visible = True
+    app._show_notification = lambda result, **context: sent.append((result, context))
+
+    app._on_result("find_code", {"ok": True, "message": "nhiều kết quả"}, 0.2)
+
+    assert sent == []
+
+
 def test_download_result_opens_explorer_and_shows_toast(monkeypatch):
     app = panel_app.PanelApp()
     opened = []
@@ -207,6 +221,69 @@ def test_reveal_downloaded_excel_opens_exact_parent_folder(tmp_path, monkeypatch
 
     assert panel_app._reveal_downloaded_file(target) is True
     assert opened == [target.parent.resolve()]
+
+
+def test_costing_file_dialogs_only_return_supported_user_selection(tmp_path):
+    class Window:
+        def __init__(self):
+            self.calls = []
+            self.selection = None
+
+        def create_file_dialog(self, dialog_type, **kwargs):
+            self.calls.append((dialog_type, kwargs))
+            return self.selection
+
+    app = panel_app.PanelApp()
+    app._base_dir = tmp_path
+    app.window = Window()
+    import_file = tmp_path / "edit.xlsx"
+    import_file.write_bytes(b"xlsx")
+    app.window.selection = (str(import_file),)
+
+    selected = app.choose_costing_import_file()
+
+    assert selected["code"] == "COSTING_FILE_SELECTED"
+    assert selected["file_name"] == "edit.xlsx"
+    assert app.window.calls[-1][0] == panel_app.webview.OPEN_DIALOG
+
+    chosen_folder = tmp_path / "chosen-folder"
+    chosen_folder.mkdir()
+    chosen = chosen_folder / "chosen-name"
+    app.window.selection = str(chosen)
+    exported = app.choose_costing_export_file("SWN/000:1")
+
+    assert exported["code"] == "COSTING_EXPORT_PATH_SELECTED"
+    assert Path(exported["file_path"]) == chosen.with_suffix(".xlsx").resolve()
+    assert app.window.calls[-1][0] == panel_app.webview.SAVE_DIALOG
+    assert (
+        panel_app.prefs.load_prefs(tmp_path)["costing_export_dir"]
+        == str(chosen_folder.resolve())
+    )
+    app.window.selection = None
+    app.choose_costing_export_file("SWN0000001")
+    assert app.window.calls[-1][1]["directory"] == str(chosen_folder.resolve())
+    assert (
+        app.choose_costing_export_file("SWN0000001", "csv")["code"]
+        == "COSTING_FILE_TYPE_UNSUPPORTED"
+    )
+
+
+def test_costing_file_dialog_cancel_is_clean():
+    class Window:
+        def create_file_dialog(self, *_args, **_kwargs):
+            return None
+
+    app = panel_app.PanelApp()
+    app.window = Window()
+
+    assert (
+        app.choose_costing_import_file()["code"]
+        == "COSTING_FILE_DIALOG_CANCELLED"
+    )
+    assert (
+        app.choose_costing_export_file("SWN0000001")["code"]
+        == "COSTING_FILE_DIALOG_CANCELLED"
+    )
 
 
 def test_notification_shows_full_action_detail_without_resizing_webview(
@@ -353,6 +430,11 @@ def test_activate_shows_panel_and_fronts_window(monkeypatch):
     monkeypatch.setattr(module, "_set_process_window_bounds", lambda *_a: True)
     monkeypatch.setattr(
         module,
+        "_native_window_visibility",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        module,
         "_bring_process_window_to_front",
         lambda **_kwargs: fronted.append(True) or True,
     )
@@ -379,6 +461,11 @@ def test_taskbar_activation_opens_full_ui_without_winforms_restore(monkeypatch):
     app.show_panel = show_panel
     app._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
     monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(
+        module,
+        "_native_window_visibility",
+        lambda *_args, **_kwargs: True,
+    )
 
     app._open_panel_from_taskbar()
 
@@ -386,7 +473,7 @@ def test_taskbar_activation_opens_full_ui_without_winforms_restore(monkeypatch):
     assert app._panel_visible is True
 
 
-def test_show_from_tray_repairs_hidden_bubble_before_opening_panel():
+def test_show_from_tray_repairs_hidden_bubble_before_opening_panel(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
@@ -402,6 +489,11 @@ def test_show_from_tray_repairs_hidden_bubble_before_opening_panel():
     app._bubble_hidden = True
     app._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
     app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+    monkeypatch.setattr(
+        module,
+        "_native_window_visibility",
+        lambda *_args, **_kwargs: False,
+    )
 
     app.show_from_tray()
 
@@ -700,6 +792,42 @@ def test_show_panel_shows_window_and_hide_panel_hides_it(monkeypatch):
     app.hide_panel()
     assert app._panel_visible is False
     assert ("hide",) in calls
+
+
+def test_native_foreground_fallback_hides_panel_after_grace(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app._panel_visible = True
+    app.api.is_action_running = lambda: False
+    hidden = []
+    app.hide_panel = lambda: hidden.append(True)
+    times = iter([10.0, 10.5])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
+
+    app._track_panel_foreground(os.getpid() + 1)
+    assert hidden == []
+    app._track_panel_foreground(os.getpid() + 1)
+
+    assert hidden == [True]
+
+
+def test_native_foreground_fallback_defers_until_action_finishes(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app._panel_visible = True
+    running = iter([True, False])
+    app.api.is_action_running = lambda: next(running)
+    hidden = []
+    app.hide_panel = lambda: hidden.append(True)
+    monkeypatch.setattr(module.time, "monotonic", lambda: 20.0)
+
+    app._track_panel_foreground(os.getpid() + 1)
+    assert app._panel_hide_pending is True
+    app._track_panel_foreground(os.getpid() + 1)
+
+    assert hidden == [True]
 
 
 def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
@@ -1306,6 +1434,27 @@ def test_native_tray_icon_reports_right_click_before_backend(monkeypatch):
         ("context",),
         ("backend", 12, module.TRAY_RIGHT_BUTTON_UP),
     ]
+
+
+def test_native_tray_icon_double_click_restores_app_without_backend(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    calls = []
+    monkeypatch.setattr(
+        module.pystray.Icon,
+        "_on_notify",
+        lambda _self, wparam, lparam: calls.append(("backend", wparam, lparam)),
+        raising=False,
+    )
+    icon = object.__new__(module._WfxTrayIcon)
+    icon._running = False
+    icon._icon_handle = None
+    icon._on_context_menu = None
+    icon._on_activate = lambda: calls.append(("activate",))
+
+    icon._on_notify(12, module.TRAY_LEFT_BUTTON_DOUBLE_CLICK)
+
+    assert calls == [("activate",)]
 
 
 def test_wfx_manual_opens_the_configured_url(monkeypatch):

@@ -38,8 +38,9 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
   Windows Run key sau khi giữ được single-instance lock. Nếu người dùng đã tắt
   thì phải giữ nguyên lựa chọn đó. Chạy source development không được tự đăng
   ký Python/Pythonw vào startup.
-- Panel tự thu khi mất focus. Nếu automation đang chạy, panel chờ tác vụ kết
-  thúc rồi mới thu.
+- Panel tự thu khi mất focus. Ngoài `window.blur`, monitor foreground Win32 là
+  fallback bắt buộc vì WebView2 đôi khi bỏ lỡ blur. Nếu automation đang chạy,
+  panel ghi nhận yêu cầu và thu ngay khi tác vụ kết thúc.
 - Chuyển giữa List/module và thanh tiến trình dùng animation ngắn chỉ với
   transform/opacity; phải tôn trọng `prefers-reduced-motion`. Nút vừa kích hoạt
   giữ highlight trong khi tác vụ chạy để người dùng biết flow nào đang xử lý.
@@ -58,6 +59,9 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 - Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
   trong màn module.
+- Result sink từ backend phải nhả trạng thái busy của UI độc lập với Promise
+  pywebview. Nếu Promise bridge bị kẹt sau khi backend đã ghi kết quả, các nút
+  workflow vẫn phải hoạt động lại ngay.
 - Khi automation đang chạy, footer hiện nút `Stop`. Nút chỉ đặt cờ hủy; flow
   dừng ở checkpoint kế tiếp và trả `ACTION_CANCELLED`. Không đóng browser hoặc
   Playwright để ép dừng. Đoạn click/chờ Save phải dùng `cancellation_deferred()`
@@ -70,27 +74,34 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 Mỗi nút trong module là một flow riêng:
 
 1. `List` mở đúng màn danh sách và, nếu cần, bật Floating Filter.
-2. `New`, `Đổi FOC` hoặc thao tác tiếp theo chỉ dùng màn hiện tại.
+2. `New` chỉ dùng màn List hiện tại. `Đổi FOC` tự mở Company Setup nếu context
+   hiện tại đã đổi sang module khác, rồi mới mở Miscellaneous Settings.
 3. `Search` ưu tiên đúng List hiện tại. Nếu List chưa mở hoặc context chưa sẵn
    sàng, automation phải tự click đúng menu List, chờ grid/Floating Filter ổn
    định rồi mới điền điều kiện; người dùng không cần bấm List trước.
 4. Trước khi điền, automation phải xác nhận context riêng của module trong cùng
    frame. Không được dùng chỉ `#txtArticle` hoặc `#txtCompanyName`, vì OC/Sample/
    Sale ASN và Buyer/Supplier có selector trùng nhau.
-5. Search không được trả `*_LIST_NOT_OPEN` hay hướng dẫn bấm List. Nếu đã tự mở
+5. Search và Đổi FOC không được trả `*_LIST_NOT_OPEN` hay hướng dẫn bấm List.
+   Nếu đã tự mở
    nhưng List/search vẫn không sẵn sàng, trả lỗi kỹ thuật cụ thể kèm trạng thái
    tự mở thất bại. `*_LIST_NOT_OPEN` chỉ còn dùng cho các thao tác làm thay đổi
-   dữ liệu như New/Đổi FOC khi người dùng chưa mở đúng List.
+   dữ liệu như New khi người dùng chưa mở đúng List.
 6. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
    lên foreground chạy song song và không nằm trên critical path. Poll trạng
    thái grid ở 150 ms, nhưng chỉ chấp nhận Floating Filter sau khi visible/enabled
    ổn định ít nhất 0,5 giây và đúng context để vừa nhanh vừa tránh grid cũ.
 7. Mọi flow từ `PanelAPI._run()` chạy trên automation worker duy nhất. Các lời
-   gọi `sync_playwright().start()/stop()` trong workflow cũ chỉ là lease; runtime
-   giữ một Playwright process và cache một CDP Browser cho tới khi app thoát hoặc
-   browser disconnect. Sau 60 giây không có flow, runtime tự nhả driver/CDP
-   nhưng giữ Chrome ngoài và phiên đăng nhập; flow sau kết nối lại. Không dùng
-   object Playwright sync từ thread khác.
+   gọi `sync_playwright().start()/stop()` trong workflow chỉ là lease; TRONG một
+   flow runtime cache một Playwright process và một CDP Browser để các sub-op
+   dùng chung. Nhưng NGAY khi flow kết thúc, runtime nhả driver/CDP (không giữ
+   attach giữa các flow); Chrome ngoài và phiên đăng nhập vẫn được giữ, flow sau
+   tự kết nối lại. Lý do KHÔNG giữ persistent connection giữa các flow: khi CDP
+   còn attach, tab người dùng tự mở trong Chrome bị auto-attach
+   `waitForDebuggerOnStart` pause ("Debugger paused in another tab") và có thể
+   treo Chrome khi đóng tab đó. Việc "dùng lại grid Master đang mở" vẫn chạy vì
+   nó tái dùng DOM đang mở trong Chrome, không phụ thuộc Playwright có giữ kết
+   nối. Không dùng object Playwright sync từ thread khác.
 8. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
    không thêm cơ chế terminate/close page từ thread UI.
 
@@ -107,16 +118,79 @@ Mỗi nút trong module là một flow riêng:
   không dùng `TrackPopupMenu` đồng bộ từ worker/WebView thread vì Windows có thể
   dismiss ngay. Poll loop phải bỏ qua click mở menu, sau đó tự đóng menu khi
   người dùng click ra ngoài. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
-- Chỉ một Playwright driver/CDP connection được tồn tại trong app; tự nhả sau
-  60 giây idle và runtime phải shutdown khi người dùng thoát. Riêng tại ranh
-  giới popup Article, dừng driver cũ rồi tạo đúng một driver/CDP mới trước
-  Costing, BOM hoặc File nhưng không đóng Chrome; WFX có thể giữ page popup mà
-  không attach lại `ArticleTop` cho driver cũ sau khi click cùng style.
+- Tối đa một Playwright driver/CDP connection tồn tại tại một thời điểm và chỉ
+  trong lúc một flow đang chạy; runtime nhả driver/CDP ngay khi flow xong (không
+  giữ giữa các flow) và phải shutdown khi người dùng thoát. Tại ranh giới
+  popup Article (Costing, BOM hoặc File), KHÔNG dựng lại driver/CDP vô điều
+  kiện: mỗi `connect_over_cdp` mới re-attach mọi tab và làm Chrome nhấp banner
+  "đang bị điều khiển", gây lag. Thay vào đó phải probe popup trên CDP hiện tại
+  trước (`_open_article_destination`/`_article_page`); chỉ khi probe timeout —
+  tức WFX đã detach `ArticleTop` khỏi driver hiện tại sau khi click cùng style —
+  mới `recycle_playwright` đúng một lần rồi thử lại, và không đóng Chrome.
+  Quy tắc này cũng áp dụng ngay trong flow kết hợp Tìm → Costing/BOM: nếu người
+  dùng vừa chọn một dòng sau `MULTIPLE_RESULTS` và WFX tái sử dụng popup Style,
+  phải recover popup rồi mở destination, không quay lại Catalog để search lần hai.
 
 Các workflow riêng hiện có:
 
 - Catalog: Category/folder, Master, Style Code/Buyer Reference, Costing, BOM,
-  file đính kèm.
+  file đính kèm và Costing file import/export XLSX.
+- Costing file chỉ áp dụng cho Apparel và luôn chạy hai phase:
+  1. scan live + validate file + dry-run, cache plan bằng opaque token tối đa
+     15 phút, chưa ghi WFX;
+  2. re-scan/chống stale, apply plan server-side, Save trong
+     `cancellation_deferred()` và đọc lại field đã đổi để xác nhận.
+- File Costing không được cung cấp selector cho automation. Blank giữ nguyên,
+  `__CLEAR__` mới là xóa giá trị, item mặc định UPSERT; chỉ `DELETE` rõ ràng
+  mới được chọn đúng row rồi dùng `#imgDelete`.
+- Export được phép ở mọi Costing status. Import và Apply chỉ được bật khi
+  Costing hiện tại có status chính xác là `Open`; nếu status khác `Open` hoặc
+  chưa có Costing, app dừng với `COSTING_NOT_OPEN` và người dùng phải tự
+  tạo/mở Costing trong WFX trước.
+- Add Article chỉ dùng `#imgAdd` và Material Search: ưu tiên exact Article Code,
+  fallback Article Name; 0 kết quả thì skip/báo, nhiều kết quả thì chờ user
+  resolve, không tự chọn dòng đầu. Dùng Continue cho item chưa phải cuối và
+  Finish cho item cuối.
+- Mọi editable field Minutes phải được đặt thành `1`. Save Cost Sheet chỉ dùng
+  `//*[@id="titlebarCostSheet"]/tbody/tr/td[3]/span/div[1]`.
+- Field Supplier và các editor WFX dùng Select2 có backing
+  `select2-hidden-accessible` 1×1: không dùng Playwright `select_option()` vì
+  actionability có thể timeout; gán exact option value trên backing select và
+  phát native `change` để chạy nguyên onchange/xOnBlur của WFX.
+- Một Article có thể chiếm nhiều dòng DOM; dòng tiếp nối hiển thị `>>`.
+  Inventory phải kế thừa Article của dòng trước nhưng tạo `item_key` riêng cho
+  từng dòng. Planner ưu tiên exact `item_key`; với workbook cũ từng gộp các
+  dòng, phải ánh xạ từng field về dòng live thực sự chứa field đó.
+- Khi file có cùng Article trên các dòng liền nhau nhiều hơn số dòng live,
+  Apply phải click đúng `#imgSplitterForUsage` của dòng Article để tạo đủ dòng
+  `>>` trước khi điền field; không Add lại cùng Article cho từng dòng.
+- Export phải scan Material Color/Size theo từng Article và nội dung popup
+  Dependency Table. Workbook có `Color Mapping`/`Size Mapping`, mỗi dòng theo
+  cú pháp `Material => Style 1 | Style 2`; Apply tự đặt `[Table]`, mở đúng
+  `#lnkColorDependency`/`#lnkSizeDependency` và tick exact theo từng dòng nguồn.
+  Material Color/Size có dropdown từ giá trị item đã scan; option Style nằm
+  trong comment ô Mapping.
+- Style Name lấy từ `#lblArticleNameValue`, chính xác phần sau dấu `/` trong
+  ngoặc. Form có thêm hai cột đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
+  `Value in (USD)`; export giá trị live nhưng import không được tạo field đổi
+  cho hai cột công thức này.
+- `Purchase Officer` bắt buộc không được chờ tới Save mới phát hiện. Workbook
+  cung cấp dropdown từ giá trị live; dry-run dừng với
+  `COSTING_REQUIRED_FIELD_MISSING` nếu cả file và dòng live vẫn trống.
+- Export/Import/Apply phải tái sử dụng đúng Costing đang mở cho cùng style,
+  không mở lại destination, không đưa Chrome lên foreground và không reload
+  frame sau Save. Workbook có đúng hai sheet: `Hướng dẫn` và `Costing`.
+  Khi có nhiều tab/popup Costing, phải ưu tiên target đang hoạt động gần nhất,
+  không dùng thứ tự tạo trong `context.pages`. Trước hộp thoại export phải quét
+  nhanh Style Code/status, hiển thị ngay trong thẻ Costing và dùng code đó đặt
+  tên file. Hộp thoại nhớ thư mục export gần nhất. Nút `Kiểm tra file` chỉ
+  validate XLSX và trả lỗi sheet/ô, không scan WFX hoặc tạo dry-run.
+  `Costing` luôn có bộ cột form chuẩn để nhập trực tiếp, chỉ round-trip field
+  item `editable=true`; loại các section `CM Costs`, `Production Costs`,
+  `Indirect Costs` và các cột tổng hợp đã cấu hình. Không có sheet `Cost Sheet`,
+  `Sections`, `_Fields`, `_Meta`; hộp thoại chỉ hỗ trợ `.xlsx`.
+- Costing tuyệt đối không click `#colBodyType label span`, `#imgDeleteSection`,
+  `#imgEditSection` hoặc `#imgCopySection`.
 - OC List: tìm theo OC No. hoặc Style.
 - Sample List: List + Floating Filter, tìm theo Sample Order No./Style/
   Created By, và New Sample Order.
@@ -124,7 +198,10 @@ Các workflow riêng hiện có:
   No., và New.
 - Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
 - Buyer List: tự mở đúng Buyer List khi cần rồi mở Edit đầu tiên.
-- Company Setup: mở List riêng rồi đổi/lưu nơi áp dụng FOC.
+- Company Setup: Đổi FOC tự mở đúng List nếu cần, mở Miscellaneous Settings rồi
+  mới đổi/lưu nơi áp dụng FOC.
+- Mọi flow `List` chỉ trả thành công sau khi WFX đổi page/frame/document thật;
+  một cú click menu đơn thuần không được coi là `MODULE_OPENED`.
 - RMPO List: tìm kết hợp theo Supplier và RMPO No. trên đúng grid
   `gridRMPO`.
 - Indent List/User Indent: tìm kết hợp theo Supplier, Article, Indent No. và
@@ -233,6 +310,10 @@ Không được nhảy state. Mode `prepare` chỉ thành công tại `FILTER_VI
   - nếu document `left` đổi thì lấy lại frame/document và click lại đúng Master;
   - nếu không đổi gì thì retry đúng Master, không chuyển sang node cha/con ngẫu nhiên.
 - Chỉ log `MASTER_OPENED` khi grid mới, URL chứa `wfxcataloglist`, đã xuất hiện.
+- Header và Floating Filter xuất hiện trước datasource không phải là grid ready.
+  Nếu center container còn cao 1px, không có row và cũng không có no-rows thật,
+  phải tiếp tục chờ. Nếu filter đã nhận value trong trạng thái rỗng giả này,
+  clear/refill đúng một lần sau khi datasource bind rồi mới kết luận timeout.
 
 ### Grid mới và dữ liệu đã ổn định
 
