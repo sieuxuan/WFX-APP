@@ -91,7 +91,15 @@ def test_index_html_has_contract_hooks():
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js?v=20260731-5"',
+        'data-module-action="oc-template"',
+        'data-module-action="oc-upload-new"',
+        'data-module-action="oc-review-cancel"',
+        'data-module-action="oc-review-confirm"',
+        'data-module-action="oc-revise-report"',
+        'data-module-action="oc-upload-revise"',
+        'class="oc-upload-review"',
+        'class="oc-review-metrics"',
+        'src="panel.js?v=20260731-7"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html

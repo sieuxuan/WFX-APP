@@ -40,6 +40,23 @@ def test_module_cards_do_not_repeat_group_or_workflow_subtitles():
     assert "Workflow nâng cao" not in JS
 
 
+def test_oc_workspace_wires_template_new_and_revise_flows():
+    for method in (
+        "download_oc_template",
+        "choose_oc_upload_file",
+        "review_oc_upload",
+        "cancel_oc_upload_review",
+        "confirm_oc_upload",
+        "open_oc_revision_report",
+    ):
+        assert f'"{method}"' in JS
+    assert 'uploadOcFile("new")' in JS
+    assert 'uploadOcFile("revise")' in JS
+    assert 'call("review_oc_upload", mode, selected.file_path)' in JS
+    assert 'call("confirm_oc_upload", token)' in JS
+    assert 'call("upload_oc", mode, selected.file_path)' not in JS
+
+
 def test_return_to_list_is_opt_in_and_current_module_is_preserved():
     assert "returnToListAfterAction = false" in JS
     assert "result.ok && returnToListAfterAction" in JS

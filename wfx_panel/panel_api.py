@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import secrets
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -23,6 +25,7 @@ from wfx_panel import prefs as prefs_default
 from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.catalog_controller import CatalogController
+from wfx_panel.oc_workbook import OCWorkbookError, prepare_oc_workbook
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 
 SESSION_OK = frozenset(
@@ -64,6 +67,8 @@ SESSION_OK = frozenset(
         "SUPPLIER_NOT_FOUND",
         "BUYER_EDIT_OPENED",
         "BUYER_NOT_FOUND",
+        "OC_REVISION_REPORT_READY",
+        "OC_TRANSACTION_CREATED",
     }
 )
 SESSION_LOST = frozenset(
@@ -141,6 +146,21 @@ NON_REPORTABLE_FAILURES = frozenset(
         "COSTING_ACTIVE_TAB_NOT_FOUND",
         "COSTING_ACTIVE_TAB_AMBIGUOUS",
         "COSTING_STYLE_NOT_DETECTED",
+        "OC_FILE_TYPE_UNSUPPORTED",
+        "OC_FILE_NOT_FOUND",
+        "OC_FILE_TOO_LARGE",
+        "OC_FILE_UNSAFE",
+        "OC_FILE_INVALID",
+        "OC_FILE_HEADERS_INVALID",
+        "OC_FILE_VALIDATION_FAILED",
+        "OC_FILE_FORMULA_ERROR",
+        "OC_FILE_EMPTY",
+        "OC_FILE_TOO_MANY_ROWS",
+        "OC_MODE_INVALID",
+        "OC_TEMPLATE_SHEET_MISSING",
+        "OC_EDI_VALIDATION_FAILED",
+        "OC_TRANSACTION_UNCONFIRMED",
+        "OC_UPLOAD_REVIEW_EXPIRED",
     }
 )
 
@@ -163,6 +183,9 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "find_supplier",
         "find_supplier_in_category",
         "find_buyer",
+        "open_oc_revision_report",
+        "upload_oc",
+        "confirm_oc_upload",
     }
 )
 
@@ -204,6 +227,9 @@ class PanelAPI:
         # Toàn bộ state + logic Catalog (kết quả tìm, category đã chuẩn bị, cache
         # cây folder) sống trong controller riêng để bridge không phình to.
         self._catalog = CatalogController(self)
+        # Workbook đã chuẩn hoá chỉ sống từ bước Review đến Confirm/Cancel.
+        # Token ngẫu nhiên ngăn UI cũ hoặc click lặp upload nhầm review khác.
+        self._oc_upload_reviews: dict[str, dict] = {}
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -506,6 +532,9 @@ class PanelAPI:
                 "open_sale_asn_new",
                 "open_sample_new",
                 "search_oc",
+                "open_oc_revision_report",
+                "upload_oc",
+                "confirm_oc_upload",
                 "search_sample",
                 "search_sale_asn",
                 "search_rmpo",
@@ -1148,6 +1177,207 @@ class PanelAPI:
             query,
             file_path,
             bool(scan_article_options),
+        )
+
+    def open_oc_revision_report(self) -> dict:
+        return self._run(
+            "open_oc_revision_report",
+            lambda: self._login.open_oc_revision_report(self._log),
+        )
+
+    @staticmethod
+    def _oc_review_payload(prepared) -> dict:
+        return {
+            "buyer": prepared.buyer,
+            "seasons": list(prepared.seasons),
+            "season": ", ".join(prepared.seasons) or "—",
+            "po_count": prepared.po_count,
+            "style_count": prepared.style_count,
+            "total_units": prepared.total_units,
+            "row_count": prepared.row_count,
+            "mode": prepared.mode,
+            "warnings": list(prepared.warnings),
+        }
+
+    def _discard_oc_upload_review(self, review_token: str) -> bool:
+        review = self._oc_upload_reviews.pop(review_token, None)
+        if review is None:
+            return False
+        temporary = review.get("temporary")
+        if temporary is not None:
+            try:
+                temporary.cleanup()
+            except OSError as error:
+                self._log(
+                    "[OC] Không dọn được workbook review tạm: "
+                    f"{type(error).__name__}"
+                )
+        return True
+
+    def review_oc_upload(self, mode: str, file_path: str) -> dict:
+        """Validate locally and return business totals before touching WFX."""
+        selected_mode = str(mode or "").strip().casefold()
+        source = Path(str(file_path or "")).expanduser().resolve()
+
+        def action() -> dict:
+            # UI chỉ duy trì một review hiện hành; file cũ không được phép vô
+            # tình confirm sau khi user đã chọn workbook khác.
+            for old_token in tuple(self._oc_upload_reviews):
+                self._discard_oc_upload_review(old_token)
+            cache_root = self._base_dir / "oc-upload-cache"
+            cache_root.mkdir(parents=True, exist_ok=True)
+            temporary = tempfile.TemporaryDirectory(
+                prefix="review-",
+                dir=cache_root,
+            )
+            try:
+                upload_path = Path(temporary.name) / "OC-EDI-Upload.xlsx"
+                prepared = prepare_oc_workbook(source, selected_mode, upload_path)
+            except OCWorkbookError as error:
+                temporary.cleanup()
+                return {
+                    "ok": False,
+                    "code": error.code,
+                    "message": error.message,
+                    "errors": list(error.errors),
+                    "source_file": source.name,
+                    "mode": selected_mode,
+                }
+            except Exception:
+                temporary.cleanup()
+                raise
+            review_token = secrets.token_urlsafe(24)
+            self._oc_upload_reviews[review_token] = {
+                "temporary": temporary,
+                "prepared": prepared,
+                "source_file": source.name,
+            }
+            self._log(
+                "[OC] Review sẵn sàng: "
+                f"{prepared.row_count} dòng, {prepared.po_count} PO, "
+                f"{prepared.style_count} Style, {prepared.total_units} Units"
+            )
+            return {
+                "ok": True,
+                "code": "OC_UPLOAD_REVIEW_READY",
+                "message": "File hợp lệ. Kiểm tra số liệu trước khi xác nhận Upload.",
+                "review_token": review_token,
+                "source_file": source.name,
+                **self._oc_review_payload(prepared),
+            }
+
+        return self._run(
+            "review_oc_upload",
+            action,
+            {"mode": selected_mode, "file_name": source.name},
+        )
+
+    def cancel_oc_upload_review(self, review_token: str) -> dict:
+        token = str(review_token or "").strip()
+
+        def action() -> dict:
+            self._discard_oc_upload_review(token)
+            return {
+                "ok": True,
+                "code": "OC_UPLOAD_REVIEW_CANCELLED",
+                "message": "Đã huỷ Upload OC; WFX chưa nhận dữ liệu.",
+            }
+
+        return self._run("cancel_oc_upload_review", action)
+
+    def confirm_oc_upload(self, review_token: str) -> dict:
+        """Upload exactly the value-only workbook shown in the review."""
+        token = str(review_token or "").strip()
+
+        def action() -> dict:
+            review = self._oc_upload_reviews.get(token)
+            if review is None:
+                return {
+                    "ok": False,
+                    "code": "OC_UPLOAD_REVIEW_EXPIRED",
+                    "message": "Review Upload OC không còn hiệu lực; hãy chọn lại file.",
+                }
+            prepared = review["prepared"]
+            try:
+                result = self._login.upload_oc_edi(
+                    prepared.upload_path,
+                    prepared.buyer,
+                    prepared.mode,
+                    self._log,
+                )
+            except BaseException:
+                self._discard_oc_upload_review(token)
+                raise
+            # Cho auto-relogin gọi lại action đúng một lần khi chưa hề chạm EDI.
+            if str(result.get("code") or "") != "NOT_LOGGED_IN":
+                self._discard_oc_upload_review(token)
+            return {
+                **result,
+                "source_file": review["source_file"],
+                **self._oc_review_payload(prepared),
+            }
+
+        return self._run(
+            "confirm_oc_upload",
+            action,
+            {"review_token": token[:8]},
+        )
+
+    def upload_oc(self, mode: str, file_path: str) -> dict:
+        selected_mode = str(mode or "").strip().casefold()
+        source = Path(str(file_path or "")).expanduser().resolve()
+
+        def action() -> dict:
+            cache_root = self._base_dir / "oc-upload-cache"
+            cache_root.mkdir(parents=True, exist_ok=True)
+            try:
+                with tempfile.TemporaryDirectory(
+                    prefix="run-",
+                    dir=cache_root,
+                ) as temporary:
+                    upload_path = Path(temporary) / "OC-EDI-Upload.xlsx"
+                    prepared = prepare_oc_workbook(
+                        source,
+                        selected_mode,
+                        upload_path,
+                    )
+                    self._log(
+                        "[OC] Workbook hợp lệ: "
+                        f"{prepared.row_count} dòng, Buyer {prepared.buyer}"
+                    )
+                    for warning in prepared.warnings:
+                        self._log(f"[OC] {warning}")
+                    result = self._login.upload_oc_edi(
+                        prepared.upload_path,
+                        prepared.buyer,
+                        prepared.mode,
+                        self._log,
+                    )
+                    return {
+                        **result,
+                        "source_file": source.name,
+                        "row_count": prepared.row_count,
+                        "buyer": prepared.buyer,
+                        "mode": prepared.mode,
+                        "warnings": list(prepared.warnings),
+                    }
+            except OCWorkbookError as error:
+                return {
+                    "ok": False,
+                    "code": error.code,
+                    "message": error.message,
+                    "errors": list(error.errors),
+                    "source_file": source.name,
+                    "mode": selected_mode,
+                }
+
+        return self._run(
+            "upload_oc",
+            action,
+            {
+                "mode": selected_mode,
+                "file_name": source.name,
+            },
         )
 
     def inspect_active_catalog_costing(self, category_name: str) -> dict:

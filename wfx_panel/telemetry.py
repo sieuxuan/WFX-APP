@@ -48,6 +48,11 @@ METHOD_LABELS = {
     "open_sale_asn_new": "Mở Sale ASN mới",
     "open_sample_new": "Mở Sample Order mới",
     "search_oc": "Tìm trong OC List",
+    "open_oc_revision_report": "Mở report Revise OC",
+    "upload_oc": "Upload OC qua EDI Buyer PO",
+    "review_oc_upload": "Review file Upload OC",
+    "confirm_oc_upload": "Xác nhận Upload OC qua EDI Buyer PO",
+    "cancel_oc_upload_review": "Huỷ review Upload OC",
     "search_sample": "Tìm trong Sample List",
     "search_sale_asn": "Tìm trong Sale ASN List",
     "search_rmpo": "Tìm trong RMPO List",
@@ -262,6 +267,26 @@ ERROR_CODE_INFO.update(
             "Đăng nhập WFX thất bại",
             "Kiểm tra tài khoản, Company và trạng thái trang đăng nhập.",
         ),
+        "OC_EDI_FAILED": (
+            "Không thể hoàn tất Upload OC trên EDI Buyer PO",
+            "Mở Log kỹ thuật, kiểm tra màn EDI Buyer PO và thử lại trước bước Create Transaction.",
+        ),
+        "OC_EDI_NOT_READY": (
+            "EDI Buyer PO chưa sẵn sàng",
+            "Chờ WFX tải xong, kiểm tra quyền EDI Buyer PO rồi thử upload lại.",
+        ),
+        "OC_REVISION_REPORT_FAILED": (
+            "Không thể mở report Revise OC",
+            "Mở Log kỹ thuật và kiểm tra quyền Reporting & Analytic của tài khoản.",
+        ),
+        "OC_REVISION_REPORT_NOT_READY": (
+            "Report Upload OC from OC_Sale chưa sẵn sàng",
+            "Chờ cây báo cáo tải xong rồi bấm Mở report lại.",
+        ),
+        "OC_UPLOAD_FILE_MISSING": (
+            "File Upload OC tạm không còn tồn tại",
+            "Chọn lại file OC trong app; nếu lỗi lặp lại, dùng Run ID để kiểm tra thư mục tạm.",
+        ),
         "LOGIN_TIMEOUT": (
             "WFX phản hồi quá chậm khi đăng nhập",
             "Kiểm tra mạng và thử đăng nhập lại.",
@@ -370,6 +395,11 @@ def redact_telemetry_text(value: object) -> str:
 
 _METHOD_MODULES = {
     "search_oc": "OC List",
+    "open_oc_revision_report": "OC List",
+    "upload_oc": "OC List",
+    "review_oc_upload": "OC List",
+    "confirm_oc_upload": "OC List",
+    "cancel_oc_upload_review": "OC List",
     "search_sample": "Sample List",
     "search_sale_asn": "Sale ASN",
     "search_rmpo": "RMPO List",

@@ -164,6 +164,34 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - OC No.
   - Style.
 - App chỉ áp dụng filter trên WFX, không sao chép danh sách kết quả về panel.
+- `Tải form mới`: tạo file `.xlsx` có một sheet nhập liệu tên `OC INPUT` và chỉ
+  một hàng header. Các cột bắt buộc được tô vàng, `Buyer Lot No.` là cột tuỳ
+  chọn; dropdown Buyer/Factory/Country/... nằm ngay trong form. Buyer/Factory
+  là danh sách gợi ý và vẫn cho nhập master data mới đang có trên WFX; Country
+  phải chọn giá trị đã có mapping Market. Sheet danh mục kỹ thuật được ẩn để
+  người dùng không phải sửa hoặc sao chép công thức.
+- `Upload OC New`: người dùng điền dữ liệu dưới header của `OC INPUT`, chọn lại
+  file trong app. App kiểm tra kiểu dữ liệu, trường bắt buộc, Buyer, ngày, số
+  lượng, giá, dòng trùng và tự tính `Total Qty`; sau đó hiện review gồm Buyer,
+  Season, số PO, số Style/Article, Sum of Units và số dòng. Chỉ khi người dùng
+  bấm `Xác nhận Upload`, app mới đưa `Sheet1` 51 cột chỉ chứa giá trị vào
+  `EDI Buyer PO` với package `StandardSalesOrder`.
+- Trong workspace OC, `OC List` và Search nằm cùng một card. `Upload OC New` có
+  hai nút cạnh nhau: tải file mẫu và chọn file mới.
+- App chỉ bấm `Create Transaction` khi cả ba trạng thái `Data Imported`, `Data
+  Validated` và `Mapping Resolved` đều thành công. Nếu WFX báo fail, app giữ
+  thông tin dòng lỗi để người dùng sửa file. Nếu đã bấm Create Transaction
+  nhưng chưa đọc được xác nhận, app không tự retry để tránh tạo OC trùng.
+- File `UPLOAD FORM.xlsx` cũ vẫn được hỗ trợ để chuyển đổi trong giai đoạn thay
+  form; người dùng mới nên dùng form một-header tải trực tiếp từ app.
+- `Revise OC`:
+  1. `Mở report` đưa Chrome tới `Reporting & Analytic` và mở đúng
+     `Upload OC from OC_Sale`.
+  2. Người dùng chọn điều kiện và xuất Excel trên WFX, sửa các cột cho phép.
+  3. Chọn file đã sửa tại app; app kiểm tra schema 51 cột, dữ liệu OC gốc và
+     tính lại `Total Qty`, hiện review để xác nhận, rồi chạy cùng kiểm tra EDI
+     và tạo transaction vào tab `Revision`.
+- Mỗi file chỉ được chứa một Buyer để app chọn đúng Buyer tại EDI Buyer PO.
 
 ## 8. Sample List
 

@@ -1,8 +1,18 @@
 import json
 import threading
 import time
+from pathlib import Path
 
-from wfx_panel import article_library, constants, costing_workbook, prefs, telemetry
+from openpyxl import load_workbook
+
+from wfx_panel import (
+    article_library,
+    constants,
+    costing_workbook,
+    oc_workbook,
+    prefs,
+    telemetry,
+)
 from wfx_panel.atomic_io import write_json_atomic
 from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.panel_api import PanelAPI
@@ -51,6 +61,25 @@ class FakeLogin:
     def search_oc_list(self, xpath, filter_kind, query, log=print):
         self.calls.append(("search_oc", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def open_oc_revision_report(self, log=print):
+        self.calls.append(("open_oc_revision_report",))
+        return {
+            "ok": True,
+            "code": "OC_REVISION_REPORT_READY",
+            "message": "ready",
+        }
+
+    def upload_oc_edi(self, path, buyer, mode, log=print):
+        upload_path = Path(path)
+        self.calls.append(
+            ("upload_oc_edi", upload_path.is_file(), buyer, mode)
+        )
+        return {
+            "ok": True,
+            "code": "OC_TRANSACTION_CREATED",
+            "message": "created",
+        }
 
     def search_sample_list(self, xpath, filter_kind, query, log=print):
         self.calls.append(("search_sample", xpath, filter_kind, query))
@@ -1161,6 +1190,95 @@ def test_open_module_builds_xpath(tmp_path):
     api, fake = make_api(tmp_path)
     api.open_module("0004_0050_0020")
     assert ("open_module", "OC List", '//*[@id="0004_0050_0020"]/a') in fake.calls
+
+
+def test_oc_revision_report_delegates_to_automation(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.open_oc_revision_report()
+
+    assert result["code"] == "OC_REVISION_REPORT_READY"
+    assert ("open_oc_revision_report",) in fake.calls
+
+
+def test_upload_oc_requires_review_then_confirm_before_calling_edi(tmp_path):
+    source = oc_workbook.write_oc_input_template(tmp_path / "new-oc.xlsx")
+    workbook = load_workbook(source)
+    workbook["OC INPUT"].append(
+        [
+            "J.LINDEBERG",
+            "SS26",
+            "Confirmed",
+            "USD",
+            "888 COMPANY LTD",
+            "PO-1",
+            "SWV0004581",
+            "GMPA17697",
+            "PO-1",
+            "PO-1",
+            "08-10-2025",
+            "31-12-2025",
+            "05-12-2025",
+            "TT After Shipment 60 Days",
+            "Sweden",
+            "O127",
+            "Forget-Me-Not",
+            "M",
+            23.65,
+            9,
+            "1",
+            "FOB",
+            0,
+            None,
+        ]
+    )
+    workbook.save(source)
+    workbook.close()
+    api, fake = make_api(tmp_path)
+
+    review = api.review_oc_upload("new", str(source))
+
+    assert review["code"] == "OC_UPLOAD_REVIEW_READY"
+    assert review["buyer"] == "J.LINDEBERG"
+    assert review["season"] == "SS26"
+    assert review["po_count"] == 1
+    assert review["style_count"] == 1
+    assert review["total_units"] == 9
+    assert review["row_count"] == 1
+    assert not any(call[0] == "upload_oc_edi" for call in fake.calls)
+
+    result = api.confirm_oc_upload(review["review_token"])
+
+    assert result["code"] == "OC_TRANSACTION_CREATED"
+    assert ("upload_oc_edi", True, "J.LINDEBERG", "new") in fake.calls
+    assert list((tmp_path / "oc-upload-cache").iterdir()) == []
+
+    repeated = api.confirm_oc_upload(review["review_token"])
+    assert repeated["code"] == "OC_UPLOAD_REVIEW_EXPIRED"
+    assert sum(call[0] == "upload_oc_edi" for call in fake.calls) == 1
+
+
+def test_cancel_oc_review_removes_temp_file_without_calling_edi(tmp_path):
+    source = oc_workbook.write_oc_input_template(tmp_path / "cancel-oc.xlsx")
+    workbook = load_workbook(source)
+    workbook["OC INPUT"].append(
+        [
+            "J.LINDEBERG", "SS26", "Confirmed", "USD", "888 COMPANY LTD",
+            "PO-1", "ARTICLE-1", "STYLE-1", "PO-1", "PO-1", "08-10-2025",
+            "31-12-2025", "05-12-2025", "TT 60 Days", "Sweden", "BLACK",
+            "Black", "M", 10, 5, "1", "FOB", 0, None,
+        ]
+    )
+    workbook.save(source)
+    workbook.close()
+    api, fake = make_api(tmp_path)
+
+    review = api.review_oc_upload("new", str(source))
+    result = api.cancel_oc_upload_review(review["review_token"])
+
+    assert result["code"] == "OC_UPLOAD_REVIEW_CANCELLED"
+    assert list((tmp_path / "oc-upload-cache").iterdir()) == []
+    assert not any(call[0] == "upload_oc_edi" for call in fake.calls)
 
 
 def test_parallel_automation_is_rejected_instead_of_queuing(tmp_path):

@@ -19,6 +19,10 @@ Bản đồ nhanh:
 - `wfx_panel/panel_api.py` — bridge `PanelAPI` giữa UI và automation.
 - `wfx_panel/catalog_controller.py` — toàn bộ luồng Catalog (browse/prepare/find/
   Costing/BOM + cây folder), tách khỏi `PanelAPI`.
+- `wfx_panel/oc_workbook.py` — tạo form OC một-header, validate workbook New/
+  Revise và sinh `Sheet1` EDI 51 cột chỉ chứa giá trị.
+- `wfx_panel/automation/oc.py` — mở report Revise OC và điều khiển EDI Buyer PO
+  tới bước Create Transaction.
 - `wfx_panel/panel_app.py` — pywebview + tray + hotkey toàn cục + lớp win32.
 - `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
 
@@ -243,7 +247,42 @@ Các workflow riêng hiện có:
   code duy nhất phải được mở trực tiếp.
 - Costing tuyệt đối không click `#colBodyType label span`, `#imgDeleteSection`,
   `#imgEditSection` hoặc `#imgCopySection`.
-- OC List: tìm theo OC No. hoặc Style.
+- OC List: tìm theo OC No. hoặc Style; tải form `OC INPUT` một hàng header;
+  Upload OC New và Revise OC qua EDI Buyer PO.
+- Workspace OC gom nút mở `OC List` và Search trong cùng card. Card `Upload OC
+  New` đặt `Tải file mẫu` và `Chọn file mới` cạnh nhau; Revise giữ cặp mở report
+  và chọn file đã sửa.
+- Form OC mới chỉ để user nhập trên sheet visible `OC INPUT`; sheet
+  `REFERENCES` phải `veryHidden`, chỉ chứa nguồn dropdown. App phải tự sinh
+  workbook tạm chỉ có `Sheet1` với đúng 51 header EDI, không công thức, không
+  macro và không phụ thuộc phiên bản Excel. Vẫn đọc được `UPLOAD FORM.xlsx` cũ
+  gồm `FORM`/`THONG TIN` để chuyển tiếp, nhưng không phát hành form cũ cho user.
+- Mỗi file OC New/Revise chỉ được chứa một Buyer. Trước khi mở WFX phải kiểm tra
+  extension/ZIP an toàn, schema/header, số dòng tối đa, ô lỗi công thức, trường
+  bắt buộc, ngày, Selling Price, Units, Extra Production, dòng trùng và tự tính
+  lại `Total Qty` theo PO/delivery/style. Buyer/Factory trong form là danh sách
+  gợi ý có thể nhập thêm để không chặn master data mới; Buyer vẫn phải khớp
+  exact trên WFX và Factory được WFX kiểm tra ở Process Package. Country phải
+  có mapping Market. Revise phải giữ đủ định danh OC gốc như `DeliveryOCID`.
+- Sau validate local phải hiện review và chưa được mở EDI: Buyer, Season, số PO
+  distinct theo `Summary Buyer Order Ref`, số Style distinct theo `Article`,
+  `Sum of Units` và số dòng. Workbook tạm dùng token một lần; chỉ nút `Xác nhận
+  Upload` mới chạy EDI, còn Huỷ phải xoá review và không chạm WFX.
+- EDI OC phải chọn exact Buyer từ file và package value `1`/
+  `StandardSalesOrder`, upload file chuẩn hoá, bấm `Process Package` rồi đọc
+  cả `Data Imported`, `Data Validated`, `Mapping Resolved`. Chỉ khi tất cả đều
+  Success mới chọn transaction đầu tiên và bấm `Create Transaction`; New đi
+  tab `New`, Revise đi tab `Revision`.
+- `ddlBuyer` và `ddlPackage` của WFX chỉ bind đủ option sau `mousedown`; automation
+  phải dispatch sự kiện này, tìm option theo label/title exact và xác nhận lại
+  control sau postback trước khi đi tiếp.
+- `Create Transaction` là ranh giới không idempotent. Nếu đã click nhưng không
+  đọc được xác nhận, trả `OC_TRANSACTION_UNCONFIRMED` và tuyệt đối không retry
+  tự động. Lỗi validate file là lỗi người dùng, không gửi telemetry hệ thống.
+- Nút mở Revise phải click Reporting & Analytic `0004_0110`, tìm đúng report
+  `Upload OC from OC_Sale` node `258`. User tự chọn tham số và Export Excel
+  trên report WFX; app không tự động hoá bước download này. App tiếp tục từ
+  file người dùng đã sửa và chọn lại ở card Revise OC.
 - Sample List: List + Floating Filter, tìm theo Sample Order No./Style/
   Created By, và New Sample Order.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC

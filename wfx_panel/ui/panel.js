@@ -3,7 +3,7 @@
   let MODULE_GROUPS = [
     { name: "Operation", accent: "cyan", modules: [
       { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Article · Season · Costing/BOM." },
-      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở OC List hoặc tìm theo OC No. và Style." },
+      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở/tìm OC List, tạo Upload OC New hoặc Revise OC." },
       { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
       { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn." },
       { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No." },
@@ -86,6 +86,7 @@
   let costingPlanToken = "";
   let costingPlanDeleteCount = 0;
   let costingArticleResolutions = {};
+  let pendingOcReview = null;
   let checkedCostingFile = null;
   let catalogThemeChoice = "light";
   let catalogDefaultFolder = null;
@@ -113,6 +114,7 @@
     "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
+    "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
   ]);
   const INTERACTIVE_RESULT_CODES = new Set([
     "MULTIPLE_RESULTS",
@@ -140,6 +142,11 @@
     open_sale_asn_new: "Đang mở Sale ASN mới…",
     open_sample_new: "Đang mở Sample Order mới…",
     search_oc: "Đang tìm OC…",
+    open_oc_revision_report: "Đang mở report Revise OC…",
+    upload_oc: "Đang kiểm tra file và upload OC qua EDI…",
+    review_oc_upload: "Đang kiểm tra file và tổng hợp review…",
+    confirm_oc_upload: "Đang upload OC đã xác nhận qua EDI…",
+    download_oc_template: "Đang tạo form Upload OC…",
     search_sample: "Đang tìm Sample…",
     search_sale_asn: "Đang tìm Sale ASN…",
     search_rmpo: "Đang lọc RMPO List…",
@@ -175,6 +182,11 @@
     open_sale_asn_new: "Sale ASN mới",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
+    open_oc_revision_report: "Mở report Revise OC",
+    upload_oc: "Upload OC",
+    review_oc_upload: "Review Upload OC",
+    confirm_oc_upload: "Xác nhận Upload OC",
+    cancel_oc_upload_review: "Huỷ Upload OC",
     search_sample: "Tìm Sample",
     search_sale_asn: "Tìm Sale ASN",
     search_rmpo: "Tìm RMPO",
@@ -1234,8 +1246,114 @@
     }
   }
 
+  function renderOcUploadResult(result, fileName = "") {
+    const panel = $(".oc-upload-result");
+    if (!panel || !result) return;
+    const errors = Array.isArray(result.errors) ? result.errors : [];
+    const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+    const details = [...warnings, ...errors].slice(0, 12);
+    panel.dataset.valid = String(Boolean(result.ok));
+    panel.innerHTML = `
+      <strong>${escapeHtml(result.ok ? "Hoàn tất" : "Cần kiểm tra")}</strong>
+      <span>${escapeHtml(result.message || "")}</span>
+      ${fileName ? `<small>${escapeHtml(fileName)}</small>` : ""}
+      ${result.buyer ? `<small>Buyer: ${escapeHtml(result.buyer)} · ${escapeHtml(result.row_count || 0)} dòng</small>` : ""}
+      ${details.length ? `<ul>${details.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+    `;
+    panel.hidden = false;
+  }
+
+  function hideOcUploadReview() {
+    const review = $(".oc-upload-review");
+    if (review) review.hidden = true;
+  }
+
+  function renderOcUploadReview(result, fileName = "") {
+    const review = $(".oc-upload-review");
+    if (!review || !result?.ok || !result.review_token) return;
+    pendingOcReview = {
+      token: result.review_token,
+      fileName: fileName || result.source_file || "",
+    };
+    $(".oc-review-file").textContent = pendingOcReview.fileName;
+    $(".oc-review-mode").textContent = result.mode === "revise" ? "REVISE" : "NEW";
+    $(".oc-review-buyer").textContent = result.buyer || "—";
+    $(".oc-review-season").textContent = result.season || "—";
+    $(".oc-review-po").textContent = Number(result.po_count || 0).toLocaleString("en-US");
+    $(".oc-review-style").textContent = Number(result.style_count || 0).toLocaleString("en-US");
+    $(".oc-review-units").textContent = Number(result.total_units || 0).toLocaleString("en-US");
+    const warning = $(".oc-review-warning");
+    const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+    warning.textContent = warnings.join(" · ");
+    warning.hidden = warnings.length === 0;
+    review.hidden = false;
+    review.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function uploadOcFile(mode) {
+    const selected = await callQuiet("choose_oc_upload_file", mode);
+    if (!selected || !selected.ok) {
+      if (selected && selected.code !== "OC_FILE_DIALOG_CANCELLED") {
+        renderOcUploadResult(selected);
+        handleResult(selected);
+      }
+      return selected;
+    }
+    renderOcUploadResult({
+      ok: true,
+      message: "Đã chọn file; app đang kiểm tra và tổng hợp review…",
+    }, selected.file_name);
+    const result = await call("review_oc_upload", mode, selected.file_path);
+    if (result?.ok) {
+      renderOcUploadReview(result, selected.file_name);
+      renderOcUploadResult({
+        ...result,
+        message: "File hợp lệ. Kiểm tra review và bấm Xác nhận Upload.",
+      }, selected.file_name);
+    } else if (result) {
+      pendingOcReview = null;
+      hideOcUploadReview();
+      renderOcUploadResult(result, selected.file_name);
+    }
+    return result;
+  }
+
+  async function cancelOcUploadReview() {
+    const token = pendingOcReview?.token || "";
+    pendingOcReview = null;
+    hideOcUploadReview();
+    if (!token) return null;
+    const result = await callQuiet("cancel_oc_upload_review", token);
+    if (result) renderOcUploadResult(result);
+    return result;
+  }
+
+  async function confirmOcUploadReview() {
+    if (!pendingOcReview?.token) return null;
+    const { token, fileName } = pendingOcReview;
+    const result = await call("confirm_oc_upload", token);
+    pendingOcReview = null;
+    hideOcUploadReview();
+    if (result) renderOcUploadResult(result, fileName);
+    return result;
+  }
+
   const moduleActions = {
     "oc-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "oc-template": async () => {
+      const result = await call("download_oc_template");
+      if (result) renderOcUploadResult(result, result.file_name || "");
+      return result;
+    },
+    "oc-upload-new": () => uploadOcFile("new"),
+    "oc-review-cancel": cancelOcUploadReview,
+    "oc-review-confirm": confirmOcUploadReview,
+    "oc-revise-report": async () => {
+      const result = await call("open_oc_revision_report");
+      if (result) renderOcUploadResult(result);
+      return result;
+    },
+    "oc-upload-revise": () => uploadOcFile("revise"),
     "oc-search": () => runSelectedModuleAction(
       "search_oc",
       moduleFilterKinds.oc,
