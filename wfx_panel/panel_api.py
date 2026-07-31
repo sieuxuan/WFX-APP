@@ -399,6 +399,7 @@ class PanelAPI:
         return {
             "app_version": APP_VERSION,
             "app_version_label": DISPLAY_VERSION,
+            "version": DISPLAY_VERSION,
             "user_id": account["user_id"],
             "has_credentials": bool(
                 account["user_id"].strip() and account["password"].strip()

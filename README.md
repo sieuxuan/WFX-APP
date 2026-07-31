@@ -99,6 +99,16 @@ Benchmark RAM/tốc độ của bản này nằm tại
 - Tự kiểm tra và cài GitHub Release có xác minh checksum/chữ ký, rollback và
   cơ chế đóng đúng PID/path khi WebView2 giữ process quá lâu.
 
+## Hướng dẫn sử dụng trong ứng dụng
+
+Bấm biểu tượng quyển sách ở thanh trên để mở WFX Manual trong một cửa sổ riêng.
+Manual chứa đủ hướng dẫn theo module, tìm kiếm và bảng tra mã lỗi; toàn bộ nội
+dung được đóng gói cùng ứng dụng nên dùng được khi không có mạng, không cần mở
+Chrome hoặc đăng nhập WFX. Nút dấu hỏi trong từng module mở thẳng mục liên quan.
+
+Cách bổ sung nội dung khi có tính năng mới nằm tại
+[`docs/MANUAL_AUTHORING.md`](./docs/MANUAL_AUTHORING.md).
+
 ## Cách sử dụng nhanh
 
 1. Mở WFX Smart và lưu User ID/password trong Settings. Khi đã kết nối, tab Tài

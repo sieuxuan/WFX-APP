@@ -533,7 +533,7 @@ def test_update_is_only_exposed_as_automatic_outside_banner():
     assert 'class="update-channel-input"' not in html
     assert "Có bản cập nhật mới" in html
     assert "Cập nhật phần mềm mới" in html
-    assert "Phiên bản 1.0" in html
+    assert 'class="app-version"' in html
 
 
 def test_workspace_status_and_last_login_are_removed():
@@ -704,3 +704,9 @@ def test_module_page_co_nut_tro_giup():
 def test_footer_co_nut_xem_huong_dan():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert 'class="footer-help-button"' in html
+
+
+def test_badge_phien_ban_khong_hardcode():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert '<span class="app-version"></span>' in html
+    assert "Phiên bản 1.0<" not in html
