@@ -288,6 +288,114 @@
           "covers": { "settings": ["catalog-special-rescan-input"] }
         }
       ]
+    },
+    {
+      "id": "don-hang",
+      "title": "Đơn hàng và chứng từ",
+      "summary": "Làm việc với OC, Sample List và Sale ASN.",
+      "entries": [
+        {
+          "id": "don-hang-oc-tim",
+          "title": "Tìm OC",
+          "summary": "Mở OC List và tìm theo số OC hoặc Style.",
+          "file": "05-don-hang/oc-tim.md",
+          "keywords": ["oc list", "oc no", "style"],
+          "covers": {
+            "modules": ["0004_0050_0020"],
+            "actions": ["oc-list", "oc-search"]
+          }
+        },
+        {
+          "id": "don-hang-oc-new",
+          "title": "Upload OC New",
+          "summary": "Kiểm tra file và tạo OC mới sau khi bạn xác nhận.",
+          "file": "05-don-hang/oc-upload-new.md",
+          "keywords": ["upload oc", "oc input", "buyer", "review"],
+          "covers": {
+            "actions": [
+              "oc-template",
+              "oc-upload-new",
+              "oc-review-confirm",
+              "oc-review-cancel"
+            ],
+            "errors": [
+              "OC_EDI_FAILED",
+              "OC_EDI_NOT_READY",
+              "OC_UPLOAD_FILE_MISSING"
+            ]
+          }
+        },
+        {
+          "id": "don-hang-oc-revise",
+          "title": "Revise OC",
+          "summary": "Xuất báo cáo WFX, sửa file và cập nhật OC cũ.",
+          "file": "05-don-hang/oc-revise.md",
+          "keywords": ["revise oc", "revision", "report"],
+          "covers": {
+            "actions": ["oc-revise-report", "oc-upload-revise"],
+            "errors": [
+              "OC_REVISION_REPORT_FAILED",
+              "OC_REVISION_REPORT_NOT_READY"
+            ]
+          }
+        },
+        {
+          "id": "don-hang-sample-list",
+          "title": "Sample List",
+          "summary": "Mở, tìm và tạo Sample Order.",
+          "file": "05-don-hang/sample-list.md",
+          "keywords": ["sample order", "created by", "new"],
+          "covers": {
+            "modules": ["0004_0056_4070"],
+            "actions": ["sample-list", "sample-search", "sample-new"],
+            "errors": ["SAMPLE_NEW_FAILED", "SAMPLE_NEW_NOT_READY"]
+          }
+        },
+        {
+          "id": "don-hang-sample-file",
+          "title": "Kiểm tra file Sample",
+          "summary": "Tìm Sample rồi xem các file có thể tải.",
+          "file": "05-don-hang/sample-check-file.md",
+          "keywords": ["check file", "sample", "tải file"],
+          "covers": {
+            "actions": ["sample-check-file"],
+            "errors": [
+              "SAMPLE_FILES_UNSUPPORTED",
+              "SAMPLE_FILE_OPEN_FAILED",
+              "SAMPLE_FILE_SEARCH_FAILED"
+            ]
+          }
+        },
+        {
+          "id": "don-hang-sale-asn",
+          "title": "Sale ASN",
+          "summary": "Mở, tìm và tạo Sale ASN.",
+          "file": "05-don-hang/sale-asn.md",
+          "keywords": ["sale asn", "invoice", "buyer order ref"],
+          "covers": {
+            "modules": ["0004_0070_0020"],
+            "actions": ["sale-asn-list", "sale-asn-search", "sale-asn-new"],
+            "errors": ["SALE_ASN_NEW_FAILED", "SALE_ASN_NEW_NOT_READY"]
+          }
+        },
+        {
+          "id": "don-hang-sale-asn-documents",
+          "title": "Tải Documents Sale ASN",
+          "summary": "Ghép Packing List và Buyer Invoice thành một file Excel.",
+          "file": "05-don-hang/sale-asn-documents.md",
+          "keywords": ["documents", "packing list", "buyer invoice", "excel"],
+          "covers": {
+            "actions": ["sale-asn-documents"],
+            "errors": [
+              "SALE_ASN_DOCUMENTS_SAVE_FAILED",
+              "SALE_ASN_DOCUMENTS_UNSUPPORTED",
+              "SALE_ASN_REPORT_DOWNLOAD_FAILED",
+              "SALE_ASN_REPORT_MERGE_FAILED",
+              "SALE_ASN_REPORT_NOT_READY"
+            ]
+          }
+        }
+      ]
     }
   ]
 }
