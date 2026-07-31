@@ -245,3 +245,8 @@ def test_chuong_bat_dau_phu_cai_dat_khoi_dong():
         "always-on-top-input",
     ):
         assert control in covered, control
+
+
+def test_moi_cong_tac_cai_dat_deu_co_huong_dan():
+    missing = surface.settings_controls() - surface.covered("settings")
+    assert not missing, f"Chưa có hướng dẫn cho: {sorted(missing)}"

@@ -62,6 +62,62 @@
           "covers": {}
         }
       ]
+    },
+    {
+      "id": "hang-ngay",
+      "title": "Dùng hằng ngày",
+      "summary": "Những thao tác bạn lặp lại mỗi ngày trên bảng điều khiển.",
+      "entries": [
+        {
+          "id": "hang-ngay-tim-module",
+          "title": "Tìm và mở module",
+          "summary": "Gõ vài chữ là ra đúng màn hình cần dùng.",
+          "file": "02-hang-ngay/tim-module.md",
+          "keywords": ["tìm", "module", "danh sách"],
+          "covers": {}
+        },
+        {
+          "id": "hang-ngay-yeu-thich",
+          "title": "Ghim module hay dùng",
+          "summary": "Đưa module quen thuộc lên đầu.",
+          "file": "02-hang-ngay/ghim-yeu-thich.md",
+          "keywords": ["yêu thích", "ghim", "ngôi sao"],
+          "covers": {}
+        },
+        {
+          "id": "hang-ngay-dung-tac-vu",
+          "title": "Dừng một tác vụ đang chạy",
+          "summary": "Dừng an toàn mà không làm hỏng dữ liệu đang ghi.",
+          "file": "02-hang-ngay/dung-tac-vu.md",
+          "keywords": ["stop", "dừng", "huỷ"],
+          "covers": {}
+        },
+        {
+          "id": "hang-ngay-trang-thai",
+          "title": "Đọc thanh trạng thái",
+          "summary": "Biết ứng dụng đang làm gì và đã kết nối chưa.",
+          "file": "02-hang-ngay/thanh-trang-thai.md",
+          "keywords": ["trạng thái", "kết nối", "đèn"],
+          "covers": {
+            "settings": ["return-list-input", "focus-chrome-input"]
+          }
+        },
+        {
+          "id": "hang-ngay-giao-dien",
+          "title": "Giao diện và thông báo",
+          "summary": "Chọn nền sáng tối và bật tắt thông báo.",
+          "file": "02-hang-ngay/giao-dien-thong-bao.md",
+          "keywords": ["giao diện", "tối", "thông báo", "quản trị"],
+          "covers": {
+            "settings": [
+              "theme",
+              "toast-input",
+              "admin-mode-input",
+              "open-costing-file-input"
+            ]
+          }
+        }
+      ]
     }
   ]
 }
