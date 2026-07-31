@@ -33,11 +33,21 @@
       + `<strong>${escapeHtml(chapter.title)}</strong>`
       + `<span>${escapeHtml(chapter.summary)}</span></button>`
     ).join("");
+    const shortcuts =
+      `<div class="manual-shortcuts">`
+      + `<button class="manual-card" data-entry="su-co-tra-ma-loi">`
+      + `<strong>Tra nhanh mã lỗi</strong>`
+      + `<span>Xem ý nghĩa và cách xử lý các mã đang gặp.</span></button>`
+      + `<button class="manual-card" data-entry="su-co-gioi-han">`
+      + `<strong>Câu hỏi thường gặp</strong>`
+      + `<span>Xem các giới hạn và tình huống dễ gặp khi sử dụng.</span></button>`
+      + `</div>`;
     $(".manual-home").innerHTML =
       `<h1>Hướng dẫn sử dụng WFX Smart</h1>`
       + `<p class="manual-crumb">Chọn một phần bên dưới, hoặc gõ vào ô tìm kiếm.</p>`
       + newsHtml
-      + `<div class="manual-cards">${cards}</div>`;
+      + `<div class="manual-cards">${cards}</div>`
+      + shortcuts;
   }
 
   function showEntry(entryId) {
@@ -51,7 +61,8 @@
       + `<h1>${escapeHtml(entry.title)}</h1>${entry.html}`;
     if (entryId === "su-co-tra-ma-loi") {
       const rows = book.error_table.map((row) =>
-        `<tr><td><b class="ui-label">${escapeHtml(row.code)}</b></td>`
+        `<tr data-error-code="${escapeHtml(row.code)}"><td>`
+        + `<b class="ui-label">${escapeHtml(row.code)}</b></td>`
         + `<td>${escapeHtml(row.title)}</td>`
         + `<td>${escapeHtml(row.suggestion)}`
         + (row.entry
@@ -69,6 +80,18 @@
       link.setAttribute("aria-current", String(link.dataset.entry === entryId));
     });
     syncNav();
+  }
+
+  function showErrorTable(code = "") {
+    showEntry("su-co-tra-ma-loi");
+    if (!code) return;
+    window.requestAnimationFrame(() => {
+      const row = [...document.querySelectorAll("[data-error-code]")]
+        .find((item) => item.dataset.errorCode === code);
+      if (!row) return;
+      row.classList.add("manual-error-target");
+      row.scrollIntoView({ block: "center" });
+    });
   }
 
   function showHome() {
@@ -104,6 +127,20 @@
       $(".manual-toc").hidden = false;
       return;
     }
+    const exactError = book.error_table.find(
+      (row) => row.code.toLowerCase() === needle
+    );
+    if (exactError) {
+      showErrorTable(exactError.code);
+      results.innerHTML =
+        `<button class="manual-link manual-hit" data-error-target="${
+          escapeHtml(exactError.code)}"><b>${escapeHtml(exactError.code)}</b>`
+        + `<small>${escapeHtml(exactError.title)} — ${
+          escapeHtml(exactError.suggestion)}</small></button>`;
+      results.hidden = false;
+      $(".manual-toc").hidden = true;
+      return;
+    }
     const hits = book.search_index
       .filter((row) => row.haystack.includes(needle))
       .slice(0, 40);
@@ -125,6 +162,7 @@
     if (book.entries[target]) { showEntry(target); return; }
     const row = book.error_table.find((item) => item.code === target);
     if (row && row.entry) { showEntry(row.entry); return; }
+    if (row) { showErrorTable(row.code); return; }
     showHome();
   };
 
@@ -140,6 +178,8 @@
   }
 
   document.addEventListener("click", (event) => {
+    const errorTarget = event.target.closest("[data-error-target]");
+    if (errorTarget) { showErrorTable(errorTarget.dataset.errorTarget); return; }
     const link = event.target.closest("[data-entry]");
     if (link) showEntry(link.dataset.entry);
   });
@@ -154,12 +194,18 @@
     if (event.ctrlKey && event.key.toLowerCase() === "f") {
       event.preventDefault(); input.focus(); input.select(); return;
     }
+    if (event.ctrlKey && event.key.toLowerCase() === "p") {
+      event.preventDefault(); window.print(); return;
+    }
     if (event.key === "Escape") {
       if (input.value) { input.value = ""; search(""); }
       else api()?.close_manual?.();
       return;
     }
-    if (document.activeElement === input) return;
+    if (document.activeElement === input) {
+      if (event.key === "Enter") $(".manual-results .manual-hit")?.click();
+      return;
+    }
     if (event.key === "ArrowLeft" && !$(".manual-prev").disabled) $(".manual-prev").click();
     if (event.key === "ArrowRight" && !$(".manual-next").disabled) $(".manual-next").click();
   });
