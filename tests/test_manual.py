@@ -268,3 +268,15 @@ def test_moi_nut_costing_deu_co_huong_dan():
 
 def test_cong_tac_quet_lai_chi_phi_co_huong_dan():
     assert "catalog-special-rescan-input" in surface.covered("settings")
+
+
+def test_nhom_don_hang_co_du_huong_dan():
+    covered = surface.covered("actions")
+    missing = {
+        action
+        for action in surface.module_actions()
+        if action.startswith(("oc-", "sample-", "sale-asn-"))
+    } - covered
+    assert not missing, f"Chưa có hướng dẫn cho: {sorted(missing)}"
+    for module_id in ("0004_0050_0020", "0004_0056_4070", "0004_0070_0020"):
+        assert module_id in surface.covered("modules"), module_id
