@@ -118,6 +118,85 @@
           }
         }
       ]
+    },
+    {
+      "id": "catalog",
+      "title": "Catalog",
+      "summary": "Tìm Style và mở các phần dữ liệu liên quan trong WFX.",
+      "entries": [
+        {
+          "id": "catalog-tim-style",
+          "title": "Tìm Style",
+          "summary": "Tìm theo mã Article, Buyer Reference hoặc tên Article.",
+          "file": "03-catalog/tim-style.md",
+          "keywords": ["article", "buyer reference", "style", "mã hàng"],
+          "covers": {
+            "modules": ["0003_6200"],
+            "actions": ["find", "browse"],
+            "errors": ["CATALOG_NOT_OPEN", "CATALOG_SEARCH_FAILED"]
+          }
+        },
+        {
+          "id": "catalog-mo-costing",
+          "title": "Mở Costing",
+          "summary": "Đi thẳng từ Style đã tìm tới khu Costing.",
+          "file": "03-catalog/mo-costing.md",
+          "keywords": ["costing", "cost sheet", "giá"],
+          "covers": {
+            "actions": ["costsheet"],
+            "errors": ["CATALOG_DESTINATION_FAILED"]
+          }
+        },
+        {
+          "id": "catalog-mo-bom",
+          "title": "Mở BOM",
+          "summary": "Mở danh sách nguyên phụ liệu của Style.",
+          "file": "03-catalog/mo-bom.md",
+          "keywords": ["bom", "nguyên phụ liệu"],
+          "covers": { "actions": ["bom"] }
+        },
+        {
+          "id": "catalog-tai-file",
+          "title": "Tải file đính kèm",
+          "summary": "Xem và tải các file đang gắn với Style.",
+          "file": "03-catalog/tai-file-dinh-kem.md",
+          "keywords": ["file", "đính kèm", "tải"],
+          "covers": {
+            "actions": ["files"],
+            "errors": [
+              "CATALOG_FILES_SCAN_FAILED",
+              "CATALOG_FILE_DOWNLOAD_FAILED",
+              "CATALOG_FILE_SAVE_FAILED",
+              "CATALOG_FILE_TABS_NOT_FOUND",
+              "CATALOG_FILE_URL_INVALID"
+            ]
+          }
+        },
+        {
+          "id": "catalog-thu-vien-article",
+          "title": "Thư viện Article",
+          "summary": "Dùng danh sách Article tự cập nhật để nhận gợi ý nhanh.",
+          "file": "03-catalog/thu-vien-article.md",
+          "keywords": ["thư viện", "article", "gợi ý"],
+          "covers": {}
+        },
+        {
+          "id": "catalog-cay-thu-muc",
+          "title": "Cây thư mục Catalog",
+          "summary": "Chọn vị trí Apparel mặc định và làm mới thư mục.",
+          "file": "03-catalog/cay-thu-muc.md",
+          "keywords": ["thư mục", "apparel", "làm mới"],
+          "covers": {
+            "actions": ["refresh-folders"],
+            "errors": [
+              "CATALOG_FOLDER_OPEN_FAILED",
+              "CATALOG_FOLDER_OPEN_TIMEOUT",
+              "CATALOG_FOLDER_SCAN_FAILED",
+              "CATALOG_FOLDER_SCAN_TIMEOUT"
+            ]
+          }
+        }
+      ]
     }
   ]
 }

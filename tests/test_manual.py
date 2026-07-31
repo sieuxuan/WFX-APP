@@ -250,3 +250,12 @@ def test_chuong_bat_dau_phu_cai_dat_khoi_dong():
 def test_moi_cong_tac_cai_dat_deu_co_huong_dan():
     missing = surface.settings_controls() - surface.covered("settings")
     assert not missing, f"Chưa có hướng dẫn cho: {sorted(missing)}"
+
+
+def test_moi_nut_catalog_deu_co_huong_dan():
+    missing = surface.catalog_actions() - surface.covered("actions")
+    assert not missing, f"Chưa có hướng dẫn cho nút Catalog: {sorted(missing)}"
+
+
+def test_module_catalog_co_huong_dan():
+    assert "0003_6200" in surface.covered("modules")
