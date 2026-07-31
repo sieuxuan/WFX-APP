@@ -511,6 +511,61 @@
           }
         }
       ]
+    },
+    {
+      "id": "su-co",
+      "title": "Cài đặt, cập nhật và xử lý sự cố",
+      "summary": "Xem lịch sử, gửi góp ý, cập nhật và tra mã lỗi.",
+      "entries": [
+        {
+          "id": "su-co-lich-su",
+          "title": "Lịch sử hoạt động và log",
+          "summary": "Xem lại tác vụ gần đây và sao chép log kỹ thuật.",
+          "file": "07-su-co/lich-su-va-log.md",
+          "keywords": ["lịch sử", "tác vụ", "log kỹ thuật", "sao chép"],
+          "covers": {}
+        },
+        {
+          "id": "su-co-gop-y",
+          "title": "Góp ý và báo lỗi",
+          "summary": "Gửi mô tả cùng chẩn đoán an toàn cho nhóm phát triển.",
+          "file": "07-su-co/gop-y-bao-loi.md",
+          "keywords": ["góp ý", "báo lỗi", "chẩn đoán"],
+          "covers": { "settings": ["feedback-diagnostics-input"] }
+        },
+        {
+          "id": "su-co-cap-nhat",
+          "title": "Cập nhật WFX Smart",
+          "summary": "Tải và cài bản mới mà không mất cài đặt cá nhân.",
+          "file": "07-su-co/cap-nhat.md",
+          "keywords": ["cập nhật", "phiên bản mới", "nâng cấp"],
+          "covers": {}
+        },
+        {
+          "id": "su-co-tra-ma-loi",
+          "title": "Tra mã lỗi",
+          "summary": "Tìm ý nghĩa và cách xử lý cho mã kỹ thuật.",
+          "file": "07-su-co/tra-ma-loi.md",
+          "keywords": ["mã lỗi", "xử lý lỗi", "error code"],
+          "covers": { "errors": [] }
+        },
+        {
+          "id": "su-co-quyen-rieng-tu",
+          "title": "Quyền riêng tư",
+          "summary": "Biết thông tin nào được gửi khi ứng dụng báo lỗi.",
+          "file": "07-su-co/quyen-rieng-tu.md",
+          "keywords": ["riêng tư", "mật khẩu", "dữ liệu"],
+          "covers": {}
+        },
+        {
+          "id": "su-co-gioi-han",
+          "title": "Giới hạn cần biết",
+          "summary": "Những trường hợp phụ thuộc Windows, quyền và tốc độ WFX.",
+          "file": "07-su-co/gioi-han.md",
+          "keywords": ["giới hạn", "quyền quản trị", "chậm"],
+          "covers": {}
+        }
+      ]
     }
   ]
 }

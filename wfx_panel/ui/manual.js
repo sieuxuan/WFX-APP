@@ -49,6 +49,21 @@
     $(".manual-content").innerHTML =
       `<p class="manual-crumb">${escapeHtml(entry.chapter_title)}</p>`
       + `<h1>${escapeHtml(entry.title)}</h1>${entry.html}`;
+    if (entryId === "su-co-tra-ma-loi") {
+      const rows = book.error_table.map((row) =>
+        `<tr><td><b class="ui-label">${escapeHtml(row.code)}</b></td>`
+        + `<td>${escapeHtml(row.title)}</td>`
+        + `<td>${escapeHtml(row.suggestion)}`
+        + (row.entry
+            ? ` <button class="manual-link" data-entry="${escapeHtml(row.entry)}">`
+              + `Xem hướng dẫn</button>`
+            : "")
+        + `</td></tr>`
+      ).join("");
+      $(".manual-content").insertAdjacentHTML("beforeend",
+        `<table id="bang-ma-loi"><thead><tr><th>Mã</th><th>Nghĩa là gì</th>`
+        + `<th>Cách xử lý</th></tr></thead><tbody>${rows}</tbody></table>`);
+    }
     $(".manual-content").scrollTop = 0;
     document.querySelectorAll(".manual-link").forEach((link) => {
       link.setAttribute("aria-current", String(link.dataset.entry === entryId));

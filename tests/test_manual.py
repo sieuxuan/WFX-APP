@@ -290,3 +290,19 @@ def test_moi_module_deu_co_huong_dan():
 def test_moi_nut_thao_tac_module_deu_co_huong_dan():
     missing = surface.module_actions() - surface.covered("actions")
     assert not missing, f"Nút chưa có hướng dẫn: {sorted(missing)}"
+
+
+def test_muc_tra_ma_loi_ton_tai():
+    book = manual_book.load_book()
+    assert "su-co-tra-ma-loi" in book["entries"]
+
+
+def test_covers_khong_khai_bao_ma_loi_khong_ton_tai():
+    unknown = surface.covered("errors") - set(telemetry.ERROR_CODE_INFO)
+    assert not unknown, f"Mã lỗi không có thật: {sorted(unknown)}"
+
+
+def test_moi_ma_loi_deu_nam_trong_bang_tra():
+    book = manual_book.load_book()
+    codes = {row["code"] for row in book["error_table"]}
+    assert set(telemetry.ERROR_CODE_INFO) <= codes
