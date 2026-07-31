@@ -628,3 +628,8 @@ def test_nut_tro_giup_module_goi_manual():
     assert '".module-help-button"' in JS
     assert '"get_manual_entry_for_module"' in JS
     assert '"open_wfx_manual"' in JS
+
+
+def test_the_loi_moi_duoc_link_toi_huong_dan():
+    assert '".footer-help-button"' in JS
+    assert "lastErrorCode" in JS

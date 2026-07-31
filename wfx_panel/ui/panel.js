@@ -72,6 +72,8 @@
   let adminModuleIds = new Set();
   let sessionActive = null;
   let currentDivision = null;
+  let manualErrorCodes = new Set();
+  let lastErrorCode = "";
   let hasCredentials = false;
   let accountEditing = false;
   let accountUserId = "";
@@ -984,6 +986,8 @@
       cancelled ? "warning" : (result.ok ? "success" : "error"),
       result.message || "",
     );
+    lastErrorCode = (!result.ok && result.code) ? result.code : "";
+    $(".footer-help-button").hidden = !manualErrorCodes.has(lastErrorCode);
     if (result.user_id !== undefined) setAccount(result.user_id);
     if (result.chrome_alive !== undefined) {
       setBrowserStatus(Boolean(result.chrome_alive), result.browser_available, result.browser_name);
@@ -2743,6 +2747,9 @@
       const result = await callQuiet("open_wfx_manual");
       if (result) handleResult(result);
     });
+    $(".footer-help-button").addEventListener("click", () => {
+      callQuiet("open_wfx_manual", lastErrorCode);
+    });
     $(".module-help-button").addEventListener("click", async () => {
       const moduleId = selectedModule?.id || "";
       const found = await callQuiet("get_manual_entry_for_module", moduleId);
@@ -3049,6 +3056,9 @@
     }
     if (Array.isArray(state.module_groups) && state.module_groups.length) {
       MODULE_GROUPS = state.module_groups;
+    }
+    if (Array.isArray(state.manual_error_codes)) {
+      manualErrorCodes = new Set(state.manual_error_codes);
     }
     setAccount(state.user_id);
     hasCredentials = state.has_credentials === true;

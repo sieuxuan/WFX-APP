@@ -1770,6 +1770,14 @@ def test_manual_entry_cho_module_catalog():
     assert app.manual_entry_for_module("khong-co-that") == ""
 
 
+def test_danh_sach_ma_loi_co_huong_dan():
+    import wfx_panel.panel_app as module
+
+    codes = module.PanelApp().manual_error_codes()
+
+    assert "LOGIN_FAILED" in codes
+
+
 def test_runtime_on_top_setting_updates_pywebview_window():
     from wfx_panel.panel_app import PanelApp
 
