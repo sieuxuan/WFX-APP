@@ -28,6 +28,10 @@ Hai cách gọi khác:
 > Bật Mở ẩn trong tray nếu bạn muốn ứng dụng khởi động yên lặng cùng Windows và
 > chỉ hiện khi được gọi.
 
+> [!meo]
+> Bật `Luôn trên cùng` trong Cài đặt, thẻ Giao diện, nếu bạn muốn bảng điều
+> khiển không bị cửa sổ khác che mất.
+
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |
