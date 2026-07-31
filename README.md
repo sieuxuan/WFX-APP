@@ -1,4 +1,4 @@
-# WFX Smart 1.0.15
+# WFX Smart 1.0.16
 
 WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
 dùng của WorldFashionExchange (WFX). App chạy bằng pywebview, điều khiển một
@@ -38,6 +38,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
   điền Article Name trong Excel; user không phải scan hay chọn file. Khi Apply,
   Material Color/Size
   còn thiếu được bổ sung vào đúng Article card rồi Save trước khi điền Costing.
+  Chọn một gợi ý Buyer Reference/Article Name sẽ chuyển sang exact Article Code,
+  nên không phải chọn lại trong danh sách kết quả gần giống.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup.
@@ -45,8 +47,10 @@ Benchmark RAM/tốc độ của bản này nằm tại
   cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm. Panel
   không tự thu sau flow khi chuột vẫn nằm trên UI.
 - Phiên WFX được duy trì nền mỗi 4 phút sau lần login đầu tiên; nếu timeout,
-  app tự đăng nhập lại và retry thao tác đúng một lần. Popup Article được
-  đồng bộ CDP sớm để mở Costing mà không quay lại tìm Style lần hai.
+  app tự đăng nhập lại và retry thao tác đúng một lần. Keepalive chỉ đọc nền,
+  không kéo Chrome khỏi tab Costing. Popup Article được xác nhận bằng exact
+  Article Code và đồng bộ CDP sớm để mở Costing mà không chờ cứng hoặc quay
+  lại tìm Article lần hai.
 - Mọi flow `List` xác nhận WFX đã đổi màn hình trước khi báo thành công; `Đổi
   FOC` tự mở lại đúng Company Setup khi context hiện tại đã cũ.
 - Search ưu tiên đúng List đã mở; nếu chưa mở, app tự vào đúng List, chờ
@@ -140,7 +144,7 @@ Test không được in credential hoặc nội dung tìm kiếm ra output.
 
 ## Release và cập nhật
 
-Gói phát hành có dạng `WFX-Smart-v1.0.15-win64.zip`, kèm checksum `.sha256` và
+Gói phát hành có dạng `WFX-Smart-v1.0.16-win64.zip`, kèm checksum `.sha256` và
 chữ ký detached `.sha256.p7s`.
 
 GitHub Actions cần hai secrets:

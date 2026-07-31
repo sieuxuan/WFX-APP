@@ -1718,7 +1718,8 @@
     }
     host.innerHTML = suggestions.map((item) => `
       <button type="button" class="catalog-article-suggestion" role="option"
-        data-suggestion-value="${escapeHtml(item.value || "")}">
+        data-suggestion-value="${escapeHtml(item.value || "")}"
+        data-article-code="${escapeHtml(item.article_code || "")}">
         <strong>${escapeHtml(item.article_code || "—")}</strong>
         <small>${escapeHtml([
           item.article_name,
@@ -2230,7 +2231,16 @@
     $(".catalog-article-suggestions").addEventListener("click", (event) => {
       const row = event.target.closest("[data-suggestion-value]");
       if (!row) return;
-      $(".catalog-query").value = row.dataset.suggestionValue || "";
+      const exactArticleCode = String(row.dataset.articleCode || "").trim();
+      $(".catalog-query").value =
+        exactArticleCode || row.dataset.suggestionValue || "";
+      if (exactArticleCode) {
+        // Buyer Reference/Article Name chỉ là cách tìm gợi ý. Khi user đã
+        // chọn một dòng cụ thể, dùng exact Article Code để WFX không trả lại
+        // danh sách gần giống và bắt chọn lần hai.
+        catalogKind = "code";
+        syncCatalogKind();
+      }
       hideArticleSuggestions();
       clearCatalogResult();
       $(".catalog-query").focus();

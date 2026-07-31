@@ -723,7 +723,16 @@ def _catalog_result_from_rows(
             codes=[],
             styles=[],
         )
-    if len(styles) >= 2:
+    exact_style = next(
+        (
+            style
+            for style in styles
+            if spec.value_column == "lnkArticleCode"
+            and style["code"].casefold() == query.casefold()
+        ),
+        None,
+    )
+    if len(styles) >= 2 and exact_style is None:
         return _result(
             True,
             "MULTIPLE_RESULTS",
@@ -732,7 +741,7 @@ def _catalog_result_from_rows(
             matches=values,
             styles=styles,
         )
-    style_status = styles[0]
+    style_status = exact_style or styles[0]
     target_code = style_status["code"]
     if not _click_catalog_style(grid, target_code, spec.label, log):
         return _result(
@@ -893,12 +902,35 @@ def _filter_grid_and_maybe_open(
     return _catalog_result_from_rows(grid, query, rows, spec, log)
 
 
+def _article_page_has_code(candidate: Page, article_code: str) -> bool:
+    """Xác nhận popup Article đã tải đúng code trước khi click destination."""
+    expected = str(article_code or "").strip().upper()
+    if not expected:
+        return True
+    pattern = re.compile(
+        rf"(?<![A-Z0-9]){re.escape(expected)}(?![A-Z0-9])"
+    )
+    for frame in getattr(candidate, "frames", ()) or ():
+        try:
+            values = frame.locator("#lblArticleNameValue").evaluate_all(
+                """elements => elements.map(element => String(
+                    element.title || element.textContent || ''
+                ).trim()).filter(Boolean)"""
+            )
+        except (AttributeError, PlaywrightError):
+            continue
+        if any(pattern.search(str(value).upper()) for value in values):
+            return True
+    return False
+
+
 def _open_article_destination(
     context: Any,
     destination: str,
     previous_states: list[tuple[Page, str, str]],
     log: Callable[[str], None],
     timeout_seconds: float = 40,
+    expected_article_code: str = "",
 ) -> str:
     targets = {
         "costsheet": ("Costsheet", "#CostSheet"),
@@ -945,10 +977,23 @@ def _open_article_destination(
                 or candidate.url != old_state[1]
                 or article_top.url != old_state[2]
             )
+            code_confirmed = bool(expected_article_code) and (
+                _article_page_has_code(
+                    candidate,
+                    expected_article_code,
+                )
+            )
+            if expected_article_code and not code_confirmed:
+                continue
             # Nếu click lại đúng style đang mở thì URL có thể không đổi; chờ đủ
-            # thời gian để popup nhận focus/load rồi mới dùng lại.
-            same_style_grace_elapsed = time.monotonic() - started >= 4
-            if not navigation_changed and not same_style_grace_elapsed:
+            # thời gian tối thiểu khi caller cũ chưa truyền code. Luồng Costing
+            # mới xác nhận trực tiếp header Article nên không phải chờ cứng 4s.
+            same_style_grace_elapsed = time.monotonic() - started >= 1.5
+            if (
+                not navigation_changed
+                and not code_confirmed
+                and not same_style_grace_elapsed
+            ):
                 continue
             target = article_top.locator(selector)
             try:
@@ -1007,7 +1052,10 @@ def _refresh_article_context(
     )
     invalidate_browser(browser)
     playwright = recycle_playwright(playwright)
-    refreshed_browser, refreshed_page = _connect_to_chrome(playwright)
+    refreshed_browser, refreshed_page = _connect_to_chrome(
+        playwright,
+        bring_to_front=False,
+    )
     _attach_dialog_handler(refreshed_page, log)
     return playwright, refreshed_browser, refreshed_page
 
@@ -1041,7 +1089,10 @@ def open_catalog_destination(
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
-        browser, page = _connect_to_chrome(playwright)
+        browser, page = _connect_to_chrome(
+            playwright,
+            bring_to_front=False,
+        )
         _attach_dialog_handler(page, log)
         if not _session_is_active(page):
             return _result(
@@ -1060,7 +1111,8 @@ def open_catalog_destination(
                 destination,
                 [],
                 log,
-                timeout_seconds=12,
+                timeout_seconds=4,
+                expected_article_code=article_code,
             )
         except PlaywrightTimeoutError:
             playwright, browser, page = _refresh_article_context(
@@ -1074,11 +1126,11 @@ def open_catalog_destination(
                 destination,
                 [],
                 log,
-                # Popup Article có thể được WFX tái sử dụng rồi detach/attach lại
-                # ArticleTop sau khi search đã trả RESULT_OPENED. 8 giây không đủ
-                # trên phiên đang tải nhiều module; chờ đúng frame mới thay vì báo
-                # nhầm style hết hạn.
-                timeout_seconds=20,
+                # Popup Article có thể được WFX tái sử dụng rồi detach/attach
+                # lại ArticleTop. Sau probe nhanh, recovery chỉ chờ đúng frame
+                # và exact code thay vì giữ user ở vòng chờ cứng.
+                timeout_seconds=18,
+                expected_article_code=article_code,
             )
         return _result(
             True,
@@ -1841,7 +1893,10 @@ def _find_in_open_catalog(
                     destination,
                     previous_states,
                     log,
-                    timeout_seconds=8 if popup_already_open else 10,
+                    timeout_seconds=3 if popup_already_open else 4,
+                    expected_article_code=str(
+                        result.get("article_code") or ""
+                    ),
                 )
             except PlaywrightTimeoutError:
                 if not popup_already_open:
@@ -1877,7 +1932,10 @@ def _find_in_open_catalog(
                     destination,
                     [],
                     log,
-                    timeout_seconds=35,
+                    timeout_seconds=18,
+                    expected_article_code=str(
+                        result.get("article_code") or ""
+                    ),
                 )
             result["code"] = "CATALOG_DESTINATION_OPENED"
             result["destination"] = destination

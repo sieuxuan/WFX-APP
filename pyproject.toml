@@ -1,6 +1,6 @@
 [project]
 name = "wfx-smart-panel"
-version = "1.0.15"
+version = "1.0.16"
 description = "WFX Smart Panel — desktop tự động hoá WorldFashionExchange (Playwright + pywebview)."
 readme = "README.md"
 requires-python = ">=3.11"

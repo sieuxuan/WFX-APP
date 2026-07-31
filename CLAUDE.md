@@ -60,7 +60,9 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 - Sau khi đã có một phiên đăng nhập thành công, app kiểm tra/duy trì phiên nền
   mỗi 4 phút khi Chrome rảnh. Nếu một flow phát hiện `NOT_LOGGED_IN`, app dùng
   credential đã lưu để login lại và retry toàn bộ flow đúng một lần; không retry
-  từng bước ghi dữ liệu và không lặp vô hạn.
+  từng bước ghi dữ liệu và không lặp vô hạn. Các probe chỉ đọc session/Division/
+  quyền và ảnh chẩn đoán phải dùng `bring_to_front=False`, không được kéo user
+  khỏi tab Costing.
 - Form góp ý chỉ cho gửi từ 5 ký tự và hiển thị bộ đếm trên giới hạn 2.000 ký tự.
 - Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
@@ -73,6 +75,10 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
   Costing; không bắt người dùng cuộn xuống dưới form tìm kiếm. Hai workspace
   không có hero/block hướng dẫn lặp lại. Nút mở List luôn ghi `Mở Catalog`;
   vị trí Apparel mặc định được chỉnh bằng nút icon nhỏ nằm cạnh nút này.
+- Sau khi tìm Article để mở Costing/BOM, popup phải được xác nhận bằng exact
+  Article Code trong `#lblArticleNameValue`; không chờ cứng khi header đã đúng.
+  Probe popup hiện tại tối đa 3–4 giây, sau đó recycle CDP không activate tab
+  Catalog và recovery cuối tối đa 18 giây.
 - Khi automation đang chạy, footer hiện nút `Stop`. Nút chỉ đặt cờ hủy; flow
   dừng ở checkpoint kế tiếp và trả `ACTION_CANCELLED`. Không đóng browser hoặc
   Playwright để ép dừng. Đoạn click/chờ Save phải dùng `cancellation_deferred()`
@@ -228,6 +234,11 @@ Các workflow riêng hiện có:
   prefix T cho section Trim. Excel tạo dropdown theo cặp Code/Name và công thức
   lookup an toàn để Article Name đổi theo Article Code; khi chưa có cache vẫn
   cho nhập tay. Mọi gợi ý bắt đầu sau 2 ký tự, tối đa 20 kết quả.
+- Khi user chọn một gợi ý từ Buyer Reference hoặc Article Name, UI phải lấy
+  exact `Article Code` của chính dòng đó, chuyển filter sang Code và tìm bằng
+  code; không lọc lại Buyer Reference/Name khiến user phải chọn Article lần hai.
+  Nếu floating filter Code dạng contains vẫn render nhiều code gần giống, exact
+  code duy nhất phải được mở trực tiếp.
 - Costing tuyệt đối không click `#colBodyType label span`, `#imgDeleteSection`,
   `#imgEditSection` hoặc `#imgCopySection`.
 - OC List: tìm theo OC No. hoặc Style.

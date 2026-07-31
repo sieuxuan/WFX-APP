@@ -197,7 +197,10 @@ def get_division_state(
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
-        _browser, page = _connect_to_chrome(playwright)
+        _browser, page = _connect_to_chrome(
+            playwright,
+            bring_to_front=False,
+        )
         if not _session_is_active(page):
             return _result(
                 False,
@@ -370,7 +373,12 @@ def check_session(log: Callable[[str], None] = print) -> dict[str, Any]:
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
-        _browser, page = _connect_to_chrome(playwright)
+        # Keepalive gọi hàm này mỗi 4 phút. Không activate tab WFX chính vì
+        # user có thể đang xem popup/tab Costing.
+        _browser, page = _connect_to_chrome(
+            playwright,
+            bring_to_front=False,
+        )
         if _session_is_active(page):
             _write_log(log, "[SESSION] Đang sử dụng phiên WFX đã login.")
             return _result(
@@ -406,7 +414,10 @@ def check_module_access(
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
-        _browser, page = _connect_to_chrome(playwright)
+        _browser, page = _connect_to_chrome(
+            playwright,
+            bring_to_front=False,
+        )
         if not _session_is_active(page):
             return _result(
                 False,
@@ -459,7 +470,10 @@ def capture_failure_screenshot(
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         playwright = sync_playwright().start()
-        _browser, page = _connect_to_chrome(playwright)
+        _browser, page = _connect_to_chrome(
+            playwright,
+            bring_to_front=False,
+        )
         page.screenshot(path=str(destination), full_page=False)
         _write_log(log, "[DIAGNOSTIC] Đã lưu ảnh lỗi cục bộ.")
         return destination.is_file()
