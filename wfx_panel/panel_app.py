@@ -1277,6 +1277,11 @@ class PanelApp:
                 return entry_id
         return ""
 
+    def manual_error_codes(self) -> list[str]:
+        """Mã lỗi đã có mục hướng dẫn riêng, dùng cho nút trợ giúp ở footer."""
+        book = manual_book.load_book()
+        return [row["code"] for row in book["error_table"] if row["entry"]]
+
     def get_manual_entry_for_module(self, module_id: str) -> dict:
         return {
             "ok": True,
@@ -2004,6 +2009,14 @@ class PanelApp:
         self.api.get_manual_entry_for_module = (  # type: ignore[attr-defined]
             self.get_manual_entry_for_module
         )
+        original_get_initial_state = self.api.get_initial_state
+
+        def get_initial_state_with_manual() -> dict:
+            state = original_get_initial_state()
+            state["manual_error_codes"] = self.manual_error_codes()
+            return state
+
+        self.api.get_initial_state = get_initial_state_with_manual  # type: ignore[method-assign]
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.choose_costing_import_file = self.choose_costing_import_file  # type: ignore[attr-defined]
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]

@@ -699,3 +699,8 @@ def test_manual_js_dung_bang_ma_loi():
 def test_module_page_co_nut_tro_giup():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert 'class="icon-button module-help-button"' in html
+
+
+def test_footer_co_nut_xem_huong_dan():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'class="footer-help-button"' in html
