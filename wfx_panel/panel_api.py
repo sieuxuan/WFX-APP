@@ -61,6 +61,8 @@ SESSION_OK = frozenset(
         "MODULE_SEARCH_APPLIED",
         "MODULE_NEW_READY",
         "SAMPLE_NEW_READY",
+        "SAMPLE_STYLE_OPENED",
+        "SAMPLE_MULTIPLE_RESULTS",
         "SALE_ASN_NEW_READY",
         "COMPANY_FOC_CHANGED",
         "SUPPLIER_CATEGORY_READY",
@@ -133,6 +135,7 @@ NON_REPORTABLE_FAILURES = frozenset(
         "NOT_LOGGED_IN",
         "NO_RESULTS",
         "MULTIPLE_RESULTS",
+        "SAMPLE_MULTIPLE_RESULTS",
         "CATEGORY_UNKNOWN",
         "MODULE_UNKNOWN",
         "ADMIN_ACCESS_DENIED",
@@ -145,6 +148,8 @@ NON_REPORTABLE_FAILURES = frozenset(
         "CATALOG_RESULT_REQUIRED",
         "CATALOG_RESULT_CHANGED",
         "CATALOG_RESULT_EXPIRED",
+        "SAMPLE_RESULT_EXPIRED",
+        "SAMPLE_STYLE_NOT_FOUND",
         "CATALOG_FILES_CONTEXT_EXPIRED",
         "CATALOG_FILE_EXPIRED",
         "CATALOG_PREPARE_REQUIRED",
@@ -583,6 +588,8 @@ class PanelAPI:
                 "upload_oc",
                 "confirm_oc_upload",
                 "search_sample",
+                "check_sample_files",
+                "open_sample_file_choice",
                 "search_sale_asn",
                 "search_rmpo",
                 "search_indent",
@@ -1225,6 +1232,16 @@ class PanelAPI:
             file_path,
             bool(scan_article_options),
         )
+
+    def check_sample_files(
+        self,
+        filter_kind: str,
+        query: str,
+    ) -> dict:
+        return self._catalog.check_sample_files(filter_kind, query)
+
+    def open_sample_file_choice(self, choice_id: str) -> dict:
+        return self._catalog.open_sample_file_choice(choice_id)
 
     def open_oc_revision_report(self) -> dict:
         return self._run(

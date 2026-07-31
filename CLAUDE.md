@@ -309,7 +309,10 @@ Các workflow riêng hiện có:
   trên report WFX; app không tự động hoá bước download này. App tiếp tục từ
   file người dùng đã sửa và chọn lại ở card Revise OC.
 - Sample List: List + Floating Filter, tìm theo Sample Order No./Style/
-  Created By, và New Sample Order.
+  Created By, và New Sample Order. Nút `Check File` chạy đúng flow Search trước;
+  nếu chỉ có một dòng thì tự click Style Code, quét bốn mục file giống Catalog
+  và trả danh sách tải trực tiếp. Nếu có nhiều dòng, panel hiển thị lựa chọn
+  Sample; sau khi user chọn, app tiếp tục từ grid đang mở, không tìm lại.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
   No., và New.
 - Supplier List: đổi Category, mở Master, tìm trong tất cả Category.

@@ -93,6 +93,17 @@ def test_oc_sample_and_sale_asn_search_auto_open_their_list():
     assert "New Sample Order" in SOURCE
 
 
+def test_sample_check_file_reads_rows_and_opens_only_a_unique_style():
+    assert "def find_sample_file_results" in SOURCE
+    assert "def open_sample_file_result" in SOURCE
+    assert '"SAMPLE_MULTIPLE_RESULTS"' in SOURCE
+    assert '"SAMPLE_STYLE_OPENED"' in SOURCE
+    assert "_SAMPLE_RESULT_ROWS_JS" in SOURCE
+    assert "_CLICK_SAMPLE_STYLE_JS" in SOURCE
+    assert "total_rows > 1 or len(rows) > 1" in SOURCE
+    assert "_click_sample_style_result" in SOURCE
+
+
 def test_rmpo_and_indent_support_context_bound_combined_filters():
     assert "def search_rmpo_list" in SOURCE
     assert "def search_indent_list" in SOURCE

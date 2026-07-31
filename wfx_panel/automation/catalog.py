@@ -1185,6 +1185,36 @@ def _article_page(
     raise PlaywrightTimeoutError("Không tìm thấy popup ArticleTop của style.")
 
 
+def _article_page_for_code(
+    context: Any,
+    article_code: str,
+    timeout_seconds: float = 20,
+) -> tuple[Page, Frame]:
+    """Chờ đúng popup Article của Style Code, không nhận nhầm popup cũ."""
+    expected = str(article_code or "").strip()
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        for candidate in reversed(context.pages):
+            article_top = candidate.frame(name="ArticleTop")
+            if article_top is None or not _article_page_has_code(
+                candidate,
+                expected,
+            ):
+                continue
+            try:
+                article_top.locator("body").wait_for(
+                    state="attached",
+                    timeout=500,
+                )
+                return candidate, article_top
+            except PlaywrightError:
+                continue
+        _sleep(0.2)
+    raise PlaywrightTimeoutError(
+        f"Không tìm thấy popup ArticleTop của style {expected}."
+    )
+
+
 def _article_file_tab(
     page: Page,
     article_top: Frame,
@@ -1557,8 +1587,10 @@ def scan_catalog_files(
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
         def _read_article_files(current_browser: Any, probe_seconds: float):
-            article, article_top = _article_page(
-                current_browser.contexts[0], timeout_seconds=probe_seconds
+            article, article_top = _article_page_for_code(
+                current_browser.contexts[0],
+                article_code,
+                timeout_seconds=probe_seconds,
             )
             article.bring_to_front()
             article_top = _ensure_article_techpack(article, article_top, log)

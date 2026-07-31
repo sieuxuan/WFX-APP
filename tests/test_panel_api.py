@@ -85,6 +85,24 @@ class FakeLogin:
         self.calls.append(("search_sample", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
 
+    def find_sample_file_results(self, xpath, filter_kind, query, log=print):
+        self.calls.append(("find_sample_files", xpath, filter_kind, query))
+        return {
+            "ok": True,
+            "code": "SAMPLE_STYLE_OPENED",
+            "message": "opened",
+            "article_code": "ABC123",
+        }
+
+    def open_sample_file_result(self, row_key, style_code, log=print):
+        self.calls.append(("open_sample_file_result", row_key, style_code))
+        return {
+            "ok": True,
+            "code": "SAMPLE_STYLE_OPENED",
+            "message": "opened",
+            "article_code": style_code,
+        }
+
     def open_sample_new(self, xpath, log=print):
         self.calls.append(("open_sample_new", xpath))
         return {"ok": True, "code": "SAMPLE_NEW_READY", "message": "ready"}
@@ -1184,6 +1202,77 @@ def test_catalog_file_download_rejects_unknown_token(tmp_path):
 
     assert result["code"] == "CATALOG_FILE_EXPIRED"
     assert fake.calls == []
+
+
+def test_sample_check_file_opens_unique_style_and_reuses_catalog_file_tokens(
+    tmp_path,
+):
+    api, fake = make_api(tmp_path)
+
+    result = api.check_sample_files("sample_no", "SMP-001")
+
+    assert result["code"] == "CATALOG_FILES_SCANNED"
+    assert result["source"] == "sample"
+    assert result["article_code"] == "ABC123"
+    assert result["files"][0]["file_id"]
+    assert "download_url" not in result["files"][0]
+    assert fake.calls == [
+        (
+            "find_sample_files",
+            '//*[@id="0004_0056_4070"]/a',
+            "sample_no",
+            "SMP-001",
+        ),
+        ("scan_catalog_files", "ABC123"),
+    ]
+
+
+def test_sample_check_file_tokens_multiple_rows_then_continues_without_search(
+    tmp_path,
+):
+    api, fake = make_api(tmp_path)
+
+    def multiple(xpath, filter_kind, query, log=print):
+        fake.calls.append(("find_sample_files", xpath, filter_kind, query))
+        return {
+            "ok": True,
+            "code": "SAMPLE_MULTIPLE_RESULTS",
+            "message": "choose",
+            "result_count": 2,
+            "samples": [
+                {
+                    "row_key": "17",
+                    "style_code": "ABC123",
+                    "sample_no": "SMP-001",
+                    "created_by": "Alice",
+                },
+                {
+                    "row_key": "18",
+                    "style_code": "XYZ999",
+                    "sample_no": "SMP-002",
+                    "created_by": "Bob",
+                },
+            ],
+        }
+
+    fake.find_sample_file_results = multiple
+    found = api.check_sample_files("created_by", "Alice")
+
+    assert found["code"] == "SAMPLE_MULTIPLE_RESULTS"
+    assert found["source"] == "sample"
+    assert len(found["samples"]) == 2
+    assert found["samples"][0]["choice_id"]
+    assert "row_key" not in found["samples"][0]
+
+    fake.calls.clear()
+    opened = api.open_sample_file_choice(found["samples"][0]["choice_id"])
+
+    assert opened["code"] == "CATALOG_FILES_SCANNED"
+    assert opened["source"] == "sample"
+    assert fake.calls == [
+        ("open_sample_file_result", "17", "ABC123"),
+        ("scan_catalog_files", "ABC123"),
+    ]
 
 
 def test_open_module_builds_xpath(tmp_path):

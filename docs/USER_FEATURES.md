@@ -213,6 +213,9 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - Sample Order No.
   - Style.
   - Created By.
+- `Check File`: tìm theo đúng điều kiện đang chọn. Một kết quả sẽ tự mở Style
+  Code và liệt kê file đính kèm; nhiều kết quả sẽ cho chọn Sample cần dùng rồi
+  tiếp tục. Bấm vào tên file trong danh sách để tải ngay.
 - `New`: mở New Sample Order.
 
 ## 9. Sale ASN

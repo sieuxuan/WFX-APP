@@ -111,6 +111,7 @@
     "prepare_catalog", "scan_catalog_folders", "find_code", "find_buyer_reference",
     "open_catalog_destination", "browse_catalog", "catalog_action",
     "open_sale_asn_new", "open_sample_new", "search_oc", "search_sample",
+    "check_sample_files", "open_sample_file_choice",
     "search_sale_asn", "search_rmpo", "search_indent", "open_module_new",
     "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
@@ -119,6 +120,7 @@
   ]);
   const INTERACTIVE_RESULT_CODES = new Set([
     "MULTIPLE_RESULTS",
+    "SAMPLE_MULTIPLE_RESULTS",
     "CATALOG_FILES_SCANNED",
     "COSTING_DRY_RUN_READY",
     "COSTING_ARTICLE_AMBIGUOUS",
@@ -149,6 +151,8 @@
     confirm_oc_upload: "Đang upload OC đã xác nhận qua EDI…",
     download_oc_template: "Đang tạo form Upload OC…",
     search_sample: "Đang tìm Sample…",
+    check_sample_files: "Đang tìm Sample và kiểm tra file…",
+    open_sample_file_choice: "Đang mở Style và kiểm tra file…",
     search_sale_asn: "Đang tìm Sale ASN…",
     search_rmpo: "Đang lọc RMPO List…",
     search_indent: "Đang lọc Indent List…",
@@ -189,6 +193,8 @@
     confirm_oc_upload: "Xác nhận Upload OC",
     cancel_oc_upload_review: "Huỷ Upload OC",
     search_sample: "Tìm Sample",
+    check_sample_files: "Check File Sample",
+    open_sample_file_choice: "Mở file Sample",
     search_sale_asn: "Tìm Sale ASN",
     search_rmpo: "Tìm RMPO",
     search_indent: "Tìm Indent",
@@ -984,8 +990,10 @@
       hasCredentials = result.has_credentials === true;
     }
     if (result.style_status) setStyleStatus(result.style_status);
-    if (["RESULT_OPENED", "CATALOG_FILES_SCANNED"].includes(result.code)
-        && result.article_code) {
+    if (result.source === "sample") {
+      clearCatalogResult();
+    } else if (["RESULT_OPENED", "CATALOG_FILES_SCANNED"].includes(result.code)
+        && result.article_code && result.source !== "sample") {
       rememberCatalogResult(result);
     } else if ([
       "NO_RESULTS", "MULTIPLE_RESULTS", "CATALOG_RESULT_REQUIRED",
@@ -997,7 +1005,10 @@
       "MULTIPLE_RESULTS", "NO_RESULTS", "RESULT_OPENED",
       "CATALOG_FILES_SCANNED",
     ].includes(result.code)) {
-      renderCatalogResults(result);
+      if (result.source === "sample") renderSampleFileResults(result);
+      else renderCatalogResults(result);
+    } else if (result.code === "SAMPLE_MULTIPLE_RESULTS") {
+      renderSampleFileResults(result);
     }
     if (result.code === "COSTING_DRY_RUN_READY") {
       showCatalogSpace("costing", { focus: false });
@@ -1190,6 +1201,7 @@
     // danh sách ngay trên panel — không được tự thu panel lúc này.
     if (result && [
       "MULTIPLE_RESULTS",
+      "SAMPLE_MULTIPLE_RESULTS",
       "CATALOG_FILES_SCANNED",
     ].includes(result.code)) return;
     if (result && result.ok && returnToListAfterAction) {
@@ -1245,6 +1257,7 @@
       input.placeholder = moduleFilterPlaceholders[group][kind];
       input.focus();
     }
+    if (group === "sample") hideSampleFileResults();
   }
 
   function renderOcUploadResult(result, fileName = "") {
@@ -1371,11 +1384,22 @@
     ),
     "sample-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "sample-new": () => runSelectedModuleAction("open_sample_new"),
-    "sample-search": () => runSelectedModuleAction(
-      "search_sample",
-      moduleFilterKinds.sample,
-      $(".sample-query").value.trim(),
-    ),
+    "sample-search": () => {
+      hideSampleFileResults();
+      return runSelectedModuleAction(
+        "search_sample",
+        moduleFilterKinds.sample,
+        $(".sample-query").value.trim(),
+      );
+    },
+    "sample-check-file": () => {
+      hideSampleFileResults();
+      return runSelectedModuleAction(
+        "check_sample_files",
+        moduleFilterKinds.sample,
+        $(".sample-query").value.trim(),
+      );
+    },
     "sale-asn-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "sale-asn-new": () => runSelectedModuleAction("open_sale_asn_new"),
     "sale-asn-search": () => runSelectedModuleAction(
@@ -1981,6 +2005,92 @@
     );
   }
 
+  function hideSampleFileResults() {
+    const wrap = $(".sample-file-results");
+    if (!wrap) return;
+    wrap.hidden = true;
+    $(".sample-file-results-title").textContent = "Kết quả";
+    $(".sample-file-results-count").textContent = "";
+    $(".sample-file-results-list").innerHTML = "";
+  }
+
+  function renderSampleFileResults(result) {
+    const wrap = $(".sample-file-results");
+    const list = $(".sample-file-results-list");
+    if (!wrap || !list) return;
+    if (result.code === "SAMPLE_MULTIPLE_RESULTS"
+        && Array.isArray(result.samples) && result.samples.length) {
+      $(".sample-file-results-title").textContent = "Chọn Sample";
+      $(".sample-file-results-count").textContent =
+        `${Number(result.result_count || result.samples.length)} kết quả`;
+      list.innerHTML = result.samples.map((sample) => {
+        const meta = [
+          sample.sample_no ? `Sample ${escapeHtml(sample.sample_no)}` : "",
+          sample.created_by ? `Tạo bởi ${escapeHtml(sample.created_by)}` : "",
+        ].filter(Boolean).join(" · ");
+        return `<button type="button" class="catalog-result-row" role="option"
+          data-sample-choice-id="${escapeHtml(sample.choice_id || "")}">
+          <span class="catalog-result-code">${escapeHtml(sample.style_code || "—")}</span>
+          <span class="catalog-result-meta">${meta}</span>
+        </button>`;
+      }).join("");
+      wrap.hidden = false;
+      return;
+    }
+    if (result.code === "CATALOG_FILES_SCANNED"
+        && Array.isArray(result.files)) {
+      $(".sample-file-results-title").textContent = "File đính kèm";
+      $(".sample-file-results-count").textContent = `${result.files.length} file`;
+      let previousSection = "";
+      list.innerHTML = result.files.length
+        ? result.files.map((file) => {
+          const section = String(file.section || "File");
+          const heading = section !== previousSection
+            ? `<div class="catalog-file-group-label" role="presentation">${
+              escapeHtml(section)
+            }</div>`
+            : "";
+          previousSection = section;
+          const meta = [
+            file.uploaded_on ? `Ngày: ${escapeHtml(file.uploaded_on)}` : "",
+            file.uploaded_by ? `Bởi: ${escapeHtml(file.uploaded_by)}` : "",
+          ].filter(Boolean).join(" · ");
+          return `${heading}<button type="button"
+            class="catalog-result-row catalog-file-row" role="option"
+            data-file-id="${escapeHtml(file.file_id || "")}">
+            <span class="catalog-file-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+            </span>
+            <span class="catalog-file-copy">
+              <strong title="${escapeHtml(file.file_name || "")}">${escapeHtml(file.file_name || "")}</strong>
+              ${meta ? `<small>${meta}</small>` : ""}
+              ${file.comments ? `<small>Ghi chú: ${escapeHtml(file.comments)}</small>` : ""}
+            </span>
+          </button>`;
+        }).join("")
+        : '<div class="catalog-results-empty">Không có file đính kèm trong bốn mục đã kiểm tra.</div>';
+      wrap.hidden = false;
+      return;
+    }
+    if (result.code === "NO_RESULTS") {
+      $(".sample-file-results-title").textContent = "Kết quả";
+      $(".sample-file-results-count").textContent = "";
+      list.innerHTML = '<div class="catalog-results-empty">Không tìm thấy Sample phù hợp.</div>';
+      wrap.hidden = false;
+      return;
+    }
+    hideSampleFileResults();
+  }
+
+  async function openSampleFileChoice(row) {
+    const choiceId = String(row?.dataset.sampleChoiceId || "");
+    if (!choiceId) return;
+    await withButtonLoading(
+      row,
+      () => call("open_sample_file_choice", choiceId),
+    );
+  }
+
   async function downloadCatalogFile(row) {
     const fileId = String(row?.dataset.fileId || "");
     if (!fileId) return;
@@ -2356,6 +2466,15 @@
       const row = event.target.closest("[data-result-code]");
       if (row) openCatalogResultCode(row);
     });
+    $(".sample-file-results-list").addEventListener("click", (event) => {
+      const choice = event.target.closest("[data-sample-choice-id]");
+      if (choice) {
+        openSampleFileChoice(choice);
+        return;
+      }
+      const file = event.target.closest("[data-file-id]");
+      if (file) downloadCatalogFile(file);
+    });
     $(".catalog-article-suggestions").addEventListener("click", (event) => {
       const row = event.target.closest("[data-suggestion-value]");
       if (!row) return;
@@ -2374,6 +2493,7 @@
       $(".catalog-query").focus();
     });
     bindListboxKeys($(".catalog-results-list"));
+    bindListboxKeys($(".sample-file-results-list"));
     bindListboxKeys($(".catalog-folder-list"));
     bindListboxKeys($(".catalog-article-suggestions"));
     $$("[data-module-action]").forEach((button) =>

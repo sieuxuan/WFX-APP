@@ -1365,6 +1365,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .module-filter-kind-three { grid-template-columns: repeat(3, minmax(0,1fr)); }
     .module-filter-kind .seg-button { min-width: 0; padding: 0 7px; font-size: 11px; }
     .module-query-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 7px; }
+    [data-module-view="sample"] .module-query-row { grid-template-columns: minmax(0,1fr) auto auto; }
     .module-query-row input { width: 100%; height: 34px; padding: 0 9px; color: var(--text); font-size: 12.5px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
     .module-query-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .module-multi-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
@@ -1382,6 +1383,11 @@ body.compact-mode .compact-launcher .compact-mark {
     .special-section select, .special-section input { width: 100%; height: 34px; padding: 0 9px; color: var(--text); font-size: 12.5px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
     .special-section select:focus, .special-section input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .special-primary-button { height: 34px; padding: 0 11px; color: var(--accent-ink); font-size: 11.5px; font-weight: 750; white-space: nowrap; cursor: pointer; border: 0; border-radius: 8px; background: var(--accent-grad); }
+    .sample-check-file-button { height: 34px; padding: 0 9px; color: var(--accent-strong); font-size: 11.5px; font-weight: 750; white-space: nowrap; cursor: pointer; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); }
+    .sample-check-file-button:hover:not(:disabled) { color: var(--text); background: var(--surface-3); }
+    .sample-file-results { margin-top: 1px; }
+    .sample-file-results[hidden] { display: none !important; }
+    .sample-file-results-list { display: flex; flex-direction: column; gap: 3px; }
     .generic-module-workspace {
       padding: 14px;
       text-align: center;
