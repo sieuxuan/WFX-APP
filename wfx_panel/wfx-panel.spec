@@ -15,12 +15,14 @@ a = Analysis(
     binaries=[],
     datas=[
         ("ui", "wfx_panel/ui"),
+        ("manual", "wfx_panel/manual"),
         ("assets/wfx.ico", "wfx_panel/assets"),
         ("../Article List.csv", "."),
     ],
     hiddenimports=[
         "login",
         "wfx_panel.catalog_controller",
+        "wfx_panel.manual_book",
         "wfx_panel._signing_identity",
         "wfx_panel.secret",
         "wfx_panel.automation",

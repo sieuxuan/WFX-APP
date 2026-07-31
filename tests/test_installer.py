@@ -40,3 +40,10 @@ def test_installer_contains_complete_pyinstaller_onedir_build():
     assert "from wfx_panel.version import APP_VERSION" in build
     assert "JRSoftware.InnoSetup" in build
     assert 'Join-Path $env:LOCALAPPDATA "Programs\\Inno Setup 6\\ISCC.exe"' in build
+
+
+def test_spec_dong_goi_noi_dung_huong_dan():
+    root = Path(__file__).resolve().parent.parent
+    spec = (root / "wfx_panel" / "wfx-panel.spec").read_text(encoding="utf-8")
+
+    assert '("manual", "wfx_panel/manual")' in spec
