@@ -13,7 +13,7 @@ import json
 import re
 import unicodedata
 
-from wfx_panel import prefs
+from wfx_panel import prefs, telemetry
 from wfx_panel.version import APP_VERSION
 
 CALLOUT_LABELS = {
@@ -196,6 +196,62 @@ def load_manifest() -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_whats_new() -> list[dict]:
+    path = MANUAL_DIR / "whats_new.json"
+    if not path.is_file():
+        raise ManualContentError(f"Thiếu {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_error_table(entries: dict) -> list[dict]:
+    """Sinh bảng tra mã lỗi thẳng từ telemetry.ERROR_CODE_INFO.
+
+    Nhờ đọc trực tiếp từ điển này, mã lỗi mới thêm vào code tự xuất hiện trong
+    manual mà không phải sửa file .md.
+    """
+    owner: dict[str, str] = {}
+    for entry in entries.values():
+        for code in entry["covers"]["errors"]:
+            owner.setdefault(code, entry["id"])
+    rows = []
+    for code, (title, suggestion) in telemetry.ERROR_CODE_INFO.items():
+        rows.append(
+            {
+                "code": code,
+                "title": title,
+                "suggestion": suggestion,
+                "entry": owner.get(code),
+            }
+        )
+    rows.sort(key=lambda row: row["code"])
+    return rows
+
+
+def build_search_index(entries: dict) -> list[dict]:
+    index = []
+    for entry_id in entries:
+        entry = entries[entry_id]
+        haystack = " ".join(
+            [
+                entry["title"],
+                entry["chapter_title"],
+                entry["summary"],
+                " ".join(entry["keywords"]),
+                " ".join(entry["covers"]["errors"]),
+                entry["text"],
+            ]
+        ).lower()
+        index.append(
+            {
+                "id": entry_id,
+                "title": entry["title"],
+                "chapter_title": entry["chapter_title"],
+                "haystack": haystack,
+            }
+        )
+    return index
+
+
 def load_book() -> dict:
     manifest = load_manifest()
     chapters: list[dict] = []
@@ -240,6 +296,7 @@ def load_book() -> dict:
         "chapters": chapters,
         "entries": entries,
         "order": order,
-        "error_table": [],
-        "whats_new": [],
+        "error_table": build_error_table(entries),
+        "search_index": build_search_index(entries),
+        "whats_new": load_whats_new(),
     }

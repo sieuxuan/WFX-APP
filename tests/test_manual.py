@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from wfx_panel import manual_book
+from wfx_panel import manual_book, telemetry
+from wfx_panel.version import APP_VERSION
 
 
 def test_slugify_bo_dau_tieng_viet():
@@ -151,3 +152,45 @@ def test_load_book_bao_loi_khi_thieu_file(tmp_path, monkeypatch):
     )
     with pytest.raises(manual_book.ManualContentError):
         manual_book.load_book()
+
+
+def test_bang_ma_loi_phu_het_error_code_info():
+    book = manual_book.load_book()
+    codes = {row["code"] for row in book["error_table"]}
+    assert codes == set(telemetry.ERROR_CODE_INFO)
+    for row in book["error_table"]:
+        title, suggestion = telemetry.ERROR_CODE_INFO[row["code"]]
+        assert row["title"] == title
+        assert row["suggestion"] == suggestion
+
+
+def test_bang_ma_loi_tro_ve_muc_da_khai_bao_phu():
+    book = manual_book.load_book()
+    rows = {row["code"]: row["entry"] for row in book["error_table"]}
+    assert rows["LOGIN_FAILED"] == "bat-dau-dang-nhap"
+
+
+def test_whats_new_co_muc_cho_phien_ban_hien_tai():
+    versions = {item["version"] for item in manual_book.load_whats_new()}
+    assert APP_VERSION in versions, (
+        f"whats_new.json thiếu mục cho phiên bản {APP_VERSION}"
+    )
+
+
+def test_whats_new_tham_chieu_muc_co_that():
+    book = manual_book.load_book()
+    for release in book["whats_new"]:
+        for highlight in release["highlights"]:
+            entry_id = highlight.get("entry")
+            if entry_id:
+                assert entry_id in book["entries"], entry_id
+
+
+def test_chi_muc_tim_kiem_gom_tieu_de_tu_khoa_va_noi_dung():
+    book = manual_book.load_book()
+    row = next(
+        item for item in book["search_index"] if item["id"] == "bat-dau-mo-panel"
+    )
+    assert "hotkey" in row["haystack"]
+    assert "ctrl + shift + x" in row["haystack"]
+    assert row["haystack"] == row["haystack"].lower()
