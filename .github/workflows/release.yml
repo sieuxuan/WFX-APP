@@ -239,6 +239,7 @@ jobs:
             - Catalog gợi ý theo Category; chọn Buyer Reference/Article Name sẽ mở bằng exact Article Code, không phải chọn lần hai.
             - Costing chỉ đưa mã F vào Fabric, mã T vào Trim và tự lookup Article Name trong Excel.
             - Khi Apply, Material Color/Size còn thiếu được tự thêm vào đúng Article card rồi Save.
+            - QA, Advance Payment Request và Expense Invoice mở thẳng màn New, không cần vào List trước.
             - Keepalive không kéo Chrome khỏi tab Costing; luồng Article → Costing xác nhận exact code và phục hồi popup nhanh hơn.
             - Catalog và Costing tách thành workspace riêng, giao diện gọn và giữ đúng màn đang làm.
             - Dùng chung một Playwright worker và CDP connection giữa các flow, không reconnect ở từng thao tác.

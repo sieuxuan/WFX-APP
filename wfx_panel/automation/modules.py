@@ -1207,23 +1207,20 @@ def open_module_new(
 ) -> dict[str, Any]:
     definitions = {
         "0063_0030_0020": (
-            "QA List",
-            "div.clsPageTitleBarToolNew"
-            "[onclick*=\"titlebarQARequestList\"]",
+            "QA Request",
+            '//a[@title="New" '
+            'and contains(@href,"MenuName=mnuQAInspectionRequestNew") '
+            'and contains(@href,"QARequestType=QualityInspection")]',
         ),
         "0065_0880_0010_0020": (
-            "Advance PR List",
-            "div.clsPageTitleBarToolNew"
-            "[onclick*=\"titlebarAdvancePaymentRequestList\"], "
-            "a[href*=\"MenuName=mnuAdvancePaymentRequestNew\"]"
-            "[href*=\"WFXAdvancePaymentRequest.aspx?ARAPType=APR\"]",
+            "Advance Payment Request",
+            '//a[@title="New" '
+            'and contains(@href,"MenuName=mnuAdvancePaymentRequestNew") '
+            'and contains(@href,"WFXAdvancePaymentRequest.aspx?ARAPType=APR")]',
         ),
         "0065_0880_0030_0020": (
-            "Expense Inv List",
-            "div.clsPageTitleBarToolNew"
-            "[onclick*=\"titlebarExpenseInvoiceList\"], "
-            "a[href*=\"MenuName=mnuExpenseInvoiceNew\"]"
-            "[href*=\"WFXExpenseInvoice.aspx?InvoiceType=Expense\"]",
+            "Expense Invoice",
+            '//*[@id="0065_0880_0030_0010"]/a',
         ),
     }
     if module_id not in definitions:
@@ -1237,30 +1234,19 @@ def open_module_new(
     try:
         playwright = sync_playwright().start()
         browser, page = _active_wfx_page(playwright, log)
-        try:
-            frame = _frame_with_visible_context(page, selector, timeout_s=4)
-            target = frame.locator(selector).first
-        except PlaywrightTimeoutError:
-            message = (
-                f"Chưa thấy nút New trong {module_name}. "
-                "Hãy bấm List trước và chờ màn danh sách hiển thị."
-            )
-            _write_log(log, message)
-            return _result(
-                False,
-                "MODULE_LIST_NOT_OPEN",
-                message,
-                module=module_name,
-            )
-
         snapshots = [
             _mark_document(candidate, f"module-new-{index}")
             for index, candidate in enumerate(page.frames)
         ]
         old_frames = {snapshot[0] for snapshot in snapshots}
         page_count = len(browser.contexts[0].pages)
-        _write_log(log, f"[MODULE NEW] Đang mở New từ {module_name}.")
-        _click_navigation_control(target)
+        _write_log(log, f"[MODULE NEW] Đang mở trực tiếp {module_name}.")
+        _click_module_menu_on_page(
+            page,
+            f"{module_name} New",
+            selector,
+            log,
+        )
 
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
@@ -1287,7 +1273,7 @@ def open_module_new(
         return _result(
             True,
             "MODULE_NEW_READY",
-            f"Đã mở New từ {module_name}.",
+            f"Đã mở trực tiếp {module_name} New.",
             module=module_name,
         )
     except RuntimeError as exc:

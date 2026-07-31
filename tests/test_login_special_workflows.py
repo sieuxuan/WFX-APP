@@ -118,18 +118,19 @@ def test_rmpo_and_indent_support_context_bound_combined_filters():
     assert '"MODULE_LIST_NOT_OPEN"' not in combined_block
 
 
-def test_qa_advance_pr_and_expense_new_use_current_list_controls():
+def test_qa_advance_pr_and_expense_new_use_direct_menu_links():
     assert "def open_module_new" in SOURCE
     new_block = SOURCE[
         SOURCE.index("def open_module_new"):
         SOURCE.index("def open_sample_new")
     ]
-    assert "titlebarQARequestList" in new_block
+    assert "mnuQAInspectionRequestNew" in new_block
+    assert "QARequestType=QualityInspection" in new_block
     assert "mnuAdvancePaymentRequestNew" in new_block
     assert "ARAPType=APR" in new_block
-    assert "mnuExpenseInvoiceNew" in new_block
-    assert "InvoiceType=Expense" in new_block
-    assert "_click_module_menu_on_page" not in new_block
+    assert '//*[@id="0065_0880_0030_0010"]/a' in new_block
+    assert "_click_module_menu_on_page" in new_block
+    assert '"MODULE_LIST_NOT_OPEN"' not in new_block
     assert "_document_changed" in new_block
     assert '"MODULE_NEW_READY"' in new_block
 

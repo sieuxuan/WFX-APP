@@ -42,7 +42,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
   nên không phải chọn lại trong danh sách kết quả gần giống.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
-  và Company Setup.
+  và Company Setup. Nút New của QA, Advance Payment Request và Expense Invoice
+  mở thẳng màn tạo mới, không yêu cầu vào List trước.
 - Panel có fallback Win32 để tự thu ổn định khi click ra ngoài; backend hoàn tất
   cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm. Panel
   không tự thu sau flow khi chuột vẫn nằm trên UI.
@@ -80,8 +81,9 @@ Benchmark RAM/tốc độ của bản này nằm tại
    khoản chỉ hiện trạng thái và nút `Đổi tài khoản`.
 2. Bấm `Mở trình duyệt` để app mở browser automation và đăng nhập WFX.
 3. Chọn Division nếu cần.
-4. Chọn module. Có thể Search hoặc Đổi FOC ngay; app tự mở List khi cần. Với
-   New, bấm `List` trước để kiểm tra đúng màn hình.
+4. Chọn module. Có thể Search hoặc Đổi FOC ngay; app tự mở List khi cần. Nút
+   New của QA, Advance PR và Expense Invoice mở thẳng màn tạo mới; các module
+   New khác vẫn cần đúng màn List khi workflow yêu cầu.
 5. Dùng ngôi sao để ghim module thường dùng.
 
 Mật khẩu được DPAPI mã hóa thành `WFX_PASSWORD_ENC`. Bản Windows từ chối lưu

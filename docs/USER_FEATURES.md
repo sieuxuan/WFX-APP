@@ -219,13 +219,16 @@ Nhóm Operation:
 - Indent List: mở List và lọc đồng thời theo Supplier, Article, Indent No.,
   Style; có thể nhập một hoặc nhiều điều kiện.
 - User Indent: có cùng bộ lọc kết hợp như Indent List.
-- QA List: mở List hoặc bấm `New` để tạo QA Request trên đúng màn đang mở.
+- QA List: mở List hoặc bấm `New` để vào thẳng QA Request New, không cần mở
+  List trước.
 
 Nhóm Finance:
 
-- Advance PR List: mở List hoặc bấm `New` để tạo Advance Payment Request.
+- Advance PR List: mở List hoặc bấm `New` để vào thẳng Advance Payment Request
+  New, không cần mở List trước.
 - Supplier Inv List.
-- Expense Inv List: mở List hoặc bấm `New` để tạo Expense Invoice.
+- Expense Inv List: mở List hoặc bấm `New` để vào thẳng Expense Invoice New,
+  không cần mở List trước.
 
 Với RMPO và hai màn Indent, có thể bấm `Tìm` ngay. App tự mở đúng List nếu cần
 và phân biệt `Indent List` với `User Indent` bằng context trang, dù hai màn dùng

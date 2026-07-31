@@ -91,8 +91,10 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 Mỗi nút trong module là một flow riêng:
 
 1. `List` mở đúng màn danh sách và, nếu cần, bật Floating Filter.
-2. `New` chỉ dùng màn List hiện tại. `Đổi FOC` tự mở Company Setup nếu context
-   hiện tại đã đổi sang module khác, rồi mới mở Miscellaneous Settings.
+2. `New` mặc định dùng màn List hiện tại. Riêng QA Request, Advance Payment
+   Request và Expense Invoice phải click trực tiếp menu `New` tương ứng, không
+   yêu cầu mở List trước. `Đổi FOC` tự mở Company Setup nếu context hiện tại đã
+   đổi sang module khác, rồi mới mở Miscellaneous Settings.
 3. `Search` ưu tiên đúng List hiện tại. Nếu List chưa mở hoặc context chưa sẵn
    sàng, automation phải tự click đúng menu List, chờ grid/Floating Filter ổn
    định rồi mới điền điều kiện; người dùng không cần bấm List trước.
@@ -256,8 +258,9 @@ Các workflow riêng hiện có:
   `gridRMPO`.
 - Indent List/User Indent: tìm kết hợp theo Supplier, Article, Indent No. và
   Style trên đúng grid `gridMOLList`.
-- QA List, Advance PR List và Expense Inv List: List + New; New chỉ dùng control
-  của màn List hiện tại và phải xác nhận navigation.
+- QA List, Advance PR List và Expense Inv List: List + New; New click trực tiếp
+  menu QA Inspection Request New, Advance Payment Request New hoặc Expense
+  Invoice New và phải xác nhận navigation, không phụ thuộc màn List hiện tại.
 - Các module generic còn lại thuộc nhóm Finance/Admin theo quyền tài khoản.
 
 ### Webhook và quyền riêng tư
