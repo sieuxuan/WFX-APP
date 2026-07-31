@@ -322,3 +322,12 @@ def test_user_features_dong_bo_voi_manual():
         "docs/USER_FEATURES.md đã lệch. Chạy: "
         "python scripts/generate_user_features.py"
     )
+
+
+def test_huong_dan_viet_manual_liet_ke_du_tu_cam():
+    root = manual_book.MANUAL_DIR.parent.parent
+    text = (root / "docs" / "MANUAL_AUTHORING.md").read_text(encoding="utf-8")
+    for word in manual_book.FORBIDDEN_WORDS:
+        assert word in text, word
+    for label in manual_book.CALLOUT_LABELS.values():
+        assert label in text, label
