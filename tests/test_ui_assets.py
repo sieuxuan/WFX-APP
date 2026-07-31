@@ -694,3 +694,8 @@ def test_manual_js_dung_bang_ma_loi():
     js = (UI / "manual.js").read_text(encoding="utf-8")
     assert "error_table" in js
     assert "su-co-tra-ma-loi" in js
+
+
+def test_module_page_co_nut_tro_giup():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'class="icon-button module-help-button"' in html

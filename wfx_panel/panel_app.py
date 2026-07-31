@@ -1269,6 +1269,22 @@ class PanelApp:
         book["manual_url"] = WFX_MANUAL_URL
         return book
 
+    def manual_entry_for_module(self, module_id: str) -> str:
+        """Mục hướng dẫn đầu tiên khai báo phủ module này."""
+        book = manual_book.load_book()
+        for entry_id in book["order"]:
+            if module_id in book["entries"][entry_id]["covers"]["modules"]:
+                return entry_id
+        return ""
+
+    def get_manual_entry_for_module(self, module_id: str) -> dict:
+        return {
+            "ok": True,
+            "code": "MANUAL_ENTRY",
+            "message": "",
+            "entry": self.manual_entry_for_module(str(module_id or "")),
+        }
+
     def close_manual_window(self) -> None:
         window, self.manual_window = self.manual_window, None
         if window is not None:
@@ -1985,6 +2001,9 @@ class PanelApp:
         self.api.request_panel_hide = self.request_panel_hide  # type: ignore[attr-defined]
         self.api.set_panel_pointer_inside = self.set_panel_pointer_inside  # type: ignore[attr-defined]
         self.api.open_wfx_manual = self.open_wfx_manual  # type: ignore[attr-defined]
+        self.api.get_manual_entry_for_module = (  # type: ignore[attr-defined]
+            self.get_manual_entry_for_module
+        )
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.choose_costing_import_file = self.choose_costing_import_file  # type: ignore[attr-defined]
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]

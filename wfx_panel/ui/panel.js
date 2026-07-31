@@ -2743,6 +2743,12 @@
       const result = await callQuiet("open_wfx_manual");
       if (result) handleResult(result);
     });
+    $(".module-help-button").addEventListener("click", async () => {
+      const moduleId = selectedModule?.id || "";
+      const found = await callQuiet("get_manual_entry_for_module", moduleId);
+      const result = await callQuiet("open_wfx_manual", found?.entry || "");
+      if (result) handleResult(result);
+    });
     $(".feedback-button").addEventListener("click", () => {
       feedbackOverlay().classList.add("feedback-open");
       $(".feedback-status").textContent = "";
