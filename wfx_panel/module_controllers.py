@@ -46,7 +46,7 @@ class CatalogModule(ModuleController):
 class OCListModule(ModuleController):
     module_id = "0004_0050_0020"
     kind = "oc"
-    description = "Mở OC List hoặc tìm theo OC No. và Style."
+    description = "Mở/tìm OC List, tạo Upload OC New hoặc Revise OC."
 
 
 class SampleListModule(ModuleController):

@@ -328,6 +328,45 @@ def test_costing_file_dialog_cancel_is_clean():
     )
 
 
+def test_oc_dialogs_choose_xlsx_and_generate_simple_template(tmp_path, monkeypatch):
+    class Window:
+        def __init__(self):
+            self.calls = []
+            self.selection = None
+
+        def create_file_dialog(self, dialog_type, **kwargs):
+            self.calls.append((dialog_type, kwargs))
+            return self.selection
+
+    opened = []
+    monkeypatch.setattr(
+        panel_app,
+        "_open_downloaded_file",
+        lambda path: opened.append(Path(path)) or True,
+    )
+    app = panel_app.PanelApp()
+    app.window = Window()
+    selected_file = tmp_path / "oc.xlsx"
+    selected_file.write_bytes(b"xlsx")
+    app.window.selection = str(selected_file)
+
+    selected = app.choose_oc_upload_file("new")
+
+    assert selected["code"] == "OC_FILE_SELECTED"
+    assert selected["mode"] == "new"
+    assert app.window.calls[-1][0] == panel_app.webview.OPEN_DIALOG
+
+    target = tmp_path / "WFX-Smart-Upload-OC"
+    app.window.selection = str(target)
+    exported = app.download_oc_template()
+
+    output = target.with_suffix(".xlsx")
+    assert exported["code"] == "OC_TEMPLATE_EXPORTED"
+    assert output.is_file()
+    assert opened == [output.resolve()]
+    assert app.window.calls[-1][0] == panel_app.webview.SAVE_DIALOG
+
+
 def test_notification_shows_full_action_detail_without_resizing_webview(
     monkeypatch,
 ):

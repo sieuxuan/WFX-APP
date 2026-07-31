@@ -32,6 +32,7 @@ from wfx_panel import (
     updater,
 )
 from wfx_panel.assets.generate_icon import build_icon
+from wfx_panel.oc_workbook import write_oc_input_template
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
 from wfx_panel.version import APP_VERSION
@@ -117,6 +118,9 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "open_sale_asn_new",
         "open_sample_new",
         "search_oc",
+        "open_oc_revision_report",
+        "upload_oc",
+        "confirm_oc_upload",
         "search_sample",
         "search_sale_asn",
         "open_supplier_category",
@@ -141,6 +145,9 @@ NOTIFICATION_ACTION_LABELS = {
     "open_sale_asn_new": "Sale ASN",
     "open_sample_new": "Sample",
     "search_oc": "Tìm OC",
+    "open_oc_revision_report": "Mở report Revise OC",
+    "upload_oc": "Upload OC",
+    "confirm_oc_upload": "Upload OC",
     "search_sample": "Tìm Sample",
     "search_sale_asn": "Tìm Sale ASN",
     "open_supplier_category": "Supplier",
@@ -582,6 +589,109 @@ class PanelApp:
             "file_path": str(target),
             "file_name": target.name,
             "file_format": extension.lstrip("."),
+        }
+
+    def choose_oc_upload_file(self, mode: str) -> dict:
+        """Chọn file OC New/Revise mà người dùng chủ động cung cấp."""
+        selected_mode = str(mode or "").strip().casefold()
+        if selected_mode not in {"new", "revise"}:
+            return {
+                "ok": False,
+                "code": "OC_MODE_INVALID",
+                "message": "Chế độ Upload OC phải là New hoặc Revise.",
+            }
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ chọn file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ chọn file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_CANCELLED",
+                "message": "Đã huỷ chọn file Upload OC.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != ".xlsx":
+            return {
+                "ok": False,
+                "code": "OC_FILE_TYPE_UNSUPPORTED",
+                "message": "Upload OC chỉ hỗ trợ file .xlsx.",
+            }
+        return {
+            "ok": True,
+            "code": "OC_FILE_SELECTED",
+            "message": f"Đã chọn {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+            "mode": selected_mode,
+        }
+
+    def download_oc_template(self) -> dict:
+        """Sinh form OC INPUT một header và lưu vào nơi người dùng chọn."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename="WFX-Smart-Upload-OC.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_CANCELLED",
+                "message": "Đã huỷ tải form Upload OC.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+            if target.suffix.casefold() != ".xlsx":
+                target = target.with_suffix(".xlsx")
+            write_oc_input_template(target)
+            _open_downloaded_file(target)
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "OC_TEMPLATE_EXPORT_FAILED",
+                "message": f"Không tạo được form Upload OC: {error}",
+            }
+        return {
+            "ok": True,
+            "code": "OC_TEMPLATE_EXPORTED",
+            "message": f"Đã tạo form {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
         }
 
     def hide_panel(self):
@@ -1703,6 +1813,8 @@ class PanelApp:
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.choose_costing_import_file = self.choose_costing_import_file  # type: ignore[attr-defined]
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]
+        self.api.choose_oc_upload_file = self.choose_oc_upload_file  # type: ignore[attr-defined]
+        self.api.download_oc_template = self.download_oc_template  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
         self.api.set_hotkey_applier(self._apply_hotkey)

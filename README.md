@@ -40,6 +40,10 @@ Benchmark RAM/tốc độ của bản này nằm tại
   còn thiếu được bổ sung vào đúng Article card rồi Save trước khi điền Costing.
   Chọn một gợi ý Buyer Reference/Article Name sẽ chuyển sang exact Article Code,
   nên không phải chọn lại trong danh sách kết quả gần giống.
+- OC List có form Upload OC một hàng header: app kiểm tra dữ liệu, tự sinh
+  `Sheet1` 51 cột không công thức, hiện review Buyer/Season/PO/Article/Units
+  trước khi xác nhận upload `StandardSalesOrder`, kiểm tra đủ ba trạng thái EDI
+  rồi mới Create Transaction; hỗ trợ cả OC New và Revise OC.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup. Nút New của QA, Advance Payment Request và Expense Invoice
@@ -107,6 +111,8 @@ nằm ở đường dẫn riêng.
 - `wfx_panel/automation/`: Playwright/CDP và các workflow WFX.
 - `wfx_panel/panel_api.py`: bridge giữa UI và automation.
 - `wfx_panel/catalog_controller.py`: state/context của Catalog.
+- `wfx_panel/oc_workbook.py`: form một-header, validate và sinh `Sheet1` EDI.
+- `wfx_panel/automation/oc.py`: mở report Revise và workflow EDI Buyer PO.
 - `wfx_panel/panel_app.py`: pywebview, launcher, tray và hotkey.
 - `wfx_panel/ui/`: HTML/CSS/JavaScript của panel.
 - `wfx_panel/telemetry.py`: webhook, outbox và redaction dữ liệu nhạy cảm.

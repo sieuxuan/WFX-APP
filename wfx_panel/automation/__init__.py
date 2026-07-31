@@ -122,6 +122,10 @@ from wfx_panel.automation.modules import (  # noqa: F401
     search_sample_list,
     toggle_company_foc,
 )
+from wfx_panel.automation.oc import (  # noqa: F401
+    open_oc_revision_report,
+    upload_oc_edi,
+)
 from wfx_panel.automation.session import (  # noqa: F401
     _division_for_text,
     _division_state_for_page,
@@ -230,6 +234,7 @@ __all__ = [
     'open_module',
     'open_module_new',
     'open_module_with_floating_filter',
+    'open_oc_revision_report',
     'open_sample_new',
     'open_sale_asn_new',
     'open_supplier_category',
@@ -253,6 +258,7 @@ __all__ = [
     'subprocess',
     'switch_division',
     'toggle_company_foc',
+    'upload_oc_edi',
     'sync_playwright',
     'time',
     'urlopen',
