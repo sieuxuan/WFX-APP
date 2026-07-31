@@ -3,7 +3,7 @@ html, body { margin: 0; height: 100%; background: var(--panel-bg, #f4f9fb); }
 html.compact-mode, body.compact-mode { background: #0f9fb2; }
 body { overflow: hidden; opacity: 1; transition: opacity .14s ease; will-change: opacity; }
 body.window-transition-out { opacity: .04; }
-/* Trong extension, .panel là lớp trượt ra đè lên trang WFX: nó ẩn sẵn
+/* Layout gốc của panel dùng lớp trượt ra: nó ẩn sẵn
    (opacity/visibility/pointer-events) và chỉ hiện khi JS thêm .panel-open lúc
    người dùng bấm nút launcher. Bản desktop bỏ hẳn launcher — cửa sổ CHÍNH LÀ
    panel — nên phải ép hiện vĩnh viễn, nếu không cửa sổ chỉ còn background_color

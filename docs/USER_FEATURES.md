@@ -105,7 +105,7 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
     trước khi mở hộp thoại lưu;
   - tải Costing đang mở thành Excel `.xlsx`;
   - đặt tên file theo Style Name, nhớ thư mục gần nhất và có setting riêng để
-    mở file/mở thư mục sau khi tải;
+    mở file sau khi tải; thư mục chứa file luôn tự mở;
   - dùng nút **Kiểm tra file** để xem lỗi kèm sheet/ô trước khi tạo dry-run;
   - nhập trực tiếp vào form cột chuẩn trên sheet `Costing` rồi import lại;
   - Article Code/Article Name dùng thư viện CSV bốn cột tự tải từ server mỗi
@@ -232,6 +232,17 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - Invoice No.
   - Buyer Order Ref/OC No.
 - `New`: mở Sale ASN mới với `With GDN` và `Buyer Order Dispatch`.
+- `Tải Packing List + Buyer Invoice`:
+  - Dùng Invoice No. đang nhập; nếu ô tìm trống thì dùng đúng một
+    dòng Sale ASN đang được chọn.
+  - Tự click cột `Docs`, mở `Packing List`, chờ report load xong và
+    export Excel; sau đó lặp lại với `Buyer Invoice`.
+  - Ghép hai report thành một file `.xlsx` gồm hai sheet `Packing List`
+    và `Buyer Invoice`, giữ nguyên format report nguồn; Packing List được
+    dùng trực tiếp làm workbook nền thay vì dựng lại từng ô.
+  - Chỉ sau khi ghép xong app mới mở Save As, đặt tên mặc định theo
+    Invoice No.; user tự chọn nơi lưu, sau đó app mở đúng thư mục
+    chứa file.
 
 ## 10. Supplier List
 

@@ -1,8 +1,8 @@
-# WFX Smart 1.0.16
+# WFX Smart 1.0.17
 
 WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
-dùng của WorldFashionExchange (WFX). App chạy bằng pywebview, điều khiển một
-Chromium browser hệ thống qua Playwright/CDP và không phải Chrome Extension.
+dùng của WorldFashionExchange (WFX). App chạy bằng pywebview và điều khiển một
+Chromium browser hệ thống qua Playwright/CDP.
 
 Xem danh sách đầy đủ dành cho người dùng tại
 [`docs/USER_FEATURES.md`](./docs/USER_FEATURES.md).
@@ -27,7 +27,7 @@ Benchmark RAM/tốc độ của bản này nằm tại
 - Đổi Division WOVEN/KNIT/PSSG và chỉ xác nhận khi WFX đổi thành công.
 - Catalog có workspace Costing để nhận đúng Style Code/Style Name/status từ tab
   đang mở, scan Color/Size và phối Table theo từng item trong XLSX,
-  tải `.xlsx` với tên Style Name vào thư mục gần nhất, tùy chọn mở file/thư mục,
+  tải `.xlsx` với tên Style Name vào thư mục gần nhất, tùy chọn mở file,
   thêm CM/Production/Indirect Costs bằng danh sách quét từ WFX, rồi cập
   nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
   dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
@@ -61,6 +61,12 @@ Benchmark RAM/tốc độ của bản này nằm tại
 - Sample List có `Check File`: app tìm theo filter hiện tại, tự mở Style Code
   khi chỉ có một kết quả; nếu có nhiều kết quả thì cho chọn đúng Sample, sau đó
   liệt kê file đính kèm và cho tải trực tiếp như Catalog.
+- Sale ASN có `Tải Packing List + Buyer Invoice`: dùng Invoice No. đang
+  nhập hoặc dòng đang chọn, tự mở Docs, chờ từng Report Viewer,
+  export Excel cả hai báo cáo, ghép thành workbook hai sheet mà không
+  dựng lại format Packing List, rồi mở Save As với tên Invoice No.
+- Sau mọi lần tải/export file thành công, app tự mở đúng thư mục
+  chứa file vừa lưu.
 - Panel có fallback Win32 để tự thu ổn định khi click ra ngoài; backend hoàn tất
   cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm. Panel
   không tự thu sau flow khi chuột vẫn nằm trên UI.
@@ -169,10 +175,10 @@ Test không được in credential hoặc nội dung tìm kiếm ra output.
 Mỗi release Windows có hai lựa chọn, đều kèm checksum `.sha256` và chữ ký
 detached `.sha256.p7s`:
 
-- `WFX-Smart-Setup-v1.0.16.exe` — bản khuyên dùng. Cài theo user, không cần
+- `WFX-Smart-Setup-v1.0.17.exe` — bản khuyên dùng. Cài theo user, không cần
   quyền Administrator, tự tạo shortcut Desktop và Start Menu, có Uninstall và
   nâng cấp tại chỗ.
-- `WFX-Smart-v1.0.16-win64.zip` — bản portable. Giải nén nguyên thư mục rồi mở
+- `WFX-Smart-v1.0.17-win64.zip` — bản portable. Giải nén nguyên thư mục rồi mở
   `WFX-Panel.exe`; không được tách EXE khỏi `_internal`.
 
 Build bộ cài tại máy Windows (cần Inno Setup 6 hoặc 7):

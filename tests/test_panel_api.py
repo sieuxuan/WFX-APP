@@ -3,7 +3,7 @@ import threading
 import time
 from pathlib import Path
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 from wfx_panel import (
     article_library,
@@ -110,6 +110,25 @@ class FakeLogin:
     def search_sale_asn_list(self, xpath, filter_kind, query, log=print):
         self.calls.append(("search_sale_asn", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def prepare_sale_asn_documents(
+        self, xpath, filter_kind, query, output_path, log=print
+    ):
+        self.calls.append(
+            ("prepare_sale_asn_documents", xpath, filter_kind, query)
+        )
+        workbook = Workbook()
+        workbook.active.title = "Packing List"
+        workbook.create_sheet("Buyer Invoice")
+        workbook.save(output_path)
+        workbook.close()
+        return {
+            "ok": True,
+            "code": "SALE_ASN_DOCUMENTS_PREPARED",
+            "message": "prepared",
+            "invoice_no": query or "INV-SELECTED",
+            "prepared_path": str(output_path),
+        }
 
     def search_rmpo_list(self, xpath, supplier, order_no, log=print):
         self.calls.append(("search_rmpo", xpath, supplier, order_no))
@@ -2288,6 +2307,39 @@ def test_oc_sample_and_sale_asn_workflows_delegate(tmp_path):
         "invoice_no",
         "INV-9",
     ) in fake.calls
+
+
+def test_sale_asn_documents_are_prepared_then_saved_by_token(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    prepared = api.prepare_sale_asn_documents("invoice_no", " INV/9 ")
+
+    assert prepared["code"] == "SALE_ASN_DOCUMENTS_PREPARED"
+    assert prepared["invoice_no"] == "INV/9"
+    assert prepared["export_token"]
+    assert "prepared_path" not in prepared
+    assert (
+        "prepare_sale_asn_documents",
+        '//*[@id="0004_0070_0020"]/a',
+        "invoice_no",
+        "INV/9",
+    ) in fake.calls
+
+    target = tmp_path / "exports" / "INV-9"
+    saved = api.save_sale_asn_documents(
+        prepared["export_token"],
+        str(target),
+    )
+
+    output = target.with_suffix(".xlsx")
+    assert saved["code"] == "SALE_ASN_DOCUMENTS_EXPORTED"
+    assert Path(saved["export_path"]) == output.resolve()
+    assert load_workbook(output).sheetnames == ["Packing List", "Buyer Invoice"]
+    expired = api.save_sale_asn_documents(
+        prepared["export_token"],
+        str(tmp_path / "again.xlsx"),
+    )
+    assert expired["code"] == "SALE_ASN_DOCUMENTS_EXPIRED"
 
 
 def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):

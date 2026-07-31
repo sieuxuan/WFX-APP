@@ -58,6 +58,8 @@ METHOD_LABELS = {
     "check_sample_files": "Check File trong Sample List",
     "open_sample_file_choice": "Mở Style đã chọn trong Sample List",
     "search_sale_asn": "Tìm trong Sale ASN List",
+    "prepare_sale_asn_documents": "Tải Documents Sale ASN",
+    "save_sale_asn_documents": "Lưu Documents Sale ASN",
     "search_rmpo": "Tìm trong RMPO List",
     "search_indent": "Tìm trong Indent List",
     "open_module_new": "Mở màn New của module",
@@ -346,6 +348,26 @@ ERROR_CODE_INFO.update(
             "Màn Sale ASN mới chưa sẵn sàng",
             "Chờ form tải xong rồi thử lại.",
         ),
+        "SALE_ASN_DOCUMENTS_UNSUPPORTED": (
+            "Chưa hỗ trợ tải Documents Sale ASN",
+            "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
+        ),
+        "SALE_ASN_REPORT_NOT_READY": (
+            "Report Sale ASN chưa sẵn sàng",
+            "Chờ Documents/Report Viewer load xong rồi thử lại.",
+        ),
+        "SALE_ASN_REPORT_DOWNLOAD_FAILED": (
+            "Không tải được report Sale ASN",
+            "Kiểm tra Packing List, Buyer Invoice và quyền export Excel.",
+        ),
+        "SALE_ASN_REPORT_MERGE_FAILED": (
+            "Không ghép được hai report Sale ASN",
+            "Mở Log kỹ thuật và dùng Run ID để kiểm tra file report.",
+        ),
+        "SALE_ASN_DOCUMENTS_SAVE_FAILED": (
+            "Không lưu được file Documents Sale ASN",
+            "Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại.",
+        ),
         "SAMPLE_NEW_FAILED": (
             "Không thể tạo màn Sample Order mới",
             "Mở lại Sample List và kiểm tra quyền tạo mới.",
@@ -431,6 +453,8 @@ _METHOD_MODULES = {
     "check_sample_files": "Sample List",
     "open_sample_file_choice": "Sample List",
     "search_sale_asn": "Sale ASN",
+    "prepare_sale_asn_documents": "Sale ASN",
+    "save_sale_asn_documents": "Sale ASN",
     "search_rmpo": "RMPO List",
     "find_supplier": "Supplier List",
     "find_supplier_in_category": "Supplier List",
@@ -471,6 +495,11 @@ _FILTER_LABELS = {
         "created_by": "Created By",
     },
     "search_sale_asn": {
+        "invoice_no": "Invoice No.",
+        "buyer_order_ref": "Buyer Order Ref/OC No.",
+        "style": "Buyer Order Ref/OC No.",
+    },
+    "prepare_sale_asn_documents": {
         "invoice_no": "Invoice No.",
         "buyer_order_ref": "Buyer Order Ref/OC No.",
         "style": "Buyer Order Ref/OC No.",

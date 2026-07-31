@@ -14,9 +14,8 @@ def test_style_css_exists_and_scoped_to_root():
 
 
 def test_desktop_override_forces_panel_visible():
-    """Panel của extension ẩn mặc định (`.panel { opacity:0; visibility:hidden;
-    pointer-events:none }`) và chỉ hiện khi JS thêm `.panel-open` lúc bấm nút
-    launcher. Bản desktop bỏ launcher, không bao giờ thêm class đó — nếu khối
+    """Layout gốc ẩn panel bằng `opacity`/`visibility`/`pointer-events`.
+    Desktop panel không dùng class trượt `.panel-open` — nếu khối
     override không vô hiệu hoá ba thuộc tính này thì cửa sổ chỉ hiển thị
     background_color, tức UI đen hoàn toàn. Đây là hồi quy đã xảy ra thật.
     """
@@ -28,7 +27,7 @@ def test_desktop_override_forces_panel_visible():
         "pointer-events: auto !important",
     ):
         assert declaration in css, declaration
-        # Override phải nằm TRƯỚC rule ẩn của extension thì mới thắng nhờ
+        # Override phải nằm TRƯỚC rule ẩn gốc thì mới thắng nhờ
         # !important; nếu bị đặt sau, thứ tự cascade vẫn đúng nhưng ta muốn
         # giữ nguyên vị trí khối override đầu file.
         assert css.index(declaration) < hidden_default, declaration
@@ -45,7 +44,7 @@ def test_transition_background_is_restored_after_root_reset():
 def test_overlay_toggle_classes_match_the_css():
     """panel.js phải bật overlay bằng ĐÚNG tên class mà style.css định nghĩa.
 
-    CSS trích từ extension bật Settings bằng `.settings-open` và Log bằng
+    CSS bật Settings bằng `.settings-open` và Log bằng
     `.log-open`; `.settings-overlay` mặc định là `visibility:hidden; opacity:0`.
     Nếu JS thêm một class khác (vd `open` trần) thì không rule nào khớp và cả
     hai overlay KHÔNG BAO GIỜ mở được — đã xảy ra thật, người dùng không vào
@@ -99,12 +98,13 @@ def test_index_html_has_contract_hooks():
         'data-module-action="oc-review-confirm"',
         'data-module-action="oc-revise-report"',
         'data-module-action="oc-upload-revise"',
+        'data-module-action="sale-asn-documents"',
         'class="oc-upload-review"',
         'class="oc-review-identities"',
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260731-9"',
+        'src="panel.js?v=20260801-2"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -113,6 +113,7 @@ def test_index_html_has_contract_hooks():
     assert "Quét Article cho dropdown" not in html
     assert '<span class="catalog-browse-label">Mở Catalog</span>' in html
     assert 'data-costing-action="export-csv"' not in html
+    assert 'class="open-costing-folder-input"' not in html
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
     assert 'class="compact-launcher"' not in html
 

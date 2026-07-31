@@ -5,7 +5,7 @@
       { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Article · Season · Costing/BOM." },
       { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở/tìm OC List, tạo Upload OC New hoặc Revise OC." },
       { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
-      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn." },
+      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tìm Sale ASN, tải bộ Documents Excel hoặc tạo ASN mới." },
       { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No." },
       { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Mở Indent List hoặc lọc kết hợp theo 4 điều kiện." },
       { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "indent", description: "Mở User Indent List hoặc lọc kết hợp theo 4 điều kiện." },
@@ -112,7 +112,8 @@
     "open_catalog_destination", "browse_catalog", "catalog_action",
     "open_sale_asn_new", "open_sample_new", "search_oc", "search_sample",
     "check_sample_files", "open_sample_file_choice",
-    "search_sale_asn", "search_rmpo", "search_indent", "open_module_new",
+    "search_sale_asn", "prepare_sale_asn_documents",
+    "save_sale_asn_documents", "search_rmpo", "search_indent", "open_module_new",
     "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
@@ -156,6 +157,8 @@
     check_sample_files: "Đang tìm Sample và kiểm tra file…",
     open_sample_file_choice: "Đang mở Style và kiểm tra file…",
     search_sale_asn: "Đang tìm Sale ASN…",
+    prepare_sale_asn_documents: "Đang tải và ghép Documents Sale ASN…",
+    save_sale_asn_documents: "Đang lưu file Excel Sale ASN…",
     search_rmpo: "Đang lọc RMPO List…",
     search_indent: "Đang lọc Indent List…",
     open_module_new: "Đang mở màn New…",
@@ -199,6 +202,8 @@
     check_sample_files: "Check File Sample",
     open_sample_file_choice: "Mở file Sample",
     search_sale_asn: "Tìm Sale ASN",
+    prepare_sale_asn_documents: "Tải Documents Sale ASN",
+    save_sale_asn_documents: "Lưu Documents Sale ASN",
     search_rmpo: "Tìm RMPO",
     search_indent: "Tìm Indent",
     open_module_new: "Mở màn New",
@@ -1371,6 +1376,33 @@
     return result;
   }
 
+  async function downloadSaleAsnDocuments() {
+    const prepared = await call(
+      "prepare_sale_asn_documents",
+      moduleFilterKinds.sale_asn,
+      $(".sale-asn-query").value.trim(),
+    );
+    if (!prepared?.ok || !prepared.export_token) return prepared;
+    const selected = await callQuiet(
+      "choose_sale_asn_export_file",
+      prepared.invoice_no || "Invoice",
+    );
+    if (!selected?.ok) {
+      await callQuiet("cancel_sale_asn_documents", prepared.export_token);
+      if (selected?.code !== "SALE_ASN_FILE_DIALOG_CANCELLED") {
+        handleResult(selected);
+      }
+      return selected;
+    }
+    const saved = await call(
+      "save_sale_asn_documents",
+      prepared.export_token,
+      selected.file_path,
+    );
+    dismissAfterSuccessfulModule(saved);
+    return saved;
+  }
+
   const moduleActions = {
     "oc-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "oc-template": async () => {
@@ -1417,6 +1449,7 @@
       moduleFilterKinds.sale_asn,
       $(".sale-asn-query").value.trim(),
     ),
+    "sale-asn-documents": () => downloadSaleAsnDocuments(),
     "rmpo-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "rmpo-search": () => runSelectedModuleAction(
       "search_rmpo",
@@ -2839,20 +2872,16 @@
         event.target.checked = returnToListAfterAction;
       }
     });
-    [".open-costing-file-input", ".open-costing-folder-input"].forEach(
-      (selector) => $(selector).addEventListener("change", async () => {
-        const result = await callQuiet(
-          "set_costing_export_open_options",
-          $(".open-costing-file-input").checked,
-          $(".open-costing-folder-input").checked,
-        );
-        if (!result?.ok) return;
-        $(".open-costing-file-input").checked =
-          result.open_costing_file_after_export === true;
-        $(".open-costing-folder-input").checked =
-          result.open_costing_folder_after_export === true;
-      }),
-    );
+    $(".open-costing-file-input").addEventListener("change", async () => {
+      const result = await callQuiet(
+        "set_costing_export_open_options",
+        $(".open-costing-file-input").checked,
+        true,
+      );
+      if (!result?.ok) return;
+      $(".open-costing-file-input").checked =
+        result.open_costing_file_after_export === true;
+    });
     const hotkeyButton = $(".hotkey-button");
     hotkeyButton.addEventListener("click", () => {
       hotkeyButton.dataset.capturing = "true";
@@ -3039,8 +3068,6 @@
       state.focus_chrome_on_module !== false;
     $(".open-costing-file-input").checked =
       state.open_costing_file_after_export !== false;
-    $(".open-costing-folder-input").checked =
-      state.open_costing_folder_after_export === true;
     $(".always-on-top-input").checked = state.always_on_top !== false;
     catalogDefaultFolder = state.catalog_default_folder || null;
     const folderLabel =

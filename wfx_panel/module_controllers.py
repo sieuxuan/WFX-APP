@@ -64,7 +64,7 @@ class SampleListModule(ModuleController):
 class SaleASNModule(ModuleController):
     module_id = "0004_0070_0020"
     kind = "sale_asn"
-    description = "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn."
+    description = "Tìm Sale ASN, tải bộ Documents Excel hoặc tạo ASN mới."
 
     def open(self, login_module: Any, log: Callable[[str], None]) -> dict:
         opener = getattr(login_module, "open_module_with_floating_filter", None)

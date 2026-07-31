@@ -302,8 +302,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} bổ sung Upload OC New/Revise, bộ cài
-            Windows một lần bấm và tăng độ ổn định của updater.
+            WFX Smart ${{ env.VERSION }} bổ sung tải và gộp Packing List cùng
+            Buyer Invoice từ Sale ASN, giữ format báo cáo và tự mở thư mục lưu.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.
@@ -324,6 +324,8 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
+            - Sale ASN tải Packing List và Buyer Invoice, gộp thành một workbook theo Invoice No. và giữ format của hai sheet.
+            - Mọi file tải hoặc xuất thành công đều tự mở thư mục người dùng đã chọn.
             - Upload OC New dùng form một header, tự sinh Sheet1 EDI và validate trước khi gửi WFX.
             - Màn Review hiển thị Buyer, Season, số PO, số Style và tổng Units trước khi người dùng xác nhận upload.
             - Revise OC mở đúng báo cáo WFX, nhận file người dùng chỉnh sửa rồi chạy chung bước verify/Create Transaction.

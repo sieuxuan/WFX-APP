@@ -30,6 +30,8 @@ const methodLabels = {
   search_oc: 'Tìm trong OC List',
   search_sample: 'Tìm trong Sample List',
   search_sale_asn: 'Tìm trong Sale ASN List',
+  prepare_sale_asn_documents: 'Tải Documents Sale ASN',
+  save_sale_asn_documents: 'Lưu Documents Sale ASN',
   search_rmpo: 'Tìm trong RMPO List',
   search_indent: 'Tìm trong Indent List',
   open_module_new: 'Mở màn New của module',
@@ -51,6 +53,11 @@ const methodContexts = {
     module: 'Sale ASN',
     filter: 'Invoice No. / Style',
   },
+  prepare_sale_asn_documents: {
+    module: 'Sale ASN',
+    filter: 'Invoice No. / Buyer Order Ref/OC No.',
+  },
+  save_sale_asn_documents: { module: 'Sale ASN', filter: '' },
   search_rmpo: { module: 'RMPO List', filter: 'Supplier / RMPO No.' },
   search_indent: {
     module: 'Indent List / User Indent',
@@ -98,6 +105,22 @@ const errorCodes = {
   FLOATING_FILTER_NOT_READY: {
     title: 'Floating Filter chưa sẵn sàng',
     suggestion: 'Chờ danh sách tải xong, bật Floating Filter rồi thử lại.',
+  },
+  SALE_ASN_REPORT_NOT_READY: {
+    title: 'Report Sale ASN chưa sẵn sàng',
+    suggestion: 'Chờ Documents/Report Viewer load xong rồi thử lại.',
+  },
+  SALE_ASN_REPORT_DOWNLOAD_FAILED: {
+    title: 'Không tải được report Sale ASN',
+    suggestion: 'Kiểm tra hai report và quyền export Excel.',
+  },
+  SALE_ASN_REPORT_MERGE_FAILED: {
+    title: 'Không ghép được hai report Sale ASN',
+    suggestion: 'Mở Log kỹ thuật và dùng Run ID để kiểm tra.',
+  },
+  SALE_ASN_DOCUMENTS_SAVE_FAILED: {
+    title: 'Không lưu được file Documents Sale ASN',
+    suggestion: 'Chọn thư mục có quyền ghi và thử lại.',
   },
   SUPPLIER_SEARCH_PARTIAL: {
     title: 'Chưa kiểm tra được toàn bộ Category Supplier',

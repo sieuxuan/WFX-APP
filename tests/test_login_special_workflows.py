@@ -57,6 +57,15 @@ def test_sale_asn_new_keeps_or_selects_required_values():
     assert 'field.select_option(value=value' in SOURCE
 
 
+def test_sale_asn_documents_export_both_reports_and_merge_workbook():
+    assert "def prepare_sale_asn_documents" in SOURCE
+    assert 'PACKING_LIST_SELECTOR = "#lnkANFPackingList"' in SOURCE
+    assert 'BUYER_INVOICE_SELECTOR = "#lnkBuyerInvoice"' in SOURCE
+    assert "EXCELOPENXML" in SOURCE
+    assert "merge_sale_asn_reports" in SOURCE
+    assert '"SALE_ASN_SELECTION_REQUIRED"' in SOURCE
+
+
 def test_oc_sample_and_sale_asn_search_auto_open_their_list():
     for function_name in (
         "search_oc_list",
