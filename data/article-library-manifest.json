@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "version": "20260731-article-list-15240",
+  "version": "86fdd1c37119d2dfcae2f29947644ff4c44576a8",
   "format": "csv",
   "data_url": "../Article%20List.csv",
-  "sha256": "b16ad87ed121654f63b43971fc52fc71248bb378b469bbbf17ceb853de050593"
+  "sha256": "a131e9bd28aafd620eb256ac1db733cc4149da8f0c060b2ee6a25534b6d3e145"
 }
