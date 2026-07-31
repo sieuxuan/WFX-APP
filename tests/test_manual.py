@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from tests import _manual_surface as surface
 from wfx_panel import manual_book, telemetry
 from wfx_panel.version import APP_VERSION
 
@@ -194,3 +195,42 @@ def test_chi_muc_tim_kiem_gom_tieu_de_tu_khoa_va_noi_dung():
     assert "hotkey" in row["haystack"]
     assert "ctrl + shift + x" in row["haystack"]
     assert row["haystack"] == row["haystack"].lower()
+
+
+def test_helper_trich_dung_so_luong_hien_co():
+    assert len(surface.module_ids()) == 16
+    assert "0003_6200" in surface.module_ids()
+    assert len(surface.module_actions()) == 29
+    assert surface.catalog_actions() == {
+        "browse",
+        "find",
+        "costsheet",
+        "bom",
+        "files",
+        "refresh-folders",
+    }
+    assert surface.costing_actions() == {
+        "export-xlsx",
+        "validate-file",
+        "import",
+        "apply",
+        "cancel-plan",
+        "clear-dependencies",
+    }
+    assert surface.settings_controls() == {
+        "return-list-input",
+        "focus-chrome-input",
+        "open-costing-file-input",
+        "autostart-input",
+        "start-hidden-input",
+        "admin-mode-input",
+        "always-on-top-input",
+        "toast-input",
+        "hotkey",
+        "theme",
+    }
+
+
+def test_helper_doc_duoc_khai_bao_phu():
+    assert "hotkey" in surface.covered("settings")
+    assert "LOGIN_FAILED" in surface.covered("errors")
