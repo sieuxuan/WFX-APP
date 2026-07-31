@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -27,6 +28,7 @@ from wfx_panel import (
     autostart,
     crash_log,
     hotkey,
+    manual_book,
     prefs,
     status,
     updater,
@@ -88,6 +90,11 @@ UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 NOTIFICATION_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
 BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
 BUBBLE_MENU_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble_menu.html"
+MANUAL_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "manual.html"
+MANUAL_WINDOW_TITLE = "WFX Smart · Hướng dẫn sử dụng"
+MANUAL_WINDOW_WIDTH = 1000
+MANUAL_WINDOW_HEIGHT = 720
+MANUAL_WINDOW_MIN = (720, 520)
 
 WINDOW_WIDTH = 440
 WINDOW_HEIGHT = 620
@@ -362,6 +369,44 @@ class _BubbleBridge:
         return self._app.bubble_context_menu()
 
 
+class _ManualBridge:
+    """Cầu nối JS cho cửa sổ Hướng dẫn sử dụng.
+
+    Cửa sổ này hoàn toàn offline: nó chỉ đọc nội dung tĩnh đã đóng gói, không
+    chạm tới Playwright, Chrome hay phiên WFX. Nhờ vậy người dùng tra cứu được
+    ngay cả khi chưa đăng nhập hoặc đang mất mạng.
+    """
+
+    def __init__(self, app: PanelApp):
+        self._app = app
+
+    def get_manual_book(self) -> dict:
+        return self._app.manual_payload()
+
+    def open_manual_external(self) -> dict:
+        try:
+            opened = bool(webbrowser.open(WFX_MANUAL_URL, new=2))
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "MANUAL_OPEN_FAILED",
+                "message": f"Không mở được trang WFX: {error}",
+            }
+        return {
+            "ok": opened,
+            "code": "MANUAL_OPENED" if opened else "MANUAL_OPEN_FAILED",
+            "message": (
+                "Đã mở System Manual của WFX."
+                if opened
+                else "Không tìm thấy trình duyệt."
+            ),
+        }
+
+    def close_manual(self) -> dict:
+        self._app.close_manual_window()
+        return {"ok": True, "code": "MANUAL_CLOSED", "message": ""}
+
+
 class _BubbleMenuBridge:
     """Cầu nối cho popup menu tách riêng khỏi cửa sổ bubble."""
 
@@ -396,6 +441,8 @@ class PanelApp:
         self._always_on_top = preferences["always_on_top"]
         self._start_hidden = preferences["start_hidden"]
         self.bubble_window = None
+        self.manual_window = None
+        self._manual_target = ""
         self.bubble_menu_window = None
         # Bubble là trạng thái nghỉ sau khi thu panel. Khi user chạy app bình
         # thường, UI đầy đủ phải xuất hiện ngay lần đầu (trừ khi họ chủ động
@@ -1214,25 +1261,97 @@ class PanelApp:
         self._restore_bubble()
         return self.show_panel()
 
-    def open_wfx_manual(self) -> dict:
-        """Mở hướng dẫn WFX trong trình duyệt mặc định của người dùng."""
-        try:
-            opened = bool(webbrowser.open(WFX_MANUAL_URL, new=2))
-        except Exception as error:
+    def manual_payload(self) -> dict:
+        """Nội dung sách hướng dẫn kèm theme và mục cần mở sẵn."""
+        book = manual_book.load_book()
+        book["theme"] = prefs.load_prefs().get("theme", "light")
+        book["target"] = self._manual_target
+        book["manual_url"] = WFX_MANUAL_URL
+        return book
+
+    def close_manual_window(self) -> None:
+        window, self.manual_window = self.manual_window, None
+        if window is not None:
+            try:
+                window.destroy()
+            except Exception:
+                pass
+
+    def open_wfx_manual(self, target: str = "") -> dict:
+        """Mở Hướng dẫn; bấm lần hai thì đưa cửa sổ đó lên trước.
+
+        `target` là id mục manual hoặc mã lỗi. Rỗng thì mở trang chủ hướng dẫn.
+        """
+        self._manual_target = str(target or "")
+        windows = getattr(webview, "windows", None)
+        if (
+            self.manual_window is not None
+            and windows
+            and self.manual_window not in windows
+        ):
+            self.manual_window = None
+        if self.manual_window is not None:
+            try:
+                self.manual_window.show()
+                if self._manual_target:
+                    self.manual_window.evaluate_js(
+                        f"window.wfxManualGoTo({json.dumps(self._manual_target)})"
+                    )
+                return {
+                    "ok": True,
+                    "code": "MANUAL_FOCUSED",
+                    "message": "Cửa sổ hướng dẫn đang mở.",
+                }
+            except Exception:
+                self.manual_window = None
+        created: list[object] = []
+        errors: list[Exception] = []
+        ready = threading.Event()
+
+        def create_manual_window() -> None:
+            try:
+                window = webview.create_window(
+                    MANUAL_WINDOW_TITLE,
+                    url=str(MANUAL_INDEX),
+                    js_api=_ManualBridge(self),
+                    width=MANUAL_WINDOW_WIDTH,
+                    height=MANUAL_WINDOW_HEIGHT,
+                    min_size=MANUAL_WINDOW_MIN,
+                    resizable=True,
+                    on_top=self._always_on_top,
+                )
+                created.append(window)
+            except Exception as error:
+                errors.append(error)
+            finally:
+                ready.set()
+
+        threading.Thread(
+            target=create_manual_window,
+            name="WFXManualWindow",
+            daemon=True,
+        ).start()
+        if not ready.wait(5) or not created:
+            error = errors[0] if errors else "quá thời gian tạo cửa sổ"
             return {
                 "ok": False,
                 "code": "MANUAL_OPEN_FAILED",
-                "message": f"Không mở được WFX Manual: {error}",
+                "message": f"Không mở được hướng dẫn: {error}",
             }
+        window = created[0]
+        self.manual_window = window
+        try:
+            window.events.closed += self._on_manual_closed
+        except Exception:
+            pass
         return {
-            "ok": opened,
-            "code": "MANUAL_OPENED" if opened else "MANUAL_OPEN_FAILED",
-            "message": (
-                "Đã mở WFX Manual."
-                if opened
-                else "Không tìm thấy trình duyệt để mở WFX Manual."
-            ),
+            "ok": True,
+            "code": "MANUAL_OPENED",
+            "message": "Đã mở hướng dẫn sử dụng.",
         }
+
+    def _on_manual_closed(self, *_args) -> None:
+        self.manual_window = None
 
     def _focus_module_search(self) -> None:
         if self.window is None:
