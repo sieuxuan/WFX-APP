@@ -280,3 +280,13 @@ def test_nhom_don_hang_co_du_huong_dan():
     assert not missing, f"Chưa có hướng dẫn cho: {sorted(missing)}"
     for module_id in ("0004_0050_0020", "0004_0056_4070", "0004_0070_0020"):
         assert module_id in surface.covered("modules"), module_id
+
+
+def test_moi_module_deu_co_huong_dan():
+    missing = surface.module_ids() - surface.covered("modules")
+    assert not missing, f"Module chưa có hướng dẫn: {sorted(missing)}"
+
+
+def test_moi_nut_thao_tac_module_deu_co_huong_dan():
+    missing = surface.module_actions() - surface.covered("actions")
+    assert not missing, f"Nút chưa có hướng dẫn: {sorted(missing)}"

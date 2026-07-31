@@ -396,6 +396,121 @@
           }
         }
       ]
+    },
+    {
+      "id": "danh-sach",
+      "title": "Các danh sách khác",
+      "summary": "Mở và tìm dữ liệu trong các module nghiệp vụ còn lại.",
+      "entries": [
+        {
+          "id": "danh-sach-rmpo",
+          "title": "RMPO List",
+          "summary": "Tìm RMPO theo nhà cung cấp và số RMPO.",
+          "file": "06-danh-sach/rmpo.md",
+          "keywords": ["rmpo", "supplier", "đơn nguyên liệu"],
+          "covers": {
+            "modules": ["0005_0050_0020"],
+            "actions": ["rmpo-list", "rmpo-search"]
+          }
+        },
+        {
+          "id": "danh-sach-indent",
+          "title": "Indent List và User Indent",
+          "summary": "Tìm Indent theo bốn điều kiện kết hợp.",
+          "file": "06-danh-sach/indent.md",
+          "keywords": ["indent", "user indent", "article", "style"],
+          "covers": {
+            "modules": ["0005_0080_0020", "user_indent_list"],
+            "actions": ["indent-list", "indent-search"]
+          }
+        },
+        {
+          "id": "danh-sach-qa-tai-chinh",
+          "title": "QA và yêu cầu tài chính",
+          "summary": "Mở danh sách hoặc đi thẳng tới màn hình tạo mới.",
+          "file": "06-danh-sach/qa-va-tai-chinh.md",
+          "keywords": ["qa", "advance pr", "expense invoice", "new"],
+          "covers": {
+            "modules": [
+              "0063_0030_0020",
+              "0065_0880_0010_0020",
+              "0065_0880_0030_0020"
+            ],
+            "actions": ["list-new-list", "list-new-new"]
+          }
+        },
+        {
+          "id": "danh-sach-buyer",
+          "title": "Buyer List",
+          "summary": "Mở danh sách và tìm Buyer đầu tiên phù hợp.",
+          "file": "06-danh-sach/buyer.md",
+          "keywords": ["buyer", "buyers list", "công ty"],
+          "covers": {
+            "modules": ["0004_0010_1720"],
+            "actions": ["buyer-list", "buyer-find"],
+            "errors": [
+              "BUYER_EDIT_NOT_CONFIRMED",
+              "BUYER_EDIT_NOT_FOUND",
+              "BUYER_SEARCH_FAILED",
+              "BUYER_SEARCH_NOT_READY"
+            ]
+          }
+        },
+        {
+          "id": "danh-sach-supplier",
+          "title": "Supplier List",
+          "summary": "Mở Supplier theo Category hoặc tìm trên mọi Category.",
+          "file": "06-danh-sach/supplier.md",
+          "keywords": ["supplier", "category", "master"],
+          "covers": {
+            "modules": ["0005_0010_1290"],
+            "actions": ["supplier-list", "supplier-open", "supplier-find"],
+            "errors": [
+              "SUPPLIER_MASTER_NOT_READY",
+              "SUPPLIER_OPEN_FAILED",
+              "SUPPLIER_SEARCH_FAILED",
+              "SUPPLIER_SEARCH_NOT_READY",
+              "SUPPLIER_SEARCH_PARTIAL"
+            ]
+          }
+        },
+        {
+          "id": "danh-sach-company",
+          "title": "Company Setup và FOC",
+          "summary": "Mở thiết lập công ty và đổi nơi áp dụng FOC.",
+          "file": "06-danh-sach/company-setup.md",
+          "keywords": ["company setup", "foc", "asn", "grn"],
+          "covers": {
+            "modules": ["0090_0007"],
+            "actions": ["company-list", "company-toggle-foc"],
+            "errors": [
+              "COMPANY_FOC_FAILED",
+              "COMPANY_FOC_NOT_READY",
+              "COMPANY_FOC_SAVE_NOT_CONFIRMED",
+              "COMPANY_LIST_OPEN_FAILED"
+            ]
+          }
+        },
+        {
+          "id": "danh-sach-module-khac",
+          "title": "Supplier Invoice, Org Structure và System Coding",
+          "summary": "Mở các module chỉ có một nút thao tác.",
+          "file": "06-danh-sach/module-khac.md",
+          "keywords": ["supplier invoice", "org structure", "system coding"],
+          "covers": {
+            "modules": ["0065_0880_0020_0020", "0090_0001", "0090_0250"],
+            "errors": [
+              "MODULE_ACCESS_CHECK_FAILED",
+              "MODULE_FAILED",
+              "MODULE_NOT_FOUND",
+              "MODULE_OPEN_NOT_CONFIRMED",
+              "MODULE_SEARCH_FAILED",
+              "MODULE_SEARCH_NOT_CONFIRMED",
+              "MODULE_SEARCH_NOT_READY"
+            ]
+          }
+        }
+      ]
     }
   ]
 }
