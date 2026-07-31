@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from wfx_panel import manual_book
 
 
@@ -52,3 +56,98 @@ def test_render_markdown_khong_cho_html_tho():
 
 def test_strip_html_tra_ve_van_ban_thuan():
     assert manual_book.strip_html("<p>Xin <strong>chào</strong></p>") == "Xin chào"
+
+
+def test_manifest_ton_tai_va_dung_cau_truc():
+    manifest = manual_book.load_manifest()
+    assert isinstance(manifest["chapters"], list)
+    for chapter in manifest["chapters"]:
+        assert chapter["id"] and chapter["title"]
+        for entry in chapter["entries"]:
+            assert entry["id"] and entry["title"] and entry["file"]
+            assert isinstance(entry.get("keywords", []), list)
+            covers = entry.get("covers", {})
+            for key in ("modules", "actions", "settings", "errors"):
+                assert isinstance(covers.get(key, []), list), key
+
+
+def test_moi_file_trong_manifest_deu_ton_tai():
+    manifest = manual_book.load_manifest()
+    for chapter in manifest["chapters"]:
+        for entry in chapter["entries"]:
+            path = manual_book.MANUAL_DIR / entry["file"]
+            assert path.is_file(), entry["file"]
+
+
+def test_khong_co_file_md_mo_coi():
+    manifest = manual_book.load_manifest()
+    declared = {
+        entry["file"].replace("\\", "/")
+        for chapter in manifest["chapters"]
+        for entry in chapter["entries"]
+    }
+    on_disk = {
+        path.relative_to(manual_book.MANUAL_DIR).as_posix()
+        for path in manual_book.MANUAL_DIR.rglob("*.md")
+    }
+    assert on_disk == declared
+
+
+def test_id_muc_la_duy_nhat():
+    manifest = manual_book.load_manifest()
+    ids = [
+        entry["id"]
+        for chapter in manifest["chapters"]
+        for entry in chapter["entries"]
+    ]
+    assert len(ids) == len(set(ids))
+
+
+def test_noi_dung_khong_chua_tu_cam_va_khong_bo_trong():
+    for path in manual_book.MANUAL_DIR.rglob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for word in manual_book.FORBIDDEN_WORDS:
+            assert word.lower() not in lowered, f"{path.name} chứa '{word}'"
+        for placeholder in ("todo", "tbd", "chưa viết"):
+            assert placeholder not in lowered, f"{path.name} còn '{placeholder}'"
+        assert "<" not in text, f"{path.name} có HTML thô"
+
+
+def test_moi_muc_co_du_hai_phan_bat_buoc():
+    for path in manual_book.MANUAL_DIR.rglob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "## Dùng để làm gì" in text, path.name
+        assert "## Các bước" in text, path.name
+
+
+def test_load_book_dung_html_va_van_ban_tim_kiem():
+    book = manual_book.load_book()
+    assert book["version"]
+    assert book["order"]
+    first = book["entries"][book["order"][0]]
+    assert first["html"].startswith("<")
+    assert first["text"] and "<" not in first["text"]
+    assert first["chapter_title"]
+
+
+def test_load_book_bao_loi_khi_thieu_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(manual_book, "MANUAL_DIR", tmp_path)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "chapters": [
+                    {
+                        "id": "x",
+                        "title": "X",
+                        "entries": [
+                            {"id": "x-1", "title": "Một", "file": "khong-co.md"}
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(manual_book.ManualContentError):
+        manual_book.load_book()
