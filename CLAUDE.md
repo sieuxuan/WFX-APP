@@ -283,11 +283,21 @@ Các workflow riêng hiện có:
   backend phải snapshot lại bytes hiện tại vào thư mục review mới và tính
   SHA-256; không dùng lại workbook đã chuẩn hoá hoặc kết quả review trước. UI
   dùng selection revision để kết quả bất đồng bộ cũ không render đè lần mới.
+- Form OC có dropdown Order Type `Confirmed`/`Forecast`/`SMS` và Payment Terms
+  theo danh sách WFX chuẩn. Dòng `Units = 0` được bỏ khỏi Sheet1 và review;
+  Units âm/không nguyên vẫn là lỗi. Zone trống mặc định `FOB`, Extra Production
+  trống mặc định `0`. New và Revise đều phải kiểm tra nghiêm ngặt
+  `Buyer Order Date < Raw Material ETA < Buyer Delivery Date = OC Delivery Date`.
 - EDI OC phải chọn exact Buyer từ file và package value `1`/
   `StandardSalesOrder`, upload file chuẩn hoá, bấm `Process Package` rồi đọc
   cả `Data Imported`, `Data Validated`, `Mapping Resolved`. Chỉ khi tất cả đều
   Success mới chọn transaction đầu tiên và bấm `Create Transaction`; New đi
   tab `New`, Revise đi tab `Revision`.
+- Chỉ đọc package mới nhất trong Error Resolution. Bất kỳ trạng thái `InProgress`/
+  `In Progress` hoặc Fail nào ở Imported/Validated/Mapping đều được coi là lỗi
+  ngay, không chờ timeout. Automation click đúng link trạng thái, đọc popup
+  `Failed Record` (Mapping Code, Doc No., Mapping Details, InActive), trả chi
+  tiết cho UI, giữ popup để chụp ảnh vào Lịch sử và không click Create Transaction.
 - `ddlBuyer` và `ddlPackage` của WFX chỉ bind đủ option sau `mousedown`; automation
   phải dispatch sự kiện này, tìm option theo label/title exact và xác nhận lại
   control sau postback trước khi đi tiếp.
