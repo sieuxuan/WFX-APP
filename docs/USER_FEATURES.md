@@ -312,10 +312,19 @@ Nhóm Admin hiển thị theo quyền của tài khoản:
 
 ## 16. Cập nhật ứng dụng
 
+- Bản cài `Setup.exe` được khuyên dùng: chỉ cần mở file để cài trực tiếp vào
+  Windows, không cần quyền Administrator; shortcut Desktop được tạo mặc định,
+  đồng thời có Start Menu và Uninstall.
+- Khi chạy Setup phiên bản mới, bộ cài tự đóng đúng WFX Smart đang dùng file và
+  nâng cấp tại chỗ. Tài khoản, Settings và dữ liệu làm việc vẫn được giữ nguyên.
+- Bản portable `.zip` vẫn được phát hành cho người không muốn cài; phải giải nén
+  và giữ `WFX-Panel.exe` cạnh thư mục `_internal`.
 - Tự kiểm tra GitHub Release Stable định kỳ.
 - Nút `Cập nhật ngay` tải và cài bản mới.
 - Xác minh chữ ký certificate và SHA-256 trước khi thay file.
 - Tự rollback nếu cập nhật thất bại.
+- Nếu WebView2 làm app đóng chậm, updater xác minh đúng PID và đường dẫn bản
+  đang cài rồi mới hoàn tất việc đóng; không tắt các bản WFX Smart khác theo tên.
 - Giữ nguyên tài khoản và Settings khi build, update hoặc rollback.
 
 ## 17. Giới hạn cần biết

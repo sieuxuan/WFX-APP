@@ -77,7 +77,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
   toàn thay vì gửi mô tả trống.
 - Endpoint webhook được chốt trước khi tạo background thread; môi trường test
   đã tắt reporting không thể gửi trễ payload giả sang production.
-- Tự kiểm tra và cài GitHub Release có xác minh checksum/chữ ký và rollback.
+- Tự kiểm tra và cài GitHub Release có xác minh checksum/chữ ký, rollback và
+  cơ chế đóng đúng PID/path khi WebView2 giữ process quá lâu.
 
 ## Cách sử dụng nhanh
 
@@ -152,8 +153,23 @@ Test không được in credential hoặc nội dung tìm kiếm ra output.
 
 ## Release và cập nhật
 
-Gói phát hành có dạng `WFX-Smart-v1.0.16-win64.zip`, kèm checksum `.sha256` và
-chữ ký detached `.sha256.p7s`.
+Mỗi release Windows có hai lựa chọn, đều kèm checksum `.sha256` và chữ ký
+detached `.sha256.p7s`:
+
+- `WFX-Smart-Setup-v1.0.16.exe` — bản khuyên dùng. Cài theo user, không cần
+  quyền Administrator, tự tạo shortcut Desktop và Start Menu, có Uninstall và
+  nâng cấp tại chỗ.
+- `WFX-Smart-v1.0.16-win64.zip` — bản portable. Giải nén nguyên thư mục rồi mở
+  `WFX-Panel.exe`; không được tách EXE khỏi `_internal`.
+
+Build bộ cài tại máy Windows (cần Inno Setup 6 hoặc 7):
+
+```powershell
+.\build-installer.ps1
+```
+
+Nếu đã có `dist/WFX-Panel`, dùng `-SkipAppBuild` để chỉ đóng gói installer.
+Bộ cài được tạo trong `dist/installer/`.
 
 GitHub Actions cần hai secrets:
 
@@ -162,7 +178,8 @@ GitHub Actions cần hai secrets:
 
 Updater xác minh chữ ký certificate đã ghim, SHA-256 và chỉ thay
 `WFX-Panel.exe` cùng `_internal`. Nếu cài lỗi, app rollback hai thành phần này
-và giữ nguyên tài khoản/settings.
+và giữ nguyên tài khoản/settings. Installer cũng giữ dữ liệu người dùng tại
+`%LocalAppData%\WFX-Panel` khi cài mới, nâng cấp hoặc uninstall.
 
 Windows 11 thường có sẵn WebView2. Windows 10 cần Microsoft Edge WebView2
 Runtime nếu UI không mở.

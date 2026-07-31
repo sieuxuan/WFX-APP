@@ -34,3 +34,14 @@ def test_release_workflow_keeps_size_and_dependency_regression_guards():
     assert "$buildSizeMb -gt 180" in source
     for unused in ("PyQt5", "PyQt6", "numpy", "cryptography"):
         assert f'"{unused}"' in source
+
+
+def test_release_workflow_publishes_installer_and_portable_builds():
+    source = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "JRSoftware.InnoSetup" in source
+    assert ".\\build-installer.ps1 -SkipAppBuild" in source
+    assert '$setupName = "WFX-Smart-Setup-v$version.exe"' in source
+    assert "dist/installer/${{ env.SETUP_NAME }}" in source
+    assert "${{ env.ZIP_NAME }}" in source
+    assert "$verifySetupCms.CheckSignature($true)" in source

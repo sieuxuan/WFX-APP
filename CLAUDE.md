@@ -4,7 +4,8 @@
 
 Dự án này là **desktop app pywebview** (`wfx_panel/`) tự động hoá
 WorldFashionExchange qua Playwright/CDP, đóng gói bằng PyInstaller
-(`build-panel.ps1` → `dist/WFX-Panel/`) và tự cập nhật từ GitHub Release. Đây
+(`build-panel.ps1` → `dist/WFX-Panel/`), đóng thành bộ cài Inno Setup
+(`build-installer.ps1` → `dist/installer/`) và tự cập nhật từ GitHub Release. Đây
 KHÔNG phải Chrome extension; thư mục `chrome-extension/` không được dùng.
 `wfx-tampermonkey.user.js` chỉ là biến thể userscript tuỳ chọn, không phải sản
 phẩm chính. Khi sửa code, luôn sửa trong `wfx_panel/` (nguồn), không sửa mỗi file
@@ -74,6 +75,15 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 - Result sink từ backend phải nhả trạng thái busy của UI độc lập với Promise
   pywebview. Nếu Promise bridge bị kẹt sau khi backend đã ghi kết quả, các nút
   workflow vẫn phải hoạt động lại ngay.
+- Updater chờ instance hiện tại tự đóng 15 giây. Nếu pywebview/WebView2 còn giữ
+  process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
+  process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo
+  tên process. Chỉ tải/thay file sau khi PID đã biến mất.
+- Release phải phát hành song song `WFX-Smart-Setup-v<version>.exe` và ZIP
+  portable. Installer dùng AppId cố định, cài per-user vào
+  `%LocalAppData%\Programs\WFX Smart`, không yêu cầu Admin, mặc định tạo shortcut
+  Desktop/Start Menu và dùng Restart Manager để đóng app khi nâng cấp. Không
+  được xóa dữ liệu `%LocalAppData%\WFX-Panel` khi cài, upgrade hoặc uninstall.
 - Catalog tách `Tìm Style` và `Costing` thành hai workspace trong cùng module.
   Khi mở Costing hoặc upload/import XLSX, panel tự chuyển hẳn sang workspace
   Costing; không bắt người dùng cuộn xuống dưới form tìm kiếm. Hai workspace
