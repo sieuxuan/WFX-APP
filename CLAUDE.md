@@ -28,9 +28,15 @@ Bản đồ nhanh:
 ## Trạng thái sản phẩm hiện tại
 
 WFX Smart là panel automation desktop cho người dùng WFX. Danh sách chức năng
-dành cho người dùng nằm tại [`docs/USER_FEATURES.md`](./docs/USER_FEATURES.md);
-`README.md` là hướng dẫn cài/chạy/build ngắn gọn. Khi thay đổi hành vi sản phẩm,
-phải cập nhật cả ba tài liệu nếu nội dung liên quan.
+dành cho người dùng nằm trong `wfx_panel/manual/` và được sinh ra
+`docs/USER_FEATURES.md` bằng `python scripts/generate_user_features.py`. Không
+sửa tay `docs/USER_FEATURES.md`. `README.md` là hướng dẫn cài/chạy/build ngắn
+gọn.
+
+Thay đổi hành vi sản phẩm phải cập nhật `wfx_panel/manual/` trong cùng lần sửa:
+thêm module, thêm nút thao tác, thêm công tắc cài đặt hoặc thêm mã lỗi mà chưa
+có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách viết nằm ở
+`docs/MANUAL_AUTHORING.md`.
 
 ### Hành vi giao diện
 
@@ -52,6 +58,13 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 - Bootstrap bình thường do `PanelApp._startup()` inject một lần; JavaScript chỉ
   gọi `get_initial_state` sau 600 ms làm fallback nếu chưa nhận state, tránh đọc
   prefs và render module trùng lúc mở app.
+- Nút Manual ở top nav mở một cửa sổ Hướng dẫn sử dụng riêng 1000×720, đọc nội
+  dung đã đóng gói trong `wfx_panel/manual/`. Cửa sổ này chạy offline hoàn toàn:
+  không gọi mạng, không cần Chrome, không cần phiên WFX. Bấm lần hai đưa cửa sổ
+  đang mở lên trước, không tạo cửa sổ trùng. Cửa sổ Manual không tham gia logic
+  tự thu của panel. Mỗi màn module có nút dấu hỏi mở đúng mục của module đó, và
+  thanh trạng thái hiện nút trợ giúp khi lỗi có mục hướng dẫn. Sau khi ứng dụng
+  tự cập nhật, nút Manual hiện chấm đỏ và mở thẳng phần Có gì mới.
 - Mặc định app nhớ đúng màn module người dùng đang làm. Setting `Trở về List
   sau khi thao tác` cho phép đổi sang hành vi quay về danh sách module.
 - Module được ghim bằng nút ngôi sao sẽ nằm trong `Yêu thích` trước ô tìm kiếm.

@@ -3052,9 +3052,9 @@
   window.wfxBootstrap = (state) => {
     if (!state) return;
     bootstrapReceived = true;
-    if (state.app_version_label) {
-      $(".app-version").textContent = `Phiên bản ${state.app_version_label}`;
-      $(".settings-version-badge").textContent = `v${state.app_version_label}`;
+    if (state.version) {
+      $(".app-version").textContent = `Phiên bản ${state.version}`;
+      $(".settings-version-badge").textContent = `v${state.version}`;
     }
     if (Array.isArray(state.module_groups) && state.module_groups.length) {
       MODULE_GROUPS = state.module_groups;

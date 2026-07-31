@@ -638,3 +638,8 @@ def test_the_loi_moi_duoc_link_toi_huong_dan():
 def test_cham_bao_tin_moi_tren_nut_manual():
     assert "manual-alert" in JS
     assert "manual_has_news" in JS
+
+
+def test_badge_phien_ban_lay_tu_state():
+    assert ".app-version" in JS
+    assert "state.version" in JS
