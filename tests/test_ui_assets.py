@@ -688,3 +688,9 @@ def test_manual_js_phoi_bay_ham_dieu_huong():
     js = (UI / "manual.js").read_text(encoding="utf-8")
     assert "window.wfxManualGoTo" in js
     assert "get_manual_book" in js
+
+
+def test_manual_js_dung_bang_ma_loi():
+    js = (UI / "manual.js").read_text(encoding="utf-8")
+    assert "error_table" in js
+    assert "su-co-tra-ma-loi" in js
