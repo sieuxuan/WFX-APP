@@ -1778,6 +1778,36 @@ def test_danh_sach_ma_loi_co_huong_dan():
     assert "LOGIN_FAILED" in codes
 
 
+def test_khong_bao_tin_moi_khi_cai_moi(monkeypatch, tmp_path):
+    import wfx_panel.panel_app as module
+
+    monkeypatch.setattr(module.prefs, "DATA_DIR", tmp_path)
+
+    assert module.PanelApp().manual_has_news() is False
+
+
+def test_bao_tin_moi_sau_khi_cap_nhat(monkeypatch, tmp_path):
+    import wfx_panel.panel_app as module
+
+    monkeypatch.setattr(module.prefs, "DATA_DIR", tmp_path)
+    module.prefs.save_prefs(tmp_path, manual_seen_version="1.0.9")
+
+    assert module.PanelApp().manual_has_news() is True
+
+
+def test_mo_manual_xoa_cham_bao(monkeypatch, tmp_path):
+    import wfx_panel.panel_app as module
+
+    monkeypatch.setattr(module.prefs, "DATA_DIR", tmp_path)
+    module.prefs.save_prefs(tmp_path, manual_seen_version="1.0.9")
+    app = module.PanelApp()
+    _patch_manual_window(monkeypatch, module)
+
+    app.open_wfx_manual()
+
+    assert app.manual_has_news() is False
+
+
 def test_runtime_on_top_setting_updates_pywebview_window():
     from wfx_panel.panel_app import PanelApp
 

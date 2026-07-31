@@ -1282,6 +1282,17 @@ class PanelApp:
         book = manual_book.load_book()
         return [row["code"] for row in book["error_table"] if row["entry"]]
 
+    def manual_has_news(self) -> bool:
+        """Có tin mới chưa đọc cho đúng phiên bản đang chạy hay không."""
+        seen = prefs.load_prefs().get("manual_seen_version", "")
+        if seen == APP_VERSION:
+            return False
+        try:
+            versions = {item["version"] for item in manual_book.load_whats_new()}
+        except manual_book.ManualContentError:
+            return False
+        return APP_VERSION in versions
+
     def get_manual_entry_for_module(self, module_id: str) -> dict:
         return {
             "ok": True,
@@ -1304,6 +1315,9 @@ class PanelApp:
         `target` là id mục manual hoặc mã lỗi. Rỗng thì mở trang chủ hướng dẫn.
         """
         self._manual_target = str(target or "")
+        if self.manual_has_news() and not self._manual_target:
+            self._manual_target = "co-gi-moi"
+        prefs.save_prefs(manual_seen_version=APP_VERSION)
         windows = getattr(webview, "windows", None)
         if (
             self.manual_window is not None
@@ -2014,6 +2028,7 @@ class PanelApp:
         def get_initial_state_with_manual() -> dict:
             state = original_get_initial_state()
             state["manual_error_codes"] = self.manual_error_codes()
+            state["manual_has_news"] = self.manual_has_news()
             return state
 
         self.api.get_initial_state = get_initial_state_with_manual  # type: ignore[method-assign]

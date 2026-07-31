@@ -627,6 +627,8 @@ body.compact-mode .compact-launcher .compact-mark {
     .log-button { position: relative; }
     .log-alert { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); border: 2px solid var(--panel-bg); opacity: 0; transform: scale(.4); transition: .18s ease; }
     .log-button.has-alert .log-alert { opacity: 1; transform: scale(1); }
+    .manual-alert { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); border: 2px solid var(--panel-bg); opacity: 0; transform: scale(.4); transition: .18s ease; }
+    .manual-button.has-alert .manual-alert { opacity: 1; transform: scale(1); }
     .log-button.has-alert { color: var(--bad); border-color: var(--bad); }
     .log-overlay.log-open { visibility: visible; opacity: 1; }
     .log-overlay.log-open .settings-sheet { transform: translateY(0); }

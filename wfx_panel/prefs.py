@@ -11,6 +11,7 @@ from pathlib import Path
 from wfx_panel import hotkey as hotkey_spec
 from wfx_panel import secret
 from wfx_panel.atomic_io import write_json_atomic, write_text_atomic
+from wfx_panel.version import APP_VERSION
 
 # save_prefs là read-modify-write. Nó được gọi từ UI thread (Settings), từ
 # automation worker (_refresh_admin_access, scan_catalog_folders) và từ thread
@@ -635,6 +636,11 @@ def load_prefs(base_dir: Path | None = None) -> dict:
             else "stable"
         ),
         "last_update_notice": str(data.get("last_update_notice") or ""),
+        # Cài mới ghi luôn phiên bản hiện tại nên người dùng mới không bị báo
+        # tin của chính bản họ vừa cài. Chấm báo chỉ xuất hiện sau khi cập nhật.
+        "manual_seen_version": str(
+            data.get("manual_seen_version") or APP_VERSION
+        ),
         "compact_offset_x": compact_offset_x,
         "compact_offset_y": compact_offset_y,
         "panel_offset_x": panel_offset_x,
@@ -712,6 +718,7 @@ def save_prefs(
     admin_mode: bool | None = None,
     update_channel: str | None = None,
     last_update_notice: str | None = None,
+    manual_seen_version: str | None = None,
     compact_offset_x: int | None = None,
     compact_offset_y: int | None = None,
     panel_offset_x: int | None = None,
@@ -739,6 +746,7 @@ def save_prefs(
             admin_mode=admin_mode,
             update_channel=update_channel,
             last_update_notice=last_update_notice,
+            manual_seen_version=manual_seen_version,
             compact_offset_x=compact_offset_x,
             compact_offset_y=compact_offset_y,
             panel_offset_x=panel_offset_x,
@@ -768,6 +776,7 @@ def _save_prefs_locked(
     admin_mode: bool | None,
     update_channel: str | None,
     last_update_notice: str | None,
+    manual_seen_version: str | None,
     compact_offset_x: int | None,
     compact_offset_y: int | None,
     panel_offset_x: int | None,
@@ -817,6 +826,8 @@ def _save_prefs_locked(
         )
     if last_update_notice is not None:
         current["last_update_notice"] = str(last_update_notice)
+    if manual_seen_version is not None:
+        current["manual_seen_version"] = str(manual_seen_version)
     if catalog_default_folder is not None:
         current["catalog_default_folder"] = _normalise_catalog_folder(
             catalog_default_folder

@@ -121,6 +121,7 @@
 
   window.wfxManualGoTo = (target) => {
     if (!book || !target) { if (book) showHome(); return; }
+    if (target === "co-gi-moi") { showHome(); return; }
     if (book.entries[target]) { showEntry(target); return; }
     const row = book.error_table.find((item) => item.code === target);
     if (row && row.entry) { showEntry(row.entry); return; }
