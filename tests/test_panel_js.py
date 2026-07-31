@@ -29,6 +29,14 @@ def test_wires_all_catalog_actions():
     assert '"scan_catalog_folders"' in JS
 
 
+def test_costing_weekly_scan_and_clear_all_controls_are_wired():
+    assert '"set_costing_special_options_rescan"' in JS
+    assert "setCostingSpecialOptionsState" in JS
+    assert '"clear-dependencies"' in JS
+    assert '"clear_catalog_costing_dependencies"' in JS
+    assert "window.confirm(" in JS
+
+
 def test_module_groups_present():
     for group in ["Operation", "Finance", "Admin"]:
         assert f'name: "{group}"' in JS

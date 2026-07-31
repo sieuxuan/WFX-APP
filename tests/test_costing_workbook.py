@@ -535,6 +535,77 @@ def test_article_name_formula_follows_article_code_selected_in_excel(tmp_path):
     assert loaded["items"][0]["article_name"] == "Rib Jersey"
 
 
+def test_excel_rewritten_article_name_formula_is_resolved_safely(tmp_path):
+    document = sample_document()
+    document["items"][0]["article_code"] = "F0001"
+    document["items"][0]["article_name"] = "Cotton Jersey"
+    document["sections"][0]["article_lookup_options"] = [
+        {"article_code": "F0001", "article_name": "Cotton Jersey"},
+        {"article_code": "F0002", "article_name": "Rib Jersey"},
+    ]
+    target = tmp_path / "article-formula-rewritten.xlsx"
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    form.cell(2, header["Article Code"], "F0002")
+    form.cell(2, header["Article Name"], "=@IFERROR(INDEX(A1:A2,1),\"\")")
+    workbook.save(target)
+
+    loaded = costing_workbook.read_costing_xlsx(target)
+
+    assert loaded["items"][0]["article_code"] == "F0002"
+    assert loaded["items"][0]["article_name"] == "Rib Jersey"
+
+
+def test_article_code_follows_unique_article_name_selected_in_excel(tmp_path):
+    document = sample_document()
+    document["items"][0]["article_code"] = "F0001"
+    document["items"][0]["article_name"] = "Cotton Jersey"
+    document["sections"][0]["article_lookup_options"] = [
+        {"article_code": "F0001", "article_name": "Cotton Jersey"},
+        {"article_code": "F0002", "article_name": "Rib Jersey"},
+    ]
+    target = tmp_path / "article-auto-code.xlsx"
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    form.cell(2, header["Article Name"], "Rib Jersey")
+    workbook.save(target)
+
+    loaded = costing_workbook.read_costing_xlsx(target)
+
+    assert loaded["items"][0]["article_code"] == "F0002"
+    assert loaded["items"][0]["article_name"] == "Rib Jersey"
+
+
+def test_duplicate_article_name_requires_article_code_in_excel(tmp_path):
+    document = sample_document()
+    document["sections"][0]["article_lookup_options"] = [
+        {"article_code": "F0001", "article_name": "Jersey"},
+        {"article_code": "F0002", "article_name": "Jersey"},
+    ]
+    target = tmp_path / "article-name-ambiguous.xlsx"
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    template_row = next(
+        row
+        for row in range(2, form.max_row + 1)
+        if not form.cell(row, header["Article Code"]).value
+    )
+    form.cell(template_row, header["Article Name"], "Jersey")
+    workbook.save(target)
+
+    with pytest.raises(costing_workbook.CostingWorkbookError) as raised:
+        costing_workbook.read_costing_xlsx(target)
+
+    assert raised.value.code == "COSTING_VALIDATION_FAILED"
+    assert "hãy chọn Article Code" in raised.value.details[0]
+
+
 def test_formula_columns_are_exported_red_and_never_imported(tmp_path):
     document = sample_document()
     document["style_name"] = "KFSWPKN-S200 LN"

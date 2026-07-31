@@ -1162,6 +1162,7 @@ def _inventory_costing_frame(
     style_name: str = "",
     scan_details: bool = False,
     scan_article_options: bool = False,
+    scan_special_cost_options: bool = True,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     grid = _visible_costing_grid(frame)
@@ -1202,7 +1203,10 @@ def _inventory_costing_frame(
     _add_production_value_fields(document)
     _ensure_dependency_mapping_fields(document)
     if scan_details:
-        _scan_special_cost_options(frame, document)
+        if scan_special_cost_options:
+            _scan_special_cost_options(frame, document)
+            # Marker phân biệt snapshot rỗng hợp lệ với lần scan bị bỏ qua.
+            document["special_cost_options_scanned"] = True
         _scan_costing_item_options(frame, document)
         _scan_costing_dependency_tables(frame, document)
         if _dependency_scan_incomplete(document):
@@ -4288,6 +4292,7 @@ def _scan_open_costing_context(
     require_open: bool = True,
     scan_details: bool = False,
     scan_article_options: bool = False,
+    scan_special_cost_options: bool = True,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Quét Costing trong phạm vi Page đã chỉ định."""
@@ -4317,6 +4322,7 @@ def _scan_open_costing_context(
         style_name=_style_name_from_page(_page),
         scan_details=scan_details,
         scan_article_options=scan_article_options,
+        scan_special_cost_options=scan_special_cost_options,
         log=log,
     )
     if not (document["sections"] or document["fields"]):
@@ -4342,6 +4348,7 @@ def _scan_open_costing_context(
                 style_name=_style_name_from_page(_page),
                 scan_details=scan_details,
                 scan_article_options=scan_article_options,
+                scan_special_cost_options=scan_special_cost_options,
                 log=log,
             )
         if not (document["sections"] or document["fields"]):
@@ -4412,6 +4419,7 @@ def scan_open_costing(
     require_open: bool = True,
     scan_details: bool = False,
     scan_article_options: bool = False,
+    scan_special_cost_options: bool = True,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Đọc Costing đã tìm bằng app; không click New, Article, Delete hoặc Save."""
@@ -4442,6 +4450,7 @@ def scan_open_costing(
             require_open=require_open,
             scan_details=scan_details,
             scan_article_options=scan_article_options,
+            scan_special_cost_options=scan_special_cost_options,
             log=log,
         )
     except Exception as error:
@@ -4456,6 +4465,7 @@ def scan_active_open_costing(
     require_open: bool = True,
     scan_details: bool = False,
     scan_article_options: bool = False,
+    scan_special_cost_options: bool = True,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Quét đúng tab Costing đang hiển thị, không tìm Style hoặc đổi tab."""
@@ -4499,10 +4509,102 @@ def scan_active_open_costing(
             require_open=require_open,
             scan_details=scan_details,
             scan_article_options=scan_article_options,
+            scan_special_cost_options=scan_special_cost_options,
             log=log,
         )
     except Exception as error:
         return _costing_scan_error(error, article_code, log)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def clear_active_costing_dependencies(
+    *,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Bấm mọi Clear Dependency của đúng tab Costing đang chọn rồi Save."""
+    if not _chrome_is_ready():
+        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+    playwright: Playwright | None = None
+    article_code = ""
+    try:
+        playwright = sync_playwright().start()
+        browser, session_page = _connect_to_chrome(
+            playwright,
+            bring_to_front=False,
+        )
+        _attach_dialog_handler(session_page, log)
+        if not _session_is_active(session_page):
+            return _result(
+                False,
+                "NOT_LOGGED_IN",
+                "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
+            )
+        context = browser.contexts[0]
+        active_page = _active_costing_page(context)
+        article_code = _article_code_from_page(active_page)
+        _page, frame = _costing_frame(context, pages=[active_page])
+        status = _status_from_tree(frame)
+        if status.casefold() != "open":
+            return _result(
+                False,
+                "COSTING_NOT_OPEN",
+                "Chỉ CostSheet Open mới được Clear All Dependency.",
+                article_code=article_code,
+            )
+        links = frame.locator('[id="lnkClearDependency"]')
+        link_count = links.count()
+        if link_count < 1:
+            return _result(
+                True,
+                "COSTING_DEPENDENCIES_ALREADY_CLEAR",
+                "Costing hiện tại không có nút Clear Dependency.",
+                article_code=article_code,
+                cleared_section_count=0,
+            )
+        dialog_messages: list[str] = []
+
+        def accept_clear_dialog(dialog: Any) -> None:
+            dialog_messages.append(str(dialog.message or "").strip())
+            dialog.accept()
+
+        active_page.on("dialog", accept_clear_dialog)
+        try:
+            with cancellation_deferred():
+                # Snapshot theo index: link có id trùng nhau ở nhiều section.
+                # evaluate click được cả section đang cuộn khỏi viewport.
+                for index in range(link_count):
+                    current_links = frame.locator('[id="lnkClearDependency"]')
+                    if current_links.count() <= index:
+                        raise RuntimeError("COSTING_CLEAR_DEPENDENCY_TARGET_CHANGED")
+                    current_links.nth(index).evaluate("element => element.click()")
+                    _sleep(0.15)
+        finally:
+            active_page.remove_listener("dialog", accept_clear_dialog)
+        _save_costing(active_page, frame, log)
+        _write_log(
+            log,
+            f"[COSTING] Đã Clear Dependency ở {link_count} section và Save.",
+        )
+        return _result(
+            True,
+            "COSTING_DEPENDENCIES_CLEARED",
+            f"Đã Clear Dependency ở {link_count} phần và Save Costing.",
+            article_code=article_code,
+            cleared_section_count=link_count,
+            confirmations=[message for message in dialog_messages if message],
+        )
+    except Exception as error:
+        raw = _first_line(error)
+        code = raw if raw.startswith("COSTING_") else "COSTING_CLEAR_FAILED"
+        _write_log(log, f"[COSTING CLEAR] {type(error).__name__}: {raw}")
+        return _result(
+            False,
+            code,
+            "Không thể Clear toàn bộ Dependency hoặc chưa xác nhận Save.",
+            article_code=article_code,
+        )
     finally:
         if playwright is not None:
             playwright.stop()

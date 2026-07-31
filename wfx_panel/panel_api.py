@@ -416,6 +416,9 @@ class PanelAPI:
                 self._catalog.default_folder_for_account(preferences)
             ),
             "article_library": self._catalog.article_library_status(),
+            "costing_special_options": (
+                self._catalog.costing_special_options_state(preferences)
+            ),
             **self._admin_state(preferences),
             "reporting_configured": telemetry.is_configured(self._base_dir),
             "pending_reports": telemetry.outbox_count(self._base_dir),
@@ -1455,8 +1458,14 @@ class PanelAPI:
     def inspect_active_catalog_costing(self, category_name: str) -> dict:
         return self._catalog.inspect_active_costing(category_name)
 
+    def clear_catalog_costing_dependencies(self) -> dict:
+        return self._catalog.clear_active_costing_dependencies()
+
     def sync_article_library(self) -> dict:
         return self._catalog.sync_article_library()
+
+    def set_costing_special_options_rescan(self, value: bool) -> dict:
+        return self._catalog.set_costing_special_options_rescan(value)
 
     def suggest_articles(
         self,

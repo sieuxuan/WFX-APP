@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260731-8">
+  <link rel="stylesheet" href="style.css?v=20260731-9">
 </head>
 <body>
   <aside class="panel" aria-label="WFX Smart Automation">
@@ -221,12 +221,21 @@
                 <strong>Thư viện Article</strong>
                 <small class="catalog-article-library-status">Đang chờ đồng bộ từ server…</small>
               </span>
+              <label class="catalog-special-rescan toggle-row">
+                <span>
+                  <strong>Quét lại danh sách chi phí</strong>
+                  <small class="catalog-special-rescan-status">CM · Production · Indirect ở lần Costing kế tiếp</small>
+                </span>
+                <input class="catalog-special-rescan-input" type="checkbox" />
+                <i aria-hidden="true"></i>
+              </label>
             </div>
             <div class="catalog-costing-actions">
               <button type="button" data-costing-action="export-xlsx">Tải XLSX</button>
               <button type="button" data-costing-action="validate-file">Kiểm tra file</button>
               <button type="button" class="catalog-costing-import" data-costing-action="import">Import</button>
             </div>
+            <button type="button" class="catalog-costing-clear-dependencies" data-costing-action="clear-dependencies">Clear All Dependency</button>
             <div class="catalog-costing-file-check" aria-live="polite" hidden></div>
             <p class="catalog-costing-note">
               Mọi status đều tải XLSX được; Import/Save cần <b>Open</b>.
@@ -624,6 +633,6 @@
       </div>
     </div>
   </aside>
-  <script src="panel.js?v=20260731-8"></script>
+  <script src="panel.js?v=20260731-9"></script>
 </body>
 </html>

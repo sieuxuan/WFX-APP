@@ -28,6 +28,9 @@ WFX Smart không tự tạo New Costing.
    có. Không cần nhập Style Code; app dùng tab Costing hiện tại.
 5. Bấm **Áp dụng & Save**. App ghi trên màn hình hiện tại, Save một lần rồi đọc
    lại để xác nhận.
+6. Khi cần bỏ toàn bộ phối cũ, bấm **Clear All Dependency** bên dưới Import,
+   xác nhận thao tác. App chỉ chạy trên CostSheet `Open`, bấm tất cả nút Clear
+   Dependency trong Costing đang chọn rồi Save một lần.
 
 ## Workbook chuẩn
 
@@ -69,6 +72,11 @@ Hai hay nhiều dòng liền nhau có cùng Article Code được hiểu là cù
 split theo màu/size/phối và giá khác nhau. App Add Article một lần (nếu chưa có),
 sau đó dùng đúng nút Splitter để tạo đủ dòng `>>` trước khi điền dữ liệu.
 
+Article Code và Article Name đều có dropdown theo từng section. Chọn Code thì
+Name đổi bằng công thức Excel. Nếu người dùng chọn Name và ghi đè công thức, app
+sẽ đồng bộ ngược Code khi kiểm tra/import nếu tên chỉ khớp một mã. Tên trùng
+nhiều mã không được tự đoán; file sẽ báo đúng ô và yêu cầu chọn Article Code.
+
 Hai cột đỏ là công thức WFX và chỉ đọc:
 
 - `Cons. Qty. Incl. Waste = Cons. Qty. × (1 + Waste %/100)`;
@@ -86,6 +94,12 @@ Ba nhóm chi phí hoạt động như sau:
   Value của dòng tổng Production Costs rồi mới điền Rate của quy trình.
 - `Indirect Costs`: chọn loại chi phí từ danh sách đã quét; Curr. luôn là USD.
 - Dòng chưa chọn Article Name được bỏ qua và không tạo dòng mới trên WFX.
+
+Ba danh sách trên được cache 7 ngày theo tài khoản và Division nên Export/Import
+không mở editor để scan lại mỗi lần. Công tắc **Quét lại danh sách chi phí** cạnh
+Thư viện Article mặc định tắt; bật lên chỉ ép lần Costing kế tiếp scan mới, sau
+khi scan và lưu cache thành công công tắc tự tắt. Color/Size, mapping và field
+riêng của Style vẫn luôn được đọc mới.
 
 ## Action và giá trị
 

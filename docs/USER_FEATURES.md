@@ -111,8 +111,10 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - Article Code/Article Name dùng thư viện CSV bốn cột tự tải từ server mỗi
     giờ, không quét hàng trăm trang và không yêu cầu user cập nhật file. Fabric
     chỉ hiện mã F, Trim chỉ hiện mã T; khi chọn Code trong Excel, Article Name
-    tự lookup đúng nhưng vẫn có thể ghi đè thủ công. Khi offline app dùng cache
-    gần nhất; khi chưa có cache vẫn cho nhập tay;
+    tự lookup đúng nhưng vẫn có thể ghi đè thủ công. Khi chọn Article Name, app
+    đồng bộ ngược Article Code lúc kiểm tra/import nếu tên chỉ có một mã; tên
+    trùng nhiều mã sẽ yêu cầu chọn Code. Khi offline app dùng cache gần nhất;
+    khi chưa có cache vẫn cho nhập tay;
   - scan Material Color/Size theo từng Article, mapping Table hiện tại và danh
     sách Style Color/Size; Material Color/Size có dropdown riêng theo item;
   - nếu Material Color/Size trong file chưa có ở Article card, app tự tìm và
@@ -127,13 +129,18 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   - hiển thị hai cột công thức màu đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
     `Value in (USD)`; hai cột này không được import ngược;
   - có 1 dòng CM, 1 dòng Production và 2 dòng Indirect Costs; danh sách nhà
-    máy/quy trình/chi phí được quét từ WFX, dòng chưa chọn tên được bỏ qua;
+    máy/quy trình/chi phí được quét từ WFX rồi dùng lại 7 ngày theo tài khoản và
+    Division. Công tắc quét lại cạnh Thư viện Article mặc định tắt, chỉ áp dụng
+    cho lần Costing kế tiếp và tự tắt sau khi scan thành công; dòng chưa chọn tên
+    được bỏ qua;
   - với Production, điền Minutes ở hai dòng trước, Value tổng trước Rate;
   - xem trước số ô cập nhật, Article thêm/xóa và cảnh báo trước
     khi WFX bị thay đổi;
   - export Costing ở mọi status; chỉ import/apply khi CostSheet đang `Open`;
     nếu chưa có Costing, người dùng tự tạo trong WFX trước;
   - tự đặt mọi field Minutes thành `1`, Save một lần và đọc lại để xác nhận.
+  - nút **Clear All Dependency** dưới Import hỏi xác nhận, bấm mọi nút Clear
+    Dependency của Costing `Open` đang chọn rồi Save một lần.
 - Export và Import luôn chỉ dùng tab Costing đang hiển thị, kể cả khi có nhiều
   tab Costing, không phụ thuộc ô Style Code và không bắt người dùng tìm lại
   style. Apply tiếp tục khóa vào đúng

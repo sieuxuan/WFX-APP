@@ -332,9 +332,10 @@ class FakeLogin:
         require_open=True,
         scan_details=False,
         scan_article_options=False,
+        scan_special_cost_options=True,
         log=print,
     ):
-        del style_status, scan_details, log
+        del style_status, scan_details, scan_special_cost_options, log
         self.calls.append(("scan_open_costing", article_code))
         result = {
             "ok": True,
@@ -400,9 +401,10 @@ class FakeLogin:
         require_open=True,
         scan_details=False,
         scan_article_options=False,
+        scan_special_cost_options=True,
         log=print,
     ):
-        del scan_details, log
+        del scan_details, scan_special_cost_options, log
         self.calls.append(("scan_active_open_costing", require_open))
         return self.scan_open_costing(
             "ACTIVE0001",
@@ -424,6 +426,17 @@ class FakeLogin:
                 "season": "",
                 "internal_costsheet_status": "Open",
             },
+        }
+
+    def clear_active_costing_dependencies(self, log=print):
+        del log
+        self.calls.append(("clear_active_costing_dependencies",))
+        return {
+            "ok": True,
+            "code": "COSTING_DEPENDENCIES_CLEARED",
+            "message": "cleared",
+            "article_code": "ACTIVE0001",
+            "cleared_section_count": 3,
         }
 
     def apply_costing_plan(
@@ -755,6 +768,70 @@ def test_catalog_costing_article_dropdown_scan_is_opt_in_and_cached(tmp_path):
     assert (tmp_path / "costing-article-options.json").is_file()
 
 
+def test_special_cost_dropdowns_scan_weekly_and_one_shot_reset(tmp_path):
+    api, fake = make_api(tmp_path)
+    api._account = lambda: {"user_id": "alice"}
+    api._current_division = "woven"
+    original_scan = fake.scan_active_open_costing
+    scan_flags = []
+
+    def scan_active(*, scan_special_cost_options=True, **kwargs):
+        scan_flags.append(scan_special_cost_options)
+        result = original_scan(
+            scan_special_cost_options=scan_special_cost_options,
+            **kwargs,
+        )
+        document = result["costing"]
+        document["sections"].extend(
+            [
+                {
+                    "section_key": "CM Costs",
+                    "name": "CM Costs",
+                    "row_order": 2,
+                },
+                {
+                    "section_key": "Production Costs",
+                    "name": "Production Costs",
+                    "row_order": 3,
+                },
+                {
+                    "section_key": "Indirect Costs",
+                    "name": "Indirect Costs",
+                    "row_order": 4,
+                },
+            ]
+        )
+        if scan_special_cost_options:
+            document["special_cost_options_scanned"] = True
+            for section, option in zip(
+                document["sections"][-3:],
+                ("Factory A", "CM (PROCESS001)", "Air charge"),
+                strict=True,
+            ):
+                section["article_options"] = [option]
+        return result
+
+    fake.scan_active_open_costing = scan_active
+
+    first = api.export_catalog_costing(
+        "Apparel", "code", "", str(tmp_path / "first.xlsx")
+    )
+    second = api.export_catalog_costing(
+        "Apparel", "code", "", str(tmp_path / "second.xlsx")
+    )
+    enabled = api.set_costing_special_options_rescan(True)
+    third = api.export_catalog_costing(
+        "Apparel", "code", "", str(tmp_path / "third.xlsx")
+    )
+
+    assert first["costing_special_options"]["available"] is True
+    assert second["code"] == "COSTING_EXPORTED"
+    assert scan_flags == [True, False, True]
+    assert enabled["costing_special_options"]["rescan_next"] is True
+    assert third["costing_special_options"]["rescan_next"] is False
+    assert prefs.load_prefs(tmp_path)["costing_special_options_rescan"] is False
+
+
 def test_server_article_library_drives_dropdowns_and_code_suggestions(tmp_path):
     write_json_atomic(
         tmp_path / "article-library.json",
@@ -830,6 +907,16 @@ def test_catalog_costing_inspection_reads_active_tab_before_file_dialog(tmp_path
     assert result["article_code"] == "ACTIVE0001"
     assert result["style_status"]["internal_costsheet_status"] == "Open"
     assert ("inspect_active_costing",) in fake.calls
+
+
+def test_clear_all_costing_dependencies_uses_active_tab_workflow(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.clear_catalog_costing_dependencies()
+
+    assert result["code"] == "COSTING_DEPENDENCIES_CLEARED"
+    assert result["cleared_section_count"] == 3
+    assert ("clear_active_costing_dependencies",) in fake.calls
 
 
 def test_catalog_costing_file_validation_does_not_scan_wfx(tmp_path):

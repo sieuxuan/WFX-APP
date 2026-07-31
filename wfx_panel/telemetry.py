@@ -45,6 +45,7 @@ METHOD_LABELS = {
     "validate_catalog_costing_file": "Kiểm tra file Costing",
     "prepare_catalog_costing_import": "Kiểm tra file Costing",
     "apply_catalog_costing": "Áp dụng Costing",
+    "clear_catalog_costing_dependencies": "Clear All Dependency",
     "open_sale_asn_new": "Mở Sale ASN mới",
     "open_sample_new": "Mở Sample Order mới",
     "search_oc": "Tìm trong OC List",
@@ -268,6 +269,18 @@ ERROR_CODE_INFO.update(
         "LOGIN_FAILED": (
             "Đăng nhập WFX thất bại",
             "Kiểm tra tài khoản, Company và trạng thái trang đăng nhập.",
+        ),
+        "COSTING_CLEAR_FAILED": (
+            "Không thể Clear toàn bộ Dependency",
+            "Giữ đúng CostSheet Open đang chọn, kiểm tra Log rồi thử lại.",
+        ),
+        "COSTING_CLEAR_DEPENDENCY_TARGET_CHANGED": (
+            "Các section Costing đã thay đổi khi đang Clear Dependency",
+            "Chờ Costing tải ổn định rồi bấm Clear All Dependency lại.",
+        ),
+        "COSTING_CLEAR_UNSUPPORTED": (
+            "Bản automation chưa hỗ trợ Clear All Dependency",
+            "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
         ),
         "OC_EDI_FAILED": (
             "Không thể hoàn tất Upload OC trên EDI Buyer PO",
