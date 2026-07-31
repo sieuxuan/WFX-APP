@@ -696,6 +696,27 @@ def test_manual_js_dung_bang_ma_loi():
     assert "su-co-tra-ma-loi" in js
 
 
+def test_manual_tra_ma_loi_chinh_xac_mo_bang_va_cuon_toi_ma():
+    js = (UI / "manual.js").read_text(encoding="utf-8")
+    assert "showErrorTable" in js
+    assert "data-error-code" in js
+    assert "scrollIntoView" in js
+
+
+def test_manual_home_co_loi_tat_va_enter_mo_ket_qua_dau():
+    js = (UI / "manual.js").read_text(encoding="utf-8")
+    assert "Tra nhanh mã lỗi" in js
+    assert "Câu hỏi thường gặp" in js
+    assert 'event.key === "Enter"' in js
+    assert '$(".manual-results .manual-hit")?.click()' in js
+
+
+def test_manual_ctrl_p_goi_ban_in_rieng():
+    js = (UI / "manual.js").read_text(encoding="utf-8")
+    assert 'event.key.toLowerCase() === "p"' in js
+    assert "window.print()" in js
+
+
 def test_module_page_co_nut_tro_giup():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert 'class="icon-button module-help-button"' in html

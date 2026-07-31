@@ -62,6 +62,8 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
 
 .manual-cards { display: grid; gap: 12px;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.manual-shortcuts { display: grid; gap: 12px; margin-top: 12px;
+  grid-template-columns: repeat(2, minmax(220px, 1fr)); }
 .manual-card { padding: 14px 16px; border: 1px solid var(--border);
   border-radius: 12px; background: var(--surface); text-align: left;
   color: var(--text); font: inherit; cursor: pointer; }
@@ -84,6 +86,7 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
 .manual-content th, .manual-content td { padding: 8px 10px; text-align: left;
   border: 1px solid var(--border); font-size: 14px; }
 .manual-content th { background: var(--surface-2); }
+.manual-content tr.manual-error-target td { background: var(--bad-soft); }
 .ui-label { padding: 1px 7px; border: 1px solid var(--border-strong);
   border-radius: 6px; background: var(--surface-2); font-weight: 600;
   font-size: 13px; }

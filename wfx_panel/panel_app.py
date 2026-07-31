@@ -1332,6 +1332,7 @@ class PanelApp:
                     self.manual_window.evaluate_js(
                         f"window.wfxManualGoTo({json.dumps(self._manual_target)})"
                     )
+                self.hide_panel()
                 return {
                     "ok": True,
                     "code": "MANUAL_FOCUSED",
@@ -1374,11 +1375,20 @@ class PanelApp:
                 "message": f"Không mở được hướng dẫn: {error}",
             }
         window = created[0]
+        try:
+            window.show()
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "MANUAL_OPEN_FAILED",
+                "message": f"Không mở được hướng dẫn: {error}",
+            }
         self.manual_window = window
         try:
             window.events.closed += self._on_manual_closed
         except Exception:
             pass
+        self.hide_panel()
         return {
             "ok": True,
             "code": "MANUAL_OPENED",

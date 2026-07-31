@@ -1671,6 +1671,7 @@ def test_wfx_manual_mo_cua_so_rieng(monkeypatch):
     assert created[0].kwargs["height"] == 720
     assert str(module.MANUAL_INDEX) == created[0].url
     assert app.manual_window is created[0]
+    assert created[0].shown == 1
 
 
 def test_wfx_manual_khong_tao_cua_so_trung(monkeypatch):
@@ -1684,7 +1685,7 @@ def test_wfx_manual_khong_tao_cua_so_trung(monkeypatch):
 
     assert result["code"] == "MANUAL_FOCUSED"
     assert len(created) == 1
-    assert created[0].shown == 1
+    assert created[0].shown == 2
 
 
 def test_wfx_manual_tao_cua_so_dong_ngoai_main_thread(monkeypatch):
@@ -1703,6 +1704,20 @@ def test_wfx_manual_tao_cua_so_dong_ngoai_main_thread(monkeypatch):
 
     assert app.open_wfx_manual()["ok"] is True
     assert thread_names and thread_names[0] != "MainThread"
+
+
+def test_mo_manual_thu_panel_sau_khi_cua_so_san_sang(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    hidden = []
+    monkeypatch.setattr(app, "hide_panel", lambda: hidden.append(True))
+    _patch_manual_window(monkeypatch, module)
+
+    result = app.open_wfx_manual()
+
+    assert result["ok"] is True
+    assert hidden == [True]
 
 
 def test_wfx_manual_theo_trang_thai_luon_tren_cung(monkeypatch):
