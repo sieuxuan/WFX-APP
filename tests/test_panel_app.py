@@ -1761,6 +1761,15 @@ def test_manual_bridge_mo_trang_web_wfx(monkeypatch):
     assert calls == [(module.WFX_MANUAL_URL, 2)]
 
 
+def test_manual_entry_cho_module_catalog():
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+
+    assert app.manual_entry_for_module("0003_6200")
+    assert app.manual_entry_for_module("khong-co-that") == ""
+
+
 def test_runtime_on_top_setting_updates_pywebview_window():
     from wfx_panel.panel_app import PanelApp
 

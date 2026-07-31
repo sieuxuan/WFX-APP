@@ -622,3 +622,9 @@ def test_feedback_submission_is_wired():
     assert "submit_feedback" in JS
     assert '".feedback-submit-button"' in JS
     assert "window.wfxHandleBackendResult" in JS
+
+
+def test_nut_tro_giup_module_goi_manual():
+    assert '".module-help-button"' in JS
+    assert '"get_manual_entry_for_module"' in JS
+    assert '"open_wfx_manual"' in JS

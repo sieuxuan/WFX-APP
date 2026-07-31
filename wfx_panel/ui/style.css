@@ -993,8 +993,9 @@ body.compact-mode .compact-launcher .compact-mark {
       stroke-linecap: round;
       stroke-linejoin: round;
     }
-    .module-modal-identity { min-width: 0; display: flex; flex: 1; align-items: center; }
-    .module-modal-heading { min-width: 0; }
+    .module-modal-identity { min-width: 0; display: flex; flex: 1; align-items: center; gap: 8px; }
+    .module-modal-heading { min-width: 0; flex: 1; }
+    .module-help-button { flex: 0 0 auto; }
     .module-modal-heading strong,
     .module-modal-heading span { display: block; min-width: 0; }
     .module-modal-heading strong { color: var(--text); font-size: 14px; line-height: 1.15; }
