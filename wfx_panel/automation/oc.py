@@ -37,46 +37,85 @@ _STATUS_JS = r"""() => {
   const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
   const key = value => norm(value).toLowerCase().replace(/[^a-z]/g, '');
   const wanted = {
+    file_name: 'filename',
     imported: 'dataimported',
     validated: 'datavalidated',
     mapped: 'mappingresolved',
     transaction: 'transactiondetail'
   };
-  for (const table of document.querySelectorAll('table')) {
-    const rows = [...table.querySelectorAll('tr')];
-    let headerIndex = -1;
-    let columns = null;
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-      const cells = [...rows[rowIndex].querySelectorAll('th,td')];
-      const labels = cells.map(cell => key(cell.innerText || cell.textContent));
-      const resolved = {};
-      for (const [name, token] of Object.entries(wanted)) {
-        resolved[name] = labels.findIndex(label => label.includes(token));
-      }
-      if (resolved.imported >= 0 && resolved.validated >= 0 &&
-          resolved.mapped >= 0 && resolved.transaction >= 0) {
-        headerIndex = rowIndex;
-        columns = resolved;
-        break;
-      }
+  const readGrid = (headerTable, contentTable) => {
+    if (!headerTable || !contentTable) return [];
+    const headers = [...headerTable.querySelectorAll('tr:first-child th, tr:first-child td')]
+      .map(cell => key(cell.innerText || cell.textContent));
+    const columns = {};
+    for (const [name, token] of Object.entries(wanted)) {
+      columns[name] = headers.findIndex(label => label.includes(token));
     }
-    if (!columns) continue;
-    const result = [];
-    for (const row of rows.slice(headerIndex + 1)) {
-      const cells = [...row.querySelectorAll('td,th')];
-      const read = index => norm(cells[index]?.innerText || cells[index]?.textContent);
+    if (columns.imported < 0 || columns.validated < 0 ||
+        columns.mapped < 0 || columns.transaction < 0) return [];
+    for (const row of contentTable.querySelectorAll('tr')) {
+      const cells = [...row.querySelectorAll(':scope > td, :scope > th')];
+      const read = index => index >= 0
+        ? norm(cells[index]?.innerText || cells[index]?.textContent)
+        : '';
       const record = {
+        file_name: read(columns.file_name),
         imported: read(columns.imported),
         validated: read(columns.validated),
         mapped: read(columns.mapped),
         transaction: read(columns.transaction),
         detail: norm(row.innerText || row.textContent).slice(0, 800)
       };
-      if (Object.values(record).some(Boolean)) result.push(record);
+      if (record.imported || record.validated || record.mapped) return [record];
     }
+    return [];
+  };
+  const direct = readGrid(
+    document.querySelector('#gridEDIPackageImport_tblGridHeader'),
+    document.querySelector('#gridEDIPackageImport_tblGridContent')
+  );
+  if (direct.length) return direct;
+  for (const headerTable of document.querySelectorAll('table[id$="_tblGridHeader"]')) {
+    const contentId = headerTable.id.replace(/_tblGridHeader$/, '_tblGridContent');
+    const result = readGrid(headerTable, document.getElementById(contentId));
     if (result.length) return result;
   }
   return [];
+}"""
+
+_FAILED_RECORD_JS = r"""() => {
+  const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const key = value => norm(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const headerTable = document.querySelector('#gridFailedRecord_tblGridHeader');
+  const contentTable = document.querySelector('#gridFailedRecord_tblGridContent');
+  if (!headerTable || !contentTable) return [];
+  const headers = [...headerTable.querySelectorAll('tr:first-child th, tr:first-child td')]
+    .map(cell => norm(cell.innerText || cell.textContent));
+  const keyedHeaders = headers.map(key);
+  const indexOf = token => keyedHeaders.findIndex(label => label.includes(token));
+  const columns = {
+    mapping_code: indexOf('mappingcode'),
+    doc_no: indexOf('docno'),
+    mapping_details: indexOf('mappingdetails'),
+    inactive: indexOf('inactive')
+  };
+  return [...contentTable.querySelectorAll('tr')].slice(0, 50).map(row => {
+    const cells = [...row.querySelectorAll(':scope > td, :scope > th')];
+    const read = index => index >= 0
+      ? norm(cells[index]?.innerText || cells[index]?.textContent)
+      : '';
+    const pairs = headers.map((header, index) => {
+      const value = read(index);
+      return header && value ? `${header}: ${value}` : '';
+    }).filter(Boolean);
+    return {
+      mapping_code: read(columns.mapping_code),
+      doc_no: read(columns.doc_no),
+      mapping_details: read(columns.mapping_details),
+      inactive: read(columns.inactive),
+      detail: pairs.join(' | ').slice(0, 1200)
+    };
+  }).filter(record => record.detail);
 }"""
 
 
@@ -345,21 +384,36 @@ def _status_rows(page: Page) -> tuple[Frame | None, list[dict[str, str]]]:
 
 def _status_kind(value: str) -> str:
     normalised = " ".join(str(value or "").casefold().split())
+    if re.search(
+        r"fail|error|invalid|unresolved|not\s+resolved|reject|in\s*progress",
+        normalised,
+    ):
+        return "failed"
     if re.search(r"success|successful|resolved|complete", normalised):
         return "success"
-    if re.search(r"fail|error|invalid|unresolved|reject", normalised):
-        return "failed"
     return "pending"
 
 
 def _wait_statuses(page: Page, log: Callable[[str], None]) -> list[dict[str, str]]:
     deadline = time.monotonic() + STATUS_TIMEOUT_SECONDS
     last: list[dict[str, str]] = []
+    last_summary = ""
     while time.monotonic() < deadline:
         checkpoint()
         _frame, rows = _status_rows(page)
         if rows:
             last = rows
+            summary = " | ".join(
+                "Imported={imported}, Validated={validated}, Mapping={mapped}".format(
+                    imported=row.get("imported", "—") or "—",
+                    validated=row.get("validated", "—") or "—",
+                    mapped=row.get("mapped", "—") or "—",
+                )
+                for row in rows
+            )
+            if summary != last_summary:
+                _write_log(log, f"[OC EDI] Trạng thái: {summary}")
+                last_summary = summary
             states = [
                 _status_kind(row.get(field, ""))
                 for row in rows
@@ -370,12 +424,106 @@ def _wait_statuses(page: Page, log: Callable[[str], None]) -> list[dict[str, str
             if states and all(state == "success" for state in states):
                 _write_log(
                     log,
-                    f"[OC EDI] {len(rows)} package đạt Imported/Validated/Mapping Success",
+                    "[OC EDI] Package mới nhất đạt "
+                    "Imported/Validated/Mapping Success",
                 )
                 return rows
         _wait(page, 500)
     detail = last[0].get("detail", "") if last else "không đọc được bảng trạng thái"
     raise PlaywrightTimeoutError(f"Trạng thái EDI chưa hoàn tất: {detail}")
+
+
+_STATUS_STAGE_LABELS = {
+    "imported": "Data Imported",
+    "validated": "Data Validated",
+    "mapped": "Mapping Resolved",
+}
+_STATUS_LINK_SELECTORS = {
+    "imported": "a#lnkDataImported",
+    "validated": "a#lnkDataValidated",
+    "mapped": "a#lnkMappingResolved",
+}
+
+
+def _failed_status(rows: list[dict[str, str]]) -> tuple[str, str]:
+    if not rows:
+        return "", ""
+    latest = rows[0]
+    # Mapping thường chứa lỗi nghiệp vụ hữu ích nhất, nên ưu tiên mở trước.
+    for field in ("mapped", "validated", "imported"):
+        value = latest.get(field, "")
+        if _status_kind(value) == "failed":
+            return field, value
+    return "", ""
+
+
+def _format_resolution_error(record: dict[str, str]) -> str:
+    title = record.get("mapping_code", "").strip()
+    details = record.get("mapping_details", "").strip()
+    message = " — ".join(part for part in (title, details) if part)
+    suffixes = []
+    if record.get("doc_no", "").strip():
+        suffixes.append(f"Doc No.: {record['doc_no'].strip()}")
+    if record.get("inactive", "").strip():
+        suffixes.append(f"InActive: {record['inactive'].strip()}")
+    if suffixes:
+        message = f"{message or 'WFX báo lỗi'} ({'; '.join(suffixes)})"
+    return message or record.get("detail", "").strip() or "WFX không hiển thị chi tiết lỗi."
+
+
+def _open_status_error_details(
+    page: Page,
+    rows: list[dict[str, str]],
+    log: Callable[[str], None],
+) -> tuple[str, list[dict[str, str]], list[str]]:
+    field, status = _failed_status(rows)
+    if not field:
+        return "", [], []
+    stage = _STATUS_STAGE_LABELS[field]
+    selector = _STATUS_LINK_SELECTORS[field]
+    target_frame: Frame | None = None
+    target: Any = None
+    for frame in page.frames:
+        try:
+            grid_rows = frame.locator("#gridEDIPackageImport_tblGridContent tr")
+            for index in range(grid_rows.count()):
+                row = grid_rows.nth(index)
+                link = row.locator(selector)
+                if link.count() and link.first.is_visible() and link.first.is_enabled():
+                    target_frame = frame
+                    target = link.first
+                    break
+            if target is not None:
+                break
+        except PlaywrightError:
+            continue
+    if target is None or target_frame is None:
+        message = f"{stage}: {status} (không mở được chi tiết Failed Record)."
+        _write_log(log, f"[OC EDI] {message}")
+        return stage, [], [message]
+
+    _write_log(log, f"[OC EDI] Mở chi tiết {stage}: {status}")
+    _click(target)
+    deadline = time.monotonic() + 12
+    records: list[dict[str, str]] = []
+    while time.monotonic() < deadline:
+        checkpoint()
+        try:
+            popup = target_frame.locator("#sectionFailedRecord")
+            if popup.count() and popup.first.is_visible():
+                value = target_frame.evaluate(_FAILED_RECORD_JS)
+                if isinstance(value, list) and value:
+                    records = value
+                    break
+        except PlaywrightError:
+            pass
+        _wait(page, 200)
+    errors = [_format_resolution_error(record) for record in records]
+    if not errors:
+        errors = [f"{stage}: {status} (WFX không hiển thị chi tiết lỗi)."]
+    for error in errors[:12]:
+        _write_log(log, f"[OC EDI] Lỗi: {error}")
+    return stage, records, errors
 
 
 def _click_pending_transaction(page: Page) -> None:
@@ -511,12 +659,19 @@ def upload_oc_edi(
             )
         ]
         if failed:
+            stage, resolution_rows, errors = _open_status_error_details(
+                page, rows, log
+            )
             return _result(
                 False,
                 "OC_EDI_VALIDATION_FAILED",
-                "WFX báo lỗi ở Data Imported/Validated/Mapping Resolved.",
+                f"WFX báo lỗi tại {stage or 'Error Resolution'}. "
+                "App đã dừng trước Create Transaction; hãy sửa file rồi upload lại.",
+                transaction_submitted=False,
                 status_rows=rows,
-                errors=[row.get("detail", "") for row in failed],
+                error_stage=stage,
+                resolution_rows=resolution_rows,
+                errors=errors,
             )
         _click_pending_transaction(page)
         _select_first_transaction(page)

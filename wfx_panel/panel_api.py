@@ -204,6 +204,10 @@ NON_REPORTABLE_FAILURES = frozenset(
     }
 )
 
+# Lỗi nội dung file không gửi telemetry, nhưng riêng lỗi EDI cần ảnh popup
+# Failed Record để người dùng tự sửa đúng Mapping/Doc No. trong Lịch sử tác vụ.
+DIAGNOSTIC_FAILURES = frozenset({"OC_EDI_VALIDATION_FAILED"})
+
 # Các flow này điều hướng tab WFX chính ra khỏi Catalog. Xoá dấu "Master đã
 # chuẩn bị" ngay khi flow thành công để lần Search Catalog kế tiếp tự mở đúng
 # List, thay vì thử dùng một grid cũ không còn tồn tại.
@@ -560,7 +564,10 @@ class PanelAPI:
         screenshot: str | None = None
         if (
             not result.get("ok")
-            and code not in NON_REPORTABLE_FAILURES
+            and (
+                code not in NON_REPORTABLE_FAILURES
+                or code in DIAGNOSTIC_FAILURES
+            )
             and method_name
             in {
                 "login",

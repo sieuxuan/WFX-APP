@@ -186,8 +186,17 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   Validated` và `Mapping Resolved` đều thành công. Nếu WFX báo fail, app giữ
   thông tin dòng lỗi để người dùng sửa file. Nếu đã bấm Create Transaction
   nhưng chưa đọc được xác nhận, app không tự retry để tránh tạo OC trùng.
+- Nếu bất kỳ bước EDI nào hiện `InProgress`/`In Progress` hoặc Fail, app coi là
+  lỗi ngay, không tiếp tục chờ và không Create Transaction. App click trạng thái,
+  đọc popup `Failed Record`, hiện Mapping Code/Doc No./Mapping Details cho người
+  dùng và lưu ảnh popup trong Lịch sử tác vụ.
 - File `UPLOAD FORM.xlsx` cũ vẫn được hỗ trợ để chuyển đổi trong giai đoạn thay
   form; người dùng mới nên dùng form một-header tải trực tiếp từ app.
+- Form một-header có dropdown Order Type gồm Confirmed/Forecast/SMS và danh sách
+  Payment Terms chuẩn. Khi chuẩn hoá, app bỏ qua dòng Units bằng 0, mặc định
+  Zone trống thành FOB và Extra Production trống thành 0. App chặn upload nếu
+  ngày không theo `Buyer Order Date < Raw Material ETA < Buyer Delivery Date`;
+  trong Sheet1, Buyer Delivery Date phải bằng OC Delivery Date.
 - `Revise OC`:
   1. `Mở report` đưa Chrome tới `Reporting & Analytic` và mở đúng
      `Upload OC from OC_Sale`.

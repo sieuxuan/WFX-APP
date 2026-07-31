@@ -1265,7 +1265,7 @@ def test_cancel_oc_review_removes_temp_file_without_calling_edi(tmp_path):
         [
             "J.LINDEBERG", "SS26", "Confirmed", "USD", "888 COMPANY LTD",
             "PO-1", "ARTICLE-1", "STYLE-1", "PO-1", "PO-1", "08-10-2025",
-            "31-12-2025", "05-12-2025", "TT 60 Days", "Sweden", "BLACK",
+            "31-12-2025", "05-12-2025", "TT After Shipment 60 Days", "Sweden", "BLACK",
             "Black", "M", 10, 5, "1", "FOB", 0, None,
         ]
     )
@@ -1289,7 +1289,7 @@ def test_reselecting_same_oc_path_after_cancel_reads_modified_file(tmp_path):
         [
             "J.LINDEBERG", "SS26", "Confirmed", "USD", "888 COMPANY LTD",
             "PO-1", "ARTICLE-1", "STYLE-1", "PO-1", "PO-1", "08-10-2025",
-            "31-12-2025", "05-12-2025", "TT 60 Days", "Sweden", "BLACK",
+            "31-12-2025", "05-12-2025", "TT After Shipment 60 Days", "Sweden", "BLACK",
             "Black", "M", 10, 5, "1", "FOB", 0, None,
         ]
     )
@@ -1889,6 +1889,32 @@ def test_expected_no_results_does_not_capture_diagnostic_screenshot(tmp_path):
 
     assert result["code"] == "NO_RESULTS"
     assert api.get_job_history()["jobs"][0]["has_screenshot"] is False
+
+
+def test_edi_validation_failure_captures_failed_record_screenshot(tmp_path):
+    class EDIValidationLogin(FakeLogin):
+        def capture_failure_screenshot(self, path, log=print):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"failed-record-popup")
+            return True
+
+    api = PanelAPI(
+        login_module=EDIValidationLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+
+    result = api._run(
+        "confirm_oc_upload",
+        lambda: {
+            "ok": False,
+            "code": "OC_EDI_VALIDATION_FAILED",
+            "message": "Mapping Resolved: InProgress",
+        },
+    )
+
+    assert result["code"] == "OC_EDI_VALIDATION_FAILED"
+    assert api.get_job_history()["jobs"][0]["has_screenshot"] is True
 
 
 def test_failed_automation_webhook_contains_human_readable_context(

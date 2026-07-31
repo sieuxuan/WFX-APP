@@ -115,6 +115,55 @@ BUYER_OPTIONS = (
     "UFPRO",
 )
 
+ORDER_TYPE_OPTIONS = (
+    "Confirmed",
+    "Forecast",
+    "SMS",
+)
+
+PAYMENT_TERM_OPTIONS = (
+    "15% Deposit After Contract - 85% TT Before Shipment",
+    "20% Deposit, Balance TT at Sight",
+    "30 Days At Month End",
+    "30% Advanced Before Shipment - 70% TT After Shipment",
+    "30% Deposit + ROG + 30 Days",
+    "30% Once Order Committed - 70% LC Irrevocable 30 Days",
+    "40% Advanced Before Shipment - 60% TT After Shipment",
+    "50% Deposit / 50% TT After 30 Days",
+    "After Finished 30-45 Days",
+    "By Bank Draft or TT Before Shipment",
+    "Cash Before Delivery First 3 Shipments And Then 30 Days",
+    "Credit of T/T 30 days",
+    "Deposit 30% - 70% TT Against Shipment",
+    "LC 45 Days",
+    "LC 60 Days",
+    "LC At Sight",
+    "LC At Sight 30 Days",
+    "OA 15 Days",
+    "Payment 60 Days After Ex Works Date",
+    "Payment Within 90 Days",
+    "ROG 30 Days",
+    "TT 30% Deposit - 70% Before Shipping",
+    "TT After Shipment",
+    "TT After Shipment 10 Days",
+    "TT After Shipment 15 Days",
+    "TT After Shipment 20 Days",
+    "TT After Shipment 30 Days",
+    "TT After Shipment 40 Days",
+    "TT After Shipment 45 Days",
+    "TT After Shipment 60 Days",
+    "TT After Shipment 90 Days",
+    "TT Against Documents",
+    "TT Before ETA",
+    "TT Before Shipment",
+    "TT Before Shipment 30 Days",
+    "TT In Advance For First Order / TT After 30 Days For Next Order",
+    "TT Payment",
+    "Wire Payment 90 Days",
+)
+
+PO_TYPE_OPTIONS = ("CM", "CMT", "FOB", "DDP")
+
 COUNTRY_MARKET = {
     "Australia": "Australia",
     "Austria": "Europe",
@@ -147,22 +196,27 @@ COUNTRY_MARKET = {
 INPUT_COMMENTS = {
     "Buyer": "Chọn Buyer đúng với Buyer sẽ chọn tại EDI Buyer PO.",
     "Season": "Season phải giống Season trong Techpack Style.",
+    "Order Type": "Chọn Confirmed, Forecast hoặc SMS.",
     "Ship Under PO Ref": "Mã PO dùng để gom các dòng Color/Size cùng đơn hàng.",
     "Article Code": "Article Code lấy trên WFX.",
     "Buyer Style Ref": "Buyer Style Ref phải giống Techpack Style.",
     "Buyer PO Num": "Thường giống Summary Buyer Order Ref.",
-    "Buyer Order Date": "Nhập ngày theo dd-mm-yyyy.",
-    "Buyer Delivery Date": "Nhập ngày theo dd-mm-yyyy.",
-    "Raw Material ETA Date": "Nhập ngày theo dd-mm-yyyy.",
+    "Buyer Order Date": "Nhập ngày theo dd-mm-yyyy; phải trước Raw Material ETA.",
+    "Buyer Delivery Date": "Nhập ngày theo dd-mm-yyyy; phải sau Raw Material ETA.",
+    "Raw Material ETA Date": (
+        "Nhập ngày theo dd-mm-yyyy; phải sau Buyer Order Date và trước "
+        "Buyer Delivery Date."
+    ),
+    "Payment Terms": "Chọn đúng điều khoản thanh toán trong danh sách WFX.",
     "Country of Final Destination": "App tự mapping Final Destination và Market.",
     "Color Code": "Color Code lấy trên WFX.",
     "Color Name": "Tên màu lấy trên WFX.",
     "Size Code": "Size Code lấy trên WFX.",
     "Selling Price": "Phải lớn hơn 0 và không nhỏ hơn Costing.",
-    "Units": "Số nguyên lớn hơn 0. App tự tính Total Qty.",
+    "Units": "Số nguyên; dòng có Units = 0 sẽ được app tự bỏ qua.",
     "Internal Lot No.": "Chia theo Buy hoặc số nội bộ.",
-    "PO Type (Zone)": "Giá trị WFX hiện dùng tại cột Zone, ví dụ FOB/CM/CMT/DDP.",
-    "Extra Production %": "Nhập 0 nếu không có extra production.",
+    "PO Type (Zone)": "Để trống nếu dùng FOB; hoặc chọn CM/CMT/FOB/DDP.",
+    "Extra Production %": "Có thể để trống; app tự xuất 0.",
     "Buyer Lot No.": "Tuỳ chọn; dùng theo quy định Buyer.",
 }
 
@@ -234,7 +288,8 @@ DATE_HEADERS = frozenset(
     }
 )
 
-NEW_REQUIRED_FORM_COLUMNS = frozenset(range(19))
+NEW_REQUIRED_FORM_COLUMNS = frozenset(range(17))
+SIMPLE_NEW_OPTIONAL_COLUMNS = frozenset({21, 22, 23})
 REVISE_REQUIRED_HEADERS = frozenset(
     {
         "Factory",
@@ -263,11 +318,9 @@ REVISE_REQUIRED_HEADERS = frozenset(
         "Size",
         "Price",
         "Units",
-        "Zone",
         "Internal Lot No.",
         "DeliveryOCID",
         "Fulfillment Type",
-        "Extra Production %",
     }
 )
 
@@ -463,6 +516,59 @@ def _safe_text(value: Any, label: str, row_number: int) -> str:
     return text
 
 
+def _is_zero_quantity(value: Any) -> bool:
+    if isinstance(value, bool) or value in (None, ""):
+        return False
+    try:
+        number = Decimal(str(value).replace(",", "").strip())
+    except (InvalidOperation, AttributeError, ValueError):
+        return False
+    return number.is_finite() and number == 0
+
+
+def _canonical_option(
+    value: Any,
+    label: str,
+    row_number: int,
+    options: tuple[str, ...],
+    *,
+    default: str = "",
+) -> str:
+    text = _safe_text(value, label, row_number)
+    if not text and default:
+        return default
+    matches = {option.casefold(): option for option in options}
+    canonical = matches.get(text.casefold())
+    if canonical:
+        return canonical
+    raise OCWorkbookError(
+        "OC_FILE_VALIDATION_FAILED",
+        "Workbook Upload OC có dữ liệu chưa hợp lệ.",
+        (f"Dòng {row_number}: {label} '{text or '[trống]'} không có trong danh sách.",),
+    )
+
+
+def _validate_delivery_dates(
+    buyer_order_date: date,
+    raw_material_eta: date,
+    buyer_delivery_date: date,
+    row_number: int,
+    *,
+    oc_delivery_date: date | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    if not buyer_order_date < raw_material_eta < buyer_delivery_date:
+        errors.append(
+            f"Dòng {row_number}: ngày phải theo Buyer Order Date "
+            "< Raw Material ETA < Buyer Delivery Date."
+        )
+    if oc_delivery_date is not None and buyer_delivery_date != oc_delivery_date:
+        errors.append(
+            f"Dòng {row_number}: Buyer Delivery Date phải bằng OC Delivery Date."
+        )
+    return errors
+
+
 def _ensure_headers(actual: list[Any], expected: tuple[str, ...], label: str) -> None:
     actual_normalised = tuple(_normalise_header(item) for item in actual)
     expected_normalised = tuple(_normalise_header(item) for item in expected)
@@ -533,7 +639,7 @@ def _add_list_validation(
             f"'{REFERENCE_SHEET_NAME}'!${reference_letter}$2:"
             f"${reference_letter}${option_count + 1}"
         ),
-        allow_blank=False,
+        allow_blank=header == "PO Type (Zone)",
     )
     validation.error = f"Hãy chọn {input_header} từ danh sách."
     validation.errorTitle = "Giá trị không hợp lệ"
@@ -561,8 +667,9 @@ def write_oc_input_template(path: str | Path) -> Path:
     sheet.append(list(INPUT_HEADERS))
     required_fill = PatternFill("solid", fgColor="FFFF00")
     optional_fill = PatternFill("solid", fgColor="F4B183")
+    optional_headers = {"PO Type (Zone)", "Extra Production %", "Buyer Lot No."}
     for cell in sheet[1]:
-        cell.fill = optional_fill if cell.value == "Buyer Lot No." else required_fill
+        cell.fill = optional_fill if cell.value in optional_headers else required_fill
         cell.font = Font(bold=True)
         cell.alignment = Alignment(
             horizontal="center",
@@ -589,7 +696,7 @@ def write_oc_input_template(path: str | Path) -> Path:
         "Buyer Order Date": 17,
         "Buyer Delivery Date": 18,
         "Raw Material ETA Date": 20,
-        "Payment Terms": 28,
+        "Payment Terms": 42,
         "Country of Final Destination": 25,
         "Color Code": 14,
         "Color Name": 20,
@@ -614,10 +721,11 @@ def write_oc_input_template(path: str | Path) -> Path:
     reference_lists = (
         ("Buyer", BUYER_OPTIONS),
         ("Factory", FACTORY_OPTIONS),
-        ("Order Type", ("Confirmed", "Forecast")),
+        ("Order Type", ORDER_TYPE_OPTIONS),
         ("Currency", ("USD", "EUR", "GBP")),
         ("Country", tuple(COUNTRY_MARKET)),
-        ("PO Type (Zone)", ("CM", "CMT", "FOB", "DDP")),
+        ("PO Type (Zone)", PO_TYPE_OPTIONS),
+        ("Payment Terms", PAYMENT_TERM_OPTIONS),
     )
     for column, (heading, options) in enumerate(reference_lists, start=1):
         references.cell(1, column, heading)
@@ -668,14 +776,19 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
     seen_keys: set[tuple[str, ...]] = set()
     known_buyers = {item.casefold() for item in BUYER_OPTIONS}
     known_factories = {item.casefold() for item in FACTORY_OPTIONS}
+    skipped_zero_units = 0
     countries = {
         country.casefold(): (country, market)
         for country, market in COUNTRY_MARKET.items()
     }
     for row_number, values in source_rows:
+        if _is_zero_quantity(values[19]):
+            skipped_zero_units += 1
+            continue
         missing = [
             INPUT_HEADERS[index]
-            for index in range(len(INPUT_HEADERS) - 1)
+            for index in range(len(INPUT_HEADERS))
+            if index not in SIMPLE_NEW_OPTIONAL_COLUMNS
             if values[index] in (None, "")
         ]
         if missing:
@@ -691,6 +804,19 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
             ]
             buyer = text[0]
             factory = text[4]
+            order_type = _canonical_option(
+                values[2], "Order Type", row_number, ORDER_TYPE_OPTIONS
+            )
+            payment_terms = _canonical_option(
+                values[13], "Payment Terms", row_number, PAYMENT_TERM_OPTIONS
+            )
+            zone = _canonical_option(
+                values[21],
+                "PO Type (Zone)",
+                row_number,
+                PO_TYPE_OPTIONS,
+                default="FOB",
+            )
             buyers.setdefault(buyer.casefold(), buyer)
             if buyer.casefold() not in known_buyers:
                 warning = (
@@ -719,7 +845,19 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
             raw_material_eta = _date_value(values[12], INPUT_HEADERS[12], row_number)
             price = _decimal(values[18], INPUT_HEADERS[18], row_number)
             units = _decimal(values[19], INPUT_HEADERS[19], row_number)
-            extra = _decimal(values[22], INPUT_HEADERS[22], row_number)
+            extra = (
+                Decimal(0)
+                if values[22] in (None, "")
+                else _decimal(values[22], INPUT_HEADERS[22], row_number)
+            )
+            errors.extend(
+                _validate_delivery_dates(
+                    buyer_order_date,
+                    raw_material_eta,
+                    delivery_date,
+                    row_number,
+                )
+            )
             if price <= 0:
                 errors.append(f"Dòng {row_number}: Selling Price phải lớn hơn 0.")
             if units <= 0 or units != units.to_integral_value():
@@ -739,7 +877,7 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
                 {
                     "buyer": buyer,
                     "season": text[1],
-                    "order_type": text[2],
+                    "order_type": order_type,
                     "currency": text[3],
                     "factory": factory,
                     "ship_ref": text[5],
@@ -750,7 +888,7 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
                     "buyer_order_date": buyer_order_date,
                     "delivery_date": delivery_date,
                     "raw_material_eta": raw_material_eta,
-                    "payment_terms": text[13],
+                    "payment_terms": payment_terms,
                     "destination": destination,
                     "market": market,
                     "color": f"{text[15]}^{text[16]}",
@@ -758,7 +896,7 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
                     "price": price,
                     "units": units,
                     "internal_lot": text[20],
-                    "zone": text[21],
+                    "zone": zone,
                     "extra": extra,
                     "buyer_lot": text[23],
                 }
@@ -775,6 +913,15 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
             "OC_FILE_VALIDATION_FAILED",
             f"Workbook có {len(errors)} lỗi cần sửa trước khi upload.",
             errors[:100],
+        )
+    if not prepared:
+        raise OCWorkbookError(
+            "OC_FILE_EMPTY",
+            "Không còn dòng Upload OC nào sau khi bỏ các dòng có Units = 0.",
+        )
+    if skipped_zero_units:
+        warnings.append(
+            f"App đã bỏ qua {skipped_zero_units} dòng có Units = 0."
         )
 
     totals: defaultdict[tuple[str, str, str], Decimal] = defaultdict(Decimal)
@@ -870,6 +1017,9 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
             "Thông tin chung trong FORM chưa đầy đủ.",
             metadata_errors,
         )
+    order_type = _canonical_option(
+        order_type, "Order Type", 3, ORDER_TYPE_OPTIONS
+    )
     factories, buyers, countries = _lookup_lists(workbook)
     if buyer.casefold() not in buyers:
         metadata_errors.append(f"Buyer '{buyer}' không có trong THONG TIN.")
@@ -884,7 +1034,11 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
     errors = list(metadata_errors)
     prepared: list[dict[str, Any]] = []
     seen_keys: set[tuple[str, ...]] = set()
+    skipped_zero_units = 0
     for row_number, values in source_rows:
+        if _is_zero_quantity(values[15]):
+            skipped_zero_units += 1
+            continue
         missing = [
             FORM_HEADERS[index]
             for index in NEW_REQUIRED_FORM_COLUMNS
@@ -919,7 +1073,29 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
             raw_material_eta = _date_value(values[8], FORM_HEADERS[8], row_number)
             price = _decimal(values[14], FORM_HEADERS[14], row_number)
             units = _decimal(values[15], FORM_HEADERS[15], row_number)
-            extra = _decimal(values[18], FORM_HEADERS[18], row_number)
+            extra = (
+                Decimal(0)
+                if values[18] in (None, "")
+                else _decimal(values[18], FORM_HEADERS[18], row_number)
+            )
+            payment_terms = _canonical_option(
+                values[9], "Payment Terms", row_number, PAYMENT_TERM_OPTIONS
+            )
+            zone = _canonical_option(
+                values[17],
+                "PO Type",
+                row_number,
+                PO_TYPE_OPTIONS,
+                default="FOB",
+            )
+            errors.extend(
+                _validate_delivery_dates(
+                    buyer_order_date,
+                    raw_material_eta,
+                    delivery_date,
+                    row_number,
+                )
+            )
             if price <= 0:
                 errors.append(f"Dòng {row_number}: Selling Price phải lớn hơn 0.")
             if units <= 0 or units != units.to_integral_value():
@@ -947,7 +1123,7 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
                     "buyer_order_date": buyer_order_date,
                     "delivery_date": delivery_date,
                     "raw_material_eta": raw_material_eta,
-                    "payment_terms": text[9],
+                    "payment_terms": payment_terms,
                     "destination": destination,
                     "market": market,
                     "color": f"{text[11]}^{text[12]}",
@@ -955,7 +1131,7 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
                     "price": price,
                     "units": units,
                     "internal_lot": text[16],
-                    "zone": text[17],
+                    "zone": zone,
                     "extra": extra,
                     "buyer_lot": text[19],
                 }
@@ -968,6 +1144,11 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
             "OC_FILE_VALIDATION_FAILED",
             f"Workbook có {len(errors)} lỗi cần sửa trước khi upload.",
             errors[:100],
+        )
+    if not prepared:
+        raise OCWorkbookError(
+            "OC_FILE_EMPTY",
+            "Không còn dòng Upload OC nào sau khi bỏ các dòng có Units = 0.",
         )
 
     totals: defaultdict[tuple[str, str, str], Decimal] = defaultdict(Decimal)
@@ -1027,7 +1208,12 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
         for header, value in values.items():
             row[EDI_HEADERS.index(header)] = value
         output_rows.append(row)
-    return buyer, output_rows, ()
+    warnings = (
+        (f"App đã bỏ qua {skipped_zero_units} dòng có Units = 0.",)
+        if skipped_zero_units
+        else ()
+    )
+    return buyer, output_rows, warnings
 
 
 def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
@@ -1051,7 +1237,11 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
     buyers: dict[str, str] = {}
     prepared: list[list[Any]] = []
     seen_keys: set[tuple[str, ...]] = set()
+    skipped_zero_units = 0
     for row_number, values in source_rows:
+        if _is_zero_quantity(values[indexes["Units"]]):
+            skipped_zero_units += 1
+            continue
         text_values: dict[str, str] = {}
         try:
             for header in EDI_HEADERS:
@@ -1075,12 +1265,44 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
                 value = values[indexes[header]]
                 if value not in (None, ""):
                     values[indexes[header]] = _date_value(value, header, row_number)
+            values[indexes["Order Type"]] = _canonical_option(
+                values[indexes["Order Type"]],
+                "Order Type",
+                row_number,
+                ORDER_TYPE_OPTIONS,
+            )
+            values[indexes["Payment Terms"]] = _canonical_option(
+                values[indexes["Payment Terms"]],
+                "Payment Terms",
+                row_number,
+                PAYMENT_TERM_OPTIONS,
+            )
+            values[indexes["Zone"]] = _canonical_option(
+                values[indexes["Zone"]],
+                "Zone",
+                row_number,
+                PO_TYPE_OPTIONS,
+                default="FOB",
+            )
+            errors.extend(
+                _validate_delivery_dates(
+                    values[indexes["Buyer Order Date"]],
+                    values[indexes["Raw Matetrial ETA"]],
+                    values[indexes["Buyer Delivery Date"]],
+                    row_number,
+                    oc_delivery_date=values[indexes["OC Delivery Date"]],
+                )
+            )
             units = _decimal(values[indexes["Units"]], "Units", row_number)
             price = _decimal(values[indexes["Price"]], "Price", row_number)
-            extra = _decimal(
-                values[indexes["Extra Production %"]],
-                "Extra Production %",
-                row_number,
+            extra = (
+                Decimal(0)
+                if values[indexes["Extra Production %"]] in (None, "")
+                else _decimal(
+                    values[indexes["Extra Production %"]],
+                    "Extra Production %",
+                    row_number,
+                )
             )
             if units <= 0 or units != units.to_integral_value():
                 errors.append(f"Dòng {row_number}: Units phải là số nguyên lớn hơn 0.")
@@ -1119,6 +1341,11 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
             f"Workbook Revise OC có {len(errors)} lỗi cần sửa.",
             errors[:100],
         )
+    if not prepared:
+        raise OCWorkbookError(
+            "OC_FILE_EMPTY",
+            "Không còn dòng Revise OC nào sau khi bỏ các dòng có Units = 0.",
+        )
 
     totals: defaultdict[tuple[str, str, str], Decimal] = defaultdict(Decimal)
     for row in prepared:
@@ -1150,13 +1377,17 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
         if current_number != expected:
             corrected += 1
         row[indexes["Total Qty"]] = expected
-    warnings = (
-        (f"App đã tính lại Total Qty cho {corrected} dòng từ cột Units.",)
-        if corrected
-        else ()
-    )
+    warnings: list[str] = []
+    if skipped_zero_units:
+        warnings.append(
+            f"App đã bỏ qua {skipped_zero_units} dòng có Units = 0."
+        )
+    if corrected:
+        warnings.append(
+            f"App đã tính lại Total Qty cho {corrected} dòng từ cột Units."
+        )
     buyer = next(iter(buyers.values()))
-    return buyer, prepared, warnings
+    return buyer, prepared, tuple(warnings)
 
 
 def _excel_value(value: Any) -> Any:
