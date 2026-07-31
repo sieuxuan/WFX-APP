@@ -11,7 +11,7 @@ def test_exposes_python_callable_globals():
 
 
 def test_wires_all_catalog_actions():
-    # Khu tìm Catalog gộp về: 1 ô + segmented Style Code | Buyer Reference,
+    # Catalog dùng Article Code và đổi Buyer Reference/Article Name theo category.
     # rồi Tìm (primary) · Costing · BOM · File.
     for action in [
         "refresh-folders",
@@ -258,7 +258,7 @@ def test_special_module_workflows_are_wired():
 
 def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
     assert 'runCatalogAction(catalogKind, $(".catalog-query").value)' in JS
-    assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "costsheet"' in JS
+    assert 'runCatalogAction(\n        catalogKind, $(".catalog-query").value, "costsheet"' in JS
     assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "bom"' in JS
     assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "files"' in JS
     assert '"catalog_action"' in JS
@@ -284,8 +284,24 @@ def test_catalog_costing_import_export_and_dry_run_are_wired():
         "costingPlanToken",
         "fields_to_set",
         "COSTING_DRY_RUN_READY",
+        "showCatalogSpace",
+        'showCatalogSpace("costing", { focus: false })',
     ):
         assert hook in JS
+
+
+def test_catalog_costing_switches_to_dedicated_workspace_after_upload():
+    import_block = JS[
+        JS.index("async function importCatalogCosting()")
+        : JS.index("async function applyCatalogCosting()")
+    ]
+    result_block = JS[
+        JS.index("function handleResult(result)")
+        : JS.index("window.wfxHandleBackendResult")
+    ]
+    assert 'showCatalogSpace("costing", { focus: false })' in import_block
+    assert '"COSTING_DRY_RUN_READY"' in result_block
+    assert 'result.destination === "costsheet"' in result_block
 
 
 def test_catalog_costing_export_can_scan_current_tab_without_query():
@@ -297,6 +313,11 @@ def test_catalog_costing_export_can_scan_current_tab_without_query():
     assert "inspected.style_name" in export_block
     assert '"Current Style"' in export_block
     assert 'catalogKind,\n      "",' in export_block
+    assert "catalog-costing-article-scan-input" not in export_block
+    assert "suggest_articles" in JS
+    assert '"article_name"' in JS
+    assert '"suggest_articles",\n        $(".catalog-category")' in JS
+    assert "wfxSetArticleLibraryStatus" in JS
     assert "Có thể Export/Import tab Costing hiện tại" in JS
     import_block = JS[
         JS.index("async function importCatalogCosting()")
@@ -355,6 +376,8 @@ def test_autohide_remembers_busy_blur_and_hides_when_idle():
     assert 'document.documentElement.addEventListener("pointerenter"' in JS
     assert 'document.documentElement.addEventListener("pointerleave"' in JS
     assert 'window.addEventListener("focus"' in JS
+    assert "set_panel_pointer_inside?.(true)" in JS
+    assert "set_panel_pointer_inside?.(false)" in JS
     focus_block = JS[JS.index('window.addEventListener("focus"') :]
     assert "hidePanelWhenIdle = false" in focus_block[:250]
     assert "hasPendingUserInput" not in JS
@@ -396,7 +419,7 @@ def test_catalog_folder_picker_groups_and_searches_large_trees():
     assert '"[data-folder-select]"' in JS
     assert 'data-node-kind="group"' in JS
     assert 'data-catalog-group-action="select"' in JS
-    assert 'selectedFolder.kind === "group"' in JS
+    assert "Sửa vị trí mặc định:" in JS
     assert 'CATALOG_DEFAULT_CATEGORY = "Apparel"' in JS
     assert 'category === CATALOG_DEFAULT_CATEGORY' in JS
     assert 'category !== CATALOG_DEFAULT_CATEGORY' in JS

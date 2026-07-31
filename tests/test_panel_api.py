@@ -2,7 +2,8 @@ import json
 import threading
 import time
 
-from wfx_panel import constants, costing_workbook, prefs, telemetry
+from wfx_panel import article_library, constants, costing_workbook, prefs, telemetry
+from wfx_panel.atomic_io import write_json_atomic
 from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.panel_api import PanelAPI
 
@@ -283,11 +284,12 @@ class FakeLogin:
         style_status=None,
         require_open=True,
         scan_details=False,
+        scan_article_options=False,
         log=print,
     ):
         del style_status, scan_details, log
         self.calls.append(("scan_open_costing", article_code))
-        return {
+        result = {
             "ok": True,
             "code": "COSTING_SCANNED",
             "message": "scanned",
@@ -337,11 +339,20 @@ class FakeLogin:
                 ],
             },
         }
+        if scan_article_options:
+            result["costing"]["sections"][0].update(
+                {
+                    "article_code_options": ["FAB-001", "FAB-002"],
+                    "article_name_options": ["Jersey", "Rib"],
+                }
+            )
+        return result
 
     def scan_active_open_costing(
         self,
         require_open=True,
         scan_details=False,
+        scan_article_options=False,
         log=print,
     ):
         del scan_details, log
@@ -349,6 +360,7 @@ class FakeLogin:
         return self.scan_open_costing(
             "ACTIVE0001",
             require_open=require_open,
+            scan_article_options=scan_article_options,
         )
 
     def inspect_active_costing(self, log=print):
@@ -460,6 +472,24 @@ def test_find_buyer_reference_uses_buyer_kind(tmp_path):
         "buyer_reference",
         "PO-9",
     ) in fake.calls
+
+
+def test_non_apparel_catalog_search_uses_article_name(tmp_path):
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api, fake = make_api(tmp_path)
+    api.prepare_catalog("Trims")
+
+    result = api.catalog_action("Trims", "article_name", "Zipper", None)
+    invalid = api.catalog_action("Trims", "buyer_reference", "BUY-1", None)
+
+    assert result["code"] == "RESULT_OPENED"
+    assert (
+        "find_in_open_catalog",
+        "Trims",
+        "article_name",
+        "Zipper",
+    ) in fake.calls
+    assert invalid["code"] == "INVALID_FILTER"
 
 
 def test_catalog_destination_reuses_current_search_without_reopening_catalog(
@@ -648,6 +678,100 @@ def test_catalog_costing_export_without_query_scans_only_active_tab(tmp_path):
     assert result["article_code"] == "ACTIVE0001"
     assert target.is_file()
     assert ("scan_active_open_costing", False) in fake.calls
+
+
+def test_catalog_costing_article_dropdown_scan_is_opt_in_and_cached(tmp_path):
+    api, _fake = make_api(tmp_path)
+    api._account = lambda: {"user_id": "alice"}
+    scanned_target = tmp_path / "scanned-dropdowns.xlsx"
+    cached_target = tmp_path / "cached-dropdowns.xlsx"
+
+    scanned = api.export_catalog_costing(
+        "Apparel",
+        "code",
+        "",
+        str(scanned_target),
+        True,
+    )
+    cached = api.export_catalog_costing(
+        "Apparel",
+        "code",
+        "",
+        str(cached_target),
+        False,
+    )
+
+    assert scanned["article_option_source"] == "scan"
+    assert scanned["article_option_count"] == 2
+    assert cached["article_option_source"] == "cache"
+    assert cached["article_option_count"] == 2
+    assert (tmp_path / "costing-article-options.json").is_file()
+
+
+def test_server_article_library_drives_dropdowns_and_code_suggestions(tmp_path):
+    write_json_atomic(
+        tmp_path / "article-library.json",
+        {
+            "schema_version": article_library.SCHEMA_VERSION,
+            "remote_version": "20260731",
+            "generated_at": "2026-07-31T08:00:00Z",
+            "synced_at": 100.0,
+            "sha256": "a" * 64,
+            "sections": [
+                {
+                    "section_key": "*",
+                    "section_name": "All Categories",
+                    "options": [
+                        {
+                            "article_code": "F0001",
+                            "article_name": "Cotton Jersey",
+                            "buyer_reference": "",
+                            "article_category": "Textiles/Fabric",
+                        },
+                        {
+                            "article_code": "T0002",
+                            "article_name": "Metal Zipper",
+                            "buyer_reference": "",
+                            "article_category": "Trims",
+                        },
+                        {
+                            "article_code": "SWN0001",
+                            "article_name": "Cotton Dress",
+                            "buyer_reference": "BUY-COTTON",
+                            "article_category": "Apparel",
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+    api, _fake = make_api(tmp_path)
+    target = tmp_path / "server-dropdowns.xlsx"
+
+    suggestions = api.suggest_articles(
+        "Apparel",
+        "buyer_reference",
+        "buy-c",
+    )
+    exported = api.export_catalog_costing(
+        "Apparel",
+        "code",
+        "",
+        str(target),
+    )
+
+    assert suggestions["suggestions"] == [
+        {
+            "article_code": "SWN0001",
+            "article_name": "Cotton Dress",
+            "buyer_reference": "BUY-COTTON",
+            "article_category": "Apparel",
+            "value": "BUY-COTTON",
+        }
+    ]
+    assert exported["article_option_source"] == "server"
+    assert exported["article_option_count"] == 1
+    assert api.get_initial_state()["article_library"]["available"] is True
 
 
 def test_catalog_costing_inspection_reads_active_tab_before_file_dialog(tmp_path):
@@ -1273,6 +1397,58 @@ def test_session_state_tracks_result_codes(tmp_path):
 
     api.check_session()
     assert api.get_status()["session_active"] is False
+
+
+def test_user_action_auto_relogs_once_and_retries(tmp_path):
+    fake = FakeLogin()
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    attempts = []
+
+    def action():
+        attempts.append(True)
+        if len(attempts) == 1:
+            return {
+                "ok": False,
+                "code": "NOT_LOGGED_IN",
+                "message": "expired",
+            }
+        return {"ok": True, "code": "MODULE_OPENED", "message": "ready"}
+
+    result = api._run("open_module", action)
+
+    assert result["code"] == "MODULE_OPENED"
+    assert len(attempts) == 2
+    assert ("run", "alice", "pw", "psh") in fake.calls
+    assert api.get_status()["session_active"] is True
+
+
+def test_background_session_maintenance_relogs_expired_session(tmp_path):
+    fake = FakeLogin()
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    api._session_active = True
+
+    assert api.should_maintain_session() is True
+    result = api.maintain_session()
+
+    assert result["code"] == "SESSION_RESTORED"
+    assert fake.calls[:2] == [
+        ("check_session",),
+        ("run", "alice", "pw", "psh"),
+    ]
+    assert api.get_status()["session_active"] is True
+
+
+def test_background_session_maintenance_stays_off_before_first_login(tmp_path):
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api = PanelAPI(
+        login_module=FakeLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path,
+    )
+
+    assert api.should_maintain_session() is False
 
 
 def test_unknown_result_code_leaves_session_state_untouched(tmp_path):

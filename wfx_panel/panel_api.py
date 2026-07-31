@@ -30,6 +30,7 @@ SESSION_OK = frozenset(
         "LOGGED_IN",
         "SESSION_REUSED",
         "SESSION_ACTIVE",
+        "SESSION_RESTORED",
         "MODULE_OPENED",
         "CATEGORY_SELECTED",
         "MASTER_OPENED",
@@ -76,6 +77,9 @@ SESSION_LOST = frozenset(
     }
 )
 LOGIN_CODES = frozenset({"LOGGED_IN", "SESSION_REUSED", "SESSION_ACTIVE"})
+AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
+    {"login", "open_chrome", "check_session", "maintain_session"}
+)
 NON_REPORTABLE_FAILURES = frozenset(
     {
         "BROWSER_NOT_FOUND",
@@ -336,6 +340,7 @@ class PanelAPI:
             "catalog_default_folder": (
                 self._catalog.default_folder_for_account(preferences)
             ),
+            "article_library": self._catalog.article_library_status(),
             **self._admin_state(preferences),
             "reporting_configured": telemetry.is_configured(self._base_dir),
             "pending_reports": telemetry.outbox_count(self._base_dir),
@@ -465,7 +470,7 @@ class PanelAPI:
         self._current_run_id = run_id
         self._log(f"[RUN] Bắt đầu {method_name}")
         try:
-            result = action()
+            result = self._run_action_with_auto_relogin(method_name, action)
         except AutomationCancelled:
             result = {
                 "ok": False,
@@ -572,6 +577,63 @@ class PanelAPI:
             **self._division_state(),
         }
 
+    def _restore_expired_session(self) -> dict | None:
+        """Đăng nhập lại bằng credential đã lưu; ``None`` nếu chưa cấu hình."""
+        account = self._account()
+        user_id = str(account.get("user_id") or "").strip()
+        password = str(account.get("password") or "")
+        if not user_id or not password:
+            return None
+        self._log("[SESSION] Phiên WFX đã hết hạn; đang tự đăng nhập lại...")
+        restored = self._login.run(
+            user_id,
+            password,
+            self._login.COMPANY_ID,
+            self._log,
+        )
+        if not isinstance(restored, dict) or not restored.get("ok"):
+            return restored if isinstance(restored, dict) else {
+                "ok": False,
+                "code": "LOGIN_FAILED",
+                "message": "Kết quả tự đăng nhập lại không hợp lệ.",
+            }
+
+        self._session_active = True
+        self._last_login_at = time.strftime("%H:%M:%S")
+        self._admin_access = None
+        self._admin_module_ids.clear()
+        self._catalog.reset_context()
+        if restored.get("current_division") is not None:
+            self._current_division = str(restored["current_division"])
+            self._division_label = str(restored.get("division_label") or "")
+            self._division_name = str(restored.get("division_name") or "")
+        self._log("[SESSION] Đã tự đăng nhập lại; tiếp tục tác vụ hiện tại.")
+        return {
+            **restored,
+            "code": "SESSION_RESTORED",
+            "message": "Đã tự đăng nhập lại WFX.",
+        }
+
+    def _run_action_with_auto_relogin(
+        self,
+        method_name: str,
+        action: Callable[[], dict],
+    ) -> dict:
+        """Retry đúng một lần khi action phát hiện phiên WFX đã hết hạn."""
+        result = action()
+        if (
+            method_name in AUTO_RELOGIN_EXCLUDED_METHODS
+            or not isinstance(result, dict)
+            or str(result.get("code") or "") != "NOT_LOGGED_IN"
+        ):
+            return result
+        restored = self._restore_expired_session()
+        if restored is None:
+            return result
+        if not restored.get("ok"):
+            return restored
+        return action()
+
     def _report_automation_error(
         self,
         method_name: str,
@@ -654,6 +716,28 @@ class PanelAPI:
                 self._login.check_session(self._log)
             ),
         )
+
+    def should_maintain_session(self) -> bool:
+        """Chỉ keepalive sau khi app đã xác nhận từng có phiên đăng nhập."""
+        if self._session_active is not True:
+            return False
+        account = self._account()
+        return bool(
+            str(account.get("user_id") or "").strip()
+            and str(account.get("password") or "")
+        )
+
+    def maintain_session(self) -> dict:
+        """Kiểm tra nền; hết phiên thì tự login lại bằng credential đã lưu."""
+
+        def action() -> dict:
+            checked = self._login.check_session(self._log)
+            if str(checked.get("code") or "") != "NOT_LOGGED_IN":
+                return checked
+            restored = self._restore_expired_session()
+            return restored or checked
+
+        return self._run("maintain_session", action)
 
     def open_chrome(self) -> dict:
         def action() -> dict:
@@ -1056,16 +1140,35 @@ class PanelAPI:
         filter_kind: str,
         query: str,
         file_path: str,
+        scan_article_options: bool = False,
     ) -> dict:
         return self._catalog.export_costing(
             category_name,
             filter_kind,
             query,
             file_path,
+            bool(scan_article_options),
         )
 
     def inspect_active_catalog_costing(self, category_name: str) -> dict:
         return self._catalog.inspect_active_costing(category_name)
+
+    def sync_article_library(self) -> dict:
+        return self._catalog.sync_article_library()
+
+    def suggest_articles(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+        limit: int = 20,
+    ) -> dict:
+        return self._catalog.suggest_articles(
+            category_name,
+            filter_kind,
+            query,
+            limit,
+        )
 
     def validate_catalog_costing_file(self, file_path: str) -> dict:
         return self._catalog.validate_costing_file(file_path)

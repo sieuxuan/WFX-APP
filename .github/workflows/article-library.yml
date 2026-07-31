@@ -1,0 +1,39 @@
+name: Update Article Library
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "Article List.csv"
+      - "scripts/build_article_library_manifest.py"
+      - ".github/workflows/article-library.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Build versioned manifest
+        run: >-
+          python scripts/build_article_library_manifest.py
+          "Article List.csv"
+          --data-url "../Article%20List.csv"
+          --version "${GITHUB_SHA}"
+
+      - name: Publish manifest change
+        run: |
+          if git diff --quiet -- data/article-library-manifest.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/article-library-manifest.json
+          git commit -m "chore: update article library manifest"
+          git push

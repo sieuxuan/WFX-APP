@@ -817,6 +817,49 @@ def test_article_recovery_rebuilds_driver_when_invoked(monkeypatch):
     ]
 
 
+def test_article_recovery_recycles_when_stale_cdp_cannot_see_popup(monkeypatch):
+    stale_browser = SimpleNamespace(
+        contexts=[SimpleNamespace(pages=[SimpleNamespace(
+            url="https://example.test/catalog",
+            frame=lambda _name: None,
+        )])]
+    )
+    refreshed_browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[])])
+    refreshed_page = object()
+    refreshed_playwright = object()
+    calls = []
+    monkeypatch.setattr(
+        catalog,
+        "invalidate_browser",
+        lambda browser: calls.append(("invalidate", browser)),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "recycle_playwright",
+        lambda runtime: calls.append(("recycle", runtime))
+        or refreshed_playwright,
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda runtime: calls.append(("connect", runtime))
+        or (refreshed_browser, refreshed_page),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+
+    result = catalog._refresh_article_context(
+        object(),
+        stale_browser,
+        object(),
+        lambda _line: None,
+    )
+
+    assert result[1:] == (refreshed_browser, refreshed_page)
+    assert calls[0] == ("invalidate", stale_browser)
+    assert calls[1][0] == "recycle"
+    assert calls[2] == ("connect", refreshed_playwright)
+
+
 def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch):
     calls = []
 
@@ -967,7 +1010,7 @@ def test_catalog_search_and_destination_share_popup_driver(monkeypatch):
             "https://example.test/old-top",
         )
     ]
-    assert destination_call[4] == 12
+    assert destination_call[4] == 8
     assert calls[-1] == ("stop",)
 
 
@@ -1072,9 +1115,9 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
             "https://example.test/old-top",
         )
     ]
-    assert attempts[0][3] == 12
+    assert attempts[0][3] == 8
     assert attempts[1:] == [
-        (new_context, "costsheet", [], 20),
+        (new_context, "costsheet", [], 35),
     ]
     # Không lọc Catalog lần hai sau khi popup bị detach.
     assert [call for call in calls if call[0] == "filter"] == [
@@ -1087,6 +1130,91 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
         old_page,
     ) in calls
     assert calls[-1] == ("stop", "refreshed")
+
+
+def test_new_article_popup_reclicks_same_grid_before_cdp_recovery(monkeypatch):
+    class Runtime:
+        def stop(self):
+            pass
+
+    class PlaywrightStarter:
+        def start(self):
+            return Runtime()
+
+    catalog_page = SimpleNamespace(
+        url="https://example.test/catalog",
+        frame=lambda name=None: None,
+    )
+    old_context = SimpleNamespace(pages=[catalog_page])
+    new_context = SimpleNamespace(pages=[])
+    old_browser = SimpleNamespace(contexts=[old_context])
+    new_browser = SimpleNamespace(contexts=[new_context])
+    grid = object()
+    page = object()
+    clicks = []
+    attempts = []
+
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda _playwright: (old_browser, page),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+    monkeypatch.setattr(
+        catalog,
+        "_show_catalog_floating_filter",
+        lambda *_args, **_kwargs: grid,
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_filter_grid_and_maybe_open",
+        lambda *_args: {
+            "ok": True,
+            "code": "RESULT_OPENED",
+            "article_code": "ABC123",
+            "style_status": {},
+        },
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_click_catalog_style",
+        lambda actual_grid, code, label, _log: (
+            clicks.append((actual_grid, code, label)) or True
+        ),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_refresh_article_context",
+        lambda *_args: (Runtime(), new_browser, object()),
+    )
+
+    def open_destination(
+        actual_context,
+        _destination,
+        _states,
+        _log,
+        timeout_seconds,
+    ):
+        attempts.append((actual_context, timeout_seconds))
+        if len(attempts) == 1:
+            raise catalog.PlaywrightTimeoutError("popup invisible")
+        return "Costsheet"
+
+    monkeypatch.setattr(catalog, "_open_article_destination", open_destination)
+
+    result = catalog.find_and_open_catalog_destination(
+        "Apparel",
+        "code",
+        "ABC123",
+        "costsheet",
+    )
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert attempts == [(old_context, 10), (new_context, 35)]
+    assert clicks == [(grid, "ABC123", "Code")]
 
 
 def test_new_article_tab_is_focused_before_waiting_for_articletop():

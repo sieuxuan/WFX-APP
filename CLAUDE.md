@@ -40,7 +40,9 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
   ký Python/Pythonw vào startup.
 - Panel tự thu khi mất focus. Ngoài `window.blur`, monitor foreground Win32 là
   fallback bắt buộc vì WebView2 đôi khi bỏ lỡ blur. Nếu automation đang chạy,
-  panel ghi nhận yêu cầu và thu ngay khi tác vụ kết thúc.
+  panel ghi nhận yêu cầu và chỉ thu khi tác vụ kết thúc **và** con trỏ không còn
+  nằm trong UI. Trạng thái pointer của WebView phải được đồng bộ sang native;
+  không được thu panel chỉ vì automation vừa đưa Chrome lên foreground.
 - Chuyển giữa List/module và thanh tiến trình dùng animation ngắn chỉ với
   transform/opacity; phải tôn trọng `prefers-reduced-motion`. Nút vừa kích hoạt
   giữ highlight trong khi tác vụ chạy để người dùng biết flow nào đang xử lý.
@@ -55,6 +57,10 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 - Tab Tài khoản ở trạng thái đã đăng nhập chỉ hiện kết nối hiện tại và nút `Đổi
   tài khoản`; form User ID/password chỉ mở khi người dùng muốn đổi hoặc cần xác
   thực lại.
+- Sau khi đã có một phiên đăng nhập thành công, app kiểm tra/duy trì phiên nền
+  mỗi 4 phút khi Chrome rảnh. Nếu một flow phát hiện `NOT_LOGGED_IN`, app dùng
+  credential đã lưu để login lại và retry toàn bộ flow đúng một lần; không retry
+  từng bước ghi dữ liệu và không lặp vô hạn.
 - Form góp ý chỉ cho gửi từ 5 ký tự và hiển thị bộ đếm trên giới hạn 2.000 ký tự.
 - Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
@@ -62,6 +68,11 @@ phải cập nhật cả ba tài liệu nếu nội dung liên quan.
 - Result sink từ backend phải nhả trạng thái busy của UI độc lập với Promise
   pywebview. Nếu Promise bridge bị kẹt sau khi backend đã ghi kết quả, các nút
   workflow vẫn phải hoạt động lại ngay.
+- Catalog tách `Tìm Style` và `Costing` thành hai workspace trong cùng module.
+  Khi mở Costing hoặc upload/import XLSX, panel tự chuyển hẳn sang workspace
+  Costing; không bắt người dùng cuộn xuống dưới form tìm kiếm. Hai workspace
+  không có hero/block hướng dẫn lặp lại. Nút mở List luôn ghi `Mở Catalog`;
+  vị trí Apparel mặc định được chỉnh bằng nút icon nhỏ nằm cạnh nút này.
 - Khi automation đang chạy, footer hiện nút `Stop`. Nút chỉ đặt cờ hủy; flow
   dừng ở checkpoint kế tiếp và trả `ACTION_CANCELLED`. Không đóng browser hoặc
   Playwright để ép dừng. Đoạn click/chờ Save phải dùng `cancellation_deferred()`
@@ -124,16 +135,18 @@ Mỗi nút trong module là một flow riêng:
   popup Article (Costing, BOM hoặc File), KHÔNG dựng lại driver/CDP vô điều
   kiện: mỗi `connect_over_cdp` mới re-attach mọi tab và làm Chrome nhấp banner
   "đang bị điều khiển", gây lag. Thay vào đó phải probe popup trên CDP hiện tại
-  trước (`_open_article_destination`/`_article_page`); chỉ khi probe timeout —
-  tức WFX đã detach `ArticleTop` khỏi driver hiện tại sau khi click cùng style —
-  mới `recycle_playwright` đúng một lần rồi thử lại, và không đóng Chrome.
+  trước (`_open_article_destination`/`_article_page`); chỉ khi probe ngắn timeout
+  mới `recycle_playwright` đúng một lần rồi thử lại, và không đóng Chrome. Khi
+  driver cũ không thấy popup trong `context.pages`, vẫn phải recycle: không được
+  dùng chính danh sách target stale đó để bỏ qua recovery.
   Quy tắc này cũng áp dụng ngay trong flow kết hợp Tìm → Costing/BOM: nếu người
   dùng vừa chọn một dòng sau `MULTIPLE_RESULTS` và WFX tái sử dụng popup Style,
   phải recover popup rồi mở destination, không quay lại Catalog để search lần hai.
 
 Các workflow riêng hiện có:
 
-- Catalog: Category/folder, Master, Style Code/Buyer Reference, Costing, BOM,
+- Catalog: Category/folder, Master, Article Code; Apparel dùng Buyer Reference,
+  category khác dùng Article Name; Costing, BOM,
   file đính kèm và Costing file import/export XLSX.
 - Costing file chỉ áp dụng cho Apparel và luôn chạy hai phase:
   1. scan live + validate file + dry-run, cache plan bằng opaque token tối đa
@@ -172,6 +185,15 @@ Các workflow riêng hiện có:
   `#lnkColorDependency`/`#lnkSizeDependency` và tick exact theo từng dòng nguồn.
   Material Color/Size có dropdown từ giá trị item đã scan; option Style nằm
   trong comment ô Mapping.
+- Khi Apply gặp Material Color/Size chưa có trong option của đúng Article,
+  automation phải mở editor dòng Costing rồi dùng đúng
+  `#imgMaterialColorAdd`/`#imgMaterialSizeAdd`. Trong Article Color/Size List,
+  giữ card hiện tại, điền Search ở vùng `form/table[3].../tr[2]`, click
+  `#btnShow`, chọn exact rồi `#btnAdd`. Nếu card chưa có giá trị thì dùng link
+  Search and Add tại `form/table[3].../tr[4]/td[1]/a`; riêng Size được fallback
+  sang card `Sample` rồi tìm lại. Sau Add phải click Save tại
+  `form/table[1].../td[2]/a`, xác nhận option đã xuất hiện lại trong editor
+  Costing, và không xóa/đổi Color Card, Size Card hay mapping đang có.
 - Style Name lấy từ `#lblArticleNameValue`, chính xác phần sau dấu `/` trong
   ngoặc. Form có thêm hai cột đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
   `Value in (USD)`; export giá trị live nhưng import không được tạo field đổi
@@ -194,6 +216,18 @@ Các workflow riêng hiện có:
   Curr. CM/Indirect là USD, dòng trống không Add. Production đặt Minutes=1 ở
   parent và child, rồi Value parent trước Rate child. Không có sheet `Cost Sheet`,
   `Sections`, `_Fields`, `_Meta`; hộp thoại chỉ hỗ trợ `.xlsx`.
+- Article Library là danh sách toàn cục bốn cột `Article Code`/`Article Name`/
+  `Buyer Reference`/`Article Category`, mặc định phát hành từ
+  `Article List.csv` kèm manifest version + SHA-256.
+  App tự kiểm tra lúc mở và mỗi giờ, chỉ tải khi version đổi, ghi cache atomic
+  tại data dir và tiếp tục dùng bản gần nhất khi offline. User không scan WFX,
+  chọn file hoặc cập nhật thủ công. Workflow server tự tạo lại manifest khi CSV
+  trên nhánh main đổi. Catalog chỉ gợi ý trong Category đang chọn: Article Code
+  theo code, Apparel theo Buyer Reference, category còn lại theo Article Name.
+  Costing lọc `Textiles/Fabric` + prefix F cho section Fabric và `Trims` +
+  prefix T cho section Trim. Excel tạo dropdown theo cặp Code/Name và công thức
+  lookup an toàn để Article Name đổi theo Article Code; khi chưa có cache vẫn
+  cho nhập tay. Mọi gợi ý bắt đầu sau 2 ký tự, tối đa 20 kết quả.
 - Costing tuyệt đối không click `#colBodyType label span`, `#imgDeleteSection`,
   `#imgEditSection` hoặc `#imgCopySection`.
 - OC List: tìm theo OC No. hoặc Style.

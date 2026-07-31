@@ -235,6 +235,44 @@ def test_catalog_folder_cache_rejects_invalid_or_non_apparel_data(tmp_path):
     ) == []
 
 
+def test_costing_article_cache_round_trip_is_scoped_and_expires(
+    tmp_path,
+    monkeypatch,
+):
+    sections = [
+        {
+            "section_key": "fabric",
+            "section_name": "Fabric",
+            "options": [
+                {"article_code": "FAB-001", "article_name": "Jersey"},
+                {"article_code": "FAB-002", "article_name": "Rib"},
+            ],
+        }
+    ]
+    monkeypatch.setattr(prefs.time, "time", lambda: 1_000.0)
+
+    saved = prefs.save_costing_article_cache(
+        "alice",
+        sections,
+        base_dir=tmp_path,
+    )
+
+    assert saved == sections
+    assert prefs.load_costing_article_cache(
+        "alice",
+        base_dir=tmp_path,
+    ) == sections
+    assert prefs.load_costing_article_cache(
+        "bob",
+        base_dir=tmp_path,
+    ) is None
+    monkeypatch.setattr(prefs.time, "time", lambda: 1_000.0 + 8 * 24 * 60 * 60)
+    assert prefs.load_costing_article_cache(
+        "alice",
+        base_dir=tmp_path,
+    ) is None
+
+
 def test_admin_mode_round_trip(tmp_path):
     prefs.save_prefs(base_dir=tmp_path, admin_mode=True)
     assert prefs.load_prefs(base_dir=tmp_path)["admin_mode"] is True

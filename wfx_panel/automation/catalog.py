@@ -1,4 +1,4 @@
-"""Workflow Catalog: mở Master, floating filter, lọc Code/Buyer Reference.
+"""Workflow Catalog: mở Master và lọc Code/Buyer Reference/Article Name.
 
 Tách nguyên văn từ login.py — không đổi logic.
 """
@@ -533,6 +533,14 @@ _CATALOG_FILTER_SPECS = {
         'input[aria-label="Buyer Reference Filter Input"]',
         "lblBuyerReference",
     ),
+    "article_name": _CatalogFilterSpec(
+        "Article Name",
+        (
+            'input[aria-label="Article Name Filter Input"], '
+            'input[aria-label="Name Filter Input"]'
+        ),
+        "lblArticleName",
+    ),
 }
 
 
@@ -757,10 +765,12 @@ def _filter_grid_and_maybe_open(
     if spec is None:
         return _result(False, "INVALID_FILTER", f"Filter không hỗ trợ: {filter_kind}")
 
-    # Không để điều kiện cũ ở hai cột chồng lên lần tìm mới.
+    # Không để điều kiện cũ ở các cột chồng lên lần tìm mới.
     for selector in (
         'input[aria-label="Code Filter Input"]',
         'input[aria-label="Buyer Reference Filter Input"]',
+        'input[aria-label="Article Name Filter Input"]',
+        'input[aria-label="Name Filter Input"]',
     ):
         field = grid.locator(selector)
         if field.count() and field.is_visible():
@@ -822,9 +832,25 @@ def _filter_grid_and_maybe_open(
                 }
                 return null;
             };
-            const text = colId => (
-                find(`[role="gridcell"][col-id="${colId}"]`)?.textContent || ''
+            const cellValue = cell => (
+                cell?.querySelector('input, textarea')?.value ||
+                cell?.textContent || ''
             ).replace(/\\s+/g, ' ').trim();
+            const text = colId => cellValue(
+                find(`[role="gridcell"][col-id="${colId}"]`)
+            );
+            const textByToken = token => {
+                for (const part of rowParts) {
+                    for (const cell of part.querySelectorAll(
+                        '[role="gridcell"][col-id]'
+                    )) {
+                        const colId = (cell.getAttribute('col-id') || '')
+                            .replace(/[^a-z0-9]/gi, '').toLowerCase();
+                        if (colId.includes(token)) return cellValue(cell);
+                    }
+                }
+                return '';
+            };
             const code = (
                 find(
                     '[role="gridcell"][col-id="lnkArticleCode"] ' +
@@ -834,7 +860,15 @@ def _filter_grid_and_maybe_open(
             return {
                 code,
                 value: args.valueColumn === 'lnkArticleCode'
-                    ? code : text(args.valueColumn),
+                    ? code
+                    : (
+                        text(args.valueColumn)
+                        || (
+                            args.valueColumn === 'lblArticleName'
+                                ? textByToken('articlename')
+                                : ''
+                        )
+                    ),
                 season: text('lblSeason'),
                 internalCostSheetStatus: text('lblInternalCostSheetStatus')
             };
@@ -960,23 +994,13 @@ def _refresh_article_context(
     page: Page,
     log: Callable[[str], None],
 ) -> tuple[Any, Any, Page]:
-    """Tạo driver/CDP mới tại popup Article để lấy lại frame bị WFX detach."""
-    context = (getattr(browser, "contexts", None) or [None])[0]
-    article_seen = False
-    for candidate in list(getattr(context, "pages", ()) or ()):
-        article_top = candidate.frame(name="ArticleTop")
-        if article_top is None:
-            if "wfx_articledetail" in str(candidate.url or "").casefold():
-                article_seen = True
-            continue
-        article_seen = True
-        # Không trả lại frame hiện tại dù đang đọc được: khi click lại cùng
-        # style, WFX detach ArticleTop ngay sau nhịp kiểm tra này.
-        break
+    """Tạo driver/CDP mới để nhận popup Article bị driver cũ bỏ lỡ.
 
-    if not article_seen:
-        return playwright, browser, page
-
+    WFX có thể đã tạo native popup nhưng target đó chưa xuất hiện trong
+    ``context.pages`` của kết nối CDP hiện tại. Vì caller chỉ gọi primitive này
+    sau khi probe ArticleTop timeout, luôn recycle đúng một lần thay vì dựa vào
+    chính danh sách target đang bị stale để quyết định có recycle hay không.
+    """
     _write_log(
         log,
         "[ARTICLE] Đang đồng bộ popup bằng driver mới...",
@@ -1806,10 +1830,10 @@ def _find_in_open_catalog(
             destination in {"costsheet", "bom"}
             and result.get("code") == "RESULT_OPENED"
         ):
-            # Sau MULTIPLE_RESULTS người dùng có thể đã tự mở một Style. Lần
-            # click exact tiếp theo sẽ tái sử dụng popup đó và WFX thường detach
-            # ArticleTop khỏi CDP cũ. Probe ngắn hơn cho popup đã tồn tại để
-            # recovery diễn ra sớm; popup hoàn toàn mới vẫn được đủ 30 giây tải.
+            # WFX đôi khi tạo native popup nhưng không publish target đó cho
+            # kết nối CDP hiện tại. Probe ngắn rồi recycle đúng một lần giúp
+            # nhận popup sớm, thay vì chờ 30 + 20 giây rồi để controller mở lại
+            # Master và lọc cùng Style lần thứ hai.
             popup_already_open = any(state[2] for state in previous_states)
             try:
                 label = _open_article_destination(
@@ -1817,9 +1841,25 @@ def _find_in_open_catalog(
                     destination,
                     previous_states,
                     log,
-                    timeout_seconds=12 if popup_already_open else 30,
+                    timeout_seconds=8 if popup_already_open else 10,
                 )
             except PlaywrightTimeoutError:
+                if not popup_already_open:
+                    # Một số bản WFX bỏ click đầu tiên khi native popup chưa
+                    # được activate. Click lại đúng nút Style trên grid đang có
+                    # nhanh hơn nhiều so với mở lại Catalog/Category/Master và
+                    # lọc từ đầu; named popup của WFX vẫn được tái sử dụng.
+                    _write_log(
+                        log,
+                        "[ARTICLE] Popup chưa phản hồi; đang kích hoạt lại "
+                        "đúng Style trên grid hiện tại...",
+                    )
+                    _click_catalog_style(
+                        grid,
+                        str(result.get("article_code") or ""),
+                        _CATALOG_FILTER_SPECS[filter_kind].label,
+                        log,
+                    )
                 # WFX thường tái sử dụng popup Article cùng tên. Khi đó lần
                 # click style đã thành công nhưng ArticleTop bị detach khỏi
                 # phiên CDP hiện tại. Phục hồi ngay tại popup; không trả nhầm
@@ -1837,7 +1877,7 @@ def _find_in_open_catalog(
                     destination,
                     [],
                     log,
-                    timeout_seconds=20,
+                    timeout_seconds=35,
                 )
             result["code"] = "CATALOG_DESTINATION_OPENED"
             result["destination"] = destination

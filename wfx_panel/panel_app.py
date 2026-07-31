@@ -22,7 +22,15 @@ os.environ.setdefault(
     "--disable-sync --no-service-autorun",
 )
 
-from wfx_panel import autostart, crash_log, hotkey, prefs, status, updater
+from wfx_panel import (
+    article_library,
+    autostart,
+    crash_log,
+    hotkey,
+    prefs,
+    status,
+    updater,
+)
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
@@ -59,6 +67,8 @@ from wfx_panel.win32_window import (
 
 HOTKEY = hotkey.DEFAULT
 STATUS_POLL_SECONDS = 5
+SESSION_MAINTENANCE_INITIAL_DELAY_SECONDS = 60
+SESSION_MAINTENANCE_SECONDS = 4 * 60
 TASKBAR_ACTIVATION_POLL_SECONDS = 0.25
 PANEL_BLUR_GRACE_SECONDS = 0.35
 BUBBLE_CONTEXT_POLL_SECONDS = 0.04
@@ -67,6 +77,8 @@ TRAY_RIGHT_BUTTON_UP = 0x0205  # WM_RBUTTONUP
 TRAY_LEFT_BUTTON_DOUBLE_CLICK = 0x0203  # WM_LBUTTONDBLCLK
 UPDATE_INITIAL_DELAY_SECONDS = 1
 UPDATE_POLL_SECONDS = 4 * 60 * 60
+ARTICLE_LIBRARY_INITIAL_DELAY_SECONDS = 3
+ARTICLE_LIBRARY_POLL_SECONDS = 60 * 60
 WFX_MANUAL_URL = (
     "https://wfx.pro-sports.com.vn/wfx-digital-dictionary/system-manual"
 )
@@ -119,7 +131,7 @@ NOTIFICATION_ACTION_LABELS = {
     "prepare_catalog": "Catalog",
     "browse_catalog": "Catalog",
     "catalog_action": "Catalog",
-    "find_code": "Tìm Style Code",
+    "find_code": "Tìm Article Code",
     "find_buyer_reference": "Tìm Buyer Reference",
     "open_catalog_destination": "Catalog",
     "download_catalog_file": "Tải file",
@@ -352,6 +364,11 @@ class PanelApp:
     def __init__(self):
         self.api = PanelAPI()
         self._base_dir = self.api._base_dir
+        if getattr(sys, "frozen", False):
+            article_library.seed_bundled(
+                self._base_dir,
+                prefs.RESOURCE_DIR / "Article List.csv",
+            )
         self.window = None
         self.notification_window = None
         self.tray = None
@@ -391,6 +408,10 @@ class PanelApp:
         self._taskbar_minimize_requested = False
         self._panel_focus_lost_since = 0.0
         self._panel_hide_pending = False
+        # WebView biết con trỏ còn nằm trong panel nhưng foreground Win32 có
+        # thể đã chuyển sang Chrome do automation. Đồng bộ trạng thái này sang
+        # native để monitor không thu UI ngay khi flow vừa kết thúc.
+        self._panel_pointer_inside = False
         self._bubble_menu_lock = threading.Lock()
         self._bubble_menu_visible = False
         self._bubble_menu_last_opened = 0.0
@@ -574,6 +595,24 @@ class PanelApp:
             except Exception:
                 pass
         self._panel_visible = False
+        self._panel_pointer_inside = False
+        self._panel_hide_pending = False
+        self._panel_focus_lost_since = 0.0
+
+    def set_panel_pointer_inside(self, inside: bool) -> dict:
+        """Đồng bộ hover WebView cho cơ chế auto-hide native."""
+        self._panel_pointer_inside = bool(inside)
+        if self._panel_pointer_inside:
+            self._panel_hide_pending = False
+            self._panel_focus_lost_since = 0.0
+        return {
+            "ok": True,
+            "code": (
+                "PANEL_POINTER_INSIDE"
+                if self._panel_pointer_inside
+                else "PANEL_POINTER_OUTSIDE"
+            ),
+        }
 
     def show_panel(self) -> dict:
         """Bung panel cạnh bubble (bubble vẫn hiện)."""
@@ -707,6 +746,10 @@ class PanelApp:
         trong app (bấm chính bubble/toast) hoặc panel đã ẩn."""
         if not self._panel_visible:
             return {"ok": True, "code": "PANEL_ALREADY_HIDDEN"}
+        if self._panel_pointer_inside:
+            self._panel_hide_pending = False
+            self._panel_focus_lost_since = 0.0
+            return {"ok": True, "code": "PANEL_POINTER_KEPT"}
         foreground = _foreground_process_id()
         if foreground is not None and foreground == os.getpid():
             return {"ok": True, "code": "PANEL_FOCUS_KEPT"}
@@ -720,6 +763,10 @@ class PanelApp:
     def _track_panel_foreground(self, foreground_pid: int | None) -> None:
         """Fallback native khi WebView2 bỏ lỡ sự kiện ``window.blur``."""
         if not self._panel_visible:
+            self._panel_focus_lost_since = 0.0
+            self._panel_hide_pending = False
+            return
+        if self._panel_pointer_inside:
             self._panel_focus_lost_since = 0.0
             self._panel_hide_pending = False
             return
@@ -1258,19 +1305,32 @@ class PanelApp:
             )
 
     def _status_loop(self) -> None:
+        next_session_maintenance = (
+            time.monotonic() + SESSION_MAINTENANCE_INITIAL_DELAY_SECONDS
+        )
         while not self._stop_status.wait(STATUS_POLL_SECONDS):
             # Một lỗi native/evaluate_js tạm thời không được giết luôn thread,
             # nếu không trạng thái Chrome sẽ đứng im cả phiên.
             try:
                 alive = status.chrome_alive()
-                if alive == self._chrome_alive:
+                if alive != self._chrome_alive:
+                    self._chrome_alive = alive
+                    if self.window is not None:
+                        self.window.evaluate_js(
+                            "window.wfxSetChromeStatus("
+                            f"{'true' if alive else 'false'})"
+                        )
+
+                now = time.monotonic()
+                if now < next_session_maintenance:
                     continue
-                self._chrome_alive = alive
-                if self.window is None:
-                    continue
-                self.window.evaluate_js(
-                    f"window.wfxSetChromeStatus({'true' if alive else 'false'})"
-                )
+                next_session_maintenance = now + SESSION_MAINTENANCE_SECONDS
+                if (
+                    alive
+                    and self.api.should_maintain_session()
+                    and not self.api.is_action_running()
+                ):
+                    self.api.maintain_session()
             except Exception:
                 continue
 
@@ -1307,6 +1367,27 @@ class PanelApp:
                     f"[UPDATE] Không kiểm tra tự động được: {type(error).__name__}"
                 )
             if self._stop_status.wait(UPDATE_POLL_SECONDS):
+                return
+
+    def _article_library_loop(self) -> None:
+        if self._stop_status.wait(ARTICLE_LIBRARY_INITIAL_DELAY_SECONDS):
+            return
+        while not self._stop_status.is_set():
+            try:
+                result = self.api.sync_article_library()
+                if self.window is not None:
+                    import json
+
+                    self.window.evaluate_js(
+                        "window.wfxSetArticleLibraryStatus("
+                        f"{json.dumps(result, ensure_ascii=False)})"
+                    )
+            except Exception as error:
+                self._push_log(
+                    "[ARTICLE LIBRARY] Không kiểm tra tự động được: "
+                    f"{type(error).__name__}"
+                )
+            if self._stop_status.wait(ARTICLE_LIBRARY_POLL_SECONDS):
                 return
 
     def activate(self):
@@ -1617,6 +1698,7 @@ class PanelApp:
         self.api.show_panel = self.show_panel   # type: ignore[attr-defined]
         self.api.toggle_panel = self.toggle_panel  # type: ignore[attr-defined]
         self.api.request_panel_hide = self.request_panel_hide  # type: ignore[attr-defined]
+        self.api.set_panel_pointer_inside = self.set_panel_pointer_inside  # type: ignore[attr-defined]
         self.api.open_wfx_manual = self.open_wfx_manual  # type: ignore[attr-defined]
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.choose_costing_import_file = self.choose_costing_import_file  # type: ignore[attr-defined]
@@ -1761,6 +1843,11 @@ class PanelApp:
                 daemon=True,
             ).start()
             threading.Thread(target=self._update_loop, daemon=True).start()
+            threading.Thread(
+                target=self._article_library_loop,
+                name="wfx-article-library-sync",
+                daemon=True,
+            ).start()
             self._build_tray()
 
         # UI là file đóng gói và state thật nằm trong prefs/.env riêng. Dùng

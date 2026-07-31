@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import threading
+import time
 from pathlib import Path
 
 from wfx_panel import hotkey as hotkey_spec
@@ -102,6 +103,10 @@ def _prefs_path(base_dir: Path) -> Path:
 
 def _catalog_cache_path(base_dir: Path) -> Path:
     return Path(base_dir) / "catalog-folders.json"
+
+
+def _costing_article_cache_path(base_dir: Path) -> Path:
+    return Path(base_dir) / "costing-article-options.json"
 
 
 def _normalise_catalog_folder(value: object) -> dict | None:
@@ -243,6 +248,102 @@ def save_catalog_folder_cache(
                 "user_id": owner,
                 "category_name": "Apparel",
                 "folders": normalised,
+            },
+            separators=(",", ":"),
+        )
+    return normalised
+
+
+def _normalise_costing_article_section(value: object) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    section_key = str(value.get("section_key") or "").strip()[:180]
+    section_name = str(value.get("section_name") or "").strip()[:180]
+    raw_options = value.get("options")
+    if not section_key or not section_name or not isinstance(raw_options, list):
+        return None
+    options = []
+    seen = set()
+    for raw in raw_options[:5000]:
+        if not isinstance(raw, dict):
+            continue
+        article_code = str(raw.get("article_code") or "").strip()[:160]
+        article_name = str(raw.get("article_name") or "").strip()[:300]
+        identity = (article_code.casefold(), article_name.casefold())
+        if not any(identity) or identity in seen:
+            continue
+        seen.add(identity)
+        options.append(
+            {
+                "article_code": article_code,
+                "article_name": article_name,
+            }
+        )
+    if not options:
+        return None
+    return {
+        "section_key": section_key,
+        "section_name": section_name,
+        "options": options,
+    }
+
+
+def load_costing_article_cache(
+    user_id: str,
+    base_dir: Path | None = None,
+    *,
+    max_age_seconds: int = 7 * 24 * 60 * 60,
+) -> list[dict] | None:
+    """Đọc dropdown Article đã scan, tách riêng theo account và section."""
+    base_dir = DATA_DIR if base_dir is None else base_dir
+    try:
+        data = json.loads(
+            _costing_article_cache_path(base_dir).read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return None
+    owner = str(data.get("user_id") or "").strip()
+    requested_user = str(user_id or "").strip()
+    saved_at = float(data.get("saved_at") or 0)
+    if (
+        not requested_user
+        or owner.casefold() != requested_user.casefold()
+        or saved_at <= 0
+        or time.time() - saved_at > max(0, int(max_age_seconds))
+    ):
+        return None
+    sections = [
+        section
+        for raw in (data.get("sections") or [])[:100]
+        if (section := _normalise_costing_article_section(raw)) is not None
+    ]
+    return sections or None
+
+
+def save_costing_article_cache(
+    user_id: str,
+    sections: list[dict],
+    base_dir: Path | None = None,
+) -> list[dict]:
+    """Lưu dropdown Article riêng để các lần Export sau không phải scan lại."""
+    base_dir = DATA_DIR if base_dir is None else base_dir
+    owner = str(user_id or "").strip()
+    if not owner:
+        return []
+    normalised = [
+        section
+        for raw in sections[:100]
+        if (section := _normalise_costing_article_section(raw)) is not None
+    ]
+    if not normalised:
+        return []
+    with _WRITE_LOCK:
+        write_json_atomic(
+            _costing_article_cache_path(base_dir),
+            {
+                "user_id": owner,
+                "saved_at": time.time(),
+                "sections": normalised,
             },
             separators=(",", ":"),
         )

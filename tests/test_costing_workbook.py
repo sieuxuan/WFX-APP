@@ -474,6 +474,67 @@ def test_form_adds_live_color_size_and_purchase_officer_dropdowns(tmp_path):
     assert {"JL NAVY(6855)", "M", "HanhNgoThi"} <= hidden_values
 
 
+def test_form_adds_cached_article_code_and_name_dropdowns_by_section(tmp_path):
+    document = sample_document()
+    document["sections"][0]["article_code_options"] = ["FAB-001", "FAB-002"]
+    document["sections"][0]["article_name_options"] = [
+        "Cotton Jersey",
+        "Rib Jersey",
+    ]
+    target = tmp_path / "article-dropdowns.xlsx"
+
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    validated_columns = {
+        cell_range.min_col
+        for validation in form.data_validations.dataValidation
+        for cell_range in validation.ranges.ranges
+    }
+    hidden_values = {
+        str(form.cell(row, column).value)
+        for column in range(
+            len(costing_workbook.FORM_COLUMNS) + 1,
+            form.max_column + 1,
+        )
+        for row in range(2, form.max_row + 1)
+        if form.cell(row, column).value
+    }
+
+    assert header["Article Code"] in validated_columns
+    assert header["Article Name"] in validated_columns
+    assert {"FAB-001", "FAB-002", "Cotton Jersey", "Rib Jersey"} <= hidden_values
+    article_name = form.cell(2, header["Article Name"]).value
+    assert isinstance(article_name, str)
+    assert article_name.startswith("=IFERROR(INDEX(")
+    workbook.save(target)
+    loaded = costing_workbook.read_costing_xlsx(target)
+    assert loaded["items"][0]["article_name"] == "Cotton Jersey"
+
+
+def test_article_name_formula_follows_article_code_selected_in_excel(tmp_path):
+    document = sample_document()
+    document["items"][0]["article_code"] = "F0001"
+    document["items"][0]["article_name"] = "Cotton Jersey"
+    document["sections"][0]["article_lookup_options"] = [
+        {"article_code": "F0001", "article_name": "Cotton Jersey"},
+        {"article_code": "F0002", "article_name": "Rib Jersey"},
+    ]
+    target = tmp_path / "article-auto-name.xlsx"
+    costing_workbook.write_costing_xlsx(document, target)
+    workbook = load_workbook(target)
+    form = workbook[costing_workbook.FORM_SHEET]
+    header = _header_map(form)
+    form.cell(2, header["Article Code"], "F0002")
+    workbook.save(target)
+
+    loaded = costing_workbook.read_costing_xlsx(target)
+
+    assert loaded["items"][0]["article_code"] == "F0002"
+    assert loaded["items"][0]["article_name"] == "Rib Jersey"
+
+
 def test_formula_columns_are_exported_red_and_never_imported(tmp_path):
     document = sample_document()
     document["style_name"] = "KFSWPKN-S200 LN"
