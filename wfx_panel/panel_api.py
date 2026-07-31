@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import tempfile
@@ -85,6 +86,45 @@ LOGIN_CODES = frozenset({"LOGGED_IN", "SESSION_REUSED", "SESSION_ACTIVE"})
 AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
     {"login", "open_chrome", "check_session", "maintain_session"}
 )
+
+
+def _snapshot_oc_source(source: Path, target: Path) -> str:
+    """Copy the exact current workbook bytes and return their SHA-256.
+
+    A review must never reuse a previous transformation just because Windows
+    returns the same selected path.  Snapshotting also prevents Excel saving
+    the source halfway through the three validation/read passes.
+    """
+    for attempt in range(2):
+        try:
+            before = source.stat()
+            digest = hashlib.sha256()
+            with source.open("rb") as reader, target.open("wb") as writer:
+                while chunk := reader.read(1024 * 1024):
+                    writer.write(chunk)
+                    digest.update(chunk)
+            after = source.stat()
+        except OSError as error:
+            raise OCWorkbookError(
+                "OC_FILE_READ_FAILED",
+                "Không đọc được file OC. Hãy lưu và đóng file Excel rồi chọn lại.",
+                (f"{type(error).__name__}: {error}",),
+            ) from error
+        unchanged = (
+            before.st_size == after.st_size
+            and before.st_mtime_ns == after.st_mtime_ns
+            and target.stat().st_size == after.st_size
+        )
+        if unchanged:
+            return digest.hexdigest()
+        if attempt == 0:
+            continue
+    raise OCWorkbookError(
+        "OC_FILE_CHANGED_DURING_READ",
+        "File OC đang được Excel lưu. Hãy chờ lưu xong rồi chọn lại file.",
+    )
+
+
 NON_REPORTABLE_FAILURES = frozenset(
     {
         "BROWSER_NOT_FOUND",
@@ -1231,8 +1271,14 @@ class PanelAPI:
                 dir=cache_root,
             )
             try:
+                source_snapshot = Path(temporary.name) / "OC-Source.xlsx"
+                source_sha256 = _snapshot_oc_source(source, source_snapshot)
                 upload_path = Path(temporary.name) / "OC-EDI-Upload.xlsx"
-                prepared = prepare_oc_workbook(source, selected_mode, upload_path)
+                prepared = prepare_oc_workbook(
+                    source_snapshot,
+                    selected_mode,
+                    upload_path,
+                )
             except OCWorkbookError as error:
                 temporary.cleanup()
                 return {
@@ -1251,6 +1297,7 @@ class PanelAPI:
                 "temporary": temporary,
                 "prepared": prepared,
                 "source_file": source.name,
+                "source_sha256": source_sha256,
             }
             self._log(
                 "[OC] Review sẵn sàng: "
@@ -1263,6 +1310,7 @@ class PanelAPI:
                 "message": "File hợp lệ. Kiểm tra số liệu trước khi xác nhận Upload.",
                 "review_token": review_token,
                 "source_file": source.name,
+                "source_sha256": source_sha256,
                 **self._oc_review_payload(prepared),
             }
 

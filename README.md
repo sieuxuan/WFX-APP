@@ -43,7 +43,8 @@ Benchmark RAM/tốc độ của bản này nằm tại
 - OC List có form Upload OC một hàng header: app kiểm tra dữ liệu, tự sinh
   `Sheet1` 51 cột không công thức, hiện review Buyer/Season/PO/Article/Units
   trước khi xác nhận upload `StandardSalesOrder`, kiểm tra đủ ba trạng thái EDI
-  rồi mới Create Transaction; hỗ trợ cả OC New và Revise OC.
+  rồi mới Create Transaction; hỗ trợ cả OC New và Revise OC. Chọn lại cùng file
+  sau khi sửa luôn tạo snapshot mới, không dùng dữ liệu review cũ.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup. Nút New của QA, Advance Payment Request và Expense Invoice

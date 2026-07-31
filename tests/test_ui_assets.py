@@ -98,8 +98,11 @@ def test_index_html_has_contract_hooks():
         'data-module-action="oc-revise-report"',
         'data-module-action="oc-upload-revise"',
         'class="oc-upload-review"',
+        'class="oc-review-identities"',
         'class="oc-review-metrics"',
-        'src="panel.js?v=20260731-7"',
+        'class="oc-flow-grid"',
+        'class="oc-list-search"',
+        'src="panel.js?v=20260731-8"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -110,6 +113,17 @@ def test_index_html_has_contract_hooks():
     assert 'data-costing-action="export-csv"' not in html
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
     assert 'class="compact-launcher"' not in html
+
+
+def test_oc_workspace_uses_readable_balanced_layout():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="special-module-workspace oc-workspace"' in html
+    assert ".oc-list-search { display: grid; grid-template-columns: 118px minmax(0,1fr)" in css
+    assert ".oc-flow-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr))" in css
+    assert ".oc-list-card .oc-upload-card-copy strong { font-size: 16px" in css
+    assert ".oc-review-metrics strong" in css and "font-size: 17px" in css
 
 
 def test_status_is_only_in_footer_and_log_can_be_selected():

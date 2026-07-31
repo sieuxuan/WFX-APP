@@ -176,8 +176,12 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   Season, số PO, số Style/Article, Sum of Units và số dòng. Chỉ khi người dùng
   bấm `Xác nhận Upload`, app mới đưa `Sheet1` 51 cột chỉ chứa giá trị vào
   `EDI Buyer PO` với package `StandardSalesOrder`.
-- Trong workspace OC, `OC List` và Search nằm cùng một card. `Upload OC New` có
-  hai nút cạnh nhau: tải file mẫu và chọn file mới.
+- Trong workspace OC, `OC List` và Search nằm cùng một card gọn: chọn OC No./
+  Style, nhập nội dung và bấm Tìm trên một hàng. Upload New và Revise nằm ở hai
+  card cân bằng, chữ và số liệu review đủ lớn để đọc nhanh.
+- Sau khi Huỷ review, nếu người dùng sửa rồi chọn lại đúng file cũ, app luôn đọc
+  lại nội dung hiện tại trên ổ đĩa; kết quả review cũ không được tái sử dụng hoặc
+  hiển thị đè lên lần chọn mới.
 - App chỉ bấm `Create Transaction` khi cả ba trạng thái `Data Imported`, `Data
   Validated` và `Mapping Resolved` đều thành công. Nếu WFX báo fail, app giữ
   thông tin dòng lỗi để người dùng sửa file. Nếu đã bấm Create Transaction
