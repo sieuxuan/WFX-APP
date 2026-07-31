@@ -259,3 +259,12 @@ def test_moi_nut_catalog_deu_co_huong_dan():
 
 def test_module_catalog_co_huong_dan():
     assert "0003_6200" in surface.covered("modules")
+
+
+def test_moi_nut_costing_deu_co_huong_dan():
+    missing = surface.costing_actions() - surface.covered("actions")
+    assert not missing, f"Chưa có hướng dẫn cho nút Costing: {sorted(missing)}"
+
+
+def test_cong_tac_quet_lai_chi_phi_co_huong_dan():
+    assert "catalog-special-rescan-input" in surface.covered("settings")

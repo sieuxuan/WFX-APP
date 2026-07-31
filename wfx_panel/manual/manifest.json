@@ -197,6 +197,97 @@
           }
         }
       ]
+    },
+    {
+      "id": "costing",
+      "title": "File Costing",
+      "summary": "Xuất, kiểm tra và áp dụng thay đổi Costing bằng file Excel.",
+      "entries": [
+        {
+          "id": "costing-xuat-file",
+          "title": "Xuất file Costing",
+          "summary": "Tải dữ liệu Costing đang mở thành file Excel.",
+          "file": "04-costing/xuat-file.md",
+          "keywords": ["tải xlsx", "xuất", "excel"],
+          "covers": {
+            "actions": ["export-xlsx"],
+            "errors": [
+              "COSTING_ACTIVE_TAB_AMBIGUOUS",
+              "COSTING_ACTIVE_TAB_NOT_FOUND",
+              "COSTING_CONTEXT_NOT_FOUND",
+              "COSTING_OPEN_NOT_LOADED",
+              "COSTING_SCAN_FAILED",
+              "COSTING_STYLE_NOT_DETECTED"
+            ]
+          }
+        },
+        {
+          "id": "costing-kiem-tra-file",
+          "title": "Kiểm tra file Costing",
+          "summary": "Soát lỗi trong file trước khi làm việc với WFX.",
+          "file": "04-costing/kiem-tra-file.md",
+          "keywords": ["kiểm tra file", "ô lỗi", "xlsx"],
+          "covers": { "actions": ["validate-file"] }
+        },
+        {
+          "id": "costing-nhap-file",
+          "title": "Nhập file Costing",
+          "summary": "Đọc file và lập bản xem trước thay đổi.",
+          "file": "04-costing/nhap-file.md",
+          "keywords": ["import", "nhập", "open"],
+          "covers": { "actions": ["import"] }
+        },
+        {
+          "id": "costing-ap-dung",
+          "title": "Áp dụng và lưu Costing",
+          "summary": "Xem trước rồi ghi những thay đổi đã kiểm tra lên WFX.",
+          "file": "04-costing/ap-dung.md",
+          "keywords": ["áp dụng", "save", "xem trước"],
+          "covers": {
+            "actions": ["apply", "cancel-plan"],
+            "errors": [
+              "COSTING_APPLY_FAILED",
+              "COSTING_FIELD_APPLY_FAILED",
+              "COSTING_NEW_DIALOG_NOT_FOUND",
+              "COSTING_NEW_FAILED",
+              "COSTING_SAVE_ALERT",
+              "COSTING_SAVE_NOT_FOUND",
+              "COSTING_VERIFY_FAILED"
+            ]
+          }
+        },
+        {
+          "id": "costing-color-size",
+          "title": "Color Mapping và Size Mapping",
+          "summary": "Nối màu và cỡ vật tư với màu và cỡ của Style.",
+          "file": "04-costing/color-size-mapping.md",
+          "keywords": ["color mapping", "size mapping", "màu", "cỡ"],
+          "covers": {}
+        },
+        {
+          "id": "costing-xoa-phu-thuoc",
+          "title": "Xoá toàn bộ phụ thuộc",
+          "summary": "Xoá các liên kết màu và cỡ trong Costing đang mở.",
+          "file": "04-costing/xoa-phu-thuoc.md",
+          "keywords": ["clear all dependency", "xoá phụ thuộc"],
+          "covers": {
+            "actions": ["clear-dependencies"],
+            "errors": [
+              "COSTING_CLEAR_DEPENDENCY_TARGET_CHANGED",
+              "COSTING_CLEAR_FAILED",
+              "COSTING_CLEAR_UNSUPPORTED"
+            ]
+          }
+        },
+        {
+          "id": "costing-quet-lai-chi-phi",
+          "title": "Quét lại danh sách chi phí",
+          "summary": "Làm mới danh sách CM, Production và Indirect cho lần kế tiếp.",
+          "file": "04-costing/quet-lai-chi-phi.md",
+          "keywords": ["quét lại", "cm costs", "production", "indirect"],
+          "covers": { "settings": ["catalog-special-rescan-input"] }
+        }
+      ]
     }
   ]
 }
