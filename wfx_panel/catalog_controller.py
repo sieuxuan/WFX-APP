@@ -30,6 +30,9 @@ from wfx_panel.costing_workbook import (
 )
 
 COSTING_PLAN_TTL_SECONDS = 15 * 60
+_SPECIAL_COST_SECTION_KEYS = frozenset(
+    {"cmcosts", "productioncosts", "indirectcosts"}
+)
 
 
 @dataclass(frozen=True)
@@ -1074,6 +1077,144 @@ class CatalogController:
             count += len(options)
         return count, source if count else "none"
 
+    @staticmethod
+    def _special_cost_section_key(section: Mapping) -> str:
+        for value in (section.get("section_key"), section.get("name")):
+            token = "".join(
+                character
+                for character in str(value or "").casefold()
+                if character.isalnum()
+            )
+            if token in _SPECIAL_COST_SECTION_KEYS:
+                return token
+        return ""
+
+    @classmethod
+    def _special_cost_sections(cls, document: Mapping) -> list[dict]:
+        sections: dict[str, dict] = {}
+        for section in document.get("sections") or ():
+            key = cls._special_cost_section_key(section)
+            if not key:
+                continue
+            sections[key] = {
+                "section_key": key,
+                "options": list(section.get("article_options") or ()),
+            }
+        if set(sections) != _SPECIAL_COST_SECTION_KEYS:
+            return []
+        return [sections[key] for key in sorted(sections)]
+
+    def costing_special_options_state(
+        self,
+        preferences: Mapping | None = None,
+    ) -> dict:
+        panel = self._panel
+        if preferences is None:
+            preferences = panel._prefs.load_prefs(base_dir=panel._base_dir)
+        loader = getattr(
+            panel._prefs,
+            "load_costing_special_options_cache",
+            None,
+        )
+        user_id = str(panel._account().get("user_id") or "").strip()
+        division_key = str(panel._current_division or "").strip()
+        cache = (
+            loader(user_id, division_key, base_dir=panel._base_dir)
+            if callable(loader) and user_id and division_key
+            else None
+        )
+        return {
+            "available": cache is not None,
+            "saved_at": float((cache or {}).get("saved_at") or 0),
+            "expires_at": float((cache or {}).get("expires_at") or 0),
+            "rescan_next": preferences.get(
+                "costing_special_options_rescan", False
+            )
+            is True,
+        }
+
+    def set_costing_special_options_rescan(self, value: bool) -> dict:
+        preferences = self._panel._prefs.save_prefs(
+            base_dir=self._panel._base_dir,
+            costing_special_options_rescan=bool(value),
+        )
+        state = self.costing_special_options_state(preferences)
+        return {
+            "ok": True,
+            "code": "COSTING_SPECIAL_OPTIONS_RESCAN_UPDATED",
+            "message": (
+                "Lần Costing kế tiếp sẽ quét lại ba danh sách chi phí."
+                if state["rescan_next"]
+                else "Đã dùng lại cache ba danh sách chi phí khi còn hạn."
+            ),
+            "costing_special_options": state,
+        }
+
+    def _special_cost_scan_plan(self) -> dict:
+        state = self.costing_special_options_state()
+        panel = self._panel
+        loader = getattr(
+            panel._prefs,
+            "load_costing_special_options_cache",
+            None,
+        )
+        user_id = str(panel._account().get("user_id") or "").strip()
+        division_key = str(panel._current_division or "").strip()
+        cache = (
+            loader(user_id, division_key, base_dir=panel._base_dir)
+            if callable(loader) and user_id and division_key
+            else None
+        )
+        return {
+            "scan": state["rescan_next"] or cache is None,
+            "forced": state["rescan_next"],
+            "cache": cache,
+        }
+
+    def _merge_special_cost_options(
+        self,
+        document: dict,
+        plan: Mapping,
+    ) -> dict:
+        panel = self._panel
+        cache = plan.get("cache")
+        if document.get("special_cost_options_scanned") is True:
+            sections = self._special_cost_sections(document)
+            saver = getattr(
+                panel._prefs,
+                "save_costing_special_options_cache",
+                None,
+            )
+            user_id = str(panel._account().get("user_id") or "").strip()
+            division_key = str(panel._current_division or "").strip()
+            cache = (
+                saver(
+                    user_id,
+                    division_key,
+                    sections,
+                    base_dir=panel._base_dir,
+                )
+                if callable(saver) and sections
+                else None
+            )
+            if cache is not None and plan.get("forced"):
+                panel._prefs.save_prefs(
+                    base_dir=panel._base_dir,
+                    costing_special_options_rescan=False,
+                )
+        if cache:
+            options_by_key = {
+                str(section.get("section_key") or "").casefold(): list(
+                    section.get("options") or ()
+                )
+                for section in cache.get("sections") or ()
+            }
+            for section in document.get("sections") or ():
+                key = self._special_cost_section_key(section)
+                if key in options_by_key:
+                    section["article_options"] = options_by_key[key]
+        return self.costing_special_options_state()
+
     def article_library_status(self) -> dict:
         return article_library.status(self._panel._base_dir)
 
@@ -1246,6 +1387,7 @@ class CatalogController:
             style_status = opened.get("style_status")
 
         def action() -> dict:
+            special_options_plan = self._special_cost_scan_plan()
             if cleaned_query:
                 scanner = getattr(panel._login, "scan_open_costing", None)
             else:
@@ -1266,6 +1408,7 @@ class CatalogController:
                     "require_open": False,
                     "scan_details": True,
                     "log": panel._log,
+                    "scan_special_cost_options": special_options_plan["scan"],
                 }
                 if scan_article_options:
                     scan_kwargs["scan_article_options"] = True
@@ -1278,6 +1421,7 @@ class CatalogController:
                     "require_open": False,
                     "scan_details": True,
                     "log": panel._log,
+                    "scan_special_cost_options": special_options_plan["scan"],
                 }
                 if scan_article_options:
                     scan_kwargs["scan_article_options"] = True
@@ -1286,6 +1430,10 @@ class CatalogController:
                 return scanned
             try:
                 document = scanned["costing"]
+                special_options_state = self._merge_special_cost_options(
+                    document,
+                    special_options_plan,
+                )
                 article_option_count, article_option_source = (
                     self._merge_cached_article_options(
                         document,
@@ -1330,6 +1478,7 @@ class CatalogController:
                 },
                 "article_option_count": article_option_count,
                 "article_option_source": article_option_source,
+                "costing_special_options": special_options_state,
                 **summary,
             }
 
@@ -1507,6 +1656,7 @@ class CatalogController:
             style_status = opened.get("style_status")
 
         def action() -> dict:
+            special_options_plan = self._special_cost_scan_plan()
             if active_tab_only:
                 scanner = getattr(
                     panel._login,
@@ -1525,6 +1675,7 @@ class CatalogController:
                 scanned = scanner(
                     require_open=True,
                     scan_details=True,
+                    scan_special_cost_options=special_options_plan["scan"],
                     log=panel._log,
                 )
             else:
@@ -1533,11 +1684,16 @@ class CatalogController:
                     style_status=style_status,
                     require_open=True,
                     scan_details=True,
+                    scan_special_cost_options=special_options_plan["scan"],
                     log=panel._log,
                 )
             if not scanned.get("ok"):
                 return scanned
             live_document = scanned["costing"]
+            special_options_state = self._merge_special_cost_options(
+                live_document,
+                special_options_plan,
+            )
             live_article_code = str(
                 scanned.get("article_code")
                 or live_document.get("style_code")
@@ -1574,6 +1730,7 @@ class CatalogController:
             return {
                 **plan,
                 "plan_token": token,
+                "costing_special_options": special_options_state,
                 "article_code": live_article_code,
                 "style_status": {
                     "code": live_article_code,
@@ -1735,6 +1892,30 @@ class CatalogController:
             "download_catalog_file",
             action,
             {"file_id": file_id},
+        )
+
+    def clear_active_costing_dependencies(self) -> dict:
+        """Clear mọi dependency của đúng Costing đang chọn và Save."""
+        panel = self._panel
+
+        def action() -> dict:
+            clearer = getattr(
+                panel._login,
+                "clear_active_costing_dependencies",
+                None,
+            )
+            if not callable(clearer):
+                return {
+                    "ok": False,
+                    "code": "COSTING_CLEAR_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ Clear All Dependency.",
+                }
+            return clearer(log=panel._log)
+
+        return panel._run(
+            "clear_catalog_costing_dependencies",
+            action,
+            {"active_tab_only": True},
         )
 
     def check_sample_files(self, filter_kind: str, query: str) -> dict:

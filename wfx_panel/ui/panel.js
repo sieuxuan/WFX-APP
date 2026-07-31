@@ -117,6 +117,7 @@
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
     "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
+    "clear_catalog_costing_dependencies",
   ]);
   const INTERACTIVE_RESULT_CODES = new Set([
     "MULTIPLE_RESULTS",
@@ -142,6 +143,7 @@
     validate_catalog_costing_file: "Đang kiểm tra cấu trúc file…",
     prepare_catalog_costing_import: "Đang kiểm tra file và lập dry-run…",
     apply_catalog_costing: "Đang áp dụng Costing và Save…",
+    clear_catalog_costing_dependencies: "Đang Clear toàn bộ Dependency và Save…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
     open_sample_new: "Đang mở Sample Order mới…",
     search_oc: "Đang tìm OC…",
@@ -184,6 +186,7 @@
     validate_catalog_costing_file: "Kiểm tra file Costing",
     prepare_catalog_costing_import: "Dry-run Costing",
     apply_catalog_costing: "Áp dụng Costing",
+    clear_catalog_costing_dependencies: "Clear All Dependency",
     open_sale_asn_new: "Sale ASN mới",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
@@ -889,6 +892,10 @@
     $$("[data-costing-action]").forEach((button) => {
       button.disabled = busy || catalogFolderScanning;
     });
+    if ($(".catalog-special-rescan-input")) {
+      $(".catalog-special-rescan-input").disabled =
+        busy || catalogFolderScanning;
+    }
   }
 
   function rememberCatalogResult(result) {
@@ -990,6 +997,9 @@
       hasCredentials = result.has_credentials === true;
     }
     if (result.style_status) setStyleStatus(result.style_status);
+    if (result.costing_special_options) {
+      setCostingSpecialOptionsState(result.costing_special_options);
+    }
     if (result.source === "sample") {
       clearCatalogResult();
     } else if (["RESULT_OPENED", "CATALOG_FILES_SCANNED"].includes(result.code)
@@ -1852,6 +1862,24 @@
   }
   window.wfxSetArticleLibraryStatus = setArticleLibraryStatus;
 
+  function setCostingSpecialOptionsState(state) {
+    const input = $(".catalog-special-rescan-input");
+    const label = $(".catalog-special-rescan-status");
+    if (!input || !label) return;
+    const pending = state?.rescan_next === true;
+    input.checked = pending;
+    label.dataset.pending = String(pending);
+    if (pending) {
+      label.textContent = "Sẽ quét mới ở lần Export/Import Costing kế tiếp";
+      return;
+    }
+    const saved = Number(state?.saved_at || 0);
+    label.textContent = state?.available === true && saved > 0
+      ? `Đang dùng cache tuần · ${new Date(saved * 1000).toLocaleDateString("vi-VN")}`
+      : "CM · Production · Indirect sẽ quét ở lần Costing kế tiếp";
+  }
+  window.wfxSetCostingSpecialOptionsState = setCostingSpecialOptionsState;
+
   function hideArticleSuggestions() {
     const host = $(".catalog-article-suggestions");
     if (!host) return;
@@ -2346,12 +2374,36 @@
     );
   }
 
+  async function clearCatalogCostingDependencies() {
+    const inspected = await inspectCurrentCosting();
+    if (!inspected?.ok) return inspected;
+    if (String(
+      inspected.style_status?.internal_costsheet_status || "",
+    ).toLowerCase() !== "open") {
+      const blocked = {
+        ok: false,
+        code: "COSTING_NOT_OPEN",
+        message: "Chỉ CostSheet Open mới được Clear All Dependency.",
+        style_status: inspected.style_status,
+      };
+      handleResult(blocked);
+      return blocked;
+    }
+    const confirmed = window.confirm(
+      "Clear toàn bộ Color/Size Dependency của Costing đang chọn và Save? "
+        + "Thao tác này không thể hoàn tác từ panel.",
+    );
+    if (!confirmed) return null;
+    return runSelectedModuleAction("clear_catalog_costing_dependencies");
+  }
+
   const costingActions = {
     "export-xlsx": () => exportCatalogCosting(),
     "validate-file": () => validateCatalogCostingFile(),
     "import": () => importCatalogCosting(),
     "cancel-plan": () => discardCostingPlan(),
     "apply": () => applyCatalogCosting(),
+    "clear-dependencies": () => clearCatalogCostingDependencies(),
   };
 
   const catalogActions = {
@@ -2450,6 +2502,17 @@
     $$("[data-costing-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(button, () => costingActions[button.dataset.costingAction]?.())));
+    $(".catalog-special-rescan-input")?.addEventListener(
+      "change",
+      async (event) => {
+        const result = await callQuiet(
+          "set_costing_special_options_rescan",
+          event.target.checked,
+        );
+        if (result) handleResult(result);
+        else event.target.checked = !event.target.checked;
+      },
+    );
     $$(".catalog-kind-button").forEach((button) =>
       button.addEventListener("click", () => {
         catalogKind = ["buyer_reference", "article_name"].includes(
@@ -2986,6 +3049,7 @@
     $(".catalog-folder-summary").title =
       `Sửa vị trí mặc định: ${folderLabel}`;
     setArticleLibraryStatus(state.article_library || {});
+    setCostingSpecialOptionsState(state.costing_special_options || {});
     if (
       catalogDefaultFolder?.category_name
       && [...$(".catalog-category").options].some(

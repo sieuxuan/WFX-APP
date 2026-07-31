@@ -273,6 +273,60 @@ def test_costing_article_cache_round_trip_is_scoped_and_expires(
     ) is None
 
 
+def test_costing_special_options_cache_is_complete_scoped_and_weekly(
+    tmp_path,
+    monkeypatch,
+):
+    sections = [
+        {"section_key": "cmcosts", "options": ["Factory A"]},
+        {
+            "section_key": "productioncosts",
+            "options": ["CM (PROCESS001)"],
+        },
+        {"section_key": "indirectcosts", "options": []},
+    ]
+    monkeypatch.setattr(prefs.time, "time", lambda: 2_000.0)
+
+    saved = prefs.save_costing_special_options_cache(
+        "alice",
+        "woven",
+        sections,
+        base_dir=tmp_path,
+    )
+
+    assert saved is not None
+    assert prefs.load_costing_special_options_cache(
+        "alice",
+        "woven",
+        base_dir=tmp_path,
+    )["sections"] == sections
+    assert prefs.load_costing_special_options_cache(
+        "bob",
+        "woven",
+        base_dir=tmp_path,
+    ) is None
+    assert prefs.load_costing_special_options_cache(
+        "alice",
+        "knit",
+        base_dir=tmp_path,
+    ) is None
+    monkeypatch.setattr(prefs.time, "time", lambda: 2_000.0 + 8 * 24 * 60 * 60)
+    assert prefs.load_costing_special_options_cache(
+        "alice",
+        "woven",
+        base_dir=tmp_path,
+    ) is None
+
+
+def test_costing_special_rescan_preference_defaults_off_and_round_trips(tmp_path):
+    assert prefs.load_prefs(tmp_path)["costing_special_options_rescan"] is False
+    saved = prefs.save_prefs(
+        tmp_path,
+        costing_special_options_rescan=True,
+    )
+    assert saved["costing_special_options_rescan"] is True
+
+
 def test_admin_mode_round_trip(tmp_path):
     prefs.save_prefs(base_dir=tmp_path, admin_mode=True)
     assert prefs.load_prefs(base_dir=tmp_path)["admin_mode"] is True

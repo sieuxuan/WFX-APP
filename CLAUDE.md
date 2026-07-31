@@ -238,6 +238,11 @@ Các workflow riêng hiện có:
   Curr. CM/Indirect là USD, dòng trống không Add. Production đặt Minutes=1 ở
   parent và child, rồi Value parent trước Rate child. Không có sheet `Cost Sheet`,
   `Sections`, `_Fields`, `_Meta`; hộp thoại chỉ hỗ trợ `.xlsx`.
+- Ba danh sách dùng chung của CM Costs/Production Costs/Indirect Costs chỉ scan
+  một lần trong 7 ngày, cache theo User ID + Division. Công tắc `Quét lại danh
+  sách chi phí` nằm cạnh Thư viện Article, mặc định off, chỉ ép lần Export/Import
+  Costing kế tiếp và tự off sau khi scan + lưu cache thành công. Việc này không
+  được bỏ qua scan Color/Size, dependency mapping hoặc field riêng của Style.
 - Article Library là danh sách toàn cục bốn cột `Article Code`/`Article Name`/
   `Buyer Reference`/`Article Category`, mặc định phát hành từ
   `Article List.csv` kèm manifest version + SHA-256.
@@ -249,7 +254,10 @@ Các workflow riêng hiện có:
   Costing lọc `Textiles/Fabric` + prefix F cho section Fabric và `Trims` +
   prefix T cho section Trim. Excel tạo dropdown theo cặp Code/Name và công thức
   lookup an toàn để Article Name đổi theo Article Code; khi chưa có cache vẫn
-  cho nhập tay. Mọi gợi ý bắt đầu sau 2 ký tự, tối đa 20 kết quả.
+  cho nhập tay. Khi người dùng chọn Article Name trong workbook, lúc đọc/import
+  app phải đồng bộ ngược Article Code nếu tên chỉ khớp đúng một mã; tên trùng
+  nhiều mã phải báo chọn Article Code, không tự đoán. Mọi gợi ý bắt đầu sau 2 ký
+  tự, tối đa 20 kết quả.
 - Khi user chọn một gợi ý từ Buyer Reference hoặc Article Name, UI phải lấy
   exact `Article Code` của chính dòng đó, chuyển filter sang Code và tìm bằng
   code; không lọc lại Buyer Reference/Name khiến user phải chọn Article lần hai.
@@ -257,6 +265,10 @@ Các workflow riêng hiện có:
   code duy nhất phải được mở trực tiếp.
 - Costing tuyệt đối không click `#colBodyType label span`, `#imgDeleteSection`,
   `#imgEditSection` hoặc `#imgCopySection`.
+- Nút `Clear All Dependency` nằm dưới nhóm Import Costing, chỉ chạy với tab
+  CostSheet `Open`, phải hỏi xác nhận ở UI, click toàn bộ link trùng id
+  `#lnkClearDependency` trong đúng frame Costing rồi Save một lần. Không tự chạy
+  khi người dùng chỉ Export/Import bình thường.
 - OC List: tìm theo OC No. hoặc Style; tải form `OC INPUT` một hàng header;
   Upload OC New và Revise OC qua EDI Buyer PO.
 - Workspace OC gom nút mở `OC List` và Search trong cùng card; selector OC

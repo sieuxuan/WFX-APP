@@ -75,7 +75,9 @@ def test_index_html_has_contract_hooks():
         'data-costing-action="export-xlsx"',
         'data-costing-action="import"',
         'data-costing-action="apply"',
+        'data-costing-action="clear-dependencies"',
         'class="catalog-article-library"',
+        'class="catalog-special-rescan-input"',
         'class="catalog-article-suggestions"',
         'data-catalog-kind="code"',
         'data-catalog-kind="buyer_reference"',
@@ -102,7 +104,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260731-8"',
+        'src="panel.js?v=20260731-9"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html

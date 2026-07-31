@@ -19,7 +19,7 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 FORMAT_VERSION = "2.1"
@@ -2076,6 +2076,9 @@ _ARTICLE_NAME_FORMULA = re.compile(
     r'^=IFERROR\(INDEX\(\$([A-Z]+)\$2:\$\1\$(\d+),'
     r'MATCH\(([A-Z]+)(\d+),\$([A-Z]+)\$2:\$\5\$\2,0\)\),""\)$'
 )
+_ARTICLE_VALIDATION_RANGE = re.compile(
+    r"^=\$([A-Z]+)\$2:\$\1\$(\d+)$"
+)
 
 
 def _resolve_generated_article_name_formulas(ws: Any) -> None:
@@ -2127,8 +2130,91 @@ def _resolve_generated_article_name_formulas(ws: Any) -> None:
         cell.value = lookup.get(article_code, "")
 
 
+def _resolve_article_codes_selected_by_name(ws: Any) -> None:
+    """Đồng bộ ngược Code khi người dùng chọn Name từ dropdown của app."""
+    code_column = FORM_COLUMNS.index("Article Code") + 1
+    name_column = FORM_COLUMNS.index("Article Name") + 1
+    errors: list[str] = []
+    for validation in ws.data_validations.dataValidation:
+        formula = str(validation.formula1 or "")
+        match = _ARTICLE_VALIDATION_RANGE.fullmatch(formula)
+        if match is None:
+            continue
+        lookup_name_letter, last_row_text = match.groups()
+        lookup_name_column = column_index_from_string(lookup_name_letter)
+        lookup_code_column = lookup_name_column - 1
+        last_row = int(last_row_text)
+        if (
+            lookup_code_column < 1
+            or last_row < 2
+            or last_row > ws.max_row
+            or not ws.column_dimensions[lookup_name_letter].hidden
+            or not ws.column_dimensions[
+                get_column_letter(lookup_code_column)
+            ].hidden
+        ):
+            continue
+        codes_by_name: dict[str, list[str]] = {}
+        names_by_code: dict[str, str] = {}
+        for lookup_row in range(2, last_row + 1):
+            name = _text(ws.cell(lookup_row, lookup_name_column).value)
+            code = _text(ws.cell(lookup_row, lookup_code_column).value)
+            if not name or not code:
+                continue
+            names_by_code.setdefault(code.casefold(), name)
+            matching_codes = codes_by_name.setdefault(name.casefold(), [])
+            if code.casefold() not in {
+                value.casefold() for value in matching_codes
+            }:
+                matching_codes.append(code)
+        for target_range in validation.ranges.ranges:
+            if not (
+                target_range.min_col <= name_column <= target_range.max_col
+            ):
+                continue
+            for row in range(
+                max(2, target_range.min_row),
+                min(ws.max_row, target_range.max_row) + 1,
+            ):
+                name_cell = ws.cell(row, name_column)
+                article_name = _text(name_cell.value)
+                if not article_name:
+                    continue
+                if article_name.startswith("="):
+                    # Excel/WPS có thể tự viết lại công thức app sinh (thêm @,
+                    # _xlfn hoặc đổi cách đặt ngoặc). Chỉ cho phép ở đúng ô
+                    # Article Name có validation trỏ vào hai cột lookup ẩn;
+                    # không chạy công thức mà thay bằng text từ Code cùng dòng.
+                    current_code = _text(ws.cell(row, code_column).value)
+                    name_cell.value = names_by_code.get(
+                        current_code.casefold(),
+                        "",
+                    )
+                    continue
+                matching_codes = codes_by_name.get(article_name.casefold(), [])
+                if len(matching_codes) == 1:
+                    ws.cell(row, code_column).value = matching_codes[0]
+                    continue
+                current_code = _text(ws.cell(row, code_column).value)
+                if len(matching_codes) > 1 and current_code.casefold() not in {
+                    value.casefold() for value in matching_codes
+                }:
+                    errors.append(
+                        f"{FORM_SHEET}!{name_cell.coordinate}: Article Name "
+                        f"“{article_name}” trùng {len(matching_codes)} mã; "
+                        "hãy chọn Article Code."
+                    )
+    if errors:
+        raise CostingWorkbookError(
+            "COSTING_VALIDATION_FAILED",
+            "File Costing có Article Name chưa xác định được mã.",
+            details=errors[:100],
+        )
+
+
 def _costing_form_rows(ws: Any) -> list[dict[str, Any]]:
     _resolve_generated_article_name_formulas(ws)
+    _resolve_article_codes_selected_by_name(ws)
     return list(
         _worksheet_rows(
             ws,

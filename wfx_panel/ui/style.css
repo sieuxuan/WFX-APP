@@ -1208,6 +1208,20 @@ body.compact-mode .compact-launcher .compact-mark {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .catalog-special-rescan {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 7px;
+      border-top: 1px solid var(--border);
+    }
+    .catalog-special-rescan > span { min-width: 0; }
+    .catalog-special-rescan > i { order: 2; }
+    .catalog-special-rescan-status[data-pending="true"] {
+      color: var(--accent-strong);
+    }
     .catalog-costing-workspace .catalog-costing-actions button {
       height: 36px;
       font-size: 11.5px;
@@ -1217,6 +1231,17 @@ body.compact-mode .compact-launcher .compact-mark {
       border-color: transparent;
       background: var(--accent-grad);
       box-shadow: var(--shadow-sm);
+    }
+    .catalog-costing-clear-dependencies {
+      width: 100%;
+      height: 34px;
+      margin-top: 7px;
+      color: var(--bad);
+      border-color: rgba(207,63,87,.35);
+      background: transparent;
+    }
+    .catalog-costing-clear-dependencies:hover:not(:disabled) {
+      background: var(--bad-soft);
     }
     .catalog-costing-workspace .catalog-costing-plan {
       margin-top: 11px;

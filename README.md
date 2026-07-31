@@ -31,11 +31,16 @@ Benchmark RAM/tốc độ của bản này nằm tại
   thêm CM/Production/Indirect Costs bằng danh sách quét từ WFX, rồi cập
   nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
   dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
+  Ba danh sách chi phí dùng cache 7 ngày theo tài khoản/Division; công tắc cạnh
+  Thư viện Article ép quét lại đúng một lần rồi tự tắt. Nút `Clear All Dependency`
+  có xác nhận sẽ xóa phối ở mọi section của Costing đang mở và Save.
 - Catalog tách màn tìm Article và màn Costing; mở Costing hoặc Import file tự
   chuyển sang workspace Costing. Thư viện CSV bốn cột từ server tự đồng bộ mỗi
   giờ: Category lọc gợi ý Article Code, Apparel tìm Buyer Reference, category
   khác tìm Article Name. Costing chỉ đưa mã F vào Fabric, mã T vào Trim và tự
-  điền Article Name trong Excel; user không phải scan hay chọn file. Khi Apply,
+  điền Article Name trong Excel; chọn Article Name cũng được đồng bộ ngược sang
+  Article Code lúc đọc/import nếu tên là duy nhất, còn tên trùng mã sẽ được báo
+  để chọn Code. User không phải scan hay chọn file. Khi Apply,
   Material Color/Size
   còn thiếu được bổ sung vào đúng Article card rồi Save trước khi điền Costing.
   Chọn một gợi ý Buyer Reference/Article Name sẽ chuyển sang exact Article Code,

@@ -109,6 +109,10 @@ def _costing_article_cache_path(base_dir: Path) -> Path:
     return Path(base_dir) / "costing-article-options.json"
 
 
+def _costing_special_options_cache_path(base_dir: Path) -> Path:
+    return Path(base_dir) / "costing-special-options.json"
+
+
 def _normalise_catalog_folder(value: object) -> dict | None:
     if not isinstance(value, dict):
         return None
@@ -350,6 +354,120 @@ def save_costing_article_cache(
     return normalised
 
 
+_SPECIAL_COST_SECTION_KEYS = frozenset(
+    {"cmcosts", "productioncosts", "indirectcosts"}
+)
+
+
+def _normalise_costing_special_section(value: object) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    section_key = str(value.get("section_key") or "").strip().casefold()
+    if section_key not in _SPECIAL_COST_SECTION_KEYS:
+        return None
+    raw_options = value.get("options")
+    if not isinstance(raw_options, list):
+        return None
+    options: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_options[:5000]:
+        option = str(raw or "").strip()[:300]
+        identity = option.casefold()
+        if not option or identity in seen:
+            continue
+        seen.add(identity)
+        options.append(option)
+    return {"section_key": section_key, "options": options}
+
+
+def load_costing_special_options_cache(
+    user_id: str,
+    division_key: str,
+    base_dir: Path | None = None,
+    *,
+    max_age_seconds: int = 7 * 24 * 60 * 60,
+) -> dict | None:
+    """Đọc ba dropdown chi phí, giới hạn theo account + Division + 7 ngày."""
+    base_dir = DATA_DIR if base_dir is None else base_dir
+    try:
+        data = json.loads(
+            _costing_special_options_cache_path(base_dir).read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, json.JSONDecodeError):
+        return None
+    owner = str(data.get("user_id") or "").strip()
+    division = str(data.get("division_key") or "").strip()
+    requested_user = str(user_id or "").strip()
+    requested_division = str(division_key or "").strip()
+    saved_at = float(data.get("saved_at") or 0)
+    if (
+        not requested_user
+        or not requested_division
+        or owner.casefold() != requested_user.casefold()
+        or division.casefold() != requested_division.casefold()
+        or saved_at <= 0
+        or time.time() - saved_at > max(0, int(max_age_seconds))
+    ):
+        return None
+    sections = [
+        section
+        for raw in (data.get("sections") or [])[:10]
+        if (section := _normalise_costing_special_section(raw)) is not None
+    ]
+    if {section["section_key"] for section in sections} != (
+        _SPECIAL_COST_SECTION_KEYS
+    ):
+        return None
+    return {
+        "saved_at": saved_at,
+        "expires_at": saved_at + max(0, int(max_age_seconds)),
+        "sections": sections,
+    }
+
+
+def save_costing_special_options_cache(
+    user_id: str,
+    division_key: str,
+    sections: list[dict],
+    base_dir: Path | None = None,
+) -> dict | None:
+    """Lưu snapshot đầy đủ của CM/Production/Indirect dropdown."""
+    base_dir = DATA_DIR if base_dir is None else base_dir
+    owner = str(user_id or "").strip()
+    division = str(division_key or "").strip()
+    normalised = [
+        section
+        for raw in sections[:10]
+        if (section := _normalise_costing_special_section(raw)) is not None
+    ]
+    if (
+        not owner
+        or not division
+        or {section["section_key"] for section in normalised}
+        != _SPECIAL_COST_SECTION_KEYS
+    ):
+        return None
+    saved_at = time.time()
+    with _WRITE_LOCK:
+        write_json_atomic(
+            _costing_special_options_cache_path(base_dir),
+            {
+                "user_id": owner,
+                "division_key": division,
+                "saved_at": saved_at,
+                "sections": normalised,
+            },
+            separators=(",", ":"),
+        )
+    return {
+        "saved_at": saved_at,
+        "expires_at": saved_at + 7 * 24 * 60 * 60,
+        "sections": normalised,
+    }
+
+
 # Các key account do prefs quản lý; mọi dòng .env khác (webhook, key tuỳ biến)
 # phải được giữ nguyên khi save_account ghi lại file.
 _ACCOUNT_ENV_KEYS = frozenset(
@@ -533,6 +651,11 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "open_costing_folder_after_export": data.get(
             "open_costing_folder_after_export", False
         ) is True,
+        # One-shot: bật để lần Costing kế tiếp bỏ qua cache dropdown chi phí.
+        # Controller tự tắt lại ngay sau một lần scan thành công.
+        "costing_special_options_rescan": data.get(
+            "costing_special_options_rescan", False
+        ) is True,
     }
 
 
@@ -597,6 +720,7 @@ def save_prefs(
     costing_export_dir: str | None = None,
     open_costing_file_after_export: bool | None = None,
     open_costing_folder_after_export: bool | None = None,
+    costing_special_options_rescan: bool | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     with _WRITE_LOCK:
@@ -623,6 +747,7 @@ def save_prefs(
             costing_export_dir=costing_export_dir,
             open_costing_file_after_export=open_costing_file_after_export,
             open_costing_folder_after_export=open_costing_folder_after_export,
+            costing_special_options_rescan=costing_special_options_rescan,
             hotkey_label=hotkey_label,
         )
 
@@ -651,6 +776,7 @@ def _save_prefs_locked(
     costing_export_dir: str | None,
     open_costing_file_after_export: bool | None,
     open_costing_folder_after_export: bool | None,
+    costing_special_options_rescan: bool | None,
     hotkey_label: str | None,
 ) -> dict:
     current = load_prefs(base_dir)
@@ -667,6 +793,7 @@ def _save_prefs_locked(
             "admin_mode": admin_mode,
             "open_costing_file_after_export": open_costing_file_after_export,
             "open_costing_folder_after_export": open_costing_folder_after_export,
+            "costing_special_options_rescan": costing_special_options_rescan,
         },
         integer_values={
             "compact_offset_x": compact_offset_x,
