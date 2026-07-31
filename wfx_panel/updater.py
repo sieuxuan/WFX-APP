@@ -471,8 +471,42 @@ function Perform-Update {{
       [System.Windows.Forms.Application]::DoEvents()
       Start-Sleep -Milliseconds 120
     }}
+    $remainingProcess = Get-Process -Id {pid} -ErrorAction SilentlyContinue
+    if ($remainingProcess) {{
+      # pywebview/WebView2 đôi khi đã đóng toàn bộ cửa sổ nhưng process cha còn
+      # kẹt ở message loop. Chỉ force-stop đúng PID nếu executable vẫn là chính
+      # file đang cập nhật; không bao giờ kill theo tên WFX-Panel.
+      try {{
+        $remainingPath = [System.IO.Path]::GetFullPath($remainingProcess.Path)
+      }} catch {{
+        throw 'Không xác minh được process ứng dụng đang cập nhật; chưa thay đổi file cài đặt.'
+      }}
+      if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals(
+        $remainingPath,
+        [System.IO.Path]::GetFullPath($targetExe)
+      )) {{
+        throw 'PID ứng dụng đã được process khác sử dụng; chưa thay đổi file cài đặt.'
+      }}
+      Update-UI "Ứng dụng đóng chậm; đang hoàn tất việc đóng an toàn..." 7
+      try {{
+        Stop-Process -Id {pid} -Force -ErrorAction Stop
+      }} catch {{
+        # Process có thể vừa tự đóng giữa lúc xác minh Path và Stop-Process.
+        if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
+          throw
+        }}
+      }}
+      $forceDeadline = (Get-Date).AddSeconds(5)
+      while (
+        (Get-Process -Id {pid} -ErrorAction SilentlyContinue) -and
+        (Get-Date) -lt $forceDeadline
+      ) {{
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 100
+      }}
+    }}
     if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
-      throw 'Ứng dụng chính chưa đóng; chưa thay đổi file cài đặt.'
+      throw 'Không thể đóng ứng dụng chính; chưa thay đổi file cài đặt.'
     }}
     Start-Sleep -Milliseconds 300
 

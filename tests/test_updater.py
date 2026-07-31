@@ -166,6 +166,13 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert "[System.Threading.Tasks.Task]::Run" not in content
     assert "git " not in content.lower()
     assert "Safe-Remove $installDir" not in content
+    assert "Stop-Process -Id 123 -Force -ErrorAction Stop" in content
+    assert "$remainingProcess.Path" in content
+    assert "[System.StringComparer]::OrdinalIgnoreCase.Equals" in content
+    assert "Get-Process -Name" not in content
+    assert content.index("Stop-Process -Id 123 -Force") < content.index(
+        'Update-UI "Đang tải gói cập nhật'
+    )
     assert "$ownedItems = @('WFX-Panel.exe', '_internal')" in content
     assert "$allowedRemovePaths" in content
     assert "[System.IO.Path]::GetFullPath(\n    $backupDir" in content

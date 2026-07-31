@@ -32,6 +32,31 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
+      - name: Install Inno Setup compiler
+        shell: powershell
+        run: |
+          $compilerCandidates = @(
+            (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
+            "C:\Program Files\Inno Setup 6\ISCC.exe",
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          )
+          $compiler = $compilerCandidates |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            Select-Object -First 1
+          if (-not $compiler) {
+            winget install `
+              --id JRSoftware.InnoSetup `
+              --exact `
+              --version 6.7.3 `
+              --silent `
+              --disable-interactivity `
+              --accept-package-agreements `
+              --accept-source-agreements
+            if ($LASTEXITCODE -ne 0) {
+              throw "Không cài được Inno Setup compiler."
+            }
+          }
+
       - name: Run tests
         run: |
           python -m ruff check .
@@ -96,6 +121,10 @@ jobs:
             }
           }
 
+      - name: Build Windows installer
+        shell: powershell
+        run: .\build-installer.ps1 -SkipAppBuild
+
       - name: Package and create signed checksum
         id: package
         shell: pwsh
@@ -126,6 +155,13 @@ jobs:
             $zipPath = Join-Path $PWD $zipName
             $checksumPath = "$zipPath.sha256"
             $signaturePath = "$checksumPath.p7s"
+            $setupName = "WFX-Smart-Setup-v$version.exe"
+            $setupPath = Join-Path $PWD "dist/installer/$setupName"
+            $setupChecksumPath = "$setupPath.sha256"
+            $setupSignaturePath = "$setupChecksumPath.p7s"
+            if (-not (Test-Path -LiteralPath $setupPath -PathType Leaf)) {
+              throw "Thiếu bộ cài Windows: $setupPath"
+            }
             $packageRootName = "WFX-Smart-v$version"
             $packageStage = Join-Path $env:RUNNER_TEMP $packageRootName
             if (Test-Path -LiteralPath $packageStage) {
@@ -194,9 +230,55 @@ jobs:
               throw "Chữ ký CMS không đúng publisher certificate."
             }
 
+            $setupHash = (
+              Get-FileHash -LiteralPath $setupPath -Algorithm SHA256
+            ).Hash.ToLowerInvariant()
+            [IO.File]::WriteAllText(
+              $setupChecksumPath,
+              "$setupHash  $setupName`n",
+              [Text.UTF8Encoding]::new($false)
+            )
+            $setupContent = [Security.Cryptography.Pkcs.ContentInfo]::new(
+              [IO.File]::ReadAllBytes($setupChecksumPath)
+            )
+            $setupCms = [Security.Cryptography.Pkcs.SignedCms]::new(
+              $setupContent,
+              $true
+            )
+            $setupSigner = [Security.Cryptography.Pkcs.CmsSigner]::new(
+              $certificate
+            )
+            $setupSigner.IncludeOption = (
+              [Security.Cryptography.X509Certificates.X509IncludeOption]::WholeChain
+            )
+            $setupCms.ComputeSignature($setupSigner)
+            [IO.File]::WriteAllBytes(
+              $setupSignaturePath,
+              $setupCms.Encode()
+            )
+            $verifySetupCms = [Security.Cryptography.Pkcs.SignedCms]::new(
+              $setupContent,
+              $true
+            )
+            $verifySetupCms.Decode(
+              [IO.File]::ReadAllBytes($setupSignaturePath)
+            )
+            $verifySetupCms.CheckSignature($true)
+            if ($verifySetupCms.SignerInfos.Count -ne 1) {
+              throw "Chữ ký bộ cài phải có đúng một publisher."
+            }
+            $actualSetupSigner = (
+              $verifySetupCms.SignerInfos[0].Certificate.Thumbprint `
+                -replace '[^A-Fa-f0-9]', ''
+            ).ToUpperInvariant()
+            if ($actualSetupSigner -ne $expectedCmsSigner) {
+              throw "Chữ ký bộ cài không đúng publisher certificate."
+            }
+
             "VERSION=$version" >> $env:GITHUB_ENV
             "TAG=$tag" >> $env:GITHUB_ENV
             "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+            "SETUP_NAME=$setupName" >> $env:GITHUB_ENV
           }
           finally {
             Remove-Item `
@@ -211,19 +293,26 @@ jobs:
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
         with:
           files: |
+            dist/installer/${{ env.SETUP_NAME }}
+            dist/installer/${{ env.SETUP_NAME }}.sha256
+            dist/installer/${{ env.SETUP_NAME }}.sha256.p7s
             ${{ env.ZIP_NAME }}
             ${{ env.ZIP_NAME }}.sha256
             ${{ env.ZIP_NAME }}.sha256.p7s
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} nâng cấp Catalog/Costing, đồng bộ
-            Article Library từ server và tăng độ ổn định của phiên WFX.
+            WFX Smart ${{ env.VERSION }} bổ sung Upload OC New/Revise, bộ cài
+            Windows một lần bấm và tăng độ ổn định của updater.
 
-            Cách cài:
-            1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
-            2. Giải nén vào một thư mục riêng (không chép đè bản 1.0.8).
-            3. Mở **WFX-Panel.exe**.
+            Cách dùng được khuyên dùng:
+            1. Tải **${{ env.SETUP_NAME }}** và mở file.
+            2. Bộ cài tự đóng đúng WFX Smart đang chạy, nâng cấp tại chỗ và
+               tạo shortcut ngoài Desktop.
+            3. Tài khoản, Settings và dữ liệu làm việc được giữ nguyên.
+
+            Bản portable vẫn có sẵn: tải **${{ env.ZIP_NAME }}**, giải nén vào
+            một thư mục riêng rồi mở **WFX-Panel.exe**.
 
             **Lưu ý khi nâng cấp từ 1.0.8 trở xuống:** hãy cài thủ công một lần
             theo ba bước trên. Gói mới cố ý không kích hoạt updater cũ để tránh
@@ -235,6 +324,11 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
+            - Upload OC New dùng form một header, tự sinh Sheet1 EDI và validate trước khi gửi WFX.
+            - Màn Review hiển thị Buyer, Season, số PO, số Style và tổng Units trước khi người dùng xác nhận upload.
+            - Revise OC mở đúng báo cáo WFX, nhận file người dùng chỉnh sửa rồi chạy chung bước verify/Create Transaction.
+            - Bộ cài Windows tạo shortcut Desktop/Start Menu và nâng cấp tại chỗ; ZIP portable vẫn được phát hành song song.
+            - Updater xác minh exact PID + đường dẫn và chỉ force-stop đúng app đang nâng cấp nếu WebView2 đóng chậm.
             - Article Library 15.240 dòng tự đồng bộ từ server, có Article Code, Article Name, Buyer Reference và Category.
             - Catalog gợi ý theo Category; chọn Buyer Reference/Article Name sẽ mở bằng exact Article Code, không phải chọn lần hai.
             - Costing chỉ đưa mã F vào Fabric, mã T vào Trim và tự lookup Article Name trong Excel.
