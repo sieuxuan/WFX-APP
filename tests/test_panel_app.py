@@ -1,4 +1,5 @@
 import os
+import threading
 from pathlib import Path
 
 from wfx_panel import panel_app, prefs
@@ -1617,7 +1618,133 @@ def test_native_tray_icon_double_click_restores_app_without_backend(monkeypatch)
     assert calls == [("activate",)]
 
 
-def test_wfx_manual_opens_the_configured_url(monkeypatch):
+class _FakeEvents:
+    def __init__(self):
+        self.handlers = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+
+class _FakeWindow:
+    def __init__(self, title, url, **kwargs):
+        self.title = title
+        self.url = url
+        self.kwargs = kwargs
+        self.events = type("E", (), {"closed": _FakeEvents()})()
+        self.shown = 0
+        self.scripts = []
+
+    def show(self):
+        self.shown += 1
+
+    def evaluate_js(self, script):
+        self.scripts.append(script)
+
+
+def _patch_manual_window(monkeypatch, module):
+    created = []
+
+    def create_window(title, **kwargs):
+        options = dict(kwargs)
+        url = options.pop("url", None)
+        window = _FakeWindow(title, url, **options)
+        created.append(window)
+        return window
+
+    monkeypatch.setattr(module.webview, "create_window", create_window)
+    return created
+
+
+def test_wfx_manual_mo_cua_so_rieng(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    created = _patch_manual_window(monkeypatch, module)
+
+    result = app.open_wfx_manual()
+
+    assert result["code"] == "MANUAL_OPENED"
+    assert len(created) == 1
+    assert created[0].kwargs["width"] == 1000
+    assert created[0].kwargs["height"] == 720
+    assert str(module.MANUAL_INDEX) == created[0].url
+    assert app.manual_window is created[0]
+
+
+def test_wfx_manual_khong_tao_cua_so_trung(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    created = _patch_manual_window(monkeypatch, module)
+
+    app.open_wfx_manual()
+    result = app.open_wfx_manual()
+
+    assert result["code"] == "MANUAL_FOCUSED"
+    assert len(created) == 1
+    assert created[0].shown == 1
+
+
+def test_wfx_manual_tao_cua_so_dong_ngoai_main_thread(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    thread_names = []
+
+    def create_window(title, **kwargs):
+        thread_names.append(threading.current_thread().name)
+        options = dict(kwargs)
+        url = options.pop("url", None)
+        return _FakeWindow(title, url, **options)
+
+    monkeypatch.setattr(module.webview, "create_window", create_window)
+
+    assert app.open_wfx_manual()["ok"] is True
+    assert thread_names and thread_names[0] != "MainThread"
+
+
+def test_wfx_manual_theo_trang_thai_luon_tren_cung(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app._always_on_top = True
+    created = _patch_manual_window(monkeypatch, module)
+
+    assert app.open_wfx_manual()["ok"] is True
+    assert created[0].kwargs["on_top"] is True
+
+
+def test_wfx_manual_dieu_huong_toi_muc_khi_da_mo(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    created = _patch_manual_window(monkeypatch, module)
+
+    app.open_wfx_manual()
+    app.open_wfx_manual("bat-dau-dang-nhap")
+
+    assert any("wfxManualGoTo" in script for script in created[0].scripts)
+    assert any("bat-dau-dang-nhap" in script for script in created[0].scripts)
+
+
+def test_manual_bridge_tra_ve_sach_kem_theme_va_dich(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    _patch_manual_window(monkeypatch, module)
+    app.open_wfx_manual("bat-dau-dang-nhap")
+
+    payload = module._ManualBridge(app).get_manual_book()
+
+    assert payload["entries"]["bat-dau-dang-nhap"]["title"]
+    assert payload["theme"] in {"light", "dark", "system"}
+    assert payload["target"] == "bat-dau-dang-nhap"
+    assert payload["manual_url"] == module.WFX_MANUAL_URL
+
+
+def test_manual_bridge_mo_trang_web_wfx(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
@@ -1628,9 +1755,9 @@ def test_wfx_manual_opens_the_configured_url(monkeypatch):
         lambda url, *, new: calls.append((url, new)) or True,
     )
 
-    result = app.open_wfx_manual()
+    result = module._ManualBridge(app).open_manual_external()
 
-    assert result["code"] == "MANUAL_OPENED"
+    assert result["ok"] is True
     assert calls == [(module.WFX_MANUAL_URL, 2)]
 
 
