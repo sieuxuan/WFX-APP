@@ -336,6 +336,20 @@ def test_multiple_results_are_selectable_in_panel():
     assert "data-result-code" in JS
 
 
+def test_article_suggestion_selection_switches_to_exact_code():
+    click_block = JS[
+        JS.index(
+            '$(".catalog-article-suggestions").addEventListener("click"'
+        )
+        : JS.index(
+            'bindListboxKeys($(".catalog-results-list"))'
+        )
+    ]
+    assert "row.dataset.articleCode" in click_block
+    assert 'catalogKind = "code"' in click_block
+    assert "syncCatalogKind()" in click_block
+
+
 def test_action_buttons_show_inline_spinner():
     assert "withButtonLoading" in JS
     assert 'classList.add("is-loading", "is-action-source")' in JS

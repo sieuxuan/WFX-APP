@@ -217,8 +217,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} tăng tốc automation, bổ sung Stop an
-            toàn và tối ưu bộ nhớ cho máy RAM 8 GB.
+            WFX Smart ${{ env.VERSION }} nâng cấp Catalog/Costing, đồng bộ
+            Article Library từ server và tăng độ ổn định của phiên WFX.
 
             Cách cài:
             1. Tải file **${{ env.ZIP_NAME }}** bên dưới.
@@ -235,6 +235,12 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
+            - Article Library 15.240 dòng tự đồng bộ từ server, có Article Code, Article Name, Buyer Reference và Category.
+            - Catalog gợi ý theo Category; chọn Buyer Reference/Article Name sẽ mở bằng exact Article Code, không phải chọn lần hai.
+            - Costing chỉ đưa mã F vào Fabric, mã T vào Trim và tự lookup Article Name trong Excel.
+            - Khi Apply, Material Color/Size còn thiếu được tự thêm vào đúng Article card rồi Save.
+            - Keepalive không kéo Chrome khỏi tab Costing; luồng Article → Costing xác nhận exact code và phục hồi popup nhanh hơn.
+            - Catalog và Costing tách thành workspace riêng, giao diện gọn và giữ đúng màn đang làm.
             - Dùng chung một Playwright worker và CDP connection giữa các flow, không reconnect ở từng thao tác.
             - Nút Stop ở footer dừng tại checkpoint an toàn; không cắt ngang lúc Company Setup đang Save.
             - Giới hạn Chrome/WebView2 renderer và tắt dịch vụ nền không cần thiết để giảm đỉnh RAM.

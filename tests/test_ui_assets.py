@@ -91,7 +91,7 @@ def test_index_html_has_contract_hooks():
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js?v=20260731-4"',
+        'src="panel.js?v=20260731-5"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
