@@ -1,371 +1,388 @@
 # Danh sách chức năng WFX Smart
 
-Tài liệu này dành cho người dùng WFX Smart. Nội dung không yêu cầu kiến thức
-lập trình.
+> File này được sinh tự động từ `wfx_panel/manual/`. Đừng sửa tay —
+> sửa nội dung trong `wfx_panel/manual/` rồi chạy
+> `python scripts/generate_user_features.py`.
 
-## 1. Mở và điều khiển ứng dụng
+Phiên bản: 1.0.17
 
-- Launcher nổi 48×48 logical luôn sẵn sàng; app tự đổi sang 48/60/72/96 pixel
-  vật lý ở Windows scale 100/125/150/200% để không cắt góc trên màn hình DPI cao.
-- Click launcher để mở panel ngay bên cạnh.
-- Kéo launcher đến vị trí thuận tiện; app nhớ vị trí cho lần mở sau.
-- Chuột phải launcher để chọn **Ẩn xuống taskbar** hoặc **Thu vào system tray**;
-  click ra ngoài hoặc nhấn `Esc` để đóng menu; thoát hoàn toàn vẫn thực hiện từ
-  menu icon trong system tray.
-- System alert nghiệp vụ của WFX được giữ hiển thị trên Chrome để người dùng đọc
-  và xác nhận, không còn bị automation chấp nhận ngay lập tức.
-- Bubble có lớp bắt chuột phải Win32 dự phòng khi WebView nuốt sự kiện. Menu là
-  tool-window riêng, không còn bị `TrackPopupMenu` đóng tức thì sai thread;
-  spinner dùng chung tốc độ 1,25 giây/vòng giữa các thiết bị.
-- Hotkey mặc định `Ctrl+Shift+X` để ẩn/hiện panel khi đang làm trên WFX.
-- Tùy chọn `Luôn trên cùng` giữ panel phía trên các cửa sổ khác.
-- Bản EXE mặc định khởi động cùng Windows. Có thể tắt `Khởi động cùng Windows`
-  trong Settings; app sẽ nhớ lựa chọn này.
-- Panel tự thu khi click ra ngoài, kể cả khi WebView bỏ lỡ sự kiện mất focus.
-  Nếu tác vụ đang chạy, panel chờ hoàn tất rồi mới thu; nếu chuột vẫn nằm trên
-  UI thì panel tiếp tục hiện dù automation vừa chuyển foreground sang Chrome.
-- Chuyển giữa danh sách/module và thanh tiến trình có chuyển động ngắn để dễ
-  theo dõi; app tự hạn chế animation khi Windows bật chế độ giảm chuyển động.
+## 1. Bắt đầu
 
-## 2. Cá nhân hóa danh sách module
+Cài đặt, mở ứng dụng và kết nối tài khoản WFX.
 
-- Tìm nhanh module bằng ô Search.
-- Bấm ngôi sao ở cuối module để thêm/bỏ khỏi `Yêu thích`.
-- Module yêu thích được ghim ở đầu panel, trước ô Search.
-- Khu vực Yêu thích không có thanh cuộn riêng.
-- Module đã ghim không lặp lại trong nhóm module bên dưới; favorite cuối cùng ở
-  hàng lẻ được mở rộng để không để khoảng trống.
-- App mặc định nhớ đúng màn module và nội dung người dùng đang làm.
-- Bật `Trở về List sau khi thao tác` nếu muốn tự quay về danh sách module sau
-  mỗi tác vụ.
+### Mở và đóng bảng điều khiển
 
-## 3. Tài khoản và trình duyệt WFX
+Ba cách gọi WFX Smart ra màn hình.
 
-- Lưu User ID/password trong tab Tài khoản.
-- Khi phiên WFX đã kết nối, tab Tài khoản chỉ hiện User ID và nút `Đổi tài
-  khoản`; form mật khẩu chỉ xuất hiện khi đổi tài khoản hoặc cần đăng nhập lại.
-- Password được Windows DPAPI mã hóa trên chính máy đang sử dụng.
-- Nút `Mở trình duyệt` mở Chromium browser automation và đăng nhập WFX bằng tài
-  khoản đã lưu.
-- Sau lần đăng nhập thành công, app duy trì phiên nền định kỳ. Nếu WFX tự logout
-  do để lâu, app tự login lại bằng tài khoản đã lưu; một thao tác gặp phiên hết
-  hạn cũng được login lại và chạy lại đúng một lần.
-- Hỗ trợ Chrome, Edge, Brave và Chromium.
-- Hiển thị trạng thái browser và trạng thái phiên WFX ở cuối panel.
+Dùng để làm gì WFX Smart nằm sẵn bên cạnh trình duyệt để bạn gọi ra bất cứ lúc nào mà không phải tìm trong Start Menu. Các bước Nhấn tổ hợp phím Ctrl + Shift + X ở bất kỳ đâu, kể cả khi bạn đang làm việc trong màn hình WFX trên trình duyệt. Bảng điều khiển hiện ra ở mép phải màn hình. Nhấn lại tổ hợp đó, hoặc bấm nút dấu nhân ở góc trên, để thu bảng lại. Hai cách gọi khác: Bấm vào biểu tượng tròn nhỏ luôn nổi trên màn hình. Bấm đúp vào biểu tượng WFX Smart ở khay hệ thống, cạnh đồng hồ Windows. Mẹo Mẹo Bảng điều khiển tự thu lại khi bạn bấm sang cửa sổ khác. Nếu một tác vụ đang chạy, bảng chờ tác vụ xong mới thu. Mẹo Đổi tổ hợp phím trong Cài đặt, thẻ Tự động hóa, dòng Hotkey mở panel. Lưu ý Bật Mở ẩn trong tray nếu bạn muốn ứng dụng khởi động yên lặng cùng Windows và chỉ hiện khi được gọi. Mẹo Bật Luôn trên cùng trong Cài đặt, thẻ Giao diện, nếu bạn muốn bảng điều khiển không bị cửa sổ khác che mất. Gặp lỗi thì sao Hiện tượng Cách xử lý Nhấn phím tắt không thấy gì Cửa sổ đang dùng chạy quyền quản trị cao hơn ứng dụng. Bấm biểu tượng tròn nổi hoặc biểu tượng ở khay hệ thống. Không thấy biểu tượng ở khay Bấm mũi tên mở rộng cạnh đồng hồ Windows để xem các biểu tượng bị ẩn.
 
-## 4. Division
+### Đăng nhập tài khoản WFX
 
-- Chuyển nhanh giữa `WOVEN`, `KNIT` và `PSSG`.
-- Bộ chọn Division được thu gọn để dành thêm không gian cho danh sách module.
-- App đọc Division thật từ WFX và highlight lựa chọn hiện tại.
-- Chỉ báo thành công sau khi WFX xác nhận đã chuyển Division.
+Lưu tài khoản một lần, ứng dụng tự giữ phiên.
 
-## 5. Quy tắc sử dụng các workflow
+Dùng để làm gì Lưu tài khoản WFX một lần để ứng dụng tự đăng nhập và tự giữ phiên, bạn không phải nhập lại mỗi ngày. Các bước Bấm biểu tượng bánh răng ở góc trên bảng điều khiển. Chọn thẻ Tài khoản. Nhập Tên đăng nhập WFX và Mật khẩu. Bấm Lưu và đăng nhập WFX . Chờ dòng trạng thái dưới cùng báo đã kết nối. Mẹo Mẹo Sau lần đăng nhập đầu tiên, ứng dụng tự kiểm tra và duy trì phiên mỗi bốn phút khi trình duyệt đang rảnh. Bạn gần như không bao giờ phải nhập lại. Lưu ý Mật khẩu được mã hoá và lưu riêng trên máy này, không hiển thị lại và không được gửi đi đâu. Gặp lỗi thì sao Hiện tượng Cách xử lý Ứng dụng mở lại màn hình nhập tài khoản WFX đã từ chối phiên cũ. Nhập lại mật khẩu rồi bấm lưu. Báo chưa có trình duyệt Bấm Mở trình duyệt trên dải thông báo màu ở đầu bảng điều khiển.
 
-Các nút `List`, `Search`, `New` và nút thao tác khác là các flow riêng. App chỉ
-báo `Đã mở` sau khi WFX thật sự đổi màn hình:
+### Cài đặt ứng dụng
 
-1. Bấm `List` để chủ động mở màn danh sách.
-2. Hoặc nhập nội dung và bấm `Tìm` ngay; app tự mở đúng List, chờ
-   List/Floating Filter tải xong rồi áp dụng search.
-3. Với `New`, mở List trước để xác nhận đúng màn. Riêng `Đổi FOC` có thể bấm
-   trực tiếp; app sẽ tự mở Company Setup nếu cần.
+Tải bộ cài và cài cho riêng máy bạn.
 
-Nếu đúng List đã mở, Search dùng lại màn hiện tại để nhanh hơn. Nếu đang ở màn
-khác, app tự điều hướng; không báo lỗi yêu cầu người dùng bấm List.
-Khi bấm thao tác, nút vừa chọn được đánh dấu và automation bắt đầu ngay trong
-lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa các bước.
+Dùng để làm gì Cài WFX Smart cho tài khoản Windows của bạn để mở nhanh từ Desktop hoặc Start Menu mà không cần quyền quản trị. Các bước Tải file WFX-Smart-Setup-v[phiên bản].exe từ nơi công ty phát hành. Mở file vừa tải. Giữ các lựa chọn tạo lối tắt nếu bạn muốn mở ứng dụng từ Desktop và Start Menu. Bấm Cài đặt . Chờ bộ cài hoàn tất rồi mở WFX Smart. Mẹo Mẹo Khi cài bản mới, các cài đặt và dữ liệu đã lưu trên máy vẫn được giữ nguyên. Gặp lỗi thì sao Hiện tượng Cách xử lý Windows không cho mở file Kiểm tra lại file có đúng do công ty phát hành hay không rồi thử lại. Không thấy lối tắt Desktop Mở Start Menu, tìm WFX Smart và chọn ứng dụng từ kết quả.
 
-## 6. Catalog
+### Khởi động cùng Windows
 
-- Chọn Category Catalog.
-- Chọn vị trí mặc định trong cây Group/Folder của Apparel.
-- Cache cây folder theo tài khoản để không phải scan lại mỗi lần mở app.
-- Bấm **Mở Catalog** để mở Master hoặc folder đã chọn. Vị trí mặc định được
-  chỉnh bằng nút bút nhỏ ngay bên cạnh.
-- Nếu trang trung gian của menu phản hồi chậm, app tự mở Catalog đích; frame cây
-  được nhận diện theo ô Category nên vẫn hoạt động khi WFX đổi tên frame.
-- Tìm theo:
-  - Style Code.
-  - Buyer Reference.
-- Có thể nhập rồi bấm Tìm/Costing/BOM ngay; app tự mở Catalog > Category >
-  Master nếu cần. Nút mở List/Master chỉ dùng khi muốn xem trước màn hình.
-- Khi chỉ có một Style Code, app tự mở Article.
-- Trước khi mở Costing, BOM hoặc File, app tự đồng bộ lại popup Article để
-  không dùng nhầm frame cũ khi WFX reload cùng một style. Nếu driver hiện tại
-  chưa nhìn thấy popup mới, app kết nối lại sớm một lần và tiếp tục ngay tại
-  Article, không quay lại Master để tìm Style lần hai.
-- Khi có nhiều kết quả, app giữ danh sách để người dùng chọn.
-- Hiển thị Season và Internal CostSheet Status khi đọc được từ grid.
-- Mở Costing.
-- Trong Category Apparel, khu vực **Costing file** cho phép:
-  - làm việc ở màn Costing riêng; khi mở Costing hoặc chọn file Import, panel
-    tự chuyển sang màn này thay vì bắt cuộn qua phần tìm Catalog;
-  - quét nhanh và hiển thị Style Code/status của đúng tab Costing hiện tại
-    trước khi mở hộp thoại lưu;
-  - tải Costing đang mở thành Excel `.xlsx`;
-  - đặt tên file theo Style Name, nhớ thư mục gần nhất và có setting riêng để
-    mở file sau khi tải; thư mục chứa file luôn tự mở;
-  - dùng nút **Kiểm tra file** để xem lỗi kèm sheet/ô trước khi tạo dry-run;
-  - nhập trực tiếp vào form cột chuẩn trên sheet `Costing` rồi import lại;
-  - Article Code/Article Name dùng thư viện CSV bốn cột tự tải từ server mỗi
-    giờ, không quét hàng trăm trang và không yêu cầu user cập nhật file. Fabric
-    chỉ hiện mã F, Trim chỉ hiện mã T; khi chọn Code trong Excel, Article Name
-    tự lookup đúng nhưng vẫn có thể ghi đè thủ công. Khi chọn Article Name, app
-    đồng bộ ngược Article Code lúc kiểm tra/import nếu tên chỉ có một mã; tên
-    trùng nhiều mã sẽ yêu cầu chọn Code. Khi offline app dùng cache gần nhất;
-    khi chưa có cache vẫn cho nhập tay;
-  - scan Material Color/Size theo từng Article, mapping Table hiện tại và danh
-    sách Style Color/Size; Material Color/Size có dropdown riêng theo item;
-  - nếu Material Color/Size trong file chưa có ở Article card, app tự tìm và
-    thêm đúng Color/Size trong lúc Apply, giữ nguyên card/mapping hiện có; Size
-    có thể tìm lại trong card Sample trước khi Save;
-  - phối trực tiếp trong `Color Mapping`/`Size Mapping` theo từng dòng
-    `Material => Style 1 | Style 2`, rồi app tick exact trong popup Table;
-  - lấy Style Name chuẩn từ phần sau dấu `/` của `#lblArticleNameValue`;
-- Catalog lọc thư viện theo Category và đưa tối đa 20 gợi ý: Article Code tìm
-  theo code; Apparel có Buyer Reference; các Category còn lại dùng Article
-  Name. Kết quả cuối vẫn được xác nhận trong Category đang chọn.
-  - hiển thị hai cột công thức màu đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
-    `Value in (USD)`; hai cột này không được import ngược;
-  - có 1 dòng CM, 1 dòng Production và 2 dòng Indirect Costs; danh sách nhà
-    máy/quy trình/chi phí được quét từ WFX rồi dùng lại 7 ngày theo tài khoản và
-    Division. Công tắc quét lại cạnh Thư viện Article mặc định tắt, chỉ áp dụng
-    cho lần Costing kế tiếp và tự tắt sau khi scan thành công; dòng chưa chọn tên
-    được bỏ qua;
-  - với Production, điền Minutes ở hai dòng trước, Value tổng trước Rate;
-  - xem trước số ô cập nhật, Article thêm/xóa và cảnh báo trước
-    khi WFX bị thay đổi;
-  - export Costing ở mọi status; chỉ import/apply khi CostSheet đang `Open`;
-    nếu chưa có Costing, người dùng tự tạo trong WFX trước;
-  - tự đặt mọi field Minutes thành `1`, Save một lần và đọc lại để xác nhận.
-  - nút **Clear All Dependency** dưới Import hỏi xác nhận, bấm mọi nút Clear
-    Dependency của Costing `Open` đang chọn rồi Save một lần.
-- Export và Import luôn chỉ dùng tab Costing đang hiển thị, kể cả khi có nhiều
-  tab Costing, không phụ thuộc ô Style Code và không bắt người dùng tìm lại
-  style. Apply tiếp tục khóa vào đúng
-  tab/style đã dry-run, không tự chuyển tab hoặc reload màn hình. Workbook có
-  đúng hai sheet `Hướng dẫn` và `Costing`, không có sheet `Cost Sheet`. Form
-  chuẩn chỉ hiển thị hai cột công thức cần thiết dưới dạng cột đỏ, giữ sáu
-  section nguyên vật liệu/trims và thêm CM/Production/Indirect Costs ở cuối.
-- Action để trống nghĩa là thêm/cập nhật. Ô trống nghĩa là giữ nguyên; nhập
-  `__CLEAR__` để chủ động xóa giá trị. Chỉ dòng có Action `DELETE` mới được xóa
-  Article và app luôn yêu cầu chọn đúng item trước khi xóa.
-- Khi Material Search không có Article, app bỏ qua và báo lại. Nếu có nhiều kết
-  quả, app dừng để người dùng chọn, không tự lấy dòng đầu tiên.
-- Có thể tải một style đã có Costing, sửa file rồi import lại để làm nhanh cho
-  cùng style. Style Code trong file phải khớp style đang mở.
-- Nếu cùng một Article Code xuất hiện trên nhiều dòng Costing, file Excel giữ
-  nguyên từng dòng riêng để Material Color và các thông số không bị gộp nhầm.
-  Nếu file thêm các dòng cùng Article liền nhau, app tự dùng nút Splitter để tạo
-  đủ dòng `>>`. Dòng subtotal/total có nhãn `>>` ẩn không được tính là split.
-- Dry-run chặn sớm nếu dòng bắt buộc còn thiếu `Purchase Officer`, tránh điền
-  xong nhiều field rồi mới bị WFX từ chối ở bước Save.
-- Mở BOM.
-- Xem và tải file đính kèm theo các nhóm Images/Documents.
+Để ứng dụng sẵn sàng ngay khi bật máy.
 
-## 7. OC List
+Dùng để làm gì Để WFX Smart sẵn sàng ngay khi bạn đăng nhập Windows mà không phải mở lại mỗi ngày. Các bước Bấm biểu tượng bánh răng ở góc trên bảng điều khiển. Chọn thẻ Tự động hóa. Bật Khởi động cùng Windows . Bật Mở ẩn trong tray nếu bạn muốn ứng dụng khởi động yên lặng. Đóng Cài đặt để tiếp tục làm việc. Mẹo Mẹo Bản cài mới bật Khởi động cùng Windows sẵn. Nếu bạn tắt, ứng dụng ghi nhớ lựa chọn đó cho những lần mở sau. Lưu ý Khi mở ẩn, bạn gọi bảng điều khiển bằng phím tắt, biểu tượng nổi hoặc biểu tượng WFX Smart cạnh đồng hồ Windows. Gặp lỗi thì sao Hiện tượng Cách xử lý Bật máy nhưng không thấy bảng điều khiển Kiểm tra biểu tượng cạnh đồng hồ Windows. Nếu đã bật mở ẩn, bảng điều khiển chưa hiện ra cho tới khi bạn gọi. Ứng dụng không tự mở Mở WFX Smart, vào Cài đặt, thẻ Tự động hóa rồi tắt và bật lại Khởi động cùng Windows .
 
-- `List`: mở OC List hiện tại.
-- `Search OC`: tự mở List nếu cần rồi tìm theo:
-  - OC No.
-  - Style.
-- App chỉ áp dụng filter trên WFX, không sao chép danh sách kết quả về panel.
-- `Tải form mới`: tạo file `.xlsx` có một sheet nhập liệu tên `OC INPUT` và chỉ
-  một hàng header. Các cột bắt buộc được tô vàng, `Buyer Lot No.` là cột tuỳ
-  chọn; dropdown Buyer/Factory/Country/... nằm ngay trong form. Buyer/Factory
-  là danh sách gợi ý và vẫn cho nhập master data mới đang có trên WFX; Country
-  phải chọn giá trị đã có mapping Market. Sheet danh mục kỹ thuật được ẩn để
-  người dùng không phải sửa hoặc sao chép công thức.
-- `Upload OC New`: người dùng điền dữ liệu dưới header của `OC INPUT`, chọn lại
-  file trong app. App kiểm tra kiểu dữ liệu, trường bắt buộc, Buyer, ngày, số
-  lượng, giá, dòng trùng và tự tính `Total Qty`; sau đó hiện review gồm Buyer,
-  Season, số PO, số Style/Article, Sum of Units và số dòng. Chỉ khi người dùng
-  bấm `Xác nhận Upload`, app mới đưa `Sheet1` 51 cột chỉ chứa giá trị vào
-  `EDI Buyer PO` với package `StandardSalesOrder`.
-- Trong workspace OC, `OC List` và Search nằm cùng một card gọn: chọn OC No./
-  Style, nhập nội dung và bấm Tìm trên một hàng. Upload New và Revise nằm ở hai
-  card cân bằng, chữ và số liệu review đủ lớn để đọc nhanh.
-- Sau khi Huỷ review, nếu người dùng sửa rồi chọn lại đúng file cũ, app luôn đọc
-  lại nội dung hiện tại trên ổ đĩa; kết quả review cũ không được tái sử dụng hoặc
-  hiển thị đè lên lần chọn mới.
-- App chỉ bấm `Create Transaction` khi cả ba trạng thái `Data Imported`, `Data
-  Validated` và `Mapping Resolved` đều thành công. Nếu WFX báo fail, app giữ
-  thông tin dòng lỗi để người dùng sửa file. Nếu đã bấm Create Transaction
-  nhưng chưa đọc được xác nhận, app không tự retry để tránh tạo OC trùng.
-- Nếu bất kỳ bước EDI nào hiện `InProgress`/`In Progress` hoặc Fail, app coi là
-  lỗi ngay, không tiếp tục chờ và không Create Transaction. App click trạng thái,
-  đọc popup `Failed Record`, hiện Mapping Code/Doc No./Mapping Details cho người
-  dùng và lưu ảnh popup trong Lịch sử tác vụ.
-- File `UPLOAD FORM.xlsx` cũ vẫn được hỗ trợ để chuyển đổi trong giai đoạn thay
-  form; người dùng mới nên dùng form một-header tải trực tiếp từ app.
-- Form một-header có dropdown Order Type gồm Confirmed/Forecast/SMS và danh sách
-  Payment Terms chuẩn. Khi chuẩn hoá, app bỏ qua dòng Units bằng 0, mặc định
-  Zone trống thành FOB và Extra Production trống thành 0. App chặn upload nếu
-  ngày không theo `Buyer Order Date < Raw Material ETA < Buyer Delivery Date`;
-  trong Sheet1, Buyer Delivery Date phải bằng OC Delivery Date.
-- `Revise OC`:
-  1. `Mở report` đưa Chrome tới `Reporting & Analytic` và mở đúng
-     `Upload OC from OC_Sale`.
-  2. Người dùng chọn điều kiện và xuất Excel trên WFX, sửa các cột cho phép.
-  3. Chọn file đã sửa tại app; app kiểm tra schema 51 cột, dữ liệu OC gốc và
-     tính lại `Total Qty`, hiện review để xác nhận, rồi chạy cùng kiểm tra EDI
-     và tạo transaction vào tab `Revision`.
-- Mỗi file chỉ được chứa một Buyer để app chọn đúng Buyer tại EDI Buyer PO.
+### Chọn Division
 
-## 8. Sample List
+Chọn đúng Division trước khi thao tác.
 
-- `List`: mở Sample List và bật Floating Filter.
-- `Search Sample`: tự mở List nếu cần rồi tìm theo:
-  - Sample Order No.
-  - Style.
-  - Created By.
-- `Check File`: tìm theo đúng điều kiện đang chọn. Một kết quả sẽ tự mở Style
-  Code và liệt kê file đính kèm; nhiều kết quả sẽ cho chọn Sample cần dùng rồi
-  tiếp tục. Bấm vào tên file trong danh sách để tải ngay.
-- `New`: mở New Sample Order.
+Dùng để làm gì Chọn đúng Division để mọi danh sách và thao tác sau đó dùng đúng khu vực làm việc của bạn trên WFX. Các bước Mở bảng điều khiển WFX Smart. Bấm WOVEN , KNIT hoặc PSSG ở đầu bảng điều khiển. Chờ nút vừa chọn được tô màu. Chờ dòng trạng thái dưới cùng xác nhận đã đổi Division. Mẹo Mẹo Chọn Division trước khi mở module để tránh phải quay lại danh sách từ đầu. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo chưa xác nhận được Division Chờ WFX ổn định rồi bấm lại đúng Division một lần. Nút đã chọn nhưng dữ liệu chưa đổi Bấm nút kiểm tra lại ở góc dưới rồi chọn lại Division.
 
-## 9. Sale ASN
+### Mở trình duyệt làm việc
 
-- `List`: mở Sale ASN List và bật Floating Filter.
-- `Search`: tự mở List nếu cần rồi tìm theo:
-  - Invoice No.
-  - Buyer Order Ref/OC No.
-- `New`: mở Sale ASN mới với `With GDN` và `Buyer Order Dispatch`.
-- `Tải Packing List + Buyer Invoice`:
-  - Dùng Invoice No. đang nhập; nếu ô tìm trống thì dùng đúng một
-    dòng Sale ASN đang được chọn.
-  - Tự click cột `Docs`, mở `Packing List`, chờ report load xong và
-    export Excel; sau đó lặp lại với `Buyer Invoice`.
-  - Ghép hai report thành một file `.xlsx` gồm hai sheet `Packing List`
-    và `Buyer Invoice`, giữ nguyên format report nguồn; Packing List được
-    dùng trực tiếp làm workbook nền thay vì dựng lại từng ô.
-  - Chỉ sau khi ghép xong app mới mở Save As, đặt tên mặc định theo
-    Invoice No.; user tự chọn nơi lưu, sau đó app mở đúng thư mục
-    chứa file.
+Ứng dụng cần một cửa sổ trình duyệt để thao tác trên WFX.
 
-## 10. Supplier List
+Dùng để làm gì Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công việc trên WFX. Các bước Tìm dải thông báo Chưa có trình duyệt automation ở đầu bảng điều khiển. Bấm Mở trình duyệt . Chờ Chrome, Edge, Brave hoặc Chromium mở ra. Đăng nhập WFX nếu trình duyệt yêu cầu. Chờ hai đèn Chrome và WFX ở thanh dưới cùng chuyển sang trạng thái đã kết nối. Mẹo Mẹo Bạn có thể để cửa sổ trình duyệt mở trong suốt ngày làm việc. WFX Smart dùng lại cửa sổ đó cho các tác vụ tiếp theo. Gặp lỗi thì sao Hiện tượng Cách xử lý Bấm mở nhưng chưa thấy trình duyệt Chờ vài giây rồi bấm Kiểm tra lại trên dải thông báo. Đèn Chrome sáng nhưng đèn WFX chưa sáng Mở cửa sổ trình duyệt và đăng nhập WFX, sau đó bấm nút kiểm tra lại ở góc dưới.
 
-- Mở Supplier List.
-- Chọn Category và mở Master.
-- Tìm Supplier trong tất cả Category:
-  - Apparel.
-  - Fixed Asset.
-  - Miscellaneous.
-  - Services.
-  - Textiles/Fabric.
-  - Trims.
-- App báo Category nào có Supplier phù hợp.
-- Nếu một Category tạm thời lỗi, app tiếp tục tìm các Category còn lại và báo
-  rõ phần chưa kiểm tra được.
+## 2. Dùng hằng ngày
 
-## 11. Buyer List
+Những thao tác bạn lặp lại mỗi ngày trên bảng điều khiển.
 
-- Mở Buyers List.
-- Tự mở Buyer List nếu cần rồi tìm theo tên hoặc một phần tên công ty.
-- Mở Edit của Buyer đầu tiên phù hợp.
-- Không dùng nhầm Supplier List dù hai màn cùng có ô Company Name.
+### Tìm và mở module
 
-## 12. Company Setup
+Gõ vài chữ là ra đúng màn hình cần dùng.
 
-- Mở Company Setup bằng nút `List`.
-- Đổi nơi áp dụng FOC giữa ASN và GRN; nút này tự mở lại đúng Company Setup và
-  `12. Miscellaneous Settings` nếu người dùng vừa làm ở module khác.
-- Bấm Save và chỉ báo thành công sau khi WFX xác nhận trạng thái đã lưu.
+Dùng để làm gì Tìm nhanh đúng module bạn cần mà không phải đọc từng thẻ trên bảng điều khiển. Các bước Mở bảng điều khiển WFX Smart. Bấm vào ô Tìm nhanh module... . Gõ một phần tên module. Bấm thẻ module trong kết quả để mở màn hình làm việc. Mẹo Mẹo Bạn không cần gõ đủ tên. Gõ vài chữ dễ nhớ như OC, Sample hoặc Supplier là đủ để thu gọn danh sách. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module cần dùng Xoá nội dung ô tìm rồi kiểm tra lại toàn bộ danh sách. Một số module chỉ hiện khi tài khoản của bạn có quyền. Danh sách vẫn đang bị lọc Bấm dấu xoá trong ô tìm hoặc bôi đen nội dung rồi nhấn Backspace.
 
-## 13. Module khác
+### Ghim module hay dùng
 
-Nhóm Operation:
+Đưa module quen thuộc lên đầu.
 
-- RMPO List: mở List và lọc đồng thời theo Supplier, RMPO No. hoặc cả hai.
-- Indent List: mở List và lọc đồng thời theo Supplier, Article, Indent No.,
-  Style; có thể nhập một hoặc nhiều điều kiện.
-- User Indent: có cùng bộ lọc kết hợp như Indent List.
-- QA List: mở List hoặc bấm `New` để vào thẳng QA Request New, không cần mở
-  List trước.
+Dùng để làm gì Đưa những module bạn dùng thường xuyên lên khu Yêu thích ở đầu bảng điều khiển. Các bước Mở danh sách module trên bảng điều khiển. Tìm thẻ module bạn hay dùng. Bấm nút ngôi sao trên thẻ đó. Kiểm tra module đã xuất hiện trong khu Yêu thích phía trên ô tìm kiếm. Mẹo Mẹo Module đã ghim chỉ hiện trong khu Yêu thích và không lặp lại ở nhóm bên dưới. Mẹo Bấm lại ngôi sao để bỏ ghim. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa thấy khu Yêu thích Ghim ít nhất một module rồi quay lại đầu danh sách. Muốn đổi thứ tự Bỏ ghim các module rồi ghim lại theo thứ tự bạn muốn dùng.
 
-Nhóm Finance:
+### Dừng một tác vụ đang chạy
 
-- Advance PR List: mở List hoặc bấm `New` để vào thẳng Advance Payment Request
-  New, không cần mở List trước.
-- Supplier Inv List.
-- Expense Inv List: mở List hoặc bấm `New` để vào thẳng Expense Invoice New,
-  không cần mở List trước.
+Dừng an toàn mà không làm hỏng dữ liệu đang ghi.
 
-Với RMPO và hai màn Indent, có thể bấm `Tìm` ngay. App tự mở đúng List nếu cần
-và phân biệt `Indent List` với `User Indent` bằng context trang, dù hai màn dùng
-chung selector. Các ô không nhập được xóa để kết quả phản ánh đúng tổ hợp điều
-kiện đang thấy trên panel.
+Dùng để làm gì Dừng một tác vụ đang chạy tại điểm an toàn tiếp theo khi bạn chọn nhầm hoặc không muốn chờ tiếp. Các bước Nhìn thanh trạng thái dưới cùng khi tác vụ đang chạy. Bấm Stop . Chờ ứng dụng hoàn tất bước an toàn đang làm. Chờ dòng trạng thái báo tác vụ đã dừng. Mẹo Mẹo Nút Stop chỉ hiện trong lúc có tác vụ đang chạy. Lưu ý Ứng dụng không cắt ngang khi WFX đang lưu dữ liệu. Vì vậy tác vụ có thể cần thêm một lúc ngắn mới dừng hẳn. Lưu ý Không đóng trình duyệt để ép dừng. Làm vậy có thể khiến bạn khó biết WFX đã lưu tới đâu. Gặp lỗi thì sao Hiện tượng Cách xử lý Đã bấm Stop nhưng tác vụ chưa dừng ngay Chờ bước lưu hiện tại hoàn tất. Ứng dụng sẽ dừng ở điểm an toàn kế tiếp. Không thấy nút Stop Tác vụ đã xong hoặc chưa bắt đầu. Đọc dòng trạng thái để biết kết quả.
 
-Nhóm Admin hiển thị theo quyền của tài khoản:
+### Đọc thanh trạng thái
 
-- Org Structure.
-- System Coding.
-- Company Setup.
-- Buyer List.
-- Supplier List.
+Biết ứng dụng đang làm gì và đã kết nối chưa.
 
-## 14. Trạng thái, lịch sử và log
+Dùng để làm gì Theo dõi ứng dụng đang làm gì, Chrome đã mở chưa và phiên WFX còn hoạt động hay không. Các bước Đọc thông báo ở góc trái thanh dưới cùng. Kiểm tra đèn Chrome để biết trình duyệt đã sẵn sàng. Kiểm tra đèn WFX để biết tài khoản còn kết nối. Bấm nút kiểm tra lại ở góc phải nếu trạng thái chưa cập nhật. Mẹo Mẹo Bật Trở về List sau khi thao tác trong Cài đặt, thẻ Tự động hóa, nếu bạn muốn bảng điều khiển quay về danh sách module sau mỗi tác vụ. Mẹo Bật Đưa Chrome lên khi chạy module nếu bạn muốn chuyển ngay sang cửa sổ WFX khi bấm một nút thao tác. Gặp lỗi thì sao Hiện tượng Cách xử lý Đèn Chrome chưa sáng Bấm Mở trình duyệt trên dải thông báo ở đầu bảng điều khiển. Đèn WFX chưa sáng Mở trình duyệt, đăng nhập WFX rồi bấm nút kiểm tra lại.
 
-- Thanh trạng thái dưới cùng hiển thị tác vụ đang chạy và kết quả cuối.
-- Không lặp lại status bên trong màn module.
-- Mỗi automation có Run ID và thời gian chạy.
-- Lịch sử tác vụ tự xóa sau 7 ngày.
-- Tác vụ phù hợp có nút chạy lại.
-- Lỗi automation có thể lưu ảnh chụp cục bộ để kiểm tra.
-- `Log kỹ thuật` cho phép bôi đen và copy.
-- Khi người dùng đang chọn nội dung log, log mới không ép cuộn xuống cuối.
-- Khi tác vụ đang chạy, nút `Stop` xuất hiện ngay trên dòng trạng thái cuối
-  panel. App sẽ dừng ở bước kiểm tra an toàn kế tiếp; nếu WFX đang Save, app chờ
-  Save được xác nhận rồi mới kết thúc flow.
-- App dùng chung một kết nối Playwright/Chrome giữa các thao tác và giới hạn số
-  tiến trình renderer để chạy ổn hơn trên máy RAM 8 GB. Nếu không có thao tác
-  trong 1 phút, app tự nhả driver nền nhưng vẫn giữ Chrome và phiên đăng nhập.
+### Giao diện và thông báo
 
-## 15. Góp ý và báo lỗi
+Chọn nền sáng tối và bật tắt thông báo.
 
-- Gửi báo lỗi hoặc góp ý tính năng từ panel.
-- Nút gửi chỉ bật khi mô tả có ít nhất 5 ký tự; bộ đếm hiển thị giới hạn 2.000
-  ký tự.
-- Báo lỗi automation gửi:
-  - Tên tác vụ dễ hiểu.
-  - Mô tả lỗi.
-  - Hướng xử lý.
-  - Mã kỹ thuật và Run ID.
-  - User ID, Company và Division để hỗ trợ.
-- Nếu WFX lỗi trước khi automation tạo được message, app vẫn ghi rõ module,
-  trường tìm hoặc Division đích dựa trên metadata không nhạy cảm.
-- Báo cáo nền dùng đúng endpoint tại thời điểm lỗi xảy ra; dữ liệu test khi
-  reporting bị tắt không thể bị gửi trễ lên webhook thật.
-- Không gửi password, cookie, SessionID, LoginID, URL WFX đầy đủ hoặc nội dung
-  tìm kiếm.
-- Search tự mở đúng List và Floating Filter khi cần; người dùng có thể nhập điều
-  kiện rồi bấm Tìm ngay, không cần bấm List trước.
-- Các lỗi nhập liệu như thiếu nội dung tìm hoặc không có kết quả không được gửi
-  thành lỗi hệ thống.
+Dùng để làm gì Chọn cách WFX Smart hiển thị và quyết định những thông báo bạn muốn nhận. Các bước Bấm biểu tượng bánh răng ở góc trên bảng điều khiển. Chọn thẻ Giao diện. Bấm Sáng , Tối hoặc Tự động trong dòng Giao diện. Bật hoặc tắt Thông báo khi xong việc . Đóng Cài đặt để tiếp tục làm việc. Mẹo Mẹo Chọn Tự động để giao diện đi theo chế độ sáng hoặc tối của Windows. Mẹo Bật Mở file Costing sau khi tải trong thẻ Tự động hóa nếu bạn muốn file vừa xuất tự mở bằng Excel hoặc ứng dụng mặc định. Lưu ý Chế độ quản trị chỉ hiện khi tài khoản được cấp quyền. Bật mục này để xem các module Admin dành cho bạn. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy thông báo khi xong việc Mở Cài đặt, thẻ Giao diện và bật Thông báo khi xong việc . Không thấy Chế độ quản trị Tài khoản hiện tại chưa được cấp quyền quản trị hoặc ứng dụng chưa nhận lại quyền mới.
 
-## 16. Cập nhật ứng dụng
+## 3. Catalog
 
-- Bản cài `Setup.exe` được khuyên dùng: chỉ cần mở file để cài trực tiếp vào
-  Windows, không cần quyền Administrator; shortcut Desktop được tạo mặc định,
-  đồng thời có Start Menu và Uninstall.
-- Khi chạy Setup phiên bản mới, bộ cài tự đóng đúng WFX Smart đang dùng file và
-  nâng cấp tại chỗ. Tài khoản, Settings và dữ liệu làm việc vẫn được giữ nguyên.
-- Bản portable `.zip` vẫn được phát hành cho người không muốn cài; phải giải nén
-  và giữ `WFX-Panel.exe` cạnh thư mục `_internal`.
-- Tự kiểm tra GitHub Release Stable định kỳ.
-- Nút `Cập nhật ngay` tải và cài bản mới.
-- Xác minh chữ ký certificate và SHA-256 trước khi thay file.
-- Tự rollback nếu cập nhật thất bại.
-- Nếu WebView2 làm app đóng chậm, updater xác minh đúng PID và đường dẫn bản
-  đang cài rồi mới hoàn tất việc đóng; không tắt các bản WFX Smart khác theo tên.
-- Giữ nguyên tài khoản và Settings khi build, update hoặc rollback.
+Tìm Style và mở các phần dữ liệu liên quan trong WFX.
 
-## 17. Giới hạn cần biết
+### Tìm Style
 
-- WFX Smart cần một Chromium browser tương thích trên máy.
-- Global hotkey có thể không nhận nếu cửa sổ đang focus chạy quyền Administrator
-  cao hơn WFX Smart; khi đó dùng launcher hoặc tray.
-- Automation phụ thuộc cấu trúc giao diện và quyền tài khoản WFX. Nếu WFX thay
-  markup hoặc quyền, người dùng có thể cần mở Log kỹ thuật và gửi Run ID.
-- Bản đóng gói là `onedir`; không được tách riêng EXE khỏi thư mục `_internal`.
+Tìm theo mã Article, Buyer Reference hoặc tên Article.
+
+Dùng để làm gì Tìm đúng Style trong Catalog bằng thông tin bạn đang có và mở Style đó trên WFX. Các bước Chọn đúng Division ở đầu bảng điều khiển. Mở module Catalog. Chọn Category phù hợp với Style. Bấm Mở Catalog nếu bạn muốn mở danh sách Catalog trước. Chọn Article Code, Buyer Reference hoặc Article Name trong dòng kiểu tìm. Nhập nội dung vào ô tìm. Chọn một gợi ý nếu danh sách gợi ý xuất hiện. Bấm Tìm . Mẹo Mẹo Article Code dùng được với mọi Category. Buyer Reference dành cho Apparel. Article Name dành cho các Category còn lại. Mẹo Gõ từ hai ký tự để nhận tối đa 20 gợi ý từ Thư viện Article. Lưu ý Nếu chỉ có một kết quả, ứng dụng tự mở Style. Nếu có nhiều kết quả, bạn bấm đúng dòng cần dùng trên màn hình WFX. Gặp lỗi thì sao Hiện tượng Cách xử lý Không tìm thấy kết quả Kiểm tra lại Category, kiểu tìm và nội dung đã nhập rồi bấm Tìm lần nữa. Có nhiều Style gần giống nhau Đọc Article Code trên WFX và bấm đúng dòng bạn cần. Catalog chưa sẵn sàng Bấm Mở Catalog , chờ danh sách hiện đủ rồi tìm lại.
+
+### Mở Costing
+
+Đi thẳng từ Style đã tìm tới khu Costing.
+
+Dùng để làm gì Mở Costing của Style vừa tìm để xem, xuất hoặc cập nhật file Costing. Các bước Mở module Catalog. Chọn Category và nhập thông tin Style. Bấm Costing . Chờ ứng dụng tìm và mở đúng Style trên WFX. Chờ bảng điều khiển chuyển sang khu Costing. Mẹo Mẹo Nếu Style đã được tìm và mở, bạn có thể bấm Costing ngay mà không nhập lại. Gặp lỗi thì sao Hiện tượng Cách xử lý Không mở được Costing Kiểm tra Style đã chọn đúng chưa, rồi tìm lại Style trước khi bấm Costing . WFX báo chưa có Costing Tạo hoặc mở Costing trực tiếp trên WFX rồi quay lại thao tác.
+
+### Mở BOM
+
+Mở danh sách nguyên phụ liệu của Style.
+
+Dùng để làm gì Mở BOM của Style để xem danh sách nguyên phụ liệu trên WFX. Các bước Mở module Catalog. Chọn Category và nhập thông tin Style. Bấm BOM . Chờ ứng dụng mở đúng Style. Kiểm tra màn hình BOM trên WFX. Mẹo Mẹo Dùng Article Code nếu bạn đã biết mã chính xác để giảm khả năng có nhiều kết quả. Gặp lỗi thì sao Hiện tượng Cách xử lý BOM chưa mở Chờ WFX tải xong Style rồi bấm BOM lại một lần. Có nhiều kết quả Chọn đúng Style trên WFX, sau đó bấm BOM .
+
+### Tải file đính kèm
+
+Xem và tải các file đang gắn với Style.
+
+Dùng để làm gì Xem và tải những file đang đính kèm với Style trong Catalog. Các bước Mở module Catalog. Chọn Category và nhập thông tin Style. Bấm File . Chờ ứng dụng kiểm tra bốn nhóm file của Style. Bấm file bạn muốn tải trong danh sách kết quả. Chọn nơi lưu nếu ứng dụng hỏi. Chờ thư mục chứa file tự mở. Mẹo Mẹo Nếu chỉ có một Style phù hợp, ứng dụng tự mở Style và kiểm tra file ngay. Gặp lỗi thì sao Hiện tượng Cách xử lý Không có file trong một nhóm Style chưa được đính kèm file ở nhóm đó. Kiểm tra nhóm khác trong kết quả. Tải file không thành công Kiểm tra kết nối mạng, chọn lại file và thử tải lần nữa. Đường dẫn file không hợp lệ Mở Style trên WFX và kiểm tra file đính kèm còn tồn tại.
+
+### Thư viện Article
+
+Dùng danh sách Article tự cập nhật để nhận gợi ý nhanh.
+
+Dùng để làm gì Nhận gợi ý Article Code, Article Name và Buyer Reference khi bạn tìm Catalog hoặc điền file Costing. Các bước Mở module Catalog. Chọn Category. Nhập từ hai ký tự vào ô tìm. Đọc tối đa 20 gợi ý phù hợp. Bấm đúng gợi ý để điền Article Code chính xác. Mẹo Mẹo Thư viện tự kiểm tra bản mới khi ứng dụng mở và mỗi giờ. Bạn không cần chọn file hoặc bấm cập nhật. Mẹo Khi mất mạng, ứng dụng tiếp tục dùng danh sách gần nhất đã lưu trên máy. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa có gợi ý Bạn vẫn có thể nhập Article Code hoặc tên Article bằng tay. Gợi ý chưa có Article mới Chờ lần cập nhật kế tiếp hoặc mở lại ứng dụng khi có mạng.
+
+### Cây thư mục Catalog
+
+Chọn vị trí Apparel mặc định và làm mới thư mục.
+
+Dùng để làm gì Chọn vị trí Apparel mà bạn thường dùng và làm mới danh sách thư mục Catalog khi WFX có thay đổi. Các bước Mở module Catalog. Bấm nút biểu tượng nhỏ cạnh Mở Catalog . Chọn vị trí Apparel bạn muốn dùng mặc định. Bấm nút xác nhận trong hộp chọn. Bấm Quét lại folder Catalog khi bạn cần đọc lại danh sách thư mục từ WFX. Mẹo Mẹo Vị trí mặc định được ghi nhớ cho lần mở Catalog tiếp theo. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy thư mục cần chọn Bấm Quét lại folder Catalog , chờ danh sách tải xong rồi mở lại hộp chọn. Mở thư mục quá lâu Kiểm tra phiên WFX còn kết nối rồi thử lại.
+
+## 4. File Costing
+
+Xuất, kiểm tra và áp dụng thay đổi Costing bằng file Excel.
+
+### Xuất file Costing
+
+Tải dữ liệu Costing đang mở thành file Excel.
+
+Dùng để làm gì Tải Costing đang mở trên WFX thành file Excel để bạn kiểm tra hoặc chỉnh sửa. Các bước Mở đúng Costing của Style trên WFX. Mở module Catalog trên bảng điều khiển. Chuyển sang khu Costing. Bấm Tải XLSX . Kiểm tra Style Code, Style Name và trạng thái Costing trong hộp lưu file. Chọn thư mục và bấm nút lưu. Chờ thư mục chứa file tự mở. Mẹo Mẹo Bạn có thể xuất file ở mọi trạng thái Costing. Mẹo Tên file mặc định dùng Style Name. Hộp lưu nhớ thư mục bạn đã chọn lần trước. Gặp lỗi thì sao Hiện tượng Cách xử lý Ứng dụng chưa nhận ra Style Đưa đúng Costing lên trước trên WFX rồi bấm Tải XLSX lại. Có nhiều Costing đang mở Bấm vào đúng Costing cần xuất trên WFX, sau đó thử lại. Chưa đọc xong dữ liệu Chờ màn hình Costing tải đầy đủ rồi bấm tải lại.
+
+### Kiểm tra file Costing
+
+Soát lỗi trong file trước khi làm việc với WFX.
+
+Dùng để làm gì Soát cấu trúc và dữ liệu trong file Excel trước khi bạn nhập thay đổi vào WFX. Các bước Mở module Catalog. Chuyển sang khu Costing. Bấm Kiểm tra file . Chọn file Excel cần soát. Đọc kết quả kiểm tra trên bảng điều khiển. Mở đúng sheet và ô được báo để sửa lỗi. Mẹo Mẹo Nút Kiểm tra file chỉ đọc file Excel. Nút này không mở Costing và không thay đổi dữ liệu trên WFX. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo thiếu sheet Costing Dùng file được tải từ nút Tải XLSX , không đổi tên hoặc xoá sheet. Báo lỗi ở một ô Mở đúng địa chỉ ô được báo, sửa giá trị rồi kiểm tra file lại. Không chọn được file Kiểm tra file có đuôi .xlsx và không bị hỏng.
+
+### Nhập file Costing
+
+Đọc file và lập bản xem trước thay đổi.
+
+Dùng để làm gì Đọc file Costing đã chỉnh sửa và lập bản xem trước để bạn kiểm tra trước khi ghi lên WFX. Các bước Mở đúng Costing trên WFX. Kiểm tra trạng thái Costing là Open. Mở module Catalog và chuyển sang khu Costing. Bấm Import . Chọn file Excel đã chỉnh sửa. Chờ ứng dụng đọc lại dữ liệu đang có trên WFX. Đọc bản xem trước những thay đổi sẽ được áp dụng. Mẹo Mẹo Bước Import chỉ kiểm tra và lập bản xem trước. Chưa có dữ liệu nào được ghi lên WFX ở bước này. Lưu ý Import chỉ dùng được khi Costing đang ở trạng thái Open. Nếu chưa có Costing hoặc trạng thái khác Open, bạn phải tự tạo hoặc mở Costing trên WFX trước. Gặp lỗi thì sao Hiện tượng Cách xử lý Nút Import không chạy Kiểm tra Costing hiện tại có đúng trạng thái Open hay không. File đã cũ so với WFX Tải file mới từ Costing hiện tại, sửa lại rồi Import lần nữa. File có ô không hợp lệ Bấm Kiểm tra file , sửa đúng ô được báo rồi Import lại.
+
+### Áp dụng và lưu Costing
+
+Xem trước rồi ghi những thay đổi đã kiểm tra lên WFX.
+
+Dùng để làm gì Ghi bản thay đổi đã xem trước vào Costing trên WFX và kiểm tra lại kết quả sau khi lưu. Các bước Hoàn tất bước Import để có bản xem trước. Đọc số dòng thêm mới, cập nhật và xoá trong bản xem trước. Bấm Áp dụng & Save . Chờ ứng dụng điền dữ liệu và lưu Costing. Chờ dòng trạng thái xác nhận các giá trị đã được đọc lại. Mẹo Mẹo Bản xem trước có hiệu lực trong 15 phút. Nếu quá thời gian, Import file lại để ứng dụng kiểm tra Costing hiện tại. Mẹo Bấm nút dấu nhân trên bản xem trước nếu bạn muốn huỷ và chọn file khác. Lưu ý Ô để trống nghĩa là giữ nguyên giá trị đang có. Ghi __CLEAR__ khi bạn thật sự muốn xoá giá trị. Cột Action để trống nghĩa là thêm mới hoặc cập nhật. Gặp lỗi thì sao Hiện tượng Cách xử lý Costing đã đổi sau khi Import Import lại file để tạo bản xem trước mới từ dữ liệu hiện tại. WFX hiện cảnh báo khi lưu Đọc nội dung cảnh báo trên WFX, sửa dữ liệu được nhắc rồi thực hiện lại. Không xác nhận được giá trị đã ghi Mở Costing trên WFX và kiểm tra trước khi quyết định thử lại.
+
+### Color Mapping và Size Mapping
+
+Nối màu và cỡ vật tư với màu và cỡ của Style.
+
+Dùng để làm gì Nối từng màu hoặc cỡ của vật tư với màu hoặc cỡ tương ứng của Style trong file Costing. Các bước Mở file Excel đã tải từ Costing. Tìm cột Color Mapping hoặc Size Mapping của dòng vật tư. Chọn Material Color hoặc Material Size từ danh sách trong ô. Nhập liên kết theo dạng Vật tư => Style 1 | Style 2 . Lặp lại cho từng màu hoặc cỡ cần nối. Lưu file rồi bấm Import trong WFX Smart. Mẹo Mẹo Tên màu hoặc cỡ của Style được ghi trong phần chú thích của ô để bạn đối chiếu trước khi nhập. Mẹo Mỗi dòng bên trái dấu mũi tên là một màu hoặc cỡ vật tư. Bên phải là một hoặc nhiều giá trị Style, ngăn cách bằng dấu gạch đứng. Gặp lỗi thì sao Hiện tượng Cách xử lý Giá trị vật tư không có trong danh sách Mở Costing trên WFX và thêm màu hoặc cỡ cho đúng Article trước khi thử lại. Liên kết không được nhận Kiểm tra lại dấu mũi tên, dấu gạch đứng và tên giá trị có đúng như danh sách hay không.
+
+### Xoá toàn bộ phụ thuộc
+
+Xoá các liên kết màu và cỡ trong Costing đang mở.
+
+Dùng để làm gì Xoá toàn bộ liên kết phụ thuộc màu và cỡ trong Costing đang mở rồi lưu lại một lần. Các bước Mở đúng Costing trên WFX. Kiểm tra trạng thái Costing là Open. Mở module Catalog và chuyển sang khu Costing. Bấm Clear All Dependency . Đọc câu hỏi xác nhận trên bảng điều khiển. Bấm nút xác nhận xoá. Chờ ứng dụng xoá các liên kết và lưu Costing. Mẹo Lưu ý Thao tác này xoá toàn bộ phụ thuộc trong Costing hiện tại. Chỉ xác nhận khi bạn đã kiểm tra đúng Style. Gặp lỗi thì sao Hiện tượng Cách xử lý Costing không ở trạng thái Open Mở một Costing đang Open rồi thực hiện lại. Style đã đổi trước khi xác nhận Dừng thao tác, mở lại đúng Style và bấm Clear All Dependency lần nữa. Không xoá được một liên kết Kiểm tra quyền sửa Costing của tài khoản và trạng thái WFX.
+
+### Quét lại danh sách chi phí
+
+Làm mới danh sách CM, Production và Indirect cho lần kế tiếp.
+
+Dùng để làm gì Làm mới danh sách CM Costs, Production Costs và Indirect Costs khi WFX vừa có thêm hoặc đổi lựa chọn. Các bước Mở module Catalog. Chuyển sang khu Costing. Bật Quét lại danh sách chi phí cạnh Thư viện Article. Bấm Tải XLSX hoặc Import cho Costing kế tiếp. Chờ ứng dụng quét và lưu danh sách mới. Kiểm tra công tắc đã tự tắt sau khi hoàn tất. Mẹo Mẹo Công tắc mặc định tắt vì danh sách dùng chung được lưu trong bảy ngày. Mẹo Mỗi lần bật chỉ ép quét cho lần xuất hoặc nhập Costing kế tiếp rồi tự tắt. Gặp lỗi thì sao Hiện tượng Cách xử lý Công tắc chưa tự tắt Lần quét chưa hoàn tất. Chờ tác vụ xong và đọc dòng trạng thái. Danh sách mới chưa xuất hiện Bật lại công tắc rồi tải một file Costing mới.
+
+## 5. Đơn hàng và chứng từ
+
+Làm việc với OC, Sample List và Sale ASN.
+
+### Tìm OC
+
+Mở OC List và tìm theo số OC hoặc Style.
+
+Dùng để làm gì Mở OC List và tìm đúng OC bằng số OC hoặc Style. Các bước Mở module OC List. Bấm Mở List . Chọn OC No. hoặc Style trong dòng tìm kiếm. Nhập nội dung vào ô bên cạnh. Bấm Tìm . Chờ danh sách WFX hiển thị kết quả phù hợp. Mẹo Mẹo Bạn có thể nhập điều kiện rồi bấm Tìm ngay. Ứng dụng tự mở OC List nếu cần. Gặp lỗi thì sao Hiện tượng Cách xử lý Không có kết quả Kiểm tra lại kiểu tìm và nội dung đã nhập rồi thử lại. Danh sách chưa sẵn sàng Bấm Mở List , chờ WFX tải xong rồi bấm Tìm .
+
+### Upload OC New
+
+Kiểm tra file và tạo OC mới sau khi bạn xác nhận.
+
+Dùng để làm gì Kiểm tra file OC mới trên máy, xem lại số liệu rồi tạo OC trên WFX sau khi bạn xác nhận. Các bước Mở module OC List. Bấm Tải file mẫu trong thẻ Upload OC New. Mở file và chỉ nhập dữ liệu trong sheet OC INPUT. Lưu file Excel. Bấm Chọn file trong thẻ Upload OC New. Đọc bảng Review trước khi Upload. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng. Bấm Xác nhận Upload để bắt đầu tạo OC trên WFX. Mẹo Mẹo Mỗi file chỉ được chứa một Buyer. Buyer và Factory có thể được nhập thêm nếu danh sách gợi ý chưa có giá trị mới. Lưu ý Ngày Buyer Order phải trước ngày Raw Material ETA. Ngày Raw Material ETA phải trước ngày Buyer Delivery và OC Delivery. Lưu ý Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút Xác nhận Upload mới bắt đầu thao tác trên WFX. Bấm Huỷ thì không có dữ liệu nào được gửi đi. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo file có nhiều Buyer Tách dữ liệu thành từng file, mỗi file chỉ giữ một Buyer. Báo sai ngày hoặc số lượng Mở đúng ô được báo, sửa giá trị rồi chọn lại file. WFX chưa sẵn sàng nhận file Giữ file đã sửa, kiểm tra phiên WFX rồi thực hiện Upload lại.
+
+### Revise OC
+
+Xuất báo cáo WFX, sửa file và cập nhật OC cũ.
+
+Dùng để làm gì Xuất dữ liệu OC cũ từ báo cáo WFX, sửa trong Excel và gửi bản cập nhật trở lại WFX. Các bước Mở module OC List. Bấm Mở report trong thẻ Revise OC. Chọn tham số trên báo cáo WFX. Xuất báo cáo thành file Excel. Sửa dữ liệu cần thay đổi trong file. Giữ nguyên các cột nhận dạng của OC gốc. Bấm Chọn file trong thẻ Revise OC. Kiểm tra bảng Review rồi bấm Xác nhận Upload . Mẹo Mẹo Ứng dụng chỉ mở đúng báo cáo. Bạn tự chọn tham số và xuất Excel trên WFX để bảo đảm lấy đúng OC cần sửa. Lưu ý Không xoá hoặc đổi các cột nhận dạng OC gốc. WFX cần các cột này để biết OC nào sẽ được cập nhật. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo cáo chưa mở Chờ khu Reporting & Analytic tải xong rồi bấm Mở report lại. File thiếu thông tin OC gốc Xuất lại báo cáo WFX và sửa trên file mới. Review không đúng OC Bấm Huỷ , kiểm tra file rồi chọn lại đúng bản Revise.
+
+### Sample List
+
+Mở, tìm và tạo Sample Order.
+
+Dùng để làm gì Mở Sample List, tìm Sample Order và tạo Sample Order mới. Các bước Mở module Sample List. Bấm List để mở danh sách trên WFX. Chọn Sample Order No., Style hoặc Created By. Nhập nội dung vào ô tìm. Bấm Tìm . Bấm New nếu bạn muốn mở màn hình tạo Sample Order mới. Mẹo Mẹo Bạn có thể bấm Tìm ngay. Ứng dụng tự mở danh sách nếu cần. Gặp lỗi thì sao Hiện tượng Cách xử lý New chưa mở Chờ WFX tải xong rồi bấm New lại một lần. Không thấy Sample Kiểm tra đúng kiểu tìm và cách viết nội dung trên WFX.
+
+### Kiểm tra file Sample
+
+Tìm Sample rồi xem các file có thể tải.
+
+Dùng để làm gì Tìm một Sample Order và xem các file đính kèm có thể tải về. Các bước Mở module Sample List. Chọn kiểu tìm và nhập nội dung Sample. Bấm Check File . Chờ ứng dụng tìm Sample trước. Chọn một dòng nếu có nhiều kết quả. Bấm file cần tải trong danh sách kết quả. Mẹo Mẹo Nếu chỉ có một kết quả, ứng dụng tự mở Style và liệt kê file. Nếu có nhiều kết quả, bạn chọn đúng Sample rồi ứng dụng tiếp tục ngay từ danh sách đang mở. Gặp lỗi thì sao Hiện tượng Cách xử lý Không hỗ trợ xem file Mở Sample trên WFX và kiểm tra Style đã có file đính kèm hay chưa. Không mở được Sample đã chọn Tìm lại, chọn đúng dòng và bấm Check File lần nữa. Không có kết quả Kiểm tra Sample Order No., Style hoặc Created By đã nhập.
+
+### Sale ASN
+
+Mở, tìm và tạo Sale ASN.
+
+Dùng để làm gì Mở Sale ASN List, tìm chứng từ và tạo Sale ASN mới. Các bước Mở module Sale ASN. Bấm List để mở danh sách. Chọn Invoice No. hoặc Buyer Order Ref/OC. Nhập nội dung vào ô tìm. Bấm Tìm . Bấm New nếu bạn muốn mở màn hình tạo Sale ASN mới. Mẹo Mẹo Khi tìm theo Buyer Order Ref/OC, bạn có thể nhập Buyer Order Ref hoặc OC No. Gặp lỗi thì sao Hiện tượng Cách xử lý Màn hình New chưa sẵn sàng Chờ WFX tải xong rồi bấm New lại một lần. Không thấy chứng từ Chọn lại kiểu tìm và kiểm tra nội dung đã nhập.
+
+### Tải Documents Sale ASN
+
+Ghép Packing List và Buyer Invoice thành một file Excel.
+
+Dùng để làm gì Tải Packing List và Buyer Invoice của một Sale ASN rồi ghép thành một file Excel để gửi hoặc lưu trữ. Các bước Mở module Sale ASN. Chọn Invoice No. và nhập số Invoice. Bấm Tải Packing List + Buyer Invoice . Chờ ứng dụng mở đúng dòng Sale ASN và tải hai báo cáo. Chọn nơi lưu file Excel. Chờ thư mục chứa file tự mở. Mở file và kiểm tra hai sheet Packing List và Buyer Invoice. Mẹo Mẹo Tên file mặc định là Invoice No. thực tế đọc được trên WFX. Mẹo Hai sheet giữ nguyên cách trình bày của báo cáo nguồn. Gặp lỗi thì sao Hiện tượng Cách xử lý Sale ASN không hỗ trợ Documents Kiểm tra dòng đã chọn có nút Docs trên WFX hay không. Một báo cáo chưa sẵn sàng Chờ WFX tạo báo cáo xong rồi tải lại. Không ghép hoặc lưu được file Chọn một thư mục bạn có quyền ghi và bảo đảm file cũ không đang mở trong Excel.
+
+## 6. Các danh sách khác
+
+Mở và tìm dữ liệu trong các module nghiệp vụ còn lại.
+
+### RMPO List
+
+Tìm RMPO theo nhà cung cấp và số RMPO.
+
+Dùng để làm gì Mở RMPO List hoặc lọc danh sách bằng nhà cung cấp và số RMPO cùng lúc. Các bước Mở module RMPO List. Bấm List nếu bạn chỉ muốn mở danh sách hiện tại. Nhập tên vào ô Supplier nếu bạn muốn lọc theo nhà cung cấp. Nhập số vào ô RMPO No. nếu bạn muốn lọc theo đơn. Bấm Tìm theo các điều kiện đã nhập . Chờ WFX hiển thị các dòng phù hợp với mọi điều kiện đã điền. Mẹo Mẹo Bạn có thể điền một hoặc cả hai điều kiện. Ô để trống không được dùng để lọc. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy RMPO Xoá bớt một điều kiện rồi tìm lại để kiểm tra dữ liệu. Danh sách chưa mở Bấm List , chờ WFX tải xong rồi tìm lại.
+
+### Indent List và User Indent
+
+Tìm Indent theo bốn điều kiện kết hợp.
+
+Dùng để làm gì Mở Indent List hoặc User Indent và tìm bằng nhiều thông tin trong một lần. Các bước Mở module Indent List hoặc User Indent. Bấm List nếu bạn chỉ muốn mở danh sách hiện tại. Nhập Supplier nếu cần lọc theo nhà cung cấp. Nhập Article nếu cần lọc theo nguyên phụ liệu. Nhập Indent No. nếu bạn biết số Indent. Nhập Style nếu cần lọc theo Style. Bấm Tìm theo các điều kiện đã nhập . Mẹo Mẹo Bạn không cần điền đủ bốn ô. Ứng dụng chỉ dùng những ô có nội dung. Gặp lỗi thì sao Hiện tượng Cách xử lý Không có kết quả Xoá bớt điều kiện quá chi tiết rồi tìm lại. Kết quả không đúng module Quay lại danh sách module và mở đúng Indent List hoặc User Indent.
+
+### QA và yêu cầu tài chính
+
+Mở danh sách hoặc đi thẳng tới màn hình tạo mới.
+
+Dùng để làm gì Mở danh sách hoặc tạo mới QA Request, Advance Payment Request và Expense Invoice. Các bước Mở QA List, Advance PR List hoặc Expense Inv List. Bấm List để mở danh sách tương ứng trên WFX. Bấm New nếu bạn muốn tạo yêu cầu hoặc hóa đơn mới. Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ. Mẹo Mẹo Nút New đi thẳng tới màn hình tạo mới. Bạn không cần bấm List trước. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Bật Chế độ quản trị nếu module thuộc quyền quản trị, hoặc nhờ quản trị WFX kiểm tra quyền tài khoản. New chưa mở Chờ WFX tải xong rồi bấm New lại một lần.
+
+### Buyer List
+
+Mở danh sách và tìm Buyer đầu tiên phù hợp.
+
+Dùng để làm gì Mở Buyers List hoặc tìm theo tên và mở Buyer đầu tiên phù hợp để chỉnh sửa. Các bước Mở module Buyer List. Bấm Buyers List nếu bạn muốn mở toàn bộ danh sách. Nhập tên hoặc một phần tên công ty vào ô Find Buyer. Bấm Tìm và mở Buyer đầu tiên . Chờ WFX mở màn hình chỉnh sửa của Buyer phù hợp đầu tiên. Mẹo Lưu ý Nếu nhiều Buyer có tên gần giống nhau, ứng dụng mở kết quả đầu tiên. Kiểm tra tên Buyer trên WFX trước khi sửa dữ liệu. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa tìm thấy Buyer Nhập phần tên ngắn hơn rồi tìm lại. Chưa mở được màn chỉnh sửa Bấm Buyers List , kiểm tra quyền sửa rồi thực hiện tìm lại.
+
+### Supplier List
+
+Mở Supplier theo Category hoặc tìm trên mọi Category.
+
+Dùng để làm gì Mở Supplier Master theo một Category hoặc tìm tên nhà cung cấp trên tất cả Category. Các bước Mở module Supplier List. Bấm Mở List . Chọn Category nếu bạn biết nhóm của Supplier. Bấm Đổi Category · mở Master . Nhập tên hoặc một phần tên công ty nếu bạn muốn tìm rộng hơn. Bấm Tìm tất cả Category . Đọc tổng kết kết quả trên bảng điều khiển. Mẹo Mẹo Khi tìm tất cả Category, ứng dụng tiếp tục với nhóm kế tiếp nếu một nhóm gặp lỗi và báo rõ kết quả chỉ hoàn thành một phần. Gặp lỗi thì sao Hiện tượng Cách xử lý Master chưa sẵn sàng Chờ danh sách Supplier tải xong rồi bấm Đổi Category · mở Master lại. Chỉ có kết quả một phần Đọc Category bị lỗi trong thông báo, mở riêng Category đó rồi tìm lại. Không thấy Supplier Nhập phần tên ngắn hơn hoặc kiểm tra cách viết tên công ty.
+
+### Company Setup và FOC
+
+Mở thiết lập công ty và đổi nơi áp dụng FOC.
+
+Dùng để làm gì Mở Company Setup và chuyển nơi áp dụng FOC giữa ASN và GRN. Các bước Mở module Company Setup. Bấm List nếu bạn muốn mở trang Company Setup hiện tại. Bấm Đổi FOC để bắt đầu chuyển lựa chọn. Chờ ứng dụng mở Miscellaneous Settings. Kiểm tra trạng thái FOC hiện tại trên bảng điều khiển. Chờ ứng dụng đổi sang lựa chọn còn lại và lưu. Mẹo Mẹo Bạn không cần mở Company Setup trước. Nút Đổi FOC tự mở đúng màn hình nếu WFX đang ở module khác. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa đọc được FOC hiện tại Chờ Miscellaneous Settings tải xong rồi bấm Đổi FOC lại. Chưa xác nhận lưu Mở Company Setup trên WFX và kiểm tra lựa chọn trước khi thử lại. Không mở được Company Setup Kiểm tra tài khoản có quyền vào module Admin này hay không.
+
+### Supplier Invoice, Org Structure và System Coding
+
+Mở các module chỉ có một nút thao tác.
+
+Dùng để làm gì Mở Supplier Inv List, Org Structure hoặc System Coding trên WFX bằng một nút. Các bước Bật Chế độ quản trị nếu bạn cần mở Org Structure hoặc System Coding. Mở thẻ module cần dùng trên bảng điều khiển. Bấm Mở module trên WFX . Chờ WFX chuyển sang đúng màn hình. Mẹo Mẹo Supplier Inv List nằm trong nhóm Finance. Org Structure và System Coding nằm trong nhóm Admin. Lưu ý Module chỉ hiện khi tài khoản được cấp quyền phù hợp trên WFX. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Admin Mở Cài đặt, thẻ Giao diện và bật Chế độ quản trị. WFX báo không có quyền Nhờ quản trị WFX kiểm tra quyền của tài khoản hiện tại. Màn hình không đổi Chờ WFX tải xong rồi bấm Mở module trên WFX lại.
+
+## 7. Cài đặt, cập nhật và xử lý sự cố
+
+Xem lịch sử, gửi góp ý, cập nhật và tra mã lỗi.
+
+### Lịch sử hoạt động và log
+
+Xem lại tác vụ gần đây và sao chép log kỹ thuật.
+
+Dùng để làm gì Xem lại các tác vụ gần đây, đọc chi tiết kỹ thuật và sao chép thông tin khi cần nhờ hỗ trợ. Các bước Bấm biểu tượng danh sách ở góc trên bảng điều khiển. Chọn thẻ Tác vụ để xem công việc gần đây. Bấm một tác vụ để đọc trạng thái và thời gian thực hiện. Chọn thẻ Log kỹ thuật để xem thông tin chi tiết. Bôi đen phần cần gửi rồi sao chép. Mẹo Mẹo Lịch sử tác vụ được giữ trong bảy ngày rồi tự xoá. Mẹo Log chỉ tự cuộn khi bạn đang ở gần cuối và không bôi đen nội dung. Lưu ý Lịch sử không lưu nội dung bạn đã nhập vào ô tìm. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa có tác vụ trong lịch sử Thực hiện một thao tác rồi mở lại thẻ Tác vụ . Không sao chép được log Bôi đen đoạn cần dùng, nhấn Ctrl+C rồi dán vào nơi an toàn.
+
+### Góp ý và báo lỗi
+
+Gửi mô tả cùng chẩn đoán an toàn cho nhóm phát triển.
+
+Dùng để làm gì Gửi góp ý hoặc mô tả lỗi cho nhóm phát triển ngay từ WFX Smart. Các bước Bấm biểu tượng hội thoại ở góc trên bảng điều khiển. Chọn Báo lỗi hoặc Góp ý tính năng trong dòng Loại nội dung. Nhập mô tả từ 5 đến 2.000 ký tự. Giữ hoặc bỏ chọn Đính kèm chẩn đoán an toàn . Đọc lại nội dung. Bấm Gửi . Mẹo Mẹo Mô tả rõ bạn đã bấm nút nào, thấy thông báo gì và vấn đề xảy ra lúc nào. Lưu ý Chẩn đoán an toàn chỉ gồm Windows, trạng thái Chrome và mã lỗi gần đây. Ứng dụng không tự chụp màn hình. Gặp lỗi thì sao Hiện tượng Cách xử lý Nút Gửi chưa bật Nhập ít nhất 5 ký tự và không vượt quá 2.000 ký tự. Gửi chưa thành công Sao chép nội dung, kiểm tra mạng rồi thử gửi lại.
+
+### Cập nhật WFX Smart
+
+Tải và cài bản mới mà không mất cài đặt cá nhân.
+
+Dùng để làm gì Cập nhật WFX Smart lên bản mới để nhận tính năng và sửa lỗi mới nhất. Các bước Đọc dải thông báo có phiên bản mới trên bảng điều khiển. Bấm nút cập nhật trên dải thông báo. Chờ ứng dụng tải bản mới. Cho phép WFX Smart đóng để thay file. Chờ ứng dụng tự mở lại. Kiểm tra phiên bản ở góc trên bảng điều khiển. Mẹo Mẹo Cài đặt cá nhân và dữ liệu WFX Smart trên máy được giữ nguyên khi cập nhật. Lưu ý Hãy chờ tác vụ đang chạy hoàn tất trước khi bắt đầu cập nhật. Gặp lỗi thì sao Hiện tượng Cách xử lý Tải bản mới bị gián đoạn Kiểm tra mạng rồi bấm cập nhật lại. Ứng dụng chưa tự mở lại Mở WFX Smart từ Desktop hoặc Start Menu. Phiên bản vẫn chưa đổi Đóng hẳn WFX Smart, mở lại và kiểm tra dải cập nhật.
+
+### Tra mã lỗi
+
+Tìm ý nghĩa và cách xử lý cho mã kỹ thuật.
+
+Dùng để làm gì Tra ý nghĩa của mã lỗi và xem cách xử lý được đề nghị cho từng trường hợp. Các bước Nhấn Ctrl+F trong cửa sổ hướng dẫn. Nhập mã lỗi đúng như dòng trạng thái hoặc lịch sử hiển thị. Mở kết quả Tra mã lỗi. Đọc cột Nghĩa là gì. Làm theo cột Cách xử lý. Bấm Xem hướng dẫn nếu mã có một mục liên quan chi tiết hơn.
+
+### Quyền riêng tư
+
+Biết thông tin nào được gửi khi ứng dụng báo lỗi.
+
+Dùng để làm gì Biết rõ thông tin WFX Smart có thể gửi khi báo lỗi và những thông tin luôn được giữ riêng trên máy. Các bước Mở hộp Góp ý / Báo lỗi . Đọc dòng quyền riêng tư dưới lựa chọn chẩn đoán. Bỏ chọn Đính kèm chẩn đoán an toàn nếu bạn chỉ muốn gửi phần mô tả. Kiểm tra nội dung không có thông tin bí mật. Bấm Gửi khi bạn đồng ý với nội dung. Mẹo Mẹo Báo lỗi có thể gồm tên thao tác, mã lỗi, Run ID, User ID, Company, Division, phiên bản Windows và trạng thái kết nối. Lưu ý Ứng dụng không gửi mật khẩu, cookie, Session ID, nội dung tìm kiếm hoặc địa chỉ WFX đầy đủ. Ứng dụng cũng không tự chụp màn hình. Gặp lỗi thì sao Hiện tượng Cách xử lý Đã nhập thông tin bí mật trong mô tả Xoá thông tin đó trước khi bấm Gửi . Không muốn gửi chẩn đoán Bỏ chọn Đính kèm chẩn đoán an toàn .
+
+### Giới hạn cần biết
+
+Những trường hợp phụ thuộc Windows, quyền và tốc độ WFX.
+
+Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm thời gian hoặc phụ thuộc quyền Windows và trạng thái WFX. Các bước Kiểm tra hai đèn Chrome và WFX trước khi chạy tác vụ. Chờ WFX tải xong màn hình hiện tại. Bấm lại tác vụ một lần nếu thông báo hướng dẫn cho phép thử lại. Tra mã lỗi nếu vấn đề vẫn còn. Gửi báo lỗi kèm chẩn đoán an toàn khi bạn cần hỗ trợ. Mẹo Lưu ý Phím tắt có thể không nhận khi cửa sổ đang dùng chạy quyền quản trị cao hơn WFX Smart. Hãy bấm biểu tượng nổi hoặc biểu tượng cạnh đồng hồ Windows. Lưu ý Một số bước phụ thuộc tốc độ WFX. Danh sách lớn hoặc giờ cao điểm có thể cần chờ lâu hơn bình thường. Gặp lỗi thì sao Hiện tượng Cách xử lý Phím tắt không mở bảng điều khiển Dùng biểu tượng nổi hoặc biểu tượng WFX Smart cạnh đồng hồ. Tác vụ chờ lâu Đọc dòng trạng thái, chờ WFX ổn định và chỉ bấm Stop khi bạn muốn dừng an toàn.
+
+## Bảng tra mã lỗi
+
+| Mã | Nghĩa là gì | Cách xử lý |
+|---|---|---|
+| `BUYER_EDIT_NOT_CONFIRMED` | WFX chưa xác nhận màn Edit Buyer | Mở Buyer List, tìm lại Buyer rồi thử mở Edit. |
+| `BUYER_EDIT_NOT_FOUND` | Không tìm thấy nút Edit của Buyer | Kiểm tra quyền chỉnh sửa Buyer và cấu trúc dòng kết quả. |
+| `BUYER_SEARCH_FAILED` | Không thể tìm Buyer | Mở Log kỹ thuật và kiểm tra Buyer List đang hiển thị. |
+| `BUYER_SEARCH_NOT_READY` | Buyer List chưa sẵn sàng | Chờ danh sách tải xong rồi thử tìm lại. |
+| `CATALOG_DESTINATION_FAILED` | Không thể mở Costing/BOM | Mở lại style từ Catalog rồi thử lại. |
+| `CATALOG_FILES_SCAN_FAILED` | Không thể đọc file đính kèm Catalog | Mở lại Article và kiểm tra tab file đính kèm. |
+| `CATALOG_FILE_DOWNLOAD_FAILED` | Không thể tải file Catalog | Kiểm tra phiên WFX và quyền tải file rồi thử lại. |
+| `CATALOG_FILE_SAVE_FAILED` | Không thể lưu file Catalog | Kiểm tra quyền ghi thư mục tải xuống và dung lượng ổ đĩa. |
+| `CATALOG_FILE_TABS_NOT_FOUND` | Không tìm thấy tab file của Article | Mở lại Article rồi kiểm tra tab Images/Documents. |
+| `CATALOG_FILE_URL_INVALID` | WFX trả về liên kết file không hợp lệ | Mở Log kỹ thuật và kiểm tra cấu hình file trên WFX. |
+| `CATALOG_FOLDER_OPEN_FAILED` | Không thể mở folder Catalog | Quét lại cây folder rồi thử mở lại. |
+| `CATALOG_FOLDER_OPEN_TIMEOUT` | WFX phản hồi chậm khi mở folder Catalog | Chờ Catalog tải xong rồi thử lại. |
+| `CATALOG_FOLDER_SCAN_FAILED` | Không thể quét cây folder Catalog | Kiểm tra quyền Catalog của tài khoản rồi thử lại. |
+| `CATALOG_FOLDER_SCAN_TIMEOUT` | WFX phản hồi chậm khi tải cây Catalog | Chờ cây Catalog hiển thị rồi quét lại. |
+| `CATALOG_NOT_OPEN` | Catalog Master chưa sẵn sàng | Bấm Mở Catalog và chờ Master/Floating Filter hiển thị. |
+| `CATALOG_SEARCH_FAILED` | Không thể tìm trong Catalog | Mở lại Catalog Master rồi thử tìm lại. |
+| `CATEGORY_FAILED` | Không thể chọn Category | Mở lại module và kiểm tra quyền Category của tài khoản. |
+| `CHROME_OPEN_FAILED` | Không thể mở trình duyệt automation | Kiểm tra cài đặt Chrome/Edge và quyền chạy ứng dụng. |
+| `CODE_FILTER_FAILED` | Không thể thao tác Code Filter | Mở lại Catalog Master và Floating Filter rồi thử lại. |
+| `CODE_FILTER_TIMEOUT` | Code Filter phản hồi quá chậm | Chờ grid Catalog ổn định rồi thử lại. |
+| `COMPANY_FOC_FAILED` | Không thể đổi cấu hình FOC | Mở lại Company Setup và kiểm tra quyền chỉnh sửa. |
+| `COMPANY_FOC_NOT_READY` | Màn cấu hình FOC chưa sẵn sàng | Chờ Miscellaneous Settings tải xong rồi thử lại. |
+| `COMPANY_FOC_SAVE_NOT_CONFIRMED` | WFX chưa xác nhận lưu cấu hình FOC | Kiểm tra trạng thái checkbox và bấm Save lại trên WFX. |
+| `COMPANY_LIST_OPEN_FAILED` | Không thể tự mở Company Setup | Kiểm tra quyền Company Setup và trạng thái menu WFX rồi thử lại. |
+| `COSTING_ACTIVE_TAB_AMBIGUOUS` | Có nhiều cửa sổ Costing cùng hiển thị | Chỉ giữ cửa sổ cần xuất ở trạng thái đang chọn rồi thử lại. |
+| `COSTING_ACTIVE_TAB_NOT_FOUND` | Tab đang chọn chưa ở màn Costing | Mở Style > Costing cần xuất và giữ đúng tab đó đang hiển thị. |
+| `COSTING_APPLY_FAILED` | Không thể áp dụng Costing | Dry-run lại file và kiểm tra các field WFX trước khi Save. |
+| `COSTING_CLEAR_DEPENDENCY_TARGET_CHANGED` | Các section Costing đã thay đổi khi đang Clear Dependency | Chờ Costing tải ổn định rồi bấm Clear All Dependency lại. |
+| `COSTING_CLEAR_FAILED` | Không thể Clear toàn bộ Dependency | Giữ đúng CostSheet Open đang chọn, kiểm tra Log rồi thử lại. |
+| `COSTING_CLEAR_UNSUPPORTED` | Bản automation chưa hỗ trợ Clear All Dependency | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
+| `COSTING_CONTEXT_NOT_FOUND` | Không tìm thấy màn Costing | Mở lại đúng style trong Catalog rồi thử lại. |
+| `COSTING_FIELD_APPLY_FAILED` | WFX không nhận một field Costing | Xem field/Article được báo trong Log kỹ thuật rồi kiểm tra lại file. |
+| `COSTING_NEW_DIALOG_NOT_FOUND` | Không tìm thấy cửa sổ New Costing | Mở lại Costing của style chưa có Cost Sheet rồi thử lại. |
+| `COSTING_NEW_FAILED` | Không thể tạo Costing mới | Kiểm tra quyền tạo Internal Cost Sheet và template FOB. |
+| `COSTING_OPEN_NOT_LOADED` | Costing Open chưa tải xong dữ liệu | Chờ lưới Costing hiển thị đầy đủ rồi thử export/import lại. |
+| `COSTING_SAVE_ALERT` | WFX từ chối Save Costing | Kiểm tra field bắt buộc trong thông báo WFX rồi dry-run lại. |
+| `COSTING_SAVE_NOT_FOUND` | Không tìm thấy nút Save Costing | Mở lại Cost Sheet đang trạng thái Open rồi thử lại. |
+| `COSTING_SCAN_FAILED` | Không thể đọc cấu trúc Costing | Mở Log kỹ thuật và kiểm tra Costing của style vẫn đang hiển thị. |
+| `COSTING_STYLE_NOT_DETECTED` | Chưa đọc được Style Code từ tab Costing | Giữ phần thông tin Style trên tab Costing rồi thử export lại. |
+| `COSTING_VERIFY_FAILED` | WFX chưa xác nhận dữ liệu Costing sau Save | Kiểm tra các field báo sai trong Log rồi dry-run lại. |
+| `DIVISION_CHANGE_FAILED` | Không thể đổi Division | Kiểm tra menu Division và phiên đăng nhập rồi thử lại. |
+| `DIVISION_CHANGE_NOT_CONFIRMED` | WFX chưa xác nhận đổi Division | Kiểm tra menu Division trên WFX rồi thử lại. |
+| `DIVISION_DETECT_FAILED` | Không thể nhận diện Division hiện tại | Kiểm tra màn Home WFX và đăng nhập lại nếu cần. |
+| `FILTER_RESULTS_NOT_READY` | Kết quả filter chưa ổn định | Chờ grid tải xong rồi thử tìm lại. |
+| `FILTER_VALUE_NOT_CONFIRMED` | WFX chưa nhận giá trị filter | Mở lại Floating Filter rồi nhập lại. |
+| `FLOATING_FILTER_NOT_READY` | Floating Filter chưa sẵn sàng | App chưa chuẩn bị được bộ lọc tự động; hãy chờ WFX rồi thử lại. |
+| `LOGIN_FAILED` | Đăng nhập WFX thất bại | Kiểm tra tài khoản, Company và trạng thái trang đăng nhập. |
+| `LOGIN_TIMEOUT` | WFX phản hồi quá chậm khi đăng nhập | Kiểm tra mạng và thử đăng nhập lại. |
+| `MASTER_FAILED` | Không thể mở Master | Mở lại Category rồi thử Master lần nữa. |
+| `MASTER_NOT_FOUND` | Không tìm thấy mục Master | Kiểm tra quyền truy cập và cây menu của Category. |
+| `MODULE_ACCESS_CHECK_FAILED` | Không thể kiểm tra quyền module | Đăng nhập lại và tải lại danh sách quyền. |
+| `MODULE_FAILED` | Không thể thao tác module WFX | Mở Log kỹ thuật để xem bước và lỗi gốc cuối cùng. |
+| `MODULE_NOT_FOUND` | Không tìm thấy module trên menu WFX | Kiểm tra quyền tài khoản và menu module. |
+| `MODULE_OPEN_NOT_CONFIRMED` | WFX chưa xác nhận mở module | Kiểm tra trang có đang tải hoặc có hộp thoại chờ xác nhận rồi thử lại. |
+| `MODULE_SEARCH_FAILED` | Không thể thao tác ô tìm kiếm | Mở Log kỹ thuật để xem lỗi gốc rồi thử lại. |
+| `MODULE_SEARCH_NOT_CONFIRMED` | WFX chưa xác nhận kết quả tìm kiếm | Kiểm tra màn List và thử lại sau khi grid tải xong. |
+| `MODULE_SEARCH_NOT_READY` | Ô tìm kiếm của module chưa sẵn sàng | App đã thử tự mở List; hãy chờ WFX ổn định rồi thử tìm lại. |
+| `OC_EDI_FAILED` | Không thể hoàn tất Upload OC trên EDI Buyer PO | Mở Log kỹ thuật, kiểm tra màn EDI Buyer PO và thử lại trước bước Create Transaction. |
+| `OC_EDI_NOT_READY` | EDI Buyer PO chưa sẵn sàng | Chờ WFX tải xong, kiểm tra quyền EDI Buyer PO rồi thử upload lại. |
+| `OC_REVISION_REPORT_FAILED` | Không thể mở report Revise OC | Mở Log kỹ thuật và kiểm tra quyền Reporting & Analytic của tài khoản. |
+| `OC_REVISION_REPORT_NOT_READY` | Report Upload OC from OC_Sale chưa sẵn sàng | Chờ cây báo cáo tải xong rồi bấm Mở report lại. |
+| `OC_UPLOAD_FILE_MISSING` | File Upload OC tạm không còn tồn tại | Chọn lại file OC trong app; nếu lỗi lặp lại, dùng Run ID để kiểm tra thư mục tạm. |
+| `PANEL_ERROR` | Ứng dụng gặp lỗi khi chạy tác vụ | Mở Log kỹ thuật và dùng Run ID để đối chiếu. |
+| `QUICK_SEARCH_FAILED` | Quick Search gặp lỗi | Mở module thủ công và thử lại từng bước. |
+| `QUICK_SEARCH_TIMEOUT` | Quick Search phản hồi quá chậm | Chờ WFX tải xong rồi thử lại. |
+| `RESULT_DETACHED` | Dòng kết quả đã thay đổi trước khi mở | Tìm lại để lấy dòng kết quả mới. |
+| `SALE_ASN_DOCUMENTS_SAVE_FAILED` | Không lưu được file Documents Sale ASN | Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại. |
+| `SALE_ASN_DOCUMENTS_UNSUPPORTED` | Chưa hỗ trợ tải Documents Sale ASN | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
+| `SALE_ASN_NEW_FAILED` | Không thể tạo màn Sale ASN mới | Mở lại Sale ASN và kiểm tra quyền tạo mới. |
+| `SALE_ASN_NEW_NOT_READY` | Màn Sale ASN mới chưa sẵn sàng | Chờ form tải xong rồi thử lại. |
+| `SALE_ASN_REPORT_DOWNLOAD_FAILED` | Không tải được report Sale ASN | Kiểm tra Packing List, Buyer Invoice và quyền export Excel. |
+| `SALE_ASN_REPORT_MERGE_FAILED` | Không ghép được hai report Sale ASN | Mở Log kỹ thuật và dùng Run ID để kiểm tra file report. |
+| `SALE_ASN_REPORT_NOT_READY` | Report Sale ASN chưa sẵn sàng | Chờ Documents/Report Viewer load xong rồi thử lại. |
+| `SAMPLE_FILES_UNSUPPORTED` | Phiên bản automation chưa hỗ trợ Check File Sample | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
+| `SAMPLE_FILE_OPEN_FAILED` | Không thể mở Style từ kết quả Sample | Tìm lại Sample và kiểm tra Style Code trên grid WFX. |
+| `SAMPLE_FILE_SEARCH_FAILED` | Không thể đọc kết quả Sample để kiểm tra file | Mở lại Sample List, chờ grid ổn định rồi thử lại. |
+| `SAMPLE_NEW_FAILED` | Không thể tạo màn Sample Order mới | Mở lại Sample List và kiểm tra quyền tạo mới. |
+| `SAMPLE_NEW_NOT_READY` | Màn Sample Order mới chưa sẵn sàng | Chờ form tải xong rồi thử lại. |
+| `SESSION_CHECK_FAILED` | Không thể kiểm tra phiên WFX | Kiểm tra trình duyệt automation và đăng nhập lại. |
+| `SUPPLIER_MASTER_NOT_READY` | Supplier Master chưa sẵn sàng | Chờ Supplier List và Category tải xong rồi thử lại. |
+| `SUPPLIER_OPEN_FAILED` | Không thể mở Supplier List | Kiểm tra quyền Supplier và menu WFX. |
+| `SUPPLIER_SEARCH_FAILED` | Không thể tìm Supplier | Mở Log kỹ thuật và kiểm tra Category đang thao tác. |
+| `SUPPLIER_SEARCH_NOT_READY` | Ô tìm Supplier chưa sẵn sàng | Chờ Supplier Master tải xong rồi thử lại. |
+| `SUPPLIER_SEARCH_PARTIAL` | Chưa kiểm tra được toàn bộ Category Supplier | Thử lại để kiểm tra các Category bị lỗi hoặc mở từng Category riêng. |

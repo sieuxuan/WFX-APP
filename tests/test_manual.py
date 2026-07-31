@@ -306,3 +306,19 @@ def test_moi_ma_loi_deu_nam_trong_bang_tra():
     book = manual_book.load_book()
     codes = {row["code"] for row in book["error_table"]}
     assert set(telemetry.ERROR_CODE_INFO) <= codes
+
+
+def test_user_features_dong_bo_voi_manual():
+    import sys
+
+    root = manual_book.MANUAL_DIR.parent.parent
+    sys.path.insert(0, str(root / "scripts"))
+    import generate_user_features
+
+    expected = generate_user_features.build_user_features(manual_book.load_book())
+    actual = (root / "docs" / "USER_FEATURES.md").read_text(encoding="utf-8")
+
+    assert actual == expected, (
+        "docs/USER_FEATURES.md đã lệch. Chạy: "
+        "python scripts/generate_user_features.py"
+    )
