@@ -5,11 +5,9 @@
 Dự án này là **desktop app pywebview** (`wfx_panel/`) tự động hoá
 WorldFashionExchange qua Playwright/CDP, đóng gói bằng PyInstaller
 (`build-panel.ps1` → `dist/WFX-Panel/`), đóng thành bộ cài Inno Setup
-(`build-installer.ps1` → `dist/installer/`) và tự cập nhật từ GitHub Release. Đây
-KHÔNG phải Chrome extension; thư mục `chrome-extension/` không được dùng.
-`wfx-tampermonkey.user.js` chỉ là biến thể userscript tuỳ chọn, không phải sản
-phẩm chính. Khi sửa code, luôn sửa trong `wfx_panel/` (nguồn), không sửa mỗi file
-trong `dist/`.
+(`build-installer.ps1` → `dist/installer/`) và tự cập nhật từ GitHub Release.
+Mọi code sản phẩm nằm trong `wfx_panel/`. Khi sửa code, luôn sửa trong
+`wfx_panel/` (nguồn), không sửa mỗi file trong `dist/`.
 
 Bản đồ nhanh:
 
@@ -229,8 +227,9 @@ Các workflow riêng hiện có:
   Khi có nhiều tab/popup Costing, phải ưu tiên target đang hoạt động gần nhất,
   không dùng thứ tự tạo trong `context.pages`. Trước hộp thoại export phải quét
   nhanh Style Code/Style Name/status, hiển thị ngay trong thẻ Costing và dùng
-  Style Name đặt tên file. Hộp thoại nhớ thư mục export gần nhất; Settings có
-  hai lựa chọn độc lập mở file hoặc mở thư mục sau export. Nút `Kiểm tra file` chỉ
+  Style Name đặt tên file. Hộp thoại nhớ thư mục export gần nhất; Settings
+  chỉ cho chọn có mở file Costing sau export hay không. Thư mục chứa file
+  luôn tự mở sau mọi download/export thành công. Nút `Kiểm tra file` chỉ
   validate XLSX và trả lỗi sheet/ô, không scan WFX hoặc tạo dry-run.
   `Costing` luôn có bộ cột form chuẩn để nhập trực tiếp, chỉ round-trip field
   item `editable=true`. Cuối form có đúng 1 dòng CM Costs, 1 dòng Production
@@ -326,7 +325,11 @@ Các workflow riêng hiện có:
   và trả danh sách tải trực tiếp. Nếu có nhiều dòng, panel hiển thị lựa chọn
   Sample; sau khi user chọn, app tiếp tục từ grid đang mở, không tìm lại.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
-  No., và New.
+  No., New, và tải Documents. Luồng Documents nhận Invoice No. đang nhập
+  hoặc đúng một dòng đang chọn; click cột Docs, tải lần lượt Packing
+  List và Buyer Invoice bằng Report Viewer `EXCELOPENXML`, ghép thành một
+  workbook gồm hai sheet `Packing List`/`Buyer Invoice`, giữ nguyên format report
+  nguồn, sau đó mới mở Save As với tên mặc định là Invoice No. thực tế.
 - Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
 - Buyer List: tự mở đúng Buyer List khi cần rồi mở Edit đầu tiên.
 - Company Setup: Đổi FOC tự mở đúng List nếu cần, mở Miscellaneous Settings rồi
@@ -1182,7 +1185,7 @@ python wfx_catalog_reference.py --filter buyer_reference --query "PO-99"
 python wfx_catalog_reference.py --filter code --query "ABC123" --destination bom
 ```
 
-## Yêu cầu log của Chrome Extension
+## Yêu cầu log automation Catalog
 
 Mỗi run phải có `runId`. Mỗi event ghi tối thiểu:
 
@@ -1220,29 +1223,11 @@ ARTICLE_DESTINATION_NOT_FOUND
 
 ## Hotkey
 
-**Desktop app (chính):** hotkey toàn cục mặc định `Ctrl+Shift+X` do
+Hotkey toàn cục mặc định `Ctrl+Shift+X` do
 `wfx_panel/hotkey.py` + thư viện `keyboard` bắt ở cấp hệ điều hành, nên nhận được
 kể cả khi focus nằm trong iframe của WFX trên Chrome. Đổi được trong Settings. Giới
 hạn: nếu cửa sổ đang focus chạy quyền Administrator cao hơn app thì global hook có
 thể không nhận phím — khi đó dùng launcher/tray để mở panel.
-
-**Biến thể extension/userscript (tuỳ chọn, tham khảo):** Hotkey mặc định
-`Ctrl+Shift+X` (khác `Ctrl+Alt+X` cũ — tổ hợp `Ctrl+Alt` bị Chrome
-từ chối trong `suggested_key` vì trùng `AltGr`). `Ctrl+Shift+X` là tổ hợp hợp lệ nên
-manifest command `toggle-panel` KHAI BÁO `suggested_key.default = "Ctrl+Shift+X"` để Chrome
-tự bind sẵn, người dùng không phải gán tay tại `chrome://extensions/shortcuts`.
-
-Lý do dùng Chrome command thay vì bắt keydown in-page: WFX chạy nội dung trong iframe, mà
-content script chỉ chạy ở top frame (`all_frames:false`) nên keydown khi focus trong iframe
-không tới được listener top → hotkey "không phản hồi trên màn WFX". `chrome.commands` bắt phím
-ở cấp trình duyệt, độc lập với frame nào đang focus. Background service worker nhận
-`chrome.commands.onCommand` và gửi message toggle tới tab WFX đang active; nếu chưa có tab WFX
-thì mở/focus WFX trước.
-
-Vì command đã là nguồn hotkey duy nhất của bản extension: bridge.js KHÔNG bắt keydown nữa và
-core `handleKeydown` bỏ nhánh toggle khi `window.__wfxSmartChromeExtensionLoaded` (tránh
-double-toggle mở-rồi-đóng khi focus ở top frame). Tampermonkey không có command API nên vẫn dùng
-hotkey in-page cấu hình được trong panel.
 
 ## Tiêu chí nghiệm thu
 
@@ -1256,7 +1241,7 @@ hotkey in-page cấu hình được trong panel.
 5. Code và Buyer Reference đều fill được và có xác nhận giá trị.
 6. Một unique Code tự mở Article; nhiều Code không tự mở.
 7. Costsheet/BOM chờ đúng popup `ArticleTop`.
-8. `Ctrl+Shift+X` (suggested_key trong manifest) mở/đóng panel được ngay cả khi focus đang
-   nằm trong iframe của WFX, không cần gán tay ở `chrome://extensions/shortcuts`.
+8. `Ctrl+Shift+X` mở/đóng desktop panel ngay cả khi focus đang nằm trong iframe
+   của WFX.
 9. Sửa code trong `wfx_panel/` (nguồn) và build lại bằng `build-panel.ps1`; không
    chỉnh trực tiếp file trong `dist/`. `python -m pytest` và `ruff check .` phải xanh.

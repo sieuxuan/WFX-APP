@@ -223,7 +223,7 @@ def test_reveal_downloaded_excel_opens_exact_parent_folder(tmp_path, monkeypatch
     assert opened == [target.parent.resolve()]
 
 
-def test_costing_export_result_opens_file_and_folder_from_preferences(
+def test_costing_export_always_opens_folder_and_optionally_opens_file(
     tmp_path,
     monkeypatch,
 ):
@@ -238,7 +238,7 @@ def test_costing_export_result_opens_file_and_folder_from_preferences(
         "load_prefs",
         lambda _base_dir: {
             "open_costing_file_after_export": True,
-            "open_costing_folder_after_export": True,
+            "open_costing_folder_after_export": False,
         },
     )
     monkeypatch.setattr(
@@ -256,6 +256,23 @@ def test_costing_export_result_opens_file_and_folder_from_preferences(
     app._on_result("export_catalog_costing", result, 1.0)
 
     assert opened_files == [result["export_path"]]
+    assert opened_folders == [result["export_path"]]
+
+
+def test_sale_asn_export_result_opens_selected_folder(tmp_path, monkeypatch):
+    app = panel_app.PanelApp()
+    app.window = None
+    app._panel_visible = True
+    opened_folders = []
+    monkeypatch.setattr(
+        panel_app,
+        "_reveal_downloaded_file",
+        lambda path: opened_folders.append(path) or True,
+    )
+    result = {"ok": True, "export_path": str(tmp_path / "INV-01.xlsx")}
+
+    app._on_result("save_sale_asn_documents", result, 1.0)
+
     assert opened_folders == [result["export_path"]]
 
 
@@ -328,6 +345,26 @@ def test_costing_file_dialog_cancel_is_clean():
     )
 
 
+def test_sale_asn_save_dialog_uses_sanitized_invoice_name(tmp_path):
+    class Window:
+        def __init__(self):
+            self.calls = []
+
+        def create_file_dialog(self, dialog_type, **kwargs):
+            self.calls.append((dialog_type, kwargs))
+            return str(tmp_path / "chosen")
+
+    app = panel_app.PanelApp()
+    app.window = Window()
+
+    selected = app.choose_sale_asn_export_file('INV/24:01')
+
+    assert selected["code"] == "SALE_ASN_EXPORT_PATH_SELECTED"
+    assert Path(selected["file_path"]) == (tmp_path / "chosen.xlsx").resolve()
+    assert app.window.calls[-1][0] == panel_app.webview.SAVE_DIALOG
+    assert app.window.calls[-1][1]["save_filename"] == "INV 24 01.xlsx"
+
+
 def test_oc_dialogs_choose_xlsx_and_generate_simple_template(tmp_path, monkeypatch):
     class Window:
         def __init__(self):
@@ -339,10 +376,16 @@ def test_oc_dialogs_choose_xlsx_and_generate_simple_template(tmp_path, monkeypat
             return self.selection
 
     opened = []
+    revealed = []
     monkeypatch.setattr(
         panel_app,
         "_open_downloaded_file",
         lambda path: opened.append(Path(path)) or True,
+    )
+    monkeypatch.setattr(
+        panel_app,
+        "_reveal_downloaded_file",
+        lambda path: revealed.append(Path(path)) or True,
     )
     app = panel_app.PanelApp()
     app.window = Window()
@@ -364,6 +407,7 @@ def test_oc_dialogs_choose_xlsx_and_generate_simple_template(tmp_path, monkeypat
     assert exported["code"] == "OC_TEMPLATE_EXPORTED"
     assert output.is_file()
     assert opened == [output.resolve()]
+    assert revealed == [output.resolve()]
     assert app.window.calls[-1][0] == panel_app.webview.SAVE_DIALOG
 
 

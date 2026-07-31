@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
+import shutil
 import tempfile
 import threading
 import time
@@ -64,6 +65,8 @@ SESSION_OK = frozenset(
         "SAMPLE_STYLE_OPENED",
         "SAMPLE_MULTIPLE_RESULTS",
         "SALE_ASN_NEW_READY",
+        "SALE_ASN_DOCUMENTS_PREPARED",
+        "SALE_ASN_DOCUMENTS_EXPORTED",
         "COMPANY_FOC_CHANGED",
         "SUPPLIER_CATEGORY_READY",
         "SUPPLIER_FOUND",
@@ -206,6 +209,11 @@ NON_REPORTABLE_FAILURES = frozenset(
         "OC_EDI_VALIDATION_FAILED",
         "OC_TRANSACTION_UNCONFIRMED",
         "OC_UPLOAD_REVIEW_EXPIRED",
+        "SALE_ASN_INVOICE_NOT_FOUND",
+        "SALE_ASN_MULTIPLE_RESULTS",
+        "SALE_ASN_SELECTION_REQUIRED",
+        "SALE_ASN_DOCUMENTS_EXPIRED",
+        "SALE_ASN_FILE_DIALOG_CANCELLED",
     }
 )
 
@@ -224,6 +232,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "search_sample",
         "open_sample_new",
         "search_sale_asn",
+        "prepare_sale_asn_documents",
         "search_rmpo",
         "search_indent",
         "open_module_new",
@@ -279,6 +288,9 @@ class PanelAPI:
         # Workbook đã chuẩn hoá chỉ sống từ bước Review đến Confirm/Cancel.
         # Token ngẫu nhiên ngăn UI cũ hoặc click lặp upload nhầm review khác.
         self._oc_upload_reviews: dict[str, dict] = {}
+        # Hai report Sale ASN được ghép trong file tạm trước khi UI
+        # mở Save As. Token ngăn một panel cũ lưu nhầm workbook khác.
+        self._sale_asn_document_exports: dict[str, dict] = {}
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -594,6 +606,7 @@ class PanelAPI:
                 "check_sample_files",
                 "open_sample_file_choice",
                 "search_sale_asn",
+                "prepare_sale_asn_documents",
                 "search_rmpo",
                 "search_indent",
                 "open_module_new",
@@ -969,6 +982,178 @@ class PanelAPI:
                 "filter_kind": str(filter_kind or ""),
                 "query": str(query or "").strip(),
             },
+        )
+
+    def _discard_sale_asn_document_export(self, export_token: str) -> bool:
+        prepared = self._sale_asn_document_exports.pop(export_token, None)
+        if prepared is None:
+            return False
+        temporary = prepared.get("temporary")
+        if temporary is not None:
+            try:
+                temporary.cleanup()
+            except OSError as error:
+                self._log(
+                    "[SALE ASN DOCS] Không dọn được file tạm: "
+                    f"{type(error).__name__}"
+                )
+        return True
+
+    def prepare_sale_asn_documents(
+        self,
+        filter_kind: str,
+        query: str,
+    ) -> dict:
+        """Tải/ghép hai report và giữ file tạm đến bước Save As."""
+        selected_filter = str(filter_kind or "").strip()
+        selected_query = str(query or "").strip()
+        sale_asn = constants.MODULE_BY_ID["0004_0070_0020"]
+        cache_root = self._base_dir / "sale-asn-export-cache"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(
+            prefix="documents-",
+            dir=cache_root,
+        )
+        prepared_path = Path(temporary.name) / "Sale-ASN-Documents.xlsx"
+
+        def action() -> dict:
+            preparer = getattr(
+                self._login,
+                "prepare_sale_asn_documents",
+                None,
+            )
+            if not callable(preparer):
+                return {
+                    "ok": False,
+                    "code": "SALE_ASN_DOCUMENTS_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ tải Documents Sale ASN.",
+                }
+            return preparer(
+                sale_asn["xpath"],
+                selected_filter,
+                selected_query,
+                prepared_path,
+                self._log,
+            )
+
+        result = self._run(
+            "prepare_sale_asn_documents",
+            action,
+            {
+                "filter_kind": selected_filter,
+                "query": selected_query,
+            },
+        )
+        internal_path = Path(str(result.get("prepared_path") or prepared_path))
+        public_result = {
+            key: value
+            for key, value in result.items()
+            if key != "prepared_path"
+        }
+        if not result.get("ok") or not internal_path.is_file():
+            temporary.cleanup()
+            if result.get("ok"):
+                return {
+                    **public_result,
+                    "ok": False,
+                    "code": "SALE_ASN_REPORT_MERGE_FAILED",
+                    "message": "Workbook Sale ASN tạm không được tạo.",
+                }
+            return public_result
+
+        for old_token in tuple(self._sale_asn_document_exports):
+            self._discard_sale_asn_document_export(old_token)
+        export_token = secrets.token_urlsafe(24)
+        self._sale_asn_document_exports[export_token] = {
+            "temporary": temporary,
+            "prepared_path": internal_path,
+            "invoice_no": str(result.get("invoice_no") or "Invoice").strip(),
+        }
+        return {
+            **public_result,
+            "export_token": export_token,
+        }
+
+    def cancel_sale_asn_documents(self, export_token: str) -> dict:
+        token = str(export_token or "").strip()
+        self._discard_sale_asn_document_export(token)
+        return {
+            "ok": True,
+            "code": "SALE_ASN_DOCUMENTS_CANCELLED",
+            "message": "Đã huỷ lưu Documents Sale ASN.",
+        }
+
+    def save_sale_asn_documents(
+        self,
+        export_token: str,
+        file_path: str,
+    ) -> dict:
+        token = str(export_token or "").strip()
+        raw_path = str(file_path or "").strip()
+        if not raw_path:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_DOCUMENTS_SAVE_FAILED",
+                "message": "Chưa có đường dẫn lưu file Sale ASN.",
+            }
+        target = Path(raw_path).expanduser().resolve()
+        if target.suffix.casefold() != ".xlsx":
+            target = target.with_suffix(".xlsx")
+
+        def action() -> dict:
+            prepared = self._sale_asn_document_exports.get(token)
+            if prepared is None:
+                return {
+                    "ok": False,
+                    "code": "SALE_ASN_DOCUMENTS_EXPIRED",
+                    "message": (
+                        "File Sale ASN tạm không còn hiệu lực; hãy tải lại."
+                    ),
+                }
+            source = Path(prepared["prepared_path"])
+            if not source.is_file():
+                self._discard_sale_asn_document_export(token)
+                return {
+                    "ok": False,
+                    "code": "SALE_ASN_DOCUMENTS_EXPIRED",
+                    "message": "File Sale ASN tạm đã bị xoá; hãy tải lại.",
+                }
+            staging: Path | None = None
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                staging = target.with_name(f".{target.name}.{secrets.token_hex(4)}.tmp")
+                shutil.copyfile(source, staging)
+                os.replace(staging, target)
+            except OSError as error:
+                try:
+                    if staging is not None:
+                        staging.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return {
+                    "ok": False,
+                    "code": "SALE_ASN_DOCUMENTS_SAVE_FAILED",
+                    "message": f"Không lưu được file Excel: {error}",
+                }
+            invoice_no = str(prepared.get("invoice_no") or "Invoice")
+            self._discard_sale_asn_document_export(token)
+            return {
+                "ok": True,
+                "code": "SALE_ASN_DOCUMENTS_EXPORTED",
+                "message": (
+                    f"Đã lưu Packing List + Buyer Invoice của "
+                    f"{invoice_no} thành {target.name}."
+                ),
+                "invoice_no": invoice_no,
+                "export_path": str(target),
+                "file_name": target.name,
+                "sheet_names": ["Packing List", "Buyer Invoice"],
+            }
+
+        return self._run(
+            "save_sale_asn_documents",
+            action,
+            {"file_name": target.name},
         )
 
     def search_rmpo(

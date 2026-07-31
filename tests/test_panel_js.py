@@ -35,6 +35,7 @@ def test_costing_weekly_scan_and_clear_all_controls_are_wired():
     assert '"clear-dependencies"' in JS
     assert '"clear_catalog_costing_dependencies"' in JS
     assert "window.confirm(" in JS
+    assert '$(".open-costing-folder-input")' not in JS
 
 
 def test_module_groups_present():
@@ -66,6 +67,18 @@ def test_oc_workspace_wires_template_new_and_revise_flows():
     assert "let ocSelectionRevision = 0" in JS
     assert "selectionRevision !== ocSelectionRevision" in JS
     assert 'callQuiet("cancel_oc_upload_review", result.review_token)' in JS
+
+
+def test_sale_asn_documents_two_phase_export_is_wired():
+    for method in (
+        "prepare_sale_asn_documents",
+        "choose_sale_asn_export_file",
+        "save_sale_asn_documents",
+        "cancel_sale_asn_documents",
+    ):
+        assert f'"{method}"' in JS
+    assert 'prepared.invoice_no || "Invoice"' in JS
+    assert "prepared.export_token" in JS
 
 
 def test_return_to_list_is_opt_in_and_current_module_is_preserved():

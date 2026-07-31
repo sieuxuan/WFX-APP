@@ -129,6 +129,9 @@ from wfx_panel.automation.oc import (  # noqa: F401
     open_oc_revision_report,
     upload_oc_edi,
 )
+from wfx_panel.automation.sale_asn_documents import (  # noqa: F401
+    prepare_sale_asn_documents,
+)
 from wfx_panel.automation.session import (  # noqa: F401
     _division_for_text,
     _division_state_for_page,
@@ -246,6 +249,7 @@ __all__ = [
     'open_supplier_category',
     'os',
     'prepare_catalog_master',
+    'prepare_sale_asn_documents',
     'quick_find_catalog',
     'run',
     'scan_catalog_folders',

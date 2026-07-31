@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-# Toạ độ chuẩn hoá theo SVG gốc (viewBox 0 0 28 28) của extension.
+# Toạ độ chuẩn hoá theo SVG logo gốc (viewBox 0 0 28 28).
 _HEX = [(5.2, 6.7), (14, 2.4), (22.8, 6.7), (22.8, 17.3), (14, 25.6), (5.2, 17.3)]
 _W = [(8.6, 9.2), (11.2, 18.4), (14.0, 12.2), (16.8, 18.4), (19.4, 9.2)]
 _BG = (99, 102, 241)      # indigo-500

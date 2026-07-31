@@ -125,6 +125,8 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "check_sample_files",
         "open_sample_file_choice",
         "search_sale_asn",
+        "prepare_sale_asn_documents",
+        "save_sale_asn_documents",
         "open_supplier_category",
         "find_supplier",
         "find_supplier_in_category",
@@ -154,6 +156,8 @@ NOTIFICATION_ACTION_LABELS = {
     "check_sample_files": "Check File Sample",
     "open_sample_file_choice": "File Sample",
     "search_sale_asn": "Tìm Sale ASN",
+    "prepare_sale_asn_documents": "Tải Documents Sale ASN",
+    "save_sale_asn_documents": "Lưu Documents Sale ASN",
     "open_supplier_category": "Supplier",
     "find_supplier": "Tìm Supplier",
     "find_supplier_in_category": "Tìm Supplier",
@@ -651,6 +655,52 @@ class PanelApp:
             "mode": selected_mode,
         }
 
+    def choose_sale_asn_export_file(self, invoice_no: str) -> dict:
+        """Chọn đích lưu sau khi đã đọc được Invoice No. thực tế."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        stem = _safe_costing_file_stem(invoice_no or "Invoice")
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename=f"{stem}.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
+                "message": "Đã huỷ lưu Documents Sale ASN.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != ".xlsx":
+            target = target.with_suffix(".xlsx")
+        return {
+            "ok": True,
+            "code": "SALE_ASN_EXPORT_PATH_SELECTED",
+            "message": f"Sẽ lưu thành {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
     def download_oc_template(self) -> dict:
         """Sinh form OC INPUT một header và lưu vào nơi người dùng chọn."""
         if self.window is None:
@@ -684,6 +734,7 @@ class PanelApp:
                 target = target.with_suffix(".xlsx")
             write_oc_input_template(target)
             _open_downloaded_file(target)
+            _reveal_downloaded_file(target)
         except Exception as error:
             return {
                 "ok": False,
@@ -1408,8 +1459,9 @@ class PanelApp:
             export_path = result.get("export_path")
             if preferences["open_costing_file_after_export"]:
                 _open_downloaded_file(export_path)
-            if preferences["open_costing_folder_after_export"]:
-                _reveal_downloaded_file(export_path)
+            _reveal_downloaded_file(export_path)
+        if method == "save_sale_asn_documents" and result.get("ok"):
+            _reveal_downloaded_file(result.get("export_path"))
 
         if method in MODULE_NOTIFICATION_METHODS and not self._panel_visible:
             self._show_notification(
@@ -1818,6 +1870,7 @@ class PanelApp:
         self.api.choose_costing_import_file = self.choose_costing_import_file  # type: ignore[attr-defined]
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]
         self.api.choose_oc_upload_file = self.choose_oc_upload_file  # type: ignore[attr-defined]
+        self.api.choose_sale_asn_export_file = self.choose_sale_asn_export_file  # type: ignore[attr-defined]
         self.api.download_oc_template = self.download_oc_template  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
