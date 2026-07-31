@@ -633,3 +633,8 @@ def test_nut_tro_giup_module_goi_manual():
 def test_the_loi_moi_duoc_link_toi_huong_dan():
     assert '".footer-help-button"' in JS
     assert "lastErrorCode" in JS
+
+
+def test_cham_bao_tin_moi_tren_nut_manual():
+    assert "manual-alert" in JS
+    assert "manual_has_news" in JS

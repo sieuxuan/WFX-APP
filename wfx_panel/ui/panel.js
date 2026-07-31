@@ -2745,6 +2745,8 @@
       button.addEventListener("click", () => selectSettingsTab(button.dataset.settingsTab)));
     $(".manual-button").addEventListener("click", async () => {
       const result = await callQuiet("open_wfx_manual");
+      $(".manual-button").classList.remove("has-alert");
+      $(".manual-alert").dataset.active = "false";
       if (result) handleResult(result);
     });
     $(".footer-help-button").addEventListener("click", () => {
@@ -3060,6 +3062,9 @@
     if (Array.isArray(state.manual_error_codes)) {
       manualErrorCodes = new Set(state.manual_error_codes);
     }
+    const hasManualNews = state.manual_has_news === true;
+    $(".manual-button").classList.toggle("has-alert", hasManualNews);
+    $(".manual-alert").dataset.active = String(hasManualNews);
     setAccount(state.user_id);
     hasCredentials = state.has_credentials === true;
     applyTheme(state.theme);

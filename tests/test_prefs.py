@@ -506,3 +506,18 @@ def test_concurrent_save_prefs_keeps_every_setting(tmp_path: Path):
         "notice-"
     )
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_manual_seen_version_mac_dinh_la_phien_ban_hien_tai(tmp_path):
+    from wfx_panel import prefs
+    from wfx_panel.version import APP_VERSION
+
+    assert prefs.load_prefs(tmp_path)["manual_seen_version"] == APP_VERSION
+
+
+def test_manual_seen_version_luu_duoc(tmp_path):
+    from wfx_panel import prefs
+
+    prefs.save_prefs(tmp_path, manual_seen_version="1.0.9")
+
+    assert prefs.load_prefs(tmp_path)["manual_seen_version"] == "1.0.9"
