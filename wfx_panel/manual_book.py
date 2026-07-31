@@ -9,8 +9,12 @@ docs/USER_FEATURES.md lẫn cửa sổ Manual đều dùng chung một nguồn.
 from __future__ import annotations
 
 import html as html_lib
+import json
 import re
 import unicodedata
+
+from wfx_panel import prefs
+from wfx_panel.version import APP_VERSION
 
 CALLOUT_LABELS = {
     "meo": "Mẹo",
@@ -24,6 +28,28 @@ _CALLOUT_OPEN = re.compile(r"^>\s*\[!(\w+)\]\s*$")
 _ORDERED_ITEM = re.compile(r"^\d+\.\s+(.*)$")
 _TABLE_DIVIDER = re.compile(r"^[\s|:-]+$")
 _TAG = re.compile(r"<[^>]+>")
+
+MANUAL_DIR = prefs.RESOURCE_DIR / "wfx_panel" / "manual"
+
+FORBIDDEN_WORDS = (
+    "frame",
+    "selector",
+    "CDP",
+    "postback",
+    "iframe",
+    "XPath",
+    "DOM",
+    "endpoint",
+    "payload",
+    "token",
+    "grid",
+)
+
+_COVER_KEYS = ("modules", "actions", "settings", "errors")
+
+
+class ManualContentError(Exception):
+    """Nội dung manual không hợp lệ — thiếu file, sai khoá, hoặc trùng id."""
 
 
 def slugify(text: str) -> str:
@@ -161,3 +187,59 @@ def render_markdown(source: str) -> str:
 
     close_all()
     return "".join(out)
+
+
+def load_manifest() -> dict:
+    path = MANUAL_DIR / "manifest.json"
+    if not path.is_file():
+        raise ManualContentError(f"Thiếu {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_book() -> dict:
+    manifest = load_manifest()
+    chapters: list[dict] = []
+    entries: dict[str, dict] = {}
+    order: list[str] = []
+
+    for chapter in manifest["chapters"]:
+        entry_ids: list[str] = []
+        for entry in chapter["entries"]:
+            entry_id = entry["id"]
+            if entry_id in entries:
+                raise ManualContentError(f"Trùng id mục: {entry_id}")
+            path = MANUAL_DIR / entry["file"]
+            if not path.is_file():
+                raise ManualContentError(f"Thiếu file nội dung: {entry['file']}")
+            body = render_markdown(path.read_text(encoding="utf-8"))
+            covers = entry.get("covers", {})
+            entries[entry_id] = {
+                "id": entry_id,
+                "chapter": chapter["id"],
+                "chapter_title": chapter["title"],
+                "title": entry["title"],
+                "summary": entry.get("summary", ""),
+                "keywords": list(entry.get("keywords", [])),
+                "html": body,
+                "text": strip_html(body),
+                "covers": {key: list(covers.get(key, [])) for key in _COVER_KEYS},
+            }
+            entry_ids.append(entry_id)
+            order.append(entry_id)
+        chapters.append(
+            {
+                "id": chapter["id"],
+                "title": chapter["title"],
+                "summary": chapter.get("summary", ""),
+                "entries": entry_ids,
+            }
+        )
+
+    return {
+        "version": APP_VERSION,
+        "chapters": chapters,
+        "entries": entries,
+        "order": order,
+        "error_table": [],
+        "whats_new": [],
+    }

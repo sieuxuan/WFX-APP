@@ -1,0 +1,27 @@
+{
+  "chapters": [
+    {
+      "id": "bat-dau",
+      "title": "Bắt đầu",
+      "summary": "Cài đặt, mở ứng dụng và kết nối tài khoản WFX.",
+      "entries": [
+        {
+          "id": "bat-dau-mo-panel",
+          "title": "Mở và đóng bảng điều khiển",
+          "summary": "Ba cách gọi WFX Smart ra màn hình.",
+          "file": "01-bat-dau/mo-panel.md",
+          "keywords": ["hotkey", "phím tắt", "khay hệ thống", "bong bóng"],
+          "covers": { "settings": ["hotkey", "start-hidden-input"] }
+        },
+        {
+          "id": "bat-dau-dang-nhap",
+          "title": "Đăng nhập tài khoản WFX",
+          "summary": "Lưu tài khoản một lần, ứng dụng tự giữ phiên.",
+          "file": "01-bat-dau/dang-nhap.md",
+          "keywords": ["tài khoản", "mật khẩu", "user id", "đăng nhập"],
+          "covers": { "errors": ["LOGIN_FAILED", "LOGIN_TIMEOUT"] }
+        }
+      ]
+    }
+  ]
+}
