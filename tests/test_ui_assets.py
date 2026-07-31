@@ -660,3 +660,31 @@ def test_division_switcher_is_visually_compact():
     assert "padding: 4px" in division_card
     assert "margin: 0 0 5px" in division_card
     assert "height: 29px" in division_button
+
+
+def test_manual_window_co_du_ba_vung_chinh():
+    html = (UI / "manual.html").read_text(encoding="utf-8")
+    assert 'class="manual-search"' in html
+    assert 'class="manual-toc"' in html
+    assert 'class="manual-content"' in html
+    assert "manual.css" in html
+    assert "manual.js" in html
+    # Manual chạy offline: không được nạp tài nguyên từ mạng.
+    assert "http://" not in html
+    assert "https://" not in html
+
+
+def test_manual_css_co_token_rieng_va_ban_in():
+    css = (UI / "manual.css").read_text(encoding="utf-8")
+    assert ":root {" in css
+    assert ':root[data-theme="dark"]' in css
+    assert "@media print" in css
+    assert ".callout-meo" in css
+    assert ".callout-luuy" in css
+    assert ".callout-loi" in css
+
+
+def test_manual_js_phoi_bay_ham_dieu_huong():
+    js = (UI / "manual.js").read_text(encoding="utf-8")
+    assert "window.wfxManualGoTo" in js
+    assert "get_manual_book" in js
