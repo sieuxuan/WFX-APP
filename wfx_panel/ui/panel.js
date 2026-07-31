@@ -87,6 +87,7 @@
   let costingPlanDeleteCount = 0;
   let costingArticleResolutions = {};
   let pendingOcReview = null;
+  let ocSelectionRevision = 0;
   let checkedCostingFile = null;
   let catalogThemeChoice = "light";
   let catalogDefaultFolder = null;
@@ -1291,7 +1292,9 @@
   }
 
   async function uploadOcFile(mode) {
+    const selectionRevision = ++ocSelectionRevision;
     const selected = await callQuiet("choose_oc_upload_file", mode);
+    if (selectionRevision !== ocSelectionRevision) return null;
     if (!selected || !selected.ok) {
       if (selected && selected.code !== "OC_FILE_DIALOG_CANCELLED") {
         renderOcUploadResult(selected);
@@ -1304,6 +1307,12 @@
       message: "Đã chọn file; app đang kiểm tra và tổng hợp review…",
     }, selected.file_name);
     const result = await call("review_oc_upload", mode, selected.file_path);
+    if (selectionRevision !== ocSelectionRevision) {
+      if (result?.review_token) {
+        callQuiet("cancel_oc_upload_review", result.review_token);
+      }
+      return null;
+    }
     if (result?.ok) {
       renderOcUploadReview(result, selected.file_name);
       renderOcUploadResult({
@@ -1319,6 +1328,7 @@
   }
 
   async function cancelOcUploadReview() {
+    ocSelectionRevision += 1;
     const token = pendingOcReview?.token || "";
     pendingOcReview = null;
     hideOcUploadReview();

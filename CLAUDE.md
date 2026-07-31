@@ -259,9 +259,10 @@ Các workflow riêng hiện có:
   `#imgEditSection` hoặc `#imgCopySection`.
 - OC List: tìm theo OC No. hoặc Style; tải form `OC INPUT` một hàng header;
   Upload OC New và Revise OC qua EDI Buyer PO.
-- Workspace OC gom nút mở `OC List` và Search trong cùng card. Card `Upload OC
-  New` đặt `Tải file mẫu` và `Chọn file mới` cạnh nhau; Revise giữ cặp mở report
-  và chọn file đã sửa.
+- Workspace OC gom nút mở `OC List` và Search trong cùng card; selector OC
+  No./Style, ô nhập và nút Tìm nằm trên một hàng gọn. Hai card `Upload OC New`
+  và `Revise OC` cân bằng hai cột, chữ/nút không nhỏ hơn phần thao tác chính của
+  panel; New giữ cặp tải mẫu/chọn file và Revise giữ cặp mở report/chọn file.
 - Form OC mới chỉ để user nhập trên sheet visible `OC INPUT`; sheet
   `REFERENCES` phải `veryHidden`, chỉ chứa nguồn dropdown. App phải tự sinh
   workbook tạm chỉ có `Sheet1` với đúng 51 header EDI, không công thức, không
@@ -278,6 +279,10 @@ Các workflow riêng hiện có:
   distinct theo `Summary Buyer Order Ref`, số Style distinct theo `Article`,
   `Sum of Units` và số dòng. Workbook tạm dùng token một lần; chỉ nút `Xác nhận
   Upload` mới chạy EDI, còn Huỷ phải xoá review và không chạm WFX.
+- Mỗi lần user chọn workbook, kể cả chọn lại cùng tên/đường dẫn sau khi Huỷ,
+  backend phải snapshot lại bytes hiện tại vào thư mục review mới và tính
+  SHA-256; không dùng lại workbook đã chuẩn hoá hoặc kết quả review trước. UI
+  dùng selection revision để kết quả bất đồng bộ cũ không render đè lần mới.
 - EDI OC phải chọn exact Buyer từ file và package value `1`/
   `StandardSalesOrder`, upload file chuẩn hoá, bấm `Process Package` rồi đọc
   cả `Data Imported`, `Data Validated`, `Mapping Resolved`. Chỉ khi tất cả đều

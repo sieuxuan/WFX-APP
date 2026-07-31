@@ -55,6 +55,9 @@ def test_oc_workspace_wires_template_new_and_revise_flows():
     assert 'call("review_oc_upload", mode, selected.file_path)' in JS
     assert 'call("confirm_oc_upload", token)' in JS
     assert 'call("upload_oc", mode, selected.file_path)' not in JS
+    assert "let ocSelectionRevision = 0" in JS
+    assert "selectionRevision !== ocSelectionRevision" in JS
+    assert 'callQuiet("cancel_oc_upload_review", result.review_token)' in JS
 
 
 def test_return_to_list_is_opt_in_and_current_module_is_preserved():

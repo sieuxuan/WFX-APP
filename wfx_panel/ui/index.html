@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260731-7">
+  <link rel="stylesheet" href="style.css?v=20260731-8">
 </head>
 <body>
   <aside class="panel" aria-label="WFX Smart Automation">
@@ -251,16 +251,20 @@
           </div>
         </div>
 
-        <div class="special-module-workspace" data-module-view="oc" hidden>
+        <div class="special-module-workspace oc-workspace" data-module-view="oc" hidden>
           <section class="oc-upload-card oc-list-card">
             <div class="oc-card-heading">
               <div class="oc-upload-card-copy">
+                <span class="oc-section-label">Danh sách &amp; tìm kiếm</span>
                 <strong>OC List</strong>
-                <small>Mở danh sách hoặc tìm OC ngay bên dưới.</small>
+                <small>Tìm trực tiếp theo OC No. hoặc Style.</small>
               </div>
-              <button type="button" class="oc-secondary-button" data-module-action="oc-list">Mở OC List</button>
+              <button type="button" class="oc-secondary-button oc-open-list-button" data-module-action="oc-list">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5"/></svg>
+                <span>Mở List</span>
+              </button>
             </div>
-            <div class="module-search-block oc-list-search">
+            <div class="oc-list-search">
               <div class="segmented module-filter-kind" role="group" aria-label="Tìm OC theo">
                 <button type="button" class="seg-button module-filter-button" data-filter-group="oc" data-filter-kind="oc_no" aria-pressed="true">OC No.</button>
                 <button type="button" class="seg-button module-filter-button" data-filter-group="oc" data-filter-kind="style" aria-pressed="false">Style</button>
@@ -271,26 +275,38 @@
               </div>
             </div>
           </section>
-          <section class="oc-upload-card">
-            <div class="oc-upload-card-copy">
-              <strong>Upload OC New</strong>
-              <small>Tải file mẫu một-header hoặc chọn file đã điền để review.</small>
-            </div>
-            <div class="oc-upload-card-actions oc-upload-card-actions-even">
-              <button type="button" data-module-action="oc-template">Tải file mẫu</button>
-              <button type="button" class="special-primary-button" data-module-action="oc-upload-new">Chọn file mới</button>
-            </div>
-          </section>
-          <section class="oc-upload-card">
-            <div class="oc-upload-card-copy">
-              <strong>Revise OC</strong>
-              <small>Mở report, tự lọc và tải Excel trên WFX; sửa file rồi upload lại.</small>
-            </div>
-            <div class="oc-upload-card-actions">
-              <button type="button" data-module-action="oc-revise-report">Mở report</button>
-              <button type="button" class="special-primary-button" data-module-action="oc-upload-revise">Chọn file Revise</button>
-            </div>
-          </section>
+          <div class="oc-flow-heading">
+            <span>Upload OC</span>
+            <strong>Chọn loại file cần xử lý</strong>
+          </div>
+          <div class="oc-flow-grid">
+            <section class="oc-upload-card oc-flow-card">
+              <div class="oc-flow-card-heading">
+                <span class="oc-flow-badge">NEW</span>
+                <div class="oc-upload-card-copy">
+                  <strong>Upload OC New</strong>
+                  <small>Tải mẫu, điền dữ liệu rồi chọn file để review.</small>
+                </div>
+              </div>
+              <div class="oc-upload-card-actions oc-upload-card-actions-even">
+                <button type="button" data-module-action="oc-template">Tải file mẫu</button>
+                <button type="button" class="special-primary-button" data-module-action="oc-upload-new">Chọn file</button>
+              </div>
+            </section>
+            <section class="oc-upload-card oc-flow-card">
+              <div class="oc-flow-card-heading">
+                <span class="oc-flow-badge oc-flow-badge-revise">EDIT</span>
+                <div class="oc-upload-card-copy">
+                  <strong>Revise OC</strong>
+                  <small>Mở report WFX, sửa Excel rồi chọn lại file.</small>
+                </div>
+              </div>
+              <div class="oc-upload-card-actions oc-upload-card-actions-even">
+                <button type="button" data-module-action="oc-revise-report">Mở report</button>
+                <button type="button" class="special-primary-button" data-module-action="oc-upload-revise">Chọn file</button>
+              </div>
+            </section>
+          </div>
           <section class="oc-upload-review" aria-live="polite" hidden>
             <div class="oc-upload-review-heading">
               <span>
@@ -299,9 +315,11 @@
               </span>
               <span class="oc-review-mode"></span>
             </div>
-            <div class="oc-review-metrics">
+            <div class="oc-review-identities">
               <div><small>Buyer</small><strong class="oc-review-buyer"></strong></div>
               <div><small>Season</small><strong class="oc-review-season"></strong></div>
+            </div>
+            <div class="oc-review-metrics">
               <div><small>PO</small><strong class="oc-review-po"></strong></div>
               <div><small>Style (Article)</small><strong class="oc-review-style"></strong></div>
               <div><small>Sum of Units</small><strong class="oc-review-units"></strong></div>
@@ -598,6 +616,6 @@
       </div>
     </div>
   </aside>
-  <script src="panel.js?v=20260731-7"></script>
+  <script src="panel.js?v=20260731-8"></script>
 </body>
 </html>

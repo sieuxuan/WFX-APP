@@ -1281,6 +1281,45 @@ def test_cancel_oc_review_removes_temp_file_without_calling_edi(tmp_path):
     assert not any(call[0] == "upload_oc_edi" for call in fake.calls)
 
 
+def test_reselecting_same_oc_path_after_cancel_reads_modified_file(tmp_path):
+    source = oc_workbook.write_oc_input_template(tmp_path / "same-name.xlsx")
+    workbook = load_workbook(source)
+    sheet = workbook["OC INPUT"]
+    sheet.append(
+        [
+            "J.LINDEBERG", "SS26", "Confirmed", "USD", "888 COMPANY LTD",
+            "PO-1", "ARTICLE-1", "STYLE-1", "PO-1", "PO-1", "08-10-2025",
+            "31-12-2025", "05-12-2025", "TT 60 Days", "Sweden", "BLACK",
+            "Black", "M", 10, 5, "1", "FOB", 0, None,
+        ]
+    )
+    workbook.save(source)
+    workbook.close()
+    api, fake = make_api(tmp_path)
+
+    first = api.review_oc_upload("new", str(source))
+    assert first["total_units"] == 5
+    api.cancel_oc_upload_review(first["review_token"])
+
+    workbook = load_workbook(source)
+    sheet = workbook["OC INPUT"]
+    units_column = oc_workbook.INPUT_HEADERS.index("Units") + 1
+    data_row = next(
+        row
+        for row in range(2, sheet.max_row + 1)
+        if sheet.cell(row, 1).value == "J.LINDEBERG"
+    )
+    sheet.cell(data_row, units_column).value = 17
+    workbook.save(source)
+    workbook.close()
+
+    second = api.review_oc_upload("new", str(source))
+
+    assert second["total_units"] == 17
+    assert second["source_sha256"] != first["source_sha256"]
+    assert not any(call[0] == "upload_oc_edi" for call in fake.calls)
+
+
 def test_parallel_automation_is_rejected_instead_of_queuing(tmp_path):
     api, fake = make_api(tmp_path)
     started = threading.Event()
