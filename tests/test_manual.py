@@ -234,3 +234,14 @@ def test_helper_trich_dung_so_luong_hien_co():
 def test_helper_doc_duoc_khai_bao_phu():
     assert "hotkey" in surface.covered("settings")
     assert "LOGIN_FAILED" in surface.covered("errors")
+
+
+def test_chuong_bat_dau_phu_cai_dat_khoi_dong():
+    covered = surface.covered("settings")
+    for control in (
+        "hotkey",
+        "start-hidden-input",
+        "autostart-input",
+        "always-on-top-input",
+    ):
+        assert control in covered, control

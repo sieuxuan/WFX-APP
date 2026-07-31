@@ -11,7 +11,13 @@
           "summary": "Ba cách gọi WFX Smart ra màn hình.",
           "file": "01-bat-dau/mo-panel.md",
           "keywords": ["hotkey", "phím tắt", "khay hệ thống", "bong bóng"],
-          "covers": { "settings": ["hotkey", "start-hidden-input"] }
+          "covers": {
+            "settings": [
+              "hotkey",
+              "start-hidden-input",
+              "always-on-top-input"
+            ]
+          }
         },
         {
           "id": "bat-dau-dang-nhap",
@@ -20,6 +26,40 @@
           "file": "01-bat-dau/dang-nhap.md",
           "keywords": ["tài khoản", "mật khẩu", "user id", "đăng nhập"],
           "covers": { "errors": ["LOGIN_FAILED", "LOGIN_TIMEOUT"] }
+        },
+        {
+          "id": "bat-dau-cai-dat",
+          "title": "Cài đặt ứng dụng",
+          "summary": "Tải bộ cài và cài cho riêng máy bạn.",
+          "file": "01-bat-dau/cai-dat.md",
+          "keywords": ["cài đặt", "setup", "gỡ cài đặt"],
+          "covers": {}
+        },
+        {
+          "id": "bat-dau-khoi-dong",
+          "title": "Khởi động cùng Windows",
+          "summary": "Để ứng dụng sẵn sàng ngay khi bật máy.",
+          "file": "01-bat-dau/khoi-dong-cung-windows.md",
+          "keywords": ["tự khởi động", "tray", "ẩn"],
+          "covers": {
+            "settings": ["autostart-input", "start-hidden-input"]
+          }
+        },
+        {
+          "id": "bat-dau-division",
+          "title": "Chọn Division",
+          "summary": "Chọn đúng Division trước khi thao tác.",
+          "file": "01-bat-dau/chon-division.md",
+          "keywords": ["woven", "knit", "pssg", "division"],
+          "covers": { "errors": ["DIVISION_CHANGE_NOT_CONFIRMED"] }
+        },
+        {
+          "id": "bat-dau-trinh-duyet",
+          "title": "Mở trình duyệt làm việc",
+          "summary": "Ứng dụng cần một cửa sổ trình duyệt để thao tác trên WFX.",
+          "file": "01-bat-dau/mo-trinh-duyet.md",
+          "keywords": ["chrome", "edge", "trình duyệt"],
+          "covers": {}
         }
       ]
     }
