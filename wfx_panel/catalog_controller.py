@@ -16,10 +16,11 @@ import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from heapq import nsmallest
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from wfx_panel import constants
+from wfx_panel import article_library, constants
 from wfx_panel.costing_planner import CostingPlanError, build_costing_plan
 from wfx_panel.costing_workbook import (
     CostingWorkbookError,
@@ -539,11 +540,30 @@ class CatalogController:
                 "code": "CATEGORY_UNKNOWN",
                 "message": f"Category lạ: {request.category_name}",
             }
-        if request.filter_kind not in {"code", "buyer_reference"}:
+        if request.filter_kind not in {
+            "code",
+            "buyer_reference",
+            "article_name",
+        }:
             return {
                 "ok": False,
                 "code": "INVALID_FILTER",
                 "message": "Kiểu tìm Catalog không hợp lệ.",
+            }
+        if (
+            request.filter_kind == "buyer_reference"
+            and request.category_name != "Apparel"
+        ) or (
+            request.filter_kind == "article_name"
+            and request.category_name == "Apparel"
+        ):
+            return {
+                "ok": False,
+                "code": "INVALID_FILTER",
+                "message": (
+                    "Apparel tìm theo Buyer Reference; "
+                    "Category khác tìm theo Article Name."
+                ),
             }
         if not request.query:
             return {
@@ -849,13 +869,288 @@ class CatalogController:
         filter_kind: str,
         query: str,
         file_path: str,
+        scan_article_options: bool = False,
     ) -> dict:
         """Xuất XLSX từ kết quả app hoặc từ riêng tab Costing đang chọn."""
         return self._panel.run_composite(
             lambda: self._export_costing_steps(
-                category_name, filter_kind, query, file_path
+                category_name,
+                filter_kind,
+                query,
+                file_path,
+                scan_article_options,
             )
         )
+
+    @staticmethod
+    def _article_cache_sections(document: Mapping) -> list[dict]:
+        sections = []
+        for section in document.get("sections") or ():
+            codes = list(section.get("article_code_options") or ())
+            names = list(section.get("article_name_options") or ())
+            options = [
+                {
+                    "article_code": str(codes[index] if index < len(codes) else ""),
+                    "article_name": str(names[index] if index < len(names) else ""),
+                }
+                for index in range(max(len(codes), len(names)))
+                if (index < len(codes) and str(codes[index]).strip())
+                or (index < len(names) and str(names[index]).strip())
+            ]
+            if options:
+                sections.append(
+                    {
+                        "section_key": str(section.get("section_key") or ""),
+                        "section_name": str(section.get("name") or ""),
+                        "options": options,
+                    }
+                )
+        return sections
+
+    @staticmethod
+    def _server_options_for_costing_section(
+        section: Mapping,
+        options: list[Mapping],
+    ) -> list[dict]:
+        section_identity = " ".join(
+            (
+                str(section.get("section_key") or ""),
+                str(section.get("name") or ""),
+            )
+        ).casefold()
+        if "fabric" in section_identity:
+            category = "textiles/fabric"
+            prefix = "f"
+        elif "trim" in section_identity:
+            category = "trims"
+            prefix = "t"
+        else:
+            return []
+        return [
+            dict(option)
+            for option in options
+            if str(option.get("article_code") or "")
+            .strip()
+            .casefold()
+            .startswith(prefix)
+            and str(option.get("article_category") or "").strip().casefold()
+            == category
+        ]
+
+    def _merge_cached_article_options(
+        self,
+        document: dict,
+        *,
+        scanned: bool,
+    ) -> tuple[int, str]:
+        panel = self._panel
+        user_id = str(panel._account().get("user_id") or "").strip()
+        sections = self._article_cache_sections(document)
+        server_cache = article_library.load_cached(panel._base_dir)
+        source = "server" if server_cache else ""
+        if server_cache:
+            cached = list(server_cache.get("sections") or ())
+        elif scanned and sections:
+            saver = getattr(panel._prefs, "save_costing_article_cache", None)
+            if callable(saver):
+                sections = saver(
+                    user_id,
+                    sections,
+                    base_dir=panel._base_dir,
+                )
+            return sum(len(section["options"]) for section in sections), "scan"
+        else:
+            loader = getattr(panel._prefs, "load_costing_article_cache", None)
+            cached = (
+                loader(user_id, base_dir=panel._base_dir)
+                if callable(loader)
+                else None
+            )
+            source = "cache" if cached else ""
+        if not cached:
+            return 0, "none"
+        by_key = {
+            str(section.get("section_key") or "").casefold(): section
+            for section in cached
+        }
+        by_name = {
+            str(section.get("section_name") or "").casefold(): section
+            for section in cached
+        }
+        wildcard = by_key.get("*")
+        count = 0
+        for section in document.get("sections") or ():
+            match = by_key.get(
+                str(section.get("section_key") or "").casefold()
+            ) or by_name.get(
+                str(section.get("name") or "").casefold()
+            ) or wildcard
+            if not match:
+                continue
+            options = list(match.get("options") or ())
+            if source == "server":
+                options = self._server_options_for_costing_section(
+                    section,
+                    options,
+                )
+            if not options:
+                continue
+            section["article_lookup_options"] = [
+                {
+                    "article_code": str(
+                        option.get("article_code") or ""
+                    ).strip(),
+                    "article_name": str(
+                        option.get("article_name") or ""
+                    ).strip(),
+                }
+                for option in options
+            ]
+            section["article_code_options"] = list(
+                dict.fromkeys(
+                    str(option.get("article_code") or "").strip()
+                    for option in options
+                    if str(option.get("article_code") or "").strip()
+                )
+            )
+            section["article_name_options"] = list(
+                dict.fromkeys(
+                    str(option.get("article_name") or "").strip()
+                    for option in options
+                    if str(option.get("article_name") or "").strip()
+                )
+            )
+            count += len(options)
+        return count, source if count else "none"
+
+    def article_library_status(self) -> dict:
+        return article_library.status(self._panel._base_dir)
+
+    def sync_article_library(self) -> dict:
+        return article_library.sync(
+            self._panel._base_dir,
+            self._panel._log,
+        )
+
+    def suggest_articles(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+        limit: int = 20,
+    ) -> dict:
+        category = str(category_name or "").strip()
+        kind = str(filter_kind or "").strip().casefold()
+        value = str(query or "").strip()
+        if len(value) < 2:
+            return {
+                "ok": True,
+                "code": "ARTICLE_SUGGESTIONS",
+                "query": value,
+                "suggestions": [],
+                **self.article_library_status(),
+            }
+        cached = article_library.load_cached(self._panel._base_dir)
+        if not cached:
+            return {
+                "ok": True,
+                "code": "ARTICLE_SUGGESTIONS",
+                "query": value,
+                "suggestions": [],
+                **self.article_library_status(),
+            }
+        needle = value.casefold()
+        maximum = max(1, min(50, int(limit)))
+        field_by_kind = {
+            "code": "article_code",
+            "buyer_reference": "buyer_reference",
+            "article_name": "article_name",
+        }
+        search_field = field_by_kind.get(kind)
+        if (
+            search_field is None
+            or (kind == "buyer_reference" and category != "Apparel")
+        ):
+            return {
+                "ok": True,
+                "code": "ARTICLE_SUGGESTIONS",
+                "query": value,
+                "suggestions": [],
+                **self.article_library_status(),
+            }
+
+        def candidates():
+            seen = set()
+            for section in cached.get("sections") or ():
+                for option in section.get("options") or ():
+                    code = str(option.get("article_code") or "").strip()
+                    name = str(option.get("article_name") or "").strip()
+                    buyer_reference = str(
+                        option.get("buyer_reference") or ""
+                    ).strip()
+                    article_category = str(
+                        option.get("article_category") or ""
+                    ).strip()
+                    if article_category.casefold() != category.casefold():
+                        continue
+                    identity = (
+                        code.casefold(),
+                        name.casefold(),
+                        buyer_reference.casefold(),
+                    )
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    searchable = {
+                        "article_code": code,
+                        "article_name": name,
+                        "buyer_reference": buyer_reference,
+                    }[search_field]
+                    searchable_key = searchable.casefold()
+                    if searchable_key.startswith(needle):
+                        score = 0
+                    elif needle in searchable_key:
+                        score = 1
+                    else:
+                        continue
+                    yield (
+                        score,
+                        len(searchable),
+                        searchable_key,
+                        code,
+                        name,
+                        buyer_reference,
+                        article_category,
+                        searchable,
+                    )
+
+        ranked = nsmallest(maximum, candidates())
+        suggestions = [
+            {
+                "article_code": code,
+                "article_name": name,
+                "buyer_reference": buyer_reference,
+                "article_category": article_category,
+                "value": searchable,
+            }
+            for (
+                _score,
+                _length,
+                _key,
+                code,
+                name,
+                buyer_reference,
+                article_category,
+                searchable,
+            ) in ranked
+        ]
+        return {
+            "ok": True,
+            "code": "ARTICLE_SUGGESTIONS",
+            "query": value,
+            "suggestions": suggestions,
+            **self.article_library_status(),
+        }
 
     def _export_costing_steps(
         self,
@@ -863,6 +1158,7 @@ class CatalogController:
         filter_kind: str,
         query: str,
         file_path: str,
+        scan_article_options: bool = False,
     ) -> dict:
         panel = self._panel
         category_name = str(category_name or "")
@@ -914,23 +1210,37 @@ class CatalogController:
                     "message": "Bản automation chưa hỗ trợ đọc Costing.",
                 }
             if cleaned_query:
+                scan_kwargs = {
+                    "style_status": style_status,
+                    "require_open": False,
+                    "scan_details": True,
+                    "log": panel._log,
+                }
+                if scan_article_options:
+                    scan_kwargs["scan_article_options"] = True
                 scanned = scanner(
                     article_code,
-                    style_status=style_status,
-                    require_open=False,
-                    scan_details=True,
-                    log=panel._log,
+                    **scan_kwargs,
                 )
             else:
-                scanned = scanner(
-                    require_open=False,
-                    scan_details=True,
-                    log=panel._log,
-                )
+                scan_kwargs = {
+                    "require_open": False,
+                    "scan_details": True,
+                    "log": panel._log,
+                }
+                if scan_article_options:
+                    scan_kwargs["scan_article_options"] = True
+                scanned = scanner(**scan_kwargs)
             if not scanned.get("ok"):
                 return scanned
             try:
                 document = scanned["costing"]
+                article_option_count, article_option_source = (
+                    self._merge_cached_article_options(
+                        document,
+                        scanned=bool(scan_article_options),
+                    )
+                )
                 scanned_article_code = str(
                     scanned.get("article_code")
                     or document.get("style_code")
@@ -940,11 +1250,23 @@ class CatalogController:
             except CostingWorkbookError as error:
                 return error.as_result()
             summary = costing_file_summary(document, output)
+            dropdown_message = {
+                "server": (
+                    f" Đã dùng {article_option_count} Article từ thư viện server."
+                ),
+                "scan": (
+                    f" Đã quét {article_option_count} Article và lưu cache 7 ngày."
+                ),
+                "cache": (
+                    f" Đã dùng {article_option_count} Article từ cache cho dropdown."
+                ),
+            }.get(article_option_source, "")
             return {
                 "ok": True,
                 "code": "COSTING_EXPORTED",
                 "message": (
                     f"Đã tải Costing {scanned_article_code} thành {output.name}."
+                    f"{dropdown_message}"
                 ),
                 "article_code": scanned_article_code,
                 "export_path": str(output),
@@ -955,6 +1277,8 @@ class CatalogController:
                         document.get("cost_sheet_status") or ""
                     ),
                 },
+                "article_option_count": article_option_count,
+                "article_option_source": article_option_source,
                 **summary,
             }
 
@@ -967,6 +1291,7 @@ class CatalogController:
                 "query": cleaned_query,
                 "file_name": target.name,
                 "file_format": target.suffix.casefold().lstrip("."),
+                "scan_article_options": bool(scan_article_options),
             },
         )
         if result.get("ok") and result.get("article_code"):

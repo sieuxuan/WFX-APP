@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260729-9">
+  <link rel="stylesheet" href="style.css?v=20260731-4">
 </head>
 <body>
   <aside class="panel" aria-label="WFX Smart Automation">
@@ -115,12 +115,24 @@
           <div class="module-modal-identity">
             <div class="module-modal-heading">
               <strong id="module-page-title">Catalog</strong>
-              <span class="module-modal-subtitle">Tìm Style · Season · Costing/BOM.</span>
+              <span class="module-modal-subtitle">Tìm Article · Season · Costing/BOM.</span>
             </div>
           </div>
         </header>
 
         <div class="catalog-workspace" data-module-view="catalog">
+          <div class="catalog-space-switch" role="tablist" aria-label="Không gian Catalog">
+            <button type="button" role="tab" data-catalog-space="search" aria-selected="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg>
+              <span><strong>Tìm Article</strong><small>Catalog &amp; Costing</small></span>
+            </button>
+            <button type="button" role="tab" data-catalog-space="costing" aria-selected="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5V3Z"/><path d="M8 7h8M8 11h3m2 0h3M8 15h3m2 0h3"/></svg>
+              <span><strong>Costing</strong><small>XLSX &amp; Apply</small></span>
+            </button>
+          </div>
+
+          <div class="catalog-space-panel" data-catalog-space-panel="search" role="tabpanel">
           <div class="catalog-browse-card">
             <div class="catalog-topbar">
               <label class="catalog-category-row"><span>Category</span>
@@ -133,16 +145,17 @@
                   <option value="Trims">Trims</option>
                 </select>
               </label>
-              <button class="catalog-browse-button" type="button" data-catalog-action="browse" disabled>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6l2 2h8v11H4V6Z"/><path d="m10 12 2 2 3-4"/></svg>
-                <span class="catalog-browse-label">Mở Master</span>
-              </button>
+              <div class="catalog-topbar-actions">
+                <button class="catalog-browse-button" type="button" data-catalog-action="browse" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6l2 2h8v11H4V6Z"/><path d="m10 12 2 2 3-4"/></svg>
+                  <span class="catalog-browse-label">Mở Catalog</span>
+                </button>
+                <button class="catalog-folder-summary" type="button" aria-expanded="false" title="Sửa vị trí mặc định" aria-label="Sửa vị trí mặc định">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Z"/><path d="m13.8 6.2 3.2 3.2"/></svg>
+                  <strong class="catalog-folder-current" hidden>Mặc định (Master)</strong>
+                </button>
+              </div>
             </div>
-            <button class="catalog-folder-summary" type="button" aria-expanded="false">
-              <span>Vị trí mặc định</span>
-              <strong class="catalog-folder-current">Mặc định (Master)</strong>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
-            </button>
             <div class="catalog-folder-field" hidden>
               <div class="catalog-folder-label">
                 <span>Chọn vị trí mặc định mới</span>
@@ -161,13 +174,14 @@
           </div>
           <div class="catalog-search">
             <div class="segmented catalog-kind" role="group" aria-label="Kiểu tìm Catalog">
-              <button type="button" class="seg-button catalog-kind-button" data-catalog-kind="code" aria-pressed="true">Style Code</button>
-              <button type="button" class="seg-button catalog-kind-button" data-catalog-kind="buyer_reference" aria-pressed="false">Buyer Reference</button>
+              <button type="button" class="seg-button catalog-kind-button" data-catalog-kind="code" aria-pressed="true">Article Code</button>
+              <button type="button" class="seg-button catalog-kind-button catalog-secondary-kind" data-catalog-kind="buyer_reference" aria-pressed="false">Buyer Reference</button>
             </div>
             <div class="catalog-query-row">
               <input class="catalog-query" type="text" autocomplete="off" placeholder="Ví dụ: ABC123" aria-label="Nội dung tìm Catalog" />
               <button type="button" class="catalog-primary-action" data-catalog-action="find">Tìm</button>
             </div>
+            <div class="catalog-article-suggestions" role="listbox" aria-label="Gợi ý Article" hidden></div>
             <div class="catalog-query-actions" aria-label="Mở dữ liệu Style">
               <button type="button" class="catalog-secondary-action" data-catalog-action="costsheet">Costing</button>
               <button type="button" class="catalog-secondary-action" data-catalog-action="bom">BOM</button>
@@ -179,18 +193,20 @@
               <span class="catalog-results-title">Kết quả</span>
               <span class="catalog-results-count"></span>
             </div>
-            <div class="catalog-results-list" role="listbox" aria-label="Chọn Style Code để mở"></div>
+            <div class="catalog-results-list" role="listbox" aria-label="Chọn Article Code để mở"></div>
           </div>
           <div class="style-status" aria-live="polite" hidden>
             <span class="style-status-code"></span>
             <span>Season <b class="style-status-season">—</b></span>
             <span>CostSheet <b class="style-status-costsheet">—</b></span>
           </div>
+          </div>
+
+          <div class="catalog-space-panel catalog-costing-workspace" data-catalog-space-panel="costing" role="tabpanel" hidden>
           <section class="catalog-costing-card" aria-labelledby="catalog-costing-title">
             <div class="catalog-costing-heading">
               <span>
-                <strong id="catalog-costing-title">Costing file</strong>
-                <small>Luôn dùng đúng tab Costing đang hiển thị trên WFX.</small>
+                <strong id="catalog-costing-title">File Costing</strong>
               </span>
               <span class="catalog-costing-state" data-ready="false">Quét tab Costing hiện tại</span>
             </div>
@@ -198,6 +214,13 @@
               <span>Tab hiện tại</span>
               <strong class="catalog-costing-current-code"></strong>
               <b class="catalog-costing-current-status">—</b>
+            </div>
+            <div class="catalog-article-library" data-ready="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5Z"/><path d="M8 9h8M8 13h8"/></svg>
+              <span>
+                <strong>Thư viện Article</strong>
+                <small class="catalog-article-library-status">Đang chờ đồng bộ từ server…</small>
+              </span>
             </div>
             <div class="catalog-costing-actions">
               <button type="button" data-costing-action="export-xlsx">Tải XLSX</button>
@@ -225,6 +248,7 @@
               </div>
             </div>
           </section>
+          </div>
         </div>
 
         <div class="special-module-workspace" data-module-view="oc" hidden>
@@ -527,6 +551,6 @@
       </div>
     </div>
   </aside>
-  <script src="panel.js?v=20260730-3"></script>
+  <script src="panel.js?v=20260731-4"></script>
 </body>
 </html>

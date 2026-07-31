@@ -2,7 +2,7 @@
 (() => {
   let MODULE_GROUPS = [
     { name: "Operation", accent: "cyan", modules: [
-      { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Style · Season · Costing/BOM." },
+      { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Article · Season · Costing/BOM." },
       { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở OC List hoặc tìm theo OC No. và Style." },
       { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
       { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Mở Sale ASN List hoặc tạo Sale ASN mới với cấu hình chuẩn." },
@@ -81,6 +81,7 @@
   let lastCatalogResult = null;
   let currentCostingStatus = "";
   let catalogKind = "code";
+  let catalogSpace = "search";
   let catalogPendingDestination = null;
   let costingPlanToken = "";
   let costingPlanDeleteCount = 0;
@@ -96,6 +97,8 @@
   let catalogFolderSaving = false;
   let catalogFolderScanGeneration = 0;
   let catalogFolderEditorOpen = false;
+  let articleSuggestionTimer = 0;
+  let articleSuggestionGeneration = 0;
   const moduleFilterKinds = {
     oc: "oc_no",
     sample: "sample_no",
@@ -125,7 +128,7 @@
     scan_catalog_folders: "Đang quét folder Catalog…",
     browse_catalog: "Đang mở vị trí Catalog…",
     catalog_action: "Đang tìm và mở dữ liệu Catalog…",
-    find_code: "Đang tìm Style Code…",
+    find_code: "Đang tìm Article Code…",
     find_buyer_reference: "Đang tìm Buyer Reference…",
     open_catalog_destination: "Đang mở dữ liệu style…",
     download_catalog_file: "Đang tải file đính kèm…",
@@ -160,7 +163,7 @@
     browse_catalog: "Mở vị trí Catalog",
     scan_catalog_folders: "Quét folder Catalog",
     catalog_action: "Tìm Catalog",
-    find_code: "Tìm Style Code",
+    find_code: "Tìm Article Code",
     find_buyer_reference: "Tìm Buyer Reference",
     open_catalog_destination: "Mở Costing / BOM",
     download_catalog_file: "Tải file đính kèm",
@@ -759,6 +762,31 @@
     discardCostingPlan();
   }
 
+  function showCatalogSpace(space, { focus = true } = {}) {
+    const requested = space === "costing" ? "costing" : "search";
+    const costingAllowed =
+      ($(".catalog-category")?.value || "") === CATALOG_DEFAULT_CATEGORY;
+    catalogSpace = requested === "costing" && costingAllowed
+      ? "costing"
+      : "search";
+    $$("[data-catalog-space]").forEach((button) => {
+      const selected = button.dataset.catalogSpace === catalogSpace;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    $$("[data-catalog-space-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.catalogSpacePanel !== catalogSpace;
+    });
+    if (!focus) return;
+    window.setTimeout(() => {
+      if (catalogSpace === "costing") {
+        $('[data-costing-action="import"]')?.focus();
+      } else {
+        $(".catalog-query")?.focus();
+      }
+    }, 0);
+  }
+
   function syncCatalogStepButtons() {
     const category = $(".catalog-category")?.value || "";
     const supportsDefault = category === CATALOG_DEFAULT_CATEGORY;
@@ -804,14 +832,7 @@
     if ($(".catalog-browse-button")) {
       $(".catalog-browse-button").disabled =
         busy || catalogFolderScanning || catalogFolderSaving;
-      if (!supportsDefault) {
-        $(".catalog-browse-label").textContent = `Mở ${category}`;
-      } else if (!scanned) {
-        $(".catalog-browse-label").textContent =
-          catalogDefaultFolder?.node_id
-            ? "Mở folder mặc định"
-            : "Mở Master";
-      }
+      $(".catalog-browse-label").textContent = "Mở Catalog";
     }
     if ($(".catalog-folder-refresh")) {
       $(".catalog-folder-refresh").disabled =
@@ -822,6 +843,18 @@
     });
     if ($(".catalog-costing-card")) {
       $(".catalog-costing-card").hidden = !supportsDefault;
+    }
+    const costingSpaceButton = $('[data-catalog-space="costing"]');
+    if (costingSpaceButton) {
+      costingSpaceButton.hidden = !supportsDefault;
+      costingSpaceButton.disabled = busy || catalogFolderScanning;
+    }
+    const searchSpaceButton = $('[data-catalog-space="search"]');
+    if (searchSpaceButton) {
+      searchSpaceButton.disabled = busy || catalogFolderScanning;
+    }
+    if (!supportsDefault && catalogSpace === "costing") {
+      showCatalogSpace("search", { focus: false });
     }
     const costingOpen = currentCostingStatus.toLowerCase() === "open";
     const costingStatusKnown = Boolean(currentCostingStatus.trim());
@@ -954,16 +987,31 @@
       renderCatalogResults(result);
     }
     if (result.code === "COSTING_DRY_RUN_READY") {
+      showCatalogSpace("costing", { focus: false });
       renderCostingPlan(result);
     } else if (result.code === "COSTING_ARTICLE_AMBIGUOUS") {
+      showCatalogSpace("costing", { focus: false });
       renderCostingAmbiguities(result);
     } else if (result.code === "COSTING_APPLIED") {
+      showCatalogSpace("costing", { focus: false });
       resetCostingPlan();
+    }
+    if (
+      result.code === "CATALOG_DESTINATION_OPENED"
+      && result.destination === "costsheet"
+    ) {
+      showCatalogSpace("costing", { focus: false });
+    }
+    if (["COSTING_EXPORTED", "COSTING_FILE_VALID"].includes(result.code)) {
+      showCatalogSpace("costing", { focus: false });
     }
     if (result.default_folder !== undefined) {
       catalogDefaultFolder = result.default_folder;
-      $(".catalog-folder-current").textContent =
+      const folderLabel =
         catalogDefaultFolder?.path_label || "Mặc định (Master)";
+      $(".catalog-folder-current").textContent = folderLabel;
+      $(".catalog-folder-summary").title =
+        `Sửa vị trí mặc định: ${folderLabel}`;
     }
     if (result.admin_access !== undefined) {
       setAdminAccess(
@@ -1091,6 +1139,7 @@
     setTimeout(() => $(focusTarget)?.focus(), 0);
     if (module.kind === "catalog") {
       catalogFolderEditorOpen = false;
+      showCatalogSpace("search", { focus: false });
       syncCatalogKind();
       hideCatalogResults();
       syncCatalogStepButtons();
@@ -1366,11 +1415,11 @@
     );
     $(".catalog-folder-current").textContent = selectedFolder?.path_label
       || "Mặc định (Master)";
-    $(".catalog-browse-label").textContent = !selectedFolder
-      ? "Mở Master"
-      : (selectedFolder.kind === "group"
-        ? "Mở group đã chọn"
-        : "Mở folder đã chọn");
+    $(".catalog-folder-summary").title =
+      `Sửa vị trí mặc định: ${
+        selectedFolder?.path_label || "Mặc định (Master)"
+      }`;
+    $(".catalog-browse-label").textContent = "Mở Catalog";
 
     const masterSelected = catalogSelectedNodeId === "";
     const masterRow = `<div class="catalog-folder-row catalog-master-row${
@@ -1597,6 +1646,18 @@
   }
 
   function syncCatalogKind() {
+    const category = $(".catalog-category")?.value || "";
+    const secondaryKind = category === "Apparel"
+      ? "buyer_reference"
+      : "article_name";
+    const secondaryButton = $(".catalog-secondary-kind");
+    if (secondaryButton) {
+      secondaryButton.dataset.catalogKind = secondaryKind;
+      secondaryButton.textContent = secondaryKind === "buyer_reference"
+        ? "Buyer Reference"
+        : "Article Name";
+    }
+    if (catalogKind !== "code") catalogKind = secondaryKind;
     $$(".catalog-kind-button").forEach((button) =>
       button.setAttribute(
         "aria-pressed",
@@ -1604,10 +1665,93 @@
       ));
     const input = $(".catalog-query");
     if (input) {
-      input.placeholder = catalogKind === "buyer_reference"
-        ? "Nhập Buyer Reference"
-        : "Ví dụ: ABC123";
+      input.placeholder = {
+        buyer_reference: "Nhập Buyer Reference",
+        article_name: "Nhập Article Name",
+        code: "Ví dụ: F0000001",
+      }[catalogKind];
     }
+    hideArticleSuggestions();
+  }
+
+  function setArticleLibraryStatus(state) {
+    const host = $(".catalog-article-library");
+    const label = $(".catalog-article-library-status");
+    if (!host || !label) return;
+    const ready = state?.available === true;
+    host.dataset.ready = String(ready);
+    if (!ready) {
+      label.textContent = "Chưa có dữ liệu server; dropdown vẫn cho phép nhập tay.";
+      return;
+    }
+    const count = Number(state.article_count || 0).toLocaleString("vi-VN");
+    const synced = Number(state.synced_at || 0);
+    const timeLabel = synced > 0
+      ? new Date(synced * 1000).toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+      : "";
+    label.textContent = `${count} Article · tự động cập nhật${
+      timeLabel ? ` ${timeLabel}` : ""
+    }`;
+  }
+  window.wfxSetArticleLibraryStatus = setArticleLibraryStatus;
+
+  function hideArticleSuggestions() {
+    const host = $(".catalog-article-suggestions");
+    if (!host) return;
+    host.hidden = true;
+    host.innerHTML = "";
+  }
+
+  function renderArticleSuggestions(result) {
+    const host = $(".catalog-article-suggestions");
+    const suggestions = Array.isArray(result?.suggestions)
+      ? result.suggestions
+      : [];
+    if (!host || !suggestions.length) {
+      hideArticleSuggestions();
+      return;
+    }
+    host.innerHTML = suggestions.map((item) => `
+      <button type="button" class="catalog-article-suggestion" role="option"
+        data-suggestion-value="${escapeHtml(item.value || "")}">
+        <strong>${escapeHtml(item.article_code || "—")}</strong>
+        <small>${escapeHtml([
+          item.article_name,
+          item.buyer_reference
+            ? `Buyer Ref: ${item.buyer_reference}`
+            : "",
+        ].filter(Boolean).join(" · "))}</small>
+      </button>`).join("");
+    host.hidden = false;
+  }
+
+  function scheduleArticleSuggestions() {
+    window.clearTimeout(articleSuggestionTimer);
+    const query = String($(".catalog-query")?.value || "").trim();
+    if (query.length < 2) {
+      hideArticleSuggestions();
+      return;
+    }
+    const generation = ++articleSuggestionGeneration;
+    articleSuggestionTimer = window.setTimeout(async () => {
+      const result = await callQuiet(
+        "suggest_articles",
+        $(".catalog-category")?.value || "",
+        catalogKind,
+        query,
+        20,
+      );
+      if (
+        generation !== articleSuggestionGeneration
+        || String($(".catalog-query")?.value || "").trim() !== query
+      ) return;
+      renderArticleSuggestions(result);
+    }, 180);
   }
 
   function hideCatalogResults() {
@@ -1627,7 +1771,7 @@
     if (!wrap || !list) return;
     if (result.code === "MULTIPLE_RESULTS"
         && Array.isArray(result.styles) && result.styles.length) {
-      $(".catalog-results-title").textContent = "Chọn Style Code";
+      $(".catalog-results-title").textContent = "Chọn Article Code";
       $(".catalog-results-count").textContent = `${result.styles.length} Code`;
       list.innerHTML = result.styles.map((style) => {
         const code = String(style.code || "");
@@ -1687,7 +1831,7 @@
       $(".catalog-results-title").textContent = "Kết quả";
       $(".catalog-results-count").textContent = "";
       list.innerHTML = '<div class="catalog-results-empty">Không tìm thấy kết quả.'
-        + ' Kiểm tra lại nội dung, hoặc đổi giữa Style Code và Buyer Reference.</div>';
+        + ' Kiểm tra lại nội dung hoặc đổi kiểu tìm kiếm.</div>';
       wrap.hidden = false;
     } else {
       hideCatalogResults();
@@ -1785,6 +1929,7 @@
       || (Array.isArray(result.ambiguous_articles)
         && result.ambiguous_articles.length > 0);
     plan.hidden = false;
+    window.setTimeout(() => $(".catalog-costing-apply")?.focus(), 0);
   }
 
   function renderCostingAmbiguities(result) {
@@ -1909,6 +2054,7 @@
 
   async function importCatalogCosting() {
     discardCostingPlan();
+    showCatalogSpace("costing", { focus: false });
     const inspected = await inspectCurrentCosting();
     if (!inspected?.ok) return inspected;
     if (String(
@@ -1973,9 +2119,15 @@
     "refresh-folders": () => scanCatalogFolders(true),
     "browse": () => browseCatalog(),
     "find": () => runCatalogAction(catalogKind, $(".catalog-query").value),
-    "costsheet": () => runCatalogAction(
-      catalogKind, $(".catalog-query").value, "costsheet"
-    ),
+    "costsheet": async () => {
+      const result = await runCatalogAction(
+        catalogKind, $(".catalog-query").value, "costsheet"
+      );
+      if (result?.ok && result?.code === "CATALOG_DESTINATION_OPENED") {
+        showCatalogSpace("costing");
+      }
+      return result;
+    },
     "bom": () => runCatalogAction(
       catalogKind, $(".catalog-query").value, "bom"
     ),
@@ -2050,6 +2202,9 @@
 
   function bind() {
     $(".header-actions")?.addEventListener("mousedown", (event) => event.stopPropagation());
+    $$("[data-catalog-space]").forEach((button) =>
+      button.addEventListener("click", () =>
+        showCatalogSpace(button.dataset.catalogSpace)));
     $$("[data-catalog-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(button, () => catalogActions[button.dataset.catalogAction]?.())));
@@ -2058,9 +2213,9 @@
         withButtonLoading(button, () => costingActions[button.dataset.costingAction]?.())));
     $$(".catalog-kind-button").forEach((button) =>
       button.addEventListener("click", () => {
-        catalogKind = button.dataset.catalogKind === "buyer_reference"
-          ? "buyer_reference"
-          : "code";
+        catalogKind = ["buyer_reference", "article_name"].includes(
+          button.dataset.catalogKind,
+        ) ? button.dataset.catalogKind : "code";
         syncCatalogKind();
         clearCatalogResult();
         catalogPendingDestination = null;
@@ -2072,8 +2227,17 @@
       const row = event.target.closest("[data-result-code]");
       if (row) openCatalogResultCode(row);
     });
+    $(".catalog-article-suggestions").addEventListener("click", (event) => {
+      const row = event.target.closest("[data-suggestion-value]");
+      if (!row) return;
+      $(".catalog-query").value = row.dataset.suggestionValue || "";
+      hideArticleSuggestions();
+      clearCatalogResult();
+      $(".catalog-query").focus();
+    });
     bindListboxKeys($(".catalog-results-list"));
     bindListboxKeys($(".catalog-folder-list"));
+    bindListboxKeys($(".catalog-article-suggestions"));
     $$("[data-module-action]").forEach((button) =>
       button.addEventListener("click", () => moduleActions[button.dataset.moduleAction]?.()));
     $$(".module-filter-button").forEach((button) =>
@@ -2146,9 +2310,11 @@
     document.documentElement.addEventListener("pointerenter", () => {
       pointerInsidePanel = true;
       hidePanelWhenIdle = false;
+      api()?.set_panel_pointer_inside?.(true);
     });
     document.documentElement.addEventListener("pointerleave", () => {
       pointerInsidePanel = false;
+      api()?.set_panel_pointer_inside?.(false);
     });
     window.addEventListener("blur", () => {
       if (pointerInsidePanel) {
@@ -2170,13 +2336,16 @@
     $(".generic-module-open").addEventListener("click", openModule);
     $(".catalog-query").addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
+      hideArticleSuggestions();
       withButtonLoading($('[data-catalog-action="find"]'), () => catalogActions["find"]());
     });
     $(".catalog-category").addEventListener("change", () => {
       clearCatalogPreparation();
       hideCatalogResults();
+      hideArticleSuggestions();
       catalogFolderEditorOpen = false;
       $(".catalog-folder-search").value = "";
+      syncCatalogKind();
       syncCatalogStepButtons();
     });
     $(".catalog-folder-summary").addEventListener("click", () => {
@@ -2196,6 +2365,7 @@
       catalogPendingDestination = null;
       discardCostingPlan();
       hideCatalogResults();
+      scheduleArticleSuggestions();
     });
     $(".search-box input").addEventListener("input", (event) => filterModules(event.target.value));
     window.addEventListener("keydown", (event) => {
@@ -2552,8 +2722,12 @@
       state.open_costing_folder_after_export === true;
     $(".always-on-top-input").checked = state.always_on_top !== false;
     catalogDefaultFolder = state.catalog_default_folder || null;
-    $(".catalog-folder-current").textContent =
+    const folderLabel =
       catalogDefaultFolder?.path_label || "Mặc định (Master)";
+    $(".catalog-folder-current").textContent = folderLabel;
+    $(".catalog-folder-summary").title =
+      `Sửa vị trí mặc định: ${folderLabel}`;
+    setArticleLibraryStatus(state.article_library || {});
     if (
       catalogDefaultFolder?.category_name
       && [...$(".catalog-category").options].some(

@@ -22,7 +22,8 @@ lập trình.
 - Bản EXE mặc định khởi động cùng Windows. Có thể tắt `Khởi động cùng Windows`
   trong Settings; app sẽ nhớ lựa chọn này.
 - Panel tự thu khi click ra ngoài, kể cả khi WebView bỏ lỡ sự kiện mất focus.
-  Nếu tác vụ đang chạy, panel chờ hoàn tất rồi mới thu.
+  Nếu tác vụ đang chạy, panel chờ hoàn tất rồi mới thu; nếu chuột vẫn nằm trên
+  UI thì panel tiếp tục hiện dù automation vừa chuyển foreground sang Chrome.
 - Chuyển giữa danh sách/module và thanh tiến trình có chuyển động ngắn để dễ
   theo dõi; app tự hạn chế animation khi Windows bật chế độ giảm chuyển động.
 
@@ -46,6 +47,9 @@ lập trình.
 - Password được Windows DPAPI mã hóa trên chính máy đang sử dụng.
 - Nút `Mở trình duyệt` mở Chromium browser automation và đăng nhập WFX bằng tài
   khoản đã lưu.
+- Sau lần đăng nhập thành công, app duy trì phiên nền định kỳ. Nếu WFX tự logout
+  do để lâu, app tự login lại bằng tài khoản đã lưu; một thao tác gặp phiên hết
+  hạn cũng được login lại và chạy lại đúng một lần.
 - Hỗ trợ Chrome, Edge, Brave và Chromium.
 - Hiển thị trạng thái browser và trạng thái phiên WFX ở cuối panel.
 
@@ -77,7 +81,8 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
 - Chọn Category Catalog.
 - Chọn vị trí mặc định trong cây Group/Folder của Apparel.
 - Cache cây folder theo tài khoản để không phải scan lại mỗi lần mở app.
-- Mở Master hoặc folder đã chọn.
+- Bấm **Mở Catalog** để mở Master hoặc folder đã chọn. Vị trí mặc định được
+  chỉnh bằng nút bút nhỏ ngay bên cạnh.
 - Nếu trang trung gian của menu phản hồi chậm, app tự mở Catalog đích; frame cây
   được nhận diện theo ô Category nên vẫn hoạt động khi WFX đổi tên frame.
 - Tìm theo:
@@ -87,11 +92,15 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
   Master nếu cần. Nút mở List/Master chỉ dùng khi muốn xem trước màn hình.
 - Khi chỉ có một Style Code, app tự mở Article.
 - Trước khi mở Costing, BOM hoặc File, app tự đồng bộ lại popup Article để
-  không dùng nhầm frame cũ khi WFX reload cùng một style.
+  không dùng nhầm frame cũ khi WFX reload cùng một style. Nếu driver hiện tại
+  chưa nhìn thấy popup mới, app kết nối lại sớm một lần và tiếp tục ngay tại
+  Article, không quay lại Master để tìm Style lần hai.
 - Khi có nhiều kết quả, app giữ danh sách để người dùng chọn.
 - Hiển thị Season và Internal CostSheet Status khi đọc được từ grid.
 - Mở Costing.
 - Trong Category Apparel, khu vực **Costing file** cho phép:
+  - làm việc ở màn Costing riêng; khi mở Costing hoặc chọn file Import, panel
+    tự chuyển sang màn này thay vì bắt cuộn qua phần tìm Catalog;
   - quét nhanh và hiển thị Style Code/status của đúng tab Costing hiện tại
     trước khi mở hộp thoại lưu;
   - tải Costing đang mở thành Excel `.xlsx`;
@@ -99,11 +108,22 @@ lúc Chrome được đưa lên trước, giúp giảm cảm giác chờ giữa 
     mở file/mở thư mục sau khi tải;
   - dùng nút **Kiểm tra file** để xem lỗi kèm sheet/ô trước khi tạo dry-run;
   - nhập trực tiếp vào form cột chuẩn trên sheet `Costing` rồi import lại;
+  - Article Code/Article Name dùng thư viện CSV bốn cột tự tải từ server mỗi
+    giờ, không quét hàng trăm trang và không yêu cầu user cập nhật file. Fabric
+    chỉ hiện mã F, Trim chỉ hiện mã T; khi chọn Code trong Excel, Article Name
+    tự lookup đúng nhưng vẫn có thể ghi đè thủ công. Khi offline app dùng cache
+    gần nhất; khi chưa có cache vẫn cho nhập tay;
   - scan Material Color/Size theo từng Article, mapping Table hiện tại và danh
     sách Style Color/Size; Material Color/Size có dropdown riêng theo item;
+  - nếu Material Color/Size trong file chưa có ở Article card, app tự tìm và
+    thêm đúng Color/Size trong lúc Apply, giữ nguyên card/mapping hiện có; Size
+    có thể tìm lại trong card Sample trước khi Save;
   - phối trực tiếp trong `Color Mapping`/`Size Mapping` theo từng dòng
     `Material => Style 1 | Style 2`, rồi app tick exact trong popup Table;
   - lấy Style Name chuẩn từ phần sau dấu `/` của `#lblArticleNameValue`;
+- Catalog lọc thư viện theo Category và đưa tối đa 20 gợi ý: Article Code tìm
+  theo code; Apparel có Buyer Reference; các Category còn lại dùng Article
+  Name. Kết quả cuối vẫn được xác nhận trong Category đang chọn.
   - hiển thị hai cột công thức màu đỏ chỉ đọc `Cons. Qty. Incl. Waste` và
     `Value in (USD)`; hai cột này không được import ngược;
   - có 1 dòng CM, 1 dòng Production và 2 dòng Indirect Costs; danh sách nhà

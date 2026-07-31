@@ -56,6 +56,37 @@ def test_dependency_option_indexes_match_codes_or_labels():
     }
 
 
+def test_material_variant_matching_accepts_exact_label_or_code_only():
+    option = {"label": "JL NAVY (19-3922-TCX)", "value": "19-3922-TCX"}
+
+    assert costing._material_variant_option_matches(
+        option, "JL NAVY (19-3922-TCX)"
+    )
+    assert costing._material_variant_option_matches(option, "19-3922-TCX")
+    assert not costing._material_variant_option_matches(option, "NAVY")
+
+
+def test_material_variant_flow_uses_costing_article_card_controls():
+    color = {
+        "field_key": "colMaterialColorList",
+    }
+    size = {
+        "field_key": "colMaterialSizeList",
+    }
+
+    assert costing._material_variant_config(color)["add_id"] == "imgMaterialColorAdd"
+    assert costing._material_variant_config(size)["add_id"] == "imgMaterialSizeAdd"
+    assert costing._material_variant_config(color)["fallback_card"] == ""
+    assert costing._material_variant_config(size)["fallback_card"] == "Sample"
+    assert costing._MATERIAL_VARIANT_SEARCH_XPATH.endswith(
+        "tr[1]/td[1]/table/tbody/tr[2]"
+    )
+    assert costing._MATERIAL_VARIANT_SEARCH_AND_ADD_XPATH.endswith("tr[4]/td[1]/a")
+    assert costing._MATERIAL_VARIANT_SAVE_XPATH.endswith(
+        "td[3]/table/tbody/tr/td[2]/a"
+    )
+
+
 def test_dependency_rule_matching_rejects_multiple_source_rules():
     rules = [
         ("BLACK(BLK)", ["White"]),

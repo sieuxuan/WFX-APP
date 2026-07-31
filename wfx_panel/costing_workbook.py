@@ -364,12 +364,37 @@ def _normalized_field(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
     }
 
 
+def _article_lookup_options(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    options = []
+    seen = set()
+    for raw in value:
+        if not isinstance(raw, Mapping):
+            continue
+        code = _text(raw.get("article_code"))
+        name = _text(raw.get("article_name"))
+        if not code or not name:
+            continue
+        identity = code.casefold()
+        if identity in seen:
+            continue
+        seen.add(identity)
+        options.append({"article_code": code, "article_name": name})
+    return options
+
+
 def _normalized_section(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
     return {
         "section_key": _text(raw.get("section_key")),
         "name": _text(raw.get("name") or raw.get("section_name")),
         "row_order": _order(raw.get("row_order"), index),
         "article_options": _options(raw.get("article_options")),
+        "article_code_options": _options(raw.get("article_code_options")),
+        "article_name_options": _options(raw.get("article_name_options")),
+        "article_lookup_options": _article_lookup_options(
+            raw.get("article_lookup_options")
+        ),
     }
 
 
@@ -1393,6 +1418,136 @@ def _add_special_article_dropdowns(
     return lookup_column
 
 
+def _add_material_article_dropdowns(
+    ws: Any,
+    document: Mapping[str, Any],
+    layout: _CostingFormLayout,
+    *,
+    lookup_column: int,
+) -> int:
+    """Dropdown Article Code/Name từ thư viện server/cache."""
+    ordered_sections = sorted(
+        document["sections"],
+        key=lambda value: value["row_order"],
+    )
+    validation_cache: dict[
+        tuple[tuple[str, str], ...],
+        tuple[DataValidation, DataValidation, str, str, int],
+    ] = {}
+    code_column = FORM_COLUMNS.index("Article Code") + 1
+    name_column = FORM_COLUMNS.index("Article Name") + 1
+    code_target_letter = get_column_letter(code_column)
+    name_target_letter = get_column_letter(name_column)
+    for section, rows in zip(ordered_sections, layout.section_rows, strict=True):
+        if _section_item_type(section) == "cost_line" or not rows:
+            continue
+        pairs = _article_lookup_options(section.get("article_lookup_options"))
+        if not pairs:
+            codes = _unique_values(section.get("article_code_options") or ())
+            names = _unique_values(section.get("article_name_options") or ())
+            pairs = [
+                {"article_code": code, "article_name": names[index]}
+                for index, code in enumerate(codes)
+                if index < len(names)
+            ]
+        if not pairs:
+            continue
+        signature = tuple(
+            (option["article_code"], option["article_name"])
+            for option in pairs
+        )
+        target_code_range = (
+            f"{code_target_letter}{min(rows)}:"
+            f"{code_target_letter}{max(rows)}"
+        )
+        target_name_range = (
+            f"{name_target_letter}{min(rows)}:"
+            f"{name_target_letter}{max(rows)}"
+        )
+        cached = validation_cache.get(signature)
+        if cached is None:
+            lookup_code_letter = get_column_letter(lookup_column)
+            lookup_name_letter = get_column_letter(lookup_column + 1)
+            for option_row, option in enumerate(pairs, 2):
+                ws.cell(
+                    option_row,
+                    lookup_column,
+                    _excel_safe(option["article_code"]),
+                )
+                ws.cell(
+                    option_row,
+                    lookup_column + 1,
+                    _excel_safe(option["article_name"]),
+                )
+            ws.column_dimensions[lookup_code_letter].hidden = True
+            ws.column_dimensions[lookup_name_letter].hidden = True
+            last_option_row = len(pairs) + 1
+
+            def validation_for(
+                letter: str,
+                label: str,
+                option_last_row: int = last_option_row,
+            ) -> DataValidation:
+                validation = DataValidation(
+                    type="list",
+                    formula1=(
+                        f"=${letter}$2:${letter}${option_last_row}"
+                    ),
+                    allow_blank=True,
+                )
+                validation.showErrorMessage = False
+                validation.promptTitle = f"{label} từ thư viện"
+                validation.prompt = (
+                    "Danh sách tự đồng bộ từ server; vẫn có thể nhập tay."
+                )
+                validation.showInputMessage = True
+                ws.add_data_validation(validation)
+                return validation
+
+            code_validation = validation_for(
+                lookup_code_letter,
+                "Article Code",
+            )
+            name_validation = validation_for(
+                lookup_name_letter,
+                "Article Name",
+            )
+            cached = (
+                code_validation,
+                name_validation,
+                lookup_code_letter,
+                lookup_name_letter,
+                last_option_row,
+            )
+            validation_cache[signature] = cached
+            lookup_column += 2
+        (
+            code_validation,
+            name_validation,
+            lookup_code_letter,
+            lookup_name_letter,
+            last_option_row,
+        ) = cached
+        code_validation.add(target_code_range)
+        name_validation.add(target_name_range)
+        available_codes = {
+            option["article_code"].casefold() for option in pairs
+        }
+        for row in rows:
+            current_code = _text(ws.cell(row, code_column).value)
+            current_name = _text(ws.cell(row, name_column).value)
+            if current_name and current_code.casefold() not in available_codes:
+                continue
+            ws.cell(row, name_column).value = (
+                f'=IFERROR(INDEX(${lookup_name_letter}$2:'
+                f'${lookup_name_letter}${last_option_row},'
+                f'MATCH({code_target_letter}{row},'
+                f'${lookup_code_letter}$2:'
+                f'${lookup_code_letter}${last_option_row},0)),"")'
+            )
+    return lookup_column
+
+
 @dataclass(frozen=True)
 class _CostingFormLayout:
     section_rows: list[list[int]]
@@ -1750,6 +1905,12 @@ def _write_costing_form(
         layout,
         lookup_column=next_lookup_column,
     )
+    next_lookup_column = _add_material_article_dropdowns(
+        ws,
+        document,
+        layout,
+        lookup_column=next_lookup_column,
+    )
     _add_item_option_dropdowns(
         ws,
         document,
@@ -1911,7 +2072,63 @@ def _missing_form_columns(ws: Any) -> list[str]:
     ]
 
 
+_ARTICLE_NAME_FORMULA = re.compile(
+    r'^=IFERROR\(INDEX\(\$([A-Z]+)\$2:\$\1\$(\d+),'
+    r'MATCH\(([A-Z]+)(\d+),\$([A-Z]+)\$2:\$\5\$\2,0\)\),""\)$'
+)
+
+
+def _resolve_generated_article_name_formulas(ws: Any) -> None:
+    """Đổi riêng công thức lookup do app tạo thành text trước khi validate."""
+    code_column = FORM_COLUMNS.index("Article Code") + 1
+    name_column = FORM_COLUMNS.index("Article Name") + 1
+    code_letter = get_column_letter(code_column)
+    lookup_cache: dict[tuple[str, str, int], dict[str, str]] = {}
+    for row in range(2, ws.max_row + 1):
+        cell = ws.cell(row, name_column)
+        formula = cell.value
+        if not isinstance(formula, str) or not formula.startswith("="):
+            continue
+        match = _ARTICLE_NAME_FORMULA.fullmatch(formula)
+        if match is None:
+            continue
+        (
+            lookup_name_letter,
+            last_row_text,
+            target_code_letter,
+            target_row_text,
+            lookup_code_letter,
+        ) = match.groups()
+        last_row = int(last_row_text)
+        if (
+            target_code_letter != code_letter
+            or int(target_row_text) != row
+            or last_row < 2
+            or last_row > ws.max_row
+            or not ws.column_dimensions[lookup_code_letter].hidden
+            or not ws.column_dimensions[lookup_name_letter].hidden
+        ):
+            continue
+        cache_key = (
+            lookup_code_letter,
+            lookup_name_letter,
+            last_row,
+        )
+        lookup = lookup_cache.get(cache_key)
+        if lookup is None:
+            lookup = {
+                _text(ws[f"{lookup_code_letter}{lookup_row}"].value).casefold():
+                _text(ws[f"{lookup_name_letter}{lookup_row}"].value)
+                for lookup_row in range(2, last_row + 1)
+                if _text(ws[f"{lookup_code_letter}{lookup_row}"].value)
+            }
+            lookup_cache[cache_key] = lookup
+        article_code = _text(ws.cell(row, code_column).value).casefold()
+        cell.value = lookup.get(article_code, "")
+
+
 def _costing_form_rows(ws: Any) -> list[dict[str, Any]]:
+    _resolve_generated_article_name_formulas(ws)
     return list(
         _worksheet_rows(
             ws,

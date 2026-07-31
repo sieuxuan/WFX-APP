@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "version": "20260731-article-list-15240",
+  "format": "csv",
+  "data_url": "../Article%20List.csv",
+  "sha256": "b16ad87ed121654f63b43971fc52fc71248bb378b469bbbf17ceb853de050593"
+}

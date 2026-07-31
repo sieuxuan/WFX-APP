@@ -872,6 +872,41 @@ def test_native_foreground_fallback_defers_until_action_finishes(monkeypatch):
     assert hidden == [True]
 
 
+def test_native_foreground_keeps_panel_while_pointer_is_inside(monkeypatch):
+    app = panel_app.PanelApp()
+    app._panel_visible = True
+    app._panel_hide_pending = True
+    app._panel_focus_lost_since = 10.0
+    hidden = []
+    app.hide_panel = lambda: hidden.append(True)
+
+    result = app.set_panel_pointer_inside(True)
+    app._track_panel_foreground(os.getpid() + 1)
+
+    assert result["code"] == "PANEL_POINTER_INSIDE"
+    assert hidden == []
+    assert app._panel_hide_pending is False
+    assert app._panel_focus_lost_since == 0.0
+
+
+def test_blur_request_keeps_panel_while_pointer_is_inside(monkeypatch):
+    app = panel_app.PanelApp()
+    app._panel_visible = True
+    app._panel_pointer_inside = True
+    hidden = []
+    app.hide_panel = lambda: hidden.append(True)
+    monkeypatch.setattr(
+        panel_app,
+        "_foreground_process_id",
+        lambda: os.getpid() + 1,
+    )
+
+    result = app.request_panel_hide()
+
+    assert result["code"] == "PANEL_POINTER_KEPT"
+    assert hidden == []
+
+
 def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
     import wfx_panel.panel_app as module
 

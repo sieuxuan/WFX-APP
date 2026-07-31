@@ -36,7 +36,7 @@ METHOD_LABELS = {
     "prepare_catalog": "Chuẩn bị Catalog",
     "browse_catalog": "Mở Catalog List",
     "catalog_action": "Tìm trong Catalog",
-    "find_code": "Tìm Style Code",
+    "find_code": "Tìm Article Code",
     "find_buyer_reference": "Tìm Buyer Reference",
     "open_catalog_destination": "Mở Costing/BOM",
     "download_catalog_file": "Tải file Catalog",

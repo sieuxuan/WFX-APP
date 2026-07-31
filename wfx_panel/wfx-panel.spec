@@ -16,6 +16,7 @@ a = Analysis(
     datas=[
         ("ui", "wfx_panel/ui"),
         ("assets/wfx.ico", "wfx_panel/assets"),
+        ("../Article List.csv", "."),
     ],
     hiddenimports=[
         "login",

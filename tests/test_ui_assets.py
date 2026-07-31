@@ -75,20 +75,30 @@ def test_index_html_has_contract_hooks():
         'data-costing-action="export-xlsx"',
         'data-costing-action="import"',
         'data-costing-action="apply"',
+        'class="catalog-article-library"',
+        'class="catalog-article-suggestions"',
         'data-catalog-kind="code"',
         'data-catalog-kind="buyer_reference"',
         'class="catalog-folder-search"',
         'class="catalog-folder-list"',
         'class="catalog-query"',
         'class="catalog-results-list"',
+        'data-catalog-space="search"',
+        'data-catalog-space="costing"',
+        'data-catalog-space-panel="costing"',
         'class="user-input"',
         'class="save-button settings-save-button"',
         'class="catalog-log"',
         'data-theme-choice="dark"',
         'data-theme-choice="system"',
-        'src="panel.js?v=20260730-3"',
+        'src="panel.js?v=20260731-4"',
     ]:
         assert hook in html, hook
+    assert "Tìm và mở đúng Style" not in html
+    assert "Costing workspace" not in html
+    assert "Xuất để chỉnh sửa" not in html
+    assert "Quét Article cho dropdown" not in html
+    assert '<span class="catalog-browse-label">Mở Catalog</span>' in html
     assert 'data-costing-action="export-csv"' not in html
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
     assert 'class="compact-launcher"' not in html
@@ -121,6 +131,17 @@ def test_catalog_search_and_destinations_are_direct_actions():
     assert 'class="catalog-results-list"' in html
     assert 'class="catalog-costing-card"' in html
     assert "Quét tab Costing hiện tại" in html
+
+
+def test_catalog_costing_has_a_dedicated_workspace():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert 'data-catalog-space-panel="search"' in html
+    assert 'data-catalog-space-panel="costing"' in html
+    assert "Costing workspace" not in html
+    assert 'id="catalog-costing-title">File Costing' in html
+    assert ".catalog-space-switch" in css
+    assert ".catalog-costing-workspace" in css
 
 
 def test_catalog_folder_picker_is_searchable_and_hides_technical_copy():

@@ -31,11 +31,22 @@ Benchmark RAM/tốc độ của bản này nằm tại
   thêm CM/Production/Indirect Costs bằng danh sách quét từ WFX, rồi cập
   nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
   dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
+- Catalog tách màn tìm Article và màn Costing; mở Costing hoặc Import file tự
+  chuyển sang workspace Costing. Thư viện CSV bốn cột từ server tự đồng bộ mỗi
+  giờ: Category lọc gợi ý Article Code, Apparel tìm Buyer Reference, category
+  khác tìm Article Name. Costing chỉ đưa mã F vào Fabric, mã T vào Trim và tự
+  điền Article Name trong Excel; user không phải scan hay chọn file. Khi Apply,
+  Material Color/Size
+  còn thiếu được bổ sung vào đúng Article card rồi Save trước khi điền Costing.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup.
 - Panel có fallback Win32 để tự thu ổn định khi click ra ngoài; backend hoàn tất
-  cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm.
+  cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm. Panel
+  không tự thu sau flow khi chuột vẫn nằm trên UI.
+- Phiên WFX được duy trì nền mỗi 4 phút sau lần login đầu tiên; nếu timeout,
+  app tự đăng nhập lại và retry thao tác đúng một lần. Popup Article được
+  đồng bộ CDP sớm để mở Costing mà không quay lại tìm Style lần hai.
 - Mọi flow `List` xác nhận WFX đã đổi màn hình trước khi báo thành công; `Đổi
   FOC` tự mở lại đúng Company Setup khi context hiện tại đã cũ.
 - Search ưu tiên đúng List đã mở; nếu chưa mở, app tự vào đúng List, chờ
