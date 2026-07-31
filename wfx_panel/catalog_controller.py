@@ -57,6 +57,9 @@ class CatalogController:
         # URL tải thật không đưa ra WebView. UI chỉ nhận token ngẫu nhiên và
         # metadata; khi click tải, token được resolve lại trong process Python.
         self.files: dict[str, dict] = {}
+        # Kết quả Sample nhiều dòng cũng chỉ đưa token ra UI. Row key dùng để
+        # click tiếp trên grid WFX được giữ hoàn toàn trong backend.
+        self.sample_file_choices: dict[str, dict] = {}
         # Plan import chứa document/selector-independent diff ở process Python.
         # WebView chỉ nhận token ngẫu nhiên; plan tự hết hạn sau 15 phút.
         self.costing_plans: dict[str, dict] = {}
@@ -68,6 +71,7 @@ class CatalogController:
         self.active_article_destination = None
         self.prepared_category = None
         self.files.clear()
+        self.sample_file_choices.clear()
         self.costing_plans.clear()
 
     def reset_for_account_change(self) -> None:
@@ -77,6 +81,7 @@ class CatalogController:
         self.active_article_destination = None
         self.prepared_category = None
         self.files.clear()
+        self.sample_file_choices.clear()
         self.costing_plans.clear()
 
     # -- helpers -----------------------------------------------------------
@@ -170,6 +175,52 @@ class CatalogController:
         return self._publish_file_scan(
             scanner(article_code, self._panel._log)
         )
+
+    def _publish_sample_file_choices(self, result: dict) -> dict:
+        """Ẩn row key của grid Sample sau token ngẫu nhiên cho WebView."""
+        if result.get("code") != "SAMPLE_MULTIPLE_RESULTS":
+            return result
+        self.sample_file_choices.clear()
+        public_samples: list[dict] = []
+        for raw in result.get("samples") or []:
+            if not isinstance(raw, dict):
+                continue
+            style_code = str(raw.get("style_code") or "").strip()
+            row_key = str(raw.get("row_key") or "").strip()
+            if not style_code or not row_key:
+                continue
+            choice_id = uuid.uuid4().hex
+            self.sample_file_choices[choice_id] = {
+                "row_key": row_key,
+                "style_code": style_code,
+            }
+            public_samples.append(
+                {
+                    "choice_id": choice_id,
+                    "style_code": style_code,
+                    "sample_no": str(raw.get("sample_no") or ""),
+                    "created_by": str(raw.get("created_by") or ""),
+                }
+            )
+        return {
+            **result,
+            "samples": public_samples,
+            "source": "sample",
+        }
+
+    def _sample_files_result(self, article_code: str) -> dict:
+        scanned = self._scan_open_article_files(article_code)
+        return {
+            **scanned,
+            "source": "sample",
+            "article_code": article_code,
+        }
+
+    def _invalidate_catalog_search_only(self) -> None:
+        """Sample đã đổi trang WFX; bỏ Catalog context nhưng giữ token file."""
+        self.result = None
+        self.active_article_destination = None
+        self.prepared_category = None
 
     # -- workflows ---------------------------------------------------------
     def scan_folders(self, category_name: str, force: bool = False) -> dict:
@@ -1684,6 +1735,82 @@ class CatalogController:
             "download_catalog_file",
             action,
             {"file_id": file_id},
+        )
+
+    def check_sample_files(self, filter_kind: str, query: str) -> dict:
+        """Tìm Sample, tự mở Style duy nhất rồi quét file như Catalog."""
+        panel = self._panel
+        filter_kind = str(filter_kind or "").casefold()
+        query = str(query or "").strip()
+
+        def action() -> dict:
+            self._invalidate_catalog_search_only()
+            self.files.clear()
+            self.sample_file_choices.clear()
+            finder = getattr(panel._login, "find_sample_file_results", None)
+            if not callable(finder):
+                return {
+                    "ok": False,
+                    "code": "SAMPLE_FILES_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ Check File ở Sample List.",
+                }
+            sample = constants.MODULE_BY_ID["0004_0056_4070"]
+            found = finder(
+                sample["xpath"],
+                filter_kind,
+                query,
+                panel._log,
+            )
+            if found.get("code") == "SAMPLE_MULTIPLE_RESULTS":
+                return self._publish_sample_file_choices(found)
+            if found.get("code") != "SAMPLE_STYLE_OPENED":
+                return {**found, "source": "sample"}
+            article_code = str(found.get("article_code") or "").strip()
+            return self._sample_files_result(article_code)
+
+        return panel._run(
+            "check_sample_files",
+            action,
+            {"filter_kind": filter_kind, "query": query},
+        )
+
+    def open_sample_file_choice(self, choice_id: str) -> dict:
+        """Mở lựa chọn Sample đã token hoá và tiếp tục quét file."""
+        panel = self._panel
+        choice_id = str(choice_id or "").strip()
+
+        def action() -> dict:
+            choice = self.sample_file_choices.get(choice_id)
+            if choice is None:
+                return {
+                    "ok": False,
+                    "code": "SAMPLE_RESULT_EXPIRED",
+                    "message": (
+                        "Lựa chọn Sample đã hết hiệu lực. "
+                        "Hãy bấm Check File lại."
+                    ),
+                }
+            opener = getattr(panel._login, "open_sample_file_result", None)
+            if not callable(opener):
+                return {
+                    "ok": False,
+                    "code": "SAMPLE_FILES_UNSUPPORTED",
+                    "message": "Bản automation chưa hỗ trợ mở Style từ Sample.",
+                }
+            opened = opener(
+                choice["row_key"],
+                choice["style_code"],
+                panel._log,
+            )
+            if opened.get("code") != "SAMPLE_STYLE_OPENED":
+                return opened
+            self.sample_file_choices.clear()
+            return self._sample_files_result(choice["style_code"])
+
+        return panel._run(
+            "open_sample_file_choice",
+            action,
+            {"choice_id": choice_id},
         )
 
     def open_destination(self, destination: str, article_code: str) -> dict:

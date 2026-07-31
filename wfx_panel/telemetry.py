@@ -54,6 +54,8 @@ METHOD_LABELS = {
     "confirm_oc_upload": "Xác nhận Upload OC qua EDI Buyer PO",
     "cancel_oc_upload_review": "Huỷ review Upload OC",
     "search_sample": "Tìm trong Sample List",
+    "check_sample_files": "Check File trong Sample List",
+    "open_sample_file_choice": "Mở Style đã chọn trong Sample List",
     "search_sale_asn": "Tìm trong Sale ASN List",
     "search_rmpo": "Tìm trong RMPO List",
     "search_indent": "Tìm trong Indent List",
@@ -339,6 +341,18 @@ ERROR_CODE_INFO.update(
             "Màn Sample Order mới chưa sẵn sàng",
             "Chờ form tải xong rồi thử lại.",
         ),
+        "SAMPLE_FILES_UNSUPPORTED": (
+            "Phiên bản automation chưa hỗ trợ Check File Sample",
+            "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
+        ),
+        "SAMPLE_FILE_SEARCH_FAILED": (
+            "Không thể đọc kết quả Sample để kiểm tra file",
+            "Mở lại Sample List, chờ grid ổn định rồi thử lại.",
+        ),
+        "SAMPLE_FILE_OPEN_FAILED": (
+            "Không thể mở Style từ kết quả Sample",
+            "Tìm lại Sample và kiểm tra Style Code trên grid WFX.",
+        ),
         "SESSION_CHECK_FAILED": (
             "Không thể kiểm tra phiên WFX",
             "Kiểm tra trình duyệt automation và đăng nhập lại.",
@@ -401,6 +415,8 @@ _METHOD_MODULES = {
     "confirm_oc_upload": "OC List",
     "cancel_oc_upload_review": "OC List",
     "search_sample": "Sample List",
+    "check_sample_files": "Sample List",
+    "open_sample_file_choice": "Sample List",
     "search_sale_asn": "Sale ASN",
     "search_rmpo": "RMPO List",
     "find_supplier": "Supplier List",
@@ -432,6 +448,11 @@ _FILTER_LABELS = {
         "style": "Style",
     },
     "search_sample": {
+        "sample_no": "Sample Order No.",
+        "style": "Style",
+        "created_by": "Created By",
+    },
+    "check_sample_files": {
         "sample_no": "Sample Order No.",
         "style": "Style",
         "created_by": "Created By",

@@ -353,7 +353,15 @@
             <div class="module-query-row">
               <input class="sample-query" type="text" autocomplete="off" placeholder="Nhập Sample Order No." aria-label="Nội dung tìm Sample" />
               <button type="button" class="special-primary-button" data-module-action="sample-search">Tìm</button>
+              <button type="button" class="sample-check-file-button" data-module-action="sample-check-file">Check File</button>
             </div>
+            <section class="sample-file-results" aria-live="polite" hidden>
+              <div class="catalog-results-heading">
+                <strong class="sample-file-results-title">Kết quả</strong>
+                <span class="sample-file-results-count"></span>
+              </div>
+              <div class="sample-file-results-list" role="listbox" aria-label="Kết quả file Sample"></div>
+            </section>
           </div>
         </div>
 

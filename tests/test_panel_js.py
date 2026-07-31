@@ -504,6 +504,16 @@ def test_catalog_file_results_are_downloadable_from_backend_tokens():
     assert 'row.addEventListener("click", () => downloadCatalogFile(row))' in JS
 
 
+def test_sample_check_file_supports_multiple_choice_and_token_downloads():
+    assert '"check_sample_files"' in JS
+    assert '"open_sample_file_choice"' in JS
+    assert '"SAMPLE_MULTIPLE_RESULTS"' in JS
+    assert "data-sample-choice-id" in JS
+    assert "renderSampleFileResults" in JS
+    assert 'result.source === "sample"' in JS
+    assert 'event.target.closest("[data-file-id]")' in JS
+
+
 def test_auto_update_banner_uses_one_click_installer():
     assert "wfxSetUpdateState" in JS
     assert '".update-banner-button"' in JS

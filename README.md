@@ -53,6 +53,9 @@ Benchmark RAM/tốc độ của bản này nằm tại
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup. Nút New của QA, Advance Payment Request và Expense Invoice
   mở thẳng màn tạo mới, không yêu cầu vào List trước.
+- Sample List có `Check File`: app tìm theo filter hiện tại, tự mở Style Code
+  khi chỉ có một kết quả; nếu có nhiều kết quả thì cho chọn đúng Sample, sau đó
+  liệt kê file đính kèm và cho tải trực tiếp như Catalog.
 - Panel có fallback Win32 để tự thu ổn định khi click ra ngoài; backend hoàn tất
   cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm. Panel
   không tự thu sau flow khi chuột vẫn nằm trên UI.
