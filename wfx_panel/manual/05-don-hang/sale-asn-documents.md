@@ -21,6 +21,10 @@ Excel để gửi hoặc lưu trữ.
 > [!meo]
 > Hai sheet giữ nguyên cách trình bày của báo cáo nguồn.
 
+> [!meo]
+> Bạn có thể kéo cột Docs tới vị trí bất kỳ; ứng dụng sẽ tự quét ngang bảng để
+> tìm cột, không yêu cầu đưa Docs về vị trí mặc định.
+
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |

@@ -77,15 +77,14 @@ _SALE_ASN_ROWS_JS = """root => {
         && row.getAttribute('aria-hidden') !== 'true');
     const grouped = new Map();
     rowNodes.forEach((row, index) => {
-        const key = row.getAttribute('row-id')
-            || row.getAttribute('row-index') || String(index);
+        const key = row.getAttribute('row-index')
+            || row.getAttribute('row-id') || String(index);
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key).push(row);
     });
     const rows = [];
     grouped.forEach((parts, rowKey) => {
         let invoiceNo = '';
-        let hasDocs = false;
         let selected = false;
         for (const row of parts) {
             selected = selected
@@ -99,15 +98,9 @@ _SALE_ASN_ROWS_JS = """root => {
                 if (!invoiceNo && /invoice\\s*(no|number)|invoiceno/.test(meta)) {
                     invoiceNo = text(cell);
                 }
-                if (/\\bdocs?\\b|document/.test(meta)) {
-                    hasDocs = [...cell.querySelectorAll(
-                        'a, button, input[type="button"], [onclick]'
-                    )].some(shown);
-                }
             }
         }
-        rows.push({ row_key: rowKey, invoice_no: invoiceNo, has_docs: hasDocs,
-            selected });
+        rows.push({ row_key: rowKey, invoice_no: invoiceNo, selected });
     });
     const noRows = [...root.querySelectorAll(
         '.ag-overlay-no-rows-wrapper, .ag-overlay-no-rows-center'
@@ -128,7 +121,7 @@ _CLICK_SALE_ASN_DOCS_JS = """(root, target) => {
         '.ag-row[row-index], [role="row"][row-index]'
     )];
     const parts = rows.filter((row, index) => (
-        row.getAttribute('row-id') || row.getAttribute('row-index') || String(index)
+        row.getAttribute('row-index') || row.getAttribute('row-id') || String(index)
     ) === target.rowKey);
     for (const row of parts) {
         for (const cell of row.querySelectorAll('[role="gridcell"], .ag-cell, td')) {
@@ -157,13 +150,40 @@ _CLICK_SALE_ASN_DOCS_JS = """(root, target) => {
 }"""
 
 
+_SALE_ASN_SCROLL_STATE_JS = """root => {
+    const scroller = root.querySelector('.ag-body-horizontal-scroll-viewport')
+        || root.querySelector('.ag-center-cols-viewport')
+        || root.querySelector('.ag-body-viewport');
+    if (!scroller) return { current: 0, maximum: 0, viewport: 0 };
+    return {
+        current: Number(scroller.scrollLeft || 0),
+        maximum: Math.max(0, Number(scroller.scrollWidth || 0)
+            - Number(scroller.clientWidth || 0)),
+        viewport: Number(scroller.clientWidth || 0),
+    };
+}"""
+
+
+_SALE_ASN_SCROLL_TO_JS = """(root, left) => {
+    const scroller = root.querySelector('.ag-body-horizontal-scroll-viewport')
+        || root.querySelector('.ag-center-cols-viewport')
+        || root.querySelector('.ag-body-viewport');
+    if (!scroller) return false;
+    scroller.scrollLeft = Number(left || 0);
+    scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    return true;
+}"""
+
+
 def _sale_asn_result_grid(
     frame: Frame,
+    expected_invoice: str = "",
     timeout_s: float = 15,
 ) -> tuple[Any, dict[str, Any]]:
     deadline = time.monotonic() + timeout_s
     stable_key: tuple[Any, ...] | None = None
     stable_since = 0.0
+    last_candidate: tuple[Any, dict[str, Any]] | None = None
     while time.monotonic() < deadline:
         try:
             roots = frame.locator(".ag-root-wrapper")
@@ -172,17 +192,28 @@ def _sale_asn_result_grid(
                 if not root.is_visible():
                     continue
                 payload = root.evaluate(_SALE_ASN_ROWS_JS)
+                last_candidate = (root, payload)
                 rows = payload.get("rows") or []
                 key = tuple(
                     (
                         str(row.get("row_key") or ""),
                         str(row.get("invoice_no") or ""),
                         bool(row.get("selected")),
-                        bool(row.get("has_docs")),
                     )
                     for row in rows
                 )
-                ready = bool(rows) or bool(payload.get("noRows"))
+                expected = expected_invoice.strip().casefold()
+                exact_invoice_ready = not expected or any(
+                    str(row.get("invoice_no") or "").strip().casefold()
+                    == expected
+                    for row in rows
+                )
+                # Floating Filter có debounce. Với Invoice No. cụ thể, chỉ
+                # chấp nhận grid khi chính invoice đó đã xuất hiện; không nhận
+                # DOM/no-rows cũ trong khoảng trống trước lúc request bắt đầu.
+                ready = (bool(rows) and exact_invoice_ready) or (
+                    not expected and bool(payload.get("noRows"))
+                )
                 now = time.monotonic()
                 if ready and key == stable_key:
                     if now - stable_since >= 0.8:
@@ -193,6 +224,8 @@ def _sale_asn_result_grid(
         except PlaywrightError:
             pass
         _wait(frame, MODULE_GRID_POLL_MS)
+    if expected_invoice and last_candidate is not None:
+        return last_candidate
     raise PlaywrightTimeoutError("Kết quả Sale ASN chưa ổn định.")
 
 
@@ -201,7 +234,7 @@ def _select_sale_asn_row(
     filter_kind: str,
     query: str,
 ) -> dict[str, Any]:
-    rows = [row for row in payload.get("rows") or [] if row.get("has_docs")]
+    rows = list(payload.get("rows") or [])
     if not rows:
         raise RuntimeError("SALE_ASN_INVOICE_NOT_FOUND")
     if filter_kind == "invoice_no" and query:
@@ -215,6 +248,7 @@ def _select_sale_asn_row(
             return exact[0]
         if len(exact) > 1:
             raise RuntimeError("SALE_ASN_MULTIPLE_RESULTS")
+        raise RuntimeError("SALE_ASN_INVOICE_NOT_FOUND")
     selected = [row for row in rows if row.get("selected")]
     if len(selected) == 1:
         return selected[0]
@@ -223,6 +257,42 @@ def _select_sale_asn_row(
     if query and len(rows) == 1:
         return rows[0]
     raise RuntimeError("SALE_ASN_SELECTION_REQUIRED")
+
+
+def _sale_asn_horizontal_positions(state: dict[str, Any]) -> list[int]:
+    current = max(0, int(float(state.get("current") or 0)))
+    maximum = max(0, int(float(state.get("maximum") or 0)))
+    viewport = max(0, int(float(state.get("viewport") or 0)))
+    step = max(160, int(viewport * 0.75))
+    positions = [current, 0]
+    positions.extend(range(step, maximum, step))
+    positions.append(maximum)
+    return list(dict.fromkeys(min(maximum, position) for position in positions))
+
+
+def _click_sale_asn_docs(
+    frame: Frame,
+    root: Any,
+    row_key: str,
+    log: Callable[[str], None],
+) -> bool:
+    """Quét ngang AG Grid vì người dùng có thể kéo Docs tới vị trí bất kỳ."""
+    state = root.evaluate(_SALE_ASN_SCROLL_STATE_JS)
+    original = max(0, int(float(state.get("current") or 0)))
+    for position in _sale_asn_horizontal_positions(state):
+        root.evaluate(_SALE_ASN_SCROLL_TO_JS, position)
+        _wait(frame, MODULE_GRID_POLL_MS)
+        if root.evaluate(
+            _CLICK_SALE_ASN_DOCS_JS,
+            {"rowKey": row_key},
+        ):
+            _write_log(
+                log,
+                "[SALE ASN DOCS] Đã tìm thấy cột Docs sau khi quét ngang grid.",
+            )
+            return True
+    root.evaluate(_SALE_ASN_SCROLL_TO_JS, original)
+    return False
 
 
 def _find_frame_with(
@@ -454,12 +524,18 @@ def prepare_sale_asn_documents(
             )
             _apply_module_search(page, field, query, selected_field.label, log)
 
-        root, payload = _sale_asn_result_grid(frame)
+        expected_invoice = query if filter_kind == "invoice_no" else ""
+        root, payload = _sale_asn_result_grid(
+            frame,
+            expected_invoice=expected_invoice,
+        )
         row = _select_sale_asn_row(payload, filter_kind, query)
         invoice_no = str(row.get("invoice_no") or query or "Invoice").strip()
-        clicked = root.evaluate(
-            _CLICK_SALE_ASN_DOCS_JS,
-            {"rowKey": str(row.get("row_key") or "")},
+        clicked = _click_sale_asn_docs(
+            frame,
+            root,
+            str(row.get("row_key") or ""),
+            log,
         )
         if not clicked:
             raise PlaywrightTimeoutError("Không click được cột Docs của invoice.")
@@ -517,7 +593,7 @@ def prepare_sale_asn_documents(
         messages = {
             "CHROME_CLOSED": "Trình duyệt làm việc chưa được mở.",
             "NOT_LOGGED_IN": "Phiên chưa đăng nhập hoặc đã hết hạn.",
-            "SALE_ASN_INVOICE_NOT_FOUND": "Không tìm thấy invoice có cột Docs.",
+            "SALE_ASN_INVOICE_NOT_FOUND": "Không tìm thấy đúng Invoice No. trên grid.",
             "SALE_ASN_MULTIPLE_RESULTS": (
                 "Có nhiều invoice phù hợp. Hãy chọn đúng một dòng."
             ),
