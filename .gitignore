@@ -1,5 +1,6 @@
 .env*
 !.env.example
+wfx_panel/assets/sync-config.json
 prefs.json
 jobs.json
 __pycache__/

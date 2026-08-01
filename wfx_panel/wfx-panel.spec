@@ -2,6 +2,15 @@
 from pathlib import Path
 
 project = Path.cwd()
+datas = [
+    ("ui", "wfx_panel/ui"),
+    ("manual", "wfx_panel/manual"),
+    ("assets/wfx.ico", "wfx_panel/assets"),
+    ("../Article List.csv", "."),
+]
+sync_config = project / "wfx_panel" / "assets" / "sync-config.json"
+if sync_config.is_file():
+    datas.append((str(sync_config), "wfx_panel/assets"))
 # Lưu ý: đường dẫn nguồn (script/datas trái/icon) trong spec được PyInstaller
 # phân giải tương đối SPECPATH (thư mục chứa chính file .spec này), tức
 # wfx_panel/ — không phải theo cwd lúc gọi lệnh build. Vì spec nằm ở
@@ -13,12 +22,7 @@ a = Analysis(
     ["panel_app.py"],
     pathex=[str(project)],
     binaries=[],
-    datas=[
-        ("ui", "wfx_panel/ui"),
-        ("manual", "wfx_panel/manual"),
-        ("assets/wfx.ico", "wfx_panel/assets"),
-        ("../Article List.csv", "."),
-    ],
+    datas=datas,
     hiddenimports=[
         "login",
         "wfx_panel.catalog_controller",

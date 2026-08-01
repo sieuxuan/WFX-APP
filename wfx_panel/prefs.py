@@ -474,6 +474,9 @@ def save_costing_special_options_cache(
 _ACCOUNT_ENV_KEYS = frozenset(
     {"WFX_USER_ID", "WFX_PASSWORD", "WFX_PASSWORD_ENC"}
 )
+_SYNC_ADMIN_ENV_KEYS = frozenset(
+    {"WFX_SYNC_ADMIN_KEY", "WFX_SYNC_ADMIN_KEY_ENC"}
+)
 
 
 def _parse_env_value(value: str) -> str:
@@ -574,6 +577,81 @@ def save_account(user_id: str, password: str, base_dir: Path | None = None) -> N
     # bản trên đĩa được mã hóa.
     os.environ["WFX_USER_ID"] = user_id
     os.environ["WFX_PASSWORD"] = password
+
+
+def _env_values(base_dir: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    try:
+        lines = _env_path(base_dir).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = _parse_env_value(value)
+    return values
+
+
+def load_sync_admin_key(base_dir: Path | None = None) -> str:
+    """Đọc admin key đã bảo vệ; không bao giờ đưa key vào prefs.json."""
+    base_dir = DATA_DIR if base_dir is None else Path(base_dir)
+    runtime = os.getenv("WFX_SYNC_ADMIN_KEY", "").strip()
+    if runtime:
+        return runtime
+    values = _env_values(base_dir)
+    encrypted = values.get("WFX_SYNC_ADMIN_KEY_ENC", "")
+    if encrypted:
+        return str(secret.unprotect(encrypted) or "").strip()
+    return str(values.get("WFX_SYNC_ADMIN_KEY") or "").strip()
+
+
+def save_sync_admin_key(value: str, base_dir: Path | None = None) -> bool:
+    """Lưu admin key bằng DPAPI và giữ nguyên mọi cấu hình .env khác."""
+    base_dir = DATA_DIR if base_dir is None else Path(base_dir)
+    key_value = str(value or "").strip()
+    path = _env_path(base_dir)
+    preserved: list[str] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    for raw in lines:
+        stripped = raw.strip()
+        key = (
+            stripped.split("=", 1)[0].strip()
+            if "=" in stripped and not stripped.startswith("#")
+            else ""
+        )
+        if key not in _SYNC_ADMIN_ENV_KEYS:
+            preserved.append(raw)
+    if key_value:
+        protected = secret.protect(key_value)
+        if protected is not None:
+            preserved.append(
+                "WFX_SYNC_ADMIN_KEY_ENC="
+                + json.dumps(protected, ensure_ascii=False)
+            )
+        elif os.name == "nt":
+            raise CredentialProtectionError(
+                "Windows không mã hóa được Admin key bằng DPAPI."
+            )
+        else:
+            preserved.append(
+                "WFX_SYNC_ADMIN_KEY="
+                + json.dumps(key_value, ensure_ascii=False)
+            )
+    with _WRITE_LOCK:
+        write_text_atomic(
+            path,
+            "\n".join(line for line in preserved if line.strip()) + "\n",
+        )
+    if key_value:
+        os.environ["WFX_SYNC_ADMIN_KEY"] = key_value
+    else:
+        os.environ.pop("WFX_SYNC_ADMIN_KEY", None)
+    return bool(key_value)
 
 
 def load_prefs(base_dir: Path | None = None) -> dict:

@@ -1863,11 +1863,19 @@ class PanelApp:
             return
         while not self._stop_status.is_set():
             try:
-                result = self.api.sync_article_library()
+                result = self.api.sync_reference_data(False)
+                if not result.get("ok"):
+                    # Tương thích offline/cấu hình cũ: GitHub vẫn là fallback,
+                    # không bao giờ xóa cache PostgreSQL cuối cùng.
+                    fallback = self.api.sync_article_library()
+                    if fallback.get("ok"):
+                        result = {**result, **fallback}
                 if self.window is not None:
                     import json
 
                     self.window.evaluate_js(
+                        "window.wfxSetReferenceSyncStatus("
+                        f"{json.dumps(result, ensure_ascii=False)});"
                         "window.wfxSetArticleLibraryStatus("
                         f"{json.dumps(result, ensure_ascii=False)})"
                     )

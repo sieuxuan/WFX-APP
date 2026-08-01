@@ -98,7 +98,19 @@ jobs:
 
       - name: Build Windows app
         shell: powershell
+        env:
+          WFX_SYNC_READ_KEY: ${{ secrets.WFX_SYNC_READ_KEY }}
         run: |
+          if (-not $env:WFX_SYNC_READ_KEY) {
+            throw "Thiếu secret WFX_SYNC_READ_KEY."
+          }
+          [ordered]@{
+            read_key = $env:WFX_SYNC_READ_KEY
+            read_url = "https://n8n.itx.io.vn/webhook/wfx-sync-latest"
+            publish_url = "https://n8n.itx.io.vn/webhook/wfx-sync-publish"
+            company_id = "77400"
+            division_key = "01"
+          } | ConvertTo-Json | Set-Content -LiteralPath "wfx_panel/assets/sync-config.json" -Encoding UTF8
           python wfx_panel/assets/generate_icon.py
           python -m PyInstaller --noconfirm --clean wfx_panel/wfx-panel.spec
           $buildRoot = Join-Path $PWD "dist/WFX-Panel"

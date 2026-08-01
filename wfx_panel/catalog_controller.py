@@ -1552,7 +1552,10 @@ class CatalogController:
                     article_category = str(
                         option.get("article_category") or ""
                     ).strip()
-                    if article_category.casefold() != category.casefold():
+                    if (
+                        article_category
+                        and article_category.casefold() != category.casefold()
+                    ):
                         continue
                     identity = (
                         code.casefold(),
