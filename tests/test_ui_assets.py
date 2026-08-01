@@ -75,8 +75,10 @@ def test_index_html_has_contract_hooks():
         'data-costing-action="import"',
         'data-costing-action="apply"',
         'data-costing-action="clear-dependencies"',
-        'class="catalog-article-library"',
         'class="catalog-special-rescan-input"',
+        'class="catalog-style-autosave-input"',
+        'class="catalog-style-group-summary"',
+        'class="catalog-style-group-search"',
         'class="catalog-article-suggestions"',
         'data-catalog-kind="code"',
         'data-catalog-kind="buyer_reference"',
@@ -106,7 +108,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260801-5"',
+        'src="panel.js?v=20260801-6"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -157,7 +159,7 @@ def test_catalog_search_and_destinations_are_direct_actions():
     assert 'class="catalog-browse-button"' in html
     assert 'class="catalog-results-list"' in html
     assert 'class="catalog-costing-card"' in html
-    assert "Quét tab Costing hiện tại" in html
+    assert "Quét tab Costing hiện tại" not in html
 
 
 def test_catalog_costing_has_a_dedicated_workspace():
@@ -385,7 +387,7 @@ def test_module_page_header_is_compact_with_clear_back_icon():
     assert 'class="module-modal-icon' not in html
 
 
-def test_catalog_uses_compact_category_search_and_active_costing_state():
+def test_catalog_uses_compact_category_search_and_costing_actions():
     html = (UI / "index.html").read_text(encoding="utf-8")
     css = (UI / "style.css").read_text(encoding="utf-8")
 
@@ -394,8 +396,9 @@ def test_catalog_uses_compact_category_search_and_active_costing_state():
         'data-catalog-action="browse"'
     )
     assert 'class="catalog-search-heading"' not in html
-    assert 'class="catalog-costing-state" data-ready="false"' in html
-    assert "Quét tab Costing hiện tại" in html
+    assert 'class="catalog-costing-state"' not in html
+    assert "Có thể Export/Import" not in html
+    assert 'class="catalog-costing-utility-row"' in html
     assert ".catalog-topbar {" in css
     assert "grid-template-columns: repeat(3, minmax(0,1fr))" in css
 

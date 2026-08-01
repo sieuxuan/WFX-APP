@@ -20,7 +20,7 @@ from heapq import nsmallest
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from wfx_panel import article_library, constants
+from wfx_panel import article_library, constants, style_options
 from wfx_panel.costing_planner import CostingPlanError, build_costing_plan
 from wfx_panel.costing_workbook import (
     CostingWorkbookError,
@@ -296,7 +296,7 @@ class CatalogController:
                 "code": "STYLE_IMPORT_REVIEW_READY",
                 "message": (
                     f"File hợp lệ: {len(rows)} dòng. App sẽ chuẩn bị từng dòng "
-                    "và luôn dừng trước Save."
+                    "theo chế độ Save đang chọn."
                 ),
                 "review_token": token,
                 "file_name": source.name,
@@ -324,13 +324,112 @@ class CatalogController:
             "message": "Đã hủy danh sách Tạo Style; WFX chưa được Save.",
         }
 
+    def ensure_style_options(self, group_id: str, force: bool = False) -> dict:
+        """Lấy dropdown server/cache; chỉ quét WFX khi snapshot đã quá 30 ngày."""
+        group = self._style_group(group_id)
+        if group is None:
+            return {
+                "ok": False,
+                "code": "STYLE_GROUP_REQUIRED",
+                "message": "Hãy quét cây và chọn đúng một Group Apparel.",
+            }
+        cached = style_options.load_cached(self._panel._base_dir)
+        if not force and cached is not None and style_options.status(
+            self._panel._base_dir
+        )["fresh"]:
+            return {
+                "ok": True,
+                "code": "STYLE_OPTIONS_CACHED",
+                "message": "Đang dùng danh sách dropdown Style trong tháng này.",
+                "options": cached,
+                **style_options.status(self._panel._base_dir),
+            }
+        if not force:
+            remote = style_options.sync_remote(self._panel._base_dir)
+            if remote is not None and style_options.status(
+                self._panel._base_dir
+            )["fresh"]:
+                return {
+                    "ok": True,
+                    "code": "STYLE_OPTIONS_SERVER",
+                "message": "Đã lấy danh sách dropdown Style từ GitHub.",
+                    "options": remote,
+                    **style_options.status(self._panel._base_dir),
+                }
+
+        panel = self._panel
+
+        def action() -> dict:
+            scanner = getattr(panel._login, "scan_catalog_style_options", None)
+            if not callable(scanner):
+                return {
+                    "ok": False,
+                    "code": "STYLE_OPTIONS_SCAN_UNSUPPORTED",
+                    "message": "Phiên bản automation chưa hỗ trợ quét dropdown Style.",
+                }
+            result = scanner(
+                constants.CATEGORIES["Apparel"],
+                str(group.get("node_id") or ""),
+                panel._log,
+            )
+            if not result.get("ok"):
+                return result
+            account = panel._account()
+            snapshot = style_options.save_snapshot(
+                panel._base_dir,
+                {
+                    "generated_at": time.time(),
+                    "source": "wfx-scan",
+                    "company_id": str(account.get("company_id") or ""),
+                    "division_key": str(panel._current_division or ""),
+                    "group_id": str(group.get("node_id") or ""),
+                    "fields": result.get("fields") or {},
+                    "subcategories_by_product_group": result.get(
+                        "subcategories_by_product_group"
+                    )
+                    or {},
+                },
+            )
+            uploaded = style_options.publish_snapshot(snapshot)
+            return {
+                "ok": True,
+                "code": "STYLE_OPTIONS_SCANNED",
+                "message": (
+                    "Đã quét dropdown Style và cập nhật snapshot trên GitHub."
+                    if uploaded
+                    else "Đã quét dropdown Style và lưu cache tháng trên máy."
+                ),
+                "uploaded": uploaded,
+                "options": snapshot,
+                **style_options.status(panel._base_dir),
+            }
+
+        result = panel._run(
+            "scan_catalog_style_options",
+            action,
+            {"group_id": str(group_id or ""), "force": bool(force)},
+        )
+        if not result.get("ok") and cached is not None:
+            return {
+                "ok": True,
+                "code": "STYLE_OPTIONS_STALE_CACHE",
+                "message": (
+                    "Chưa quét mới được; form Excel dùng danh sách gần nhất trên máy."
+                ),
+                "warning": result.get("message") or "",
+                "options": cached,
+                **style_options.status(panel._base_dir),
+            }
+        return result
+
     def prepare_style_row(
         self,
         token: str,
         source_row: int,
         copy_choice: int | None = None,
+        auto_save: bool = False,
     ) -> dict:
-        """Mở/điền một dòng và trả quyền Save cho người dùng."""
+        """Mở/điền một dòng; mặc định trả quyền Save cho người dùng."""
         review = self._active_style_import(token)
         if review is None:
             return {
@@ -380,6 +479,7 @@ class CatalogController:
                 str(group.get("node_id") or ""),
                 dict(row),
                 copy_choice,
+                bool(auto_save),
                 panel._log,
             )
 
@@ -390,6 +490,7 @@ class CatalogController:
                 "source_row": wanted_row,
                 "style_type": str(row.get("type") or ""),
                 "group_id": str(group.get("node_id") or ""),
+                "auto_save": bool(auto_save),
             },
         )
 

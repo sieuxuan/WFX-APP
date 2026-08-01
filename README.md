@@ -31,9 +31,13 @@ Benchmark RAM/tốc độ của bản này nằm tại
   thêm CM/Production/Indirect Costs bằng danh sách quét từ WFX, rồi cập
   nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
   dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
-  Ba danh sách chi phí dùng cache 7 ngày theo tài khoản/Division; công tắc cạnh
-  Thư viện Article ép quét lại đúng một lần rồi tự tắt. Nút `Clear All Dependency`
+  Ba danh sách chi phí dùng cache 7 ngày theo tài khoản/Division; công tắc gọn
+  cùng hàng với `Clear All Dependency` ép quét lại đúng một lần rồi tự tắt. Nút này
   có xác nhận sẽ xóa phối ở mọi section của Costing đang mở và Save.
+- Tạo Style dùng picker Group có tìm kiếm. Form Excel nhận dropdown dùng chung,
+  Sub-Category phụ thuộc Product Group; snapshot dùng chung đọc từ GitHub Raw
+  và cache chỉ quét lại WFX sau 30 ngày.
+  `Tự động Save` có thể bật theo nhu cầu nhưng luôn mặc định tắt.
 - Catalog tách màn tìm Article và màn Costing; mở Costing hoặc Import file tự
   chuyển sang workspace Costing. Thư viện CSV bốn cột từ server tự đồng bộ mỗi
   giờ: Category lọc gợi ý Article Code, Apparel tìm Buyer Reference, category

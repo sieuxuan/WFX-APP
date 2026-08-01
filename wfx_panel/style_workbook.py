@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
@@ -10,11 +11,14 @@ from zipfile import BadZipFile, ZipFile
 from openpyxl import Workbook, load_workbook
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 STYLE_SHEET = "Tạo Style"
 GUIDE_SHEET = "Hướng dẫn"
+LIST_SHEET = "_Danh sách"
 MAX_STYLE_ROWS = 500
 MAX_STYLE_FILE_BYTES = 15 * 1024 * 1024
 
@@ -122,8 +126,45 @@ def _assert_safe_xlsx(path: Path) -> None:
         )
 
 
-def write_style_template(output_path: str | Path) -> Path:
-    """Tạo form nhập liệu ổn định, không chứa selector hay macro."""
+def _option_values(options: Mapping | None, key: str) -> list[str]:
+    fields = options.get("fields") if isinstance(options, Mapping) else None
+    raw = fields.get(key) if isinstance(fields, Mapping) else None
+    if not isinstance(raw, list):
+        return []
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        value = _text(item.get("label") if isinstance(item, Mapping) else item)
+        identity = value.casefold()
+        if value and identity not in seen:
+            seen.add(identity)
+            values.append(value)
+    return values
+
+
+def _add_named_list(
+    workbook: Workbook,
+    worksheet,
+    name: str,
+    column: int,
+    values: list[str],
+) -> str:
+    worksheet.cell(1, column, name)
+    for row, value in enumerate(values, start=2):
+        worksheet.cell(row, column, value)
+    if not values:
+        return ""
+    letter = get_column_letter(column)
+    reference = f"'{LIST_SHEET}'!${letter}$2:${letter}${len(values) + 1}"
+    workbook.defined_names.add(DefinedName(name, attr_text=reference))
+    return name
+
+
+def write_style_template(
+    output_path: str | Path,
+    options: Mapping | None = None,
+) -> Path:
+    """Tạo form nhập liệu có dropdown server/cache, không chứa macro."""
     target = Path(output_path).expanduser().resolve()
     if target.suffix.casefold() != ".xlsx":
         target = target.with_suffix(".xlsx")
@@ -140,8 +181,8 @@ def write_style_template(output_path: str | Path) -> Path:
     guide.append(["Bước 2", "Điền dữ liệu trong sheet Tạo Style rồi chọn Import."])
     guide.append([
         "Bước 3",
-        "App chuẩn bị từng dòng trên WFX và luôn dừng trước Save. "
-        "Kiểm tra rồi tự bấm Save trên WFX trước khi sang dòng kế tiếp.",
+        "Mặc định app dừng trước Save. Có thể bật Tự động Save trong app sau "
+        "khi đã kiểm tra kỹ dữ liệu Excel.",
     ])
     guide.append([
         "Type",
@@ -164,7 +205,12 @@ def write_style_template(output_path: str | Path) -> Path:
     ])
     guide.append([
         "An toàn",
-        "App không tự Save Style. Không đóng/chuyển màn WFX khi đang chuẩn bị dòng.",
+        "Tự động Save luôn mặc định tắt. Không đóng/chuyển màn WFX khi app đang chạy.",
+    ])
+    guide.append([
+        "Dropdown",
+        "Danh sách được dùng chung từ server và chỉ quét lại WFX khi cache quá 30 ngày. "
+        "Sub-Category đổi theo Product Group đã chọn.",
     ])
     for cell in guide[1]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -200,20 +246,95 @@ def write_style_template(output_path: str | Path) -> Path:
     )
     sheet.add_table(table)
 
+    lists = workbook.create_sheet(LIST_SHEET)
+    lists.sheet_state = "veryHidden"
+    list_specs = (
+        ("material_type", "StyleMaterialType", 3),
+        ("buyer", "StyleBuyer", 4),
+        ("division", "StyleDivision", 5),
+        ("product_group", "StyleProductGroup", 6),
+        ("color_card", "StyleColorCard", 8),
+        ("size_range", "StyleSizeRange", 9),
+        ("season", "StyleSeason", 10),
+    )
+    named_lists: dict[str, str] = {}
+    list_column = 1
+    for key, range_name, _style_column in list_specs:
+        values = _option_values(options, key)
+        if key == "material_type" and not values:
+            values = ["KNIT", "WOVEN"]
+        named_lists[key] = _add_named_list(
+            workbook, lists, range_name, list_column, values
+        )
+        list_column += 1
+
+    dependencies_raw = (
+        options.get("subcategories_by_product_group")
+        if isinstance(options, Mapping)
+        else None
+    )
+    dependencies = dependencies_raw if isinstance(dependencies_raw, Mapping) else {}
+    dependency_map_column = list_column
+    lists.cell(1, dependency_map_column, "Product Group")
+    lists.cell(1, dependency_map_column + 1, "Range")
+    all_subcategories: list[str] = []
+    seen_subcategories: set[str] = set()
+    dependency_row = 2
+    for index, (product_group, raw_values) in enumerate(dependencies.items(), start=1):
+        values = []
+        for item in raw_values if isinstance(raw_values, list) else []:
+            value = _text(item.get("label") if isinstance(item, Mapping) else item)
+            if value and value.casefold() not in {item.casefold() for item in values}:
+                values.append(value)
+            if value and value.casefold() not in seen_subcategories:
+                seen_subcategories.add(value.casefold())
+                all_subcategories.append(value)
+        if not values:
+            continue
+        range_name = f"StyleSub{index:04d}"
+        _add_named_list(workbook, lists, range_name, list_column + 2 + index, values)
+        lists.cell(dependency_row, dependency_map_column, _text(product_group))
+        lists.cell(dependency_row, dependency_map_column + 1, range_name)
+        dependency_row += 1
+    fallback_subcategory = _add_named_list(
+        workbook,
+        lists,
+        "StyleSubcategoryAll",
+        list_column + 2,
+        all_subcategories,
+    )
+
     type_validation = DataValidation(
         type="list",
         formula1='"New,Copy"',
         allow_blank=False,
     )
-    material_validation = DataValidation(
-        type="list",
-        formula1='"KNIT,WOVEN"',
-        allow_blank=True,
-    )
     sheet.add_data_validation(type_validation)
-    sheet.add_data_validation(material_validation)
     type_validation.add(f"A2:A{MAX_STYLE_ROWS + 1}")
-    material_validation.add(f"C2:C{MAX_STYLE_ROWS + 1}")
+    for key, _range_name, style_column in list_specs:
+        if not named_lists.get(key):
+            continue
+        validation = DataValidation(
+            type="list",
+            formula1=f"={named_lists[key]}",
+            allow_blank=True,
+        )
+        sheet.add_data_validation(validation)
+        letter = get_column_letter(style_column)
+        validation.add(f"{letter}2:{letter}{MAX_STYLE_ROWS + 1}")
+    if fallback_subcategory:
+        map_end = max(2, dependency_row - 1)
+        formula = (
+            "=INDIRECT(IFERROR(VLOOKUP($F2,'_Danh sách'!"
+            f"${get_column_letter(dependency_map_column)}$2:"
+            f"${get_column_letter(dependency_map_column + 1)}${map_end},2,FALSE),"
+            '"StyleSubcategoryAll"))'
+        )
+        subcategory_validation = DataValidation(
+            type="list", formula1=formula, allow_blank=True
+        )
+        sheet.add_data_validation(subcategory_validation)
+        subcategory_validation.add(f"G2:G{MAX_STYLE_ROWS + 1}")
     warning_fill = PatternFill("solid", fgColor="FDE9D9")
     sheet.conditional_formatting.add(
         f"B2:B{MAX_STYLE_ROWS + 1}",

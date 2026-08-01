@@ -195,6 +195,8 @@
   let catalogStyleReview = null;
   let catalogStyleRowIndex = 0;
   let catalogStyleAwaitingSave = false;
+  let catalogStyleGroupId = "";
+  let catalogStyleAutoSave = false;
   let articleSuggestionTimer = 0;
   let articleSuggestionGeneration = 0;
   const moduleFilterKinds = {
@@ -216,6 +218,7 @@
     "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
     "clear_catalog_costing_dependencies",
     "review_catalog_style_import", "prepare_catalog_style_row",
+    "download_style_template",
   ]);
   const INTERACTIVE_RESULT_CODES = new Set([
     "MULTIPLE_RESULTS",
@@ -244,7 +247,7 @@
     apply_catalog_costing: "Đang áp dụng Costing và Save…",
     clear_catalog_costing_dependencies: "Đang Clear toàn bộ Dependency và Save…",
     review_catalog_style_import: "Đang kiểm tra file Tạo Style…",
-    prepare_catalog_style_row: "Đang chuẩn bị Style và dừng trước Save…",
+    prepare_catalog_style_row: "Đang chuẩn bị Style theo chế độ Save đã chọn…",
     download_style_template: "Đang tạo form Tạo Style…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
     open_sample_new: "Đang mở Sample Order mới…",
@@ -1017,26 +1020,21 @@
     if (!supportsDefault && catalogSpace !== "search") {
       showCatalogSpace("search", { focus: false });
     }
-    const styleGroup = $(".catalog-style-group");
-    if (styleGroup) {
-      styleGroup.disabled = busy || catalogFolderScanning
-        || Boolean(catalogStyleReview)
-        || !catalogFoldersByCategory.has(CATALOG_DEFAULT_CATEGORY);
+    const styleGroupLocked = busy || catalogFolderScanning
+      || Boolean(catalogStyleReview)
+      || !catalogFoldersByCategory.has(CATALOG_DEFAULT_CATEGORY);
+    if ($(".catalog-style-group-summary")) {
+      $(".catalog-style-group-summary").disabled = styleGroupLocked;
+    }
+    if ($(".catalog-style-group-search")) {
+      $(".catalog-style-group-search").disabled = styleGroupLocked;
+    }
+    if ($(".catalog-style-autosave-input")) {
+      $(".catalog-style-autosave-input").disabled = busy;
     }
     $$("[data-style-action]").forEach((button) => {
       button.disabled = busy || catalogFolderScanning;
     });
-    const costingOpen = currentCostingStatus.toLowerCase() === "open";
-    const costingStatusKnown = Boolean(currentCostingStatus.trim());
-    const costingState = $(".catalog-costing-state");
-    if (costingState) {
-      costingState.textContent = costingOpen
-        ? "Open · sẵn sàng Import"
-        : costingStatusKnown
-          ? "Có thể Export · Import cần Open"
-          : "Có thể Export/Import tab Costing hiện tại";
-      costingState.dataset.ready = String(costingOpen);
-    }
     $$("[data-costing-action]").forEach((button) => {
       button.disabled = busy || catalogFolderScanning;
     });
@@ -1842,22 +1840,54 @@
   }
 
   function renderCatalogStyleGroups() {
-    const select = $(".catalog-style-group");
-    if (!select) return;
-    const previous = select.value;
+    const input = $(".catalog-style-group");
+    const host = $(".catalog-style-group-list");
+    if (!input || !host) return;
     const groups = (catalogFoldersByCategory.get(CATALOG_DEFAULT_CATEGORY) || [])
       .filter((item) => String(item.kind || "").toLowerCase() === "group");
-    select.innerHTML = '<option value="">Chọn một Group Apparel…</option>'
-      + groups.map((group) => (
-        `<option value="${escapeHtml(group.node_id)}">${escapeHtml(
-          group.path_label || group.name || group.node_id,
-        )}</option>`
-      )).join("");
-    if (groups.some((group) => String(group.node_id || "") === previous)) {
-      select.value = previous;
+    if (!groups.some((group) => String(group.node_id || "") === catalogStyleGroupId)) {
+      const defaultId = String(catalogDefaultFolder?.node_id || "");
+      catalogStyleGroupId = groups.some(
+        (group) => String(group.node_id || "") === defaultId,
+      ) ? defaultId : "";
     }
-    select.disabled = busy || catalogFolderScanning
-      || Boolean(catalogStyleReview) || !groups.length;
+    input.value = catalogStyleGroupId;
+    const selected = groups.find(
+      (group) => String(group.node_id || "") === catalogStyleGroupId,
+    );
+    $(".catalog-style-group-current").textContent = selected?.path_label
+      || "Chọn Group Apparel…";
+    const summary = $(".catalog-style-group-summary");
+    if (summary) {
+      summary.dataset.tooltip = selected?.path_label || "Chọn Group Apparel";
+    }
+    const query = normalizeCatalogSearch($(".catalog-style-group-search")?.value);
+    const matches = groups.filter((group) => normalizeCatalogSearch(
+      `${group.name || ""} ${group.path_label || ""}`,
+    ).includes(query)).slice(0, 120);
+    host.innerHTML = matches.length ? matches.map((group) => {
+      const nodeId = String(group.node_id || "");
+      const isSelected = nodeId === catalogStyleGroupId;
+      const path = String(group.path_label || group.name || nodeId);
+      return `<button type="button" class="catalog-style-group-choice"
+        data-style-group-select="${escapeHtml(nodeId)}" role="option"
+        aria-selected="${isSelected}">
+        <span><strong>${escapeHtml(group.name || "Group")}</strong>
+        <small>${escapeHtml(path)}</small></span>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10 4 4 8-9"/></svg>
+      </button>`;
+    }).join("") : '<div class="catalog-folder-empty">Không tìm thấy Group phù hợp.</div>';
+    host.querySelectorAll("[data-style-group-select]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (catalogStyleReview) return;
+        catalogStyleGroupId = String(button.dataset.styleGroupSelect || "");
+        $(".catalog-style-group-picker").hidden = true;
+        $(".catalog-style-group-summary").setAttribute("aria-expanded", "false");
+        renderCatalogStyleGroups();
+        syncCatalogStepButtons();
+      });
+    });
+    syncCatalogStepButtons();
   }
 
   function resetCatalogStyleReview() {
@@ -1897,7 +1927,9 @@
           row.buyer_style_ref ? `Buyer Ref: ${row.buyer_style_ref}` : "",
           row.internal_style_ref ? `Internal Ref: ${row.internal_style_ref}` : "",
         ].filter(Boolean).join(" · ")
-      : "Danh sách đã hoàn tất. Các Style chỉ được lưu khi bạn tự bấm Save trên WFX.";
+      : (catalogStyleAutoSave
+        ? "Danh sách đã hoàn tất và các Style đã được Save tự động."
+        : "Danh sách đã hoàn tất. Các Style chỉ được lưu khi bạn tự bấm Save trên WFX.");
     const button = $(".catalog-style-prepare");
     if (!row) {
       button.textContent = "Đã hoàn tất";
@@ -1909,24 +1941,30 @@
       button.disabled = false;
     } else {
       button.textContent = catalogStyleRowIndex === 0
-        ? "Chuẩn bị dòng đầu tiên"
-        : "Chuẩn bị dòng này";
+        ? (catalogStyleAutoSave ? "Chuẩn bị & Save dòng đầu tiên" : "Chuẩn bị dòng đầu tiên")
+        : (catalogStyleAutoSave ? "Chuẩn bị & Save dòng này" : "Chuẩn bị dòng này");
       button.disabled = false;
     }
     renderCatalogStyleGroups();
   }
 
   async function downloadCatalogStyleTemplate() {
-    const result = await callQuiet("download_style_template");
+    const groupId = String(catalogStyleGroupId || "");
+    if (!groupId) {
+      setStatus("error", "Hãy chọn một Group để app lấy danh sách dropdown.");
+      $(".catalog-style-group-summary")?.focus();
+      return null;
+    }
+    const result = await call("download_style_template", groupId);
     if (result) handleResult(result);
     return result;
   }
 
   async function importCatalogStyles() {
-    const groupId = String($(".catalog-style-group")?.value || "");
+    const groupId = String(catalogStyleGroupId || "");
     if (!groupId) {
       setStatus("error", "Hãy chọn đúng một Group Apparel trước khi Import.");
-      $(".catalog-style-group")?.focus();
+      $(".catalog-style-group-summary")?.focus();
       return null;
     }
     const selected = await callQuiet("choose_style_import_file");
@@ -1991,6 +2029,7 @@
       catalogStyleReview.review_token,
       row.source_row,
       copyChoice,
+      catalogStyleAutoSave,
     );
     if (result?.code === "STYLE_COPY_MULTIPLE_RESULTS") {
       renderCatalogStyleCopyChoices(result);
@@ -1998,7 +2037,21 @@
       const choices = $(".catalog-style-copy-choices");
       choices.hidden = true;
       choices.innerHTML = "";
-      catalogStyleAwaitingSave = true;
+      if (catalogStyleAutoSave && result?.saved === true) {
+        catalogStyleRowIndex += 1;
+        if (!currentCatalogStyleRow()) {
+          await callQuiet(
+            "clear_catalog_style_import",
+            catalogStyleReview.review_token,
+          );
+          renderCatalogStyleReview();
+          setStatus("success", "Đã chuẩn bị và Save toàn bộ danh sách Style.");
+          return result;
+        }
+        catalogStyleAwaitingSave = false;
+      } else {
+        catalogStyleAwaitingSave = true;
+      }
       renderCatalogStyleReview();
     }
     return result;
@@ -2214,18 +2267,18 @@
 
   function setCostingSpecialOptionsState(state) {
     const input = $(".catalog-special-rescan-input");
-    const label = $(".catalog-special-rescan-status");
-    if (!input || !label) return;
+    const host = $(".catalog-special-rescan");
+    if (!input || !host) return;
     const pending = state?.rescan_next === true;
     input.checked = pending;
-    label.dataset.pending = String(pending);
+    host.dataset.pending = String(pending);
     if (pending) {
-      label.textContent = "Sẽ quét mới ở lần Export/Import Costing kế tiếp";
+      host.dataset.tooltip = "Sẽ quét mới CM · Production · Indirect ở lần Costing kế tiếp";
       return;
     }
     const saved = Number(state?.saved_at || 0);
-    label.textContent = state?.available === true && saved > 0
-      ? `Đang dùng cache tuần · ${new Date(saved * 1000).toLocaleDateString("vi-VN")}`
+    host.dataset.tooltip = state?.available === true && saved > 0
+      ? `Đang dùng cache tuần từ ${new Date(saved * 1000).toLocaleDateString("vi-VN")}`
       : "CM · Production · Indirect sẽ quét ở lần Costing kế tiếp";
   }
   window.wfxSetCostingSpecialOptionsState = setCostingSpecialOptionsState;
@@ -2725,6 +2778,11 @@
   }
 
   async function clearCatalogCostingDependencies() {
+    const confirmed = window.confirm(
+      "Xác nhận Clear toàn bộ Color/Size Dependency của Costing đang chọn và Save? "
+        + "Thao tác này không thể hoàn tác từ panel.",
+    );
+    if (!confirmed) return null;
     const inspected = await inspectCurrentCosting();
     if (!inspected?.ok) return inspected;
     if (String(
@@ -2739,11 +2797,6 @@
       handleResult(blocked);
       return blocked;
     }
-    const confirmed = window.confirm(
-      "Clear toàn bộ Color/Size Dependency của Costing đang chọn và Save? "
-        + "Thao tác này không thể hoàn tác từ panel.",
-    );
-    if (!confirmed) return null;
     return runSelectedModuleAction("clear_catalog_costing_dependencies");
   }
 
@@ -2855,6 +2908,35 @@
     $$("[data-style-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(button, () => styleActions[button.dataset.styleAction]?.())));
+    $(".catalog-style-group-summary")?.addEventListener("click", () => {
+      if (catalogStyleReview) return;
+      const picker = $(".catalog-style-group-picker");
+      picker.hidden = !picker.hidden;
+      $(".catalog-style-group-summary").setAttribute(
+        "aria-expanded", String(!picker.hidden),
+      );
+      if (!picker.hidden) {
+        if (!catalogFoldersByCategory.has(CATALOG_DEFAULT_CATEGORY)) {
+          scanCatalogFolders(false);
+        } else {
+          renderCatalogStyleGroups();
+          window.setTimeout(() => $(".catalog-style-group-search")?.focus(), 0);
+        }
+      }
+    });
+    $(".catalog-style-group-search")?.addEventListener(
+      "input", renderCatalogStyleGroups,
+    );
+    $(".catalog-style-autosave-input")?.addEventListener("change", (event) => {
+      catalogStyleAutoSave = event.target.checked === true;
+      $(".catalog-style-mode-copy").textContent = catalogStyleAutoSave
+        ? "Chuẩn bị từng dòng và tự Save sau khi điền"
+        : "Chuẩn bị từng dòng và dừng trước Save";
+      $(".catalog-style-save-reminder").textContent = catalogStyleAutoSave
+        ? "App sẽ bấm Save sau khi điền xong. Hãy chỉ bật khi dữ liệu Excel đã được kiểm tra."
+        : "Sau khi app điền xong, kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.";
+      renderCatalogStyleReview();
+    });
     $(".catalog-style-copy-choices")?.addEventListener("click", (event) => {
       const choice = event.target.closest("[data-style-copy-choice]");
       if (!choice) return;

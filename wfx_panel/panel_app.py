@@ -828,14 +828,22 @@ class PanelApp:
             "file_name": target.name,
         }
 
-    def download_style_template(self) -> dict:
-        """Sinh form Tạo Style và lưu vào nơi người dùng chọn."""
+    def download_style_template(self, group_id: str = "") -> dict:
+        """Lấy dropdown tháng rồi sinh form Tạo Style tại nơi user chọn."""
         if self.window is None:
             return {
                 "ok": False,
                 "code": "STYLE_FILE_DIALOG_UNAVAILABLE",
                 "message": "Cửa sổ lưu file chưa sẵn sàng.",
             }
+        option_result = {"ok": True, "options": {}}
+        if str(group_id or "").strip():
+            option_result = self.api.ensure_catalog_style_options(
+                str(group_id or ""),
+                False,
+            )
+            if not option_result.get("ok"):
+                return option_result
         try:
             selected = self.window.create_file_dialog(
                 webview.SAVE_DIALOG,
@@ -857,7 +865,10 @@ class PanelApp:
             }
         try:
             target = _dialog_selected_path(selected)
-            target = write_style_template(target)
+            target = write_style_template(
+                target,
+                options=option_result.get("options") or {},
+            )
             _open_downloaded_file(target)
             _reveal_downloaded_file(target)
         except Exception as error:
@@ -869,7 +880,9 @@ class PanelApp:
         return {
             "ok": True,
             "code": "STYLE_TEMPLATE_EXPORTED",
-            "message": f"Đã tạo form {target.name}.",
+            "message": (
+                f"Đã tạo form {target.name} với dropdown cập nhật theo tháng."
+            ),
             "file_path": str(target),
             "file_name": target.name,
         }
