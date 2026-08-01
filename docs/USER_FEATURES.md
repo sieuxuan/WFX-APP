@@ -278,7 +278,7 @@ Dùng để làm gì Gửi góp ý hoặc mô tả lỗi cho nhóm phát triển
 
 Tải và cài bản mới mà không mất cài đặt cá nhân.
 
-Dùng để làm gì Cập nhật WFX Smart lên bản mới để nhận tính năng và sửa lỗi mới nhất. Các bước Đọc dải thông báo có phiên bản mới trên bảng điều khiển. Bấm nút cập nhật trên dải thông báo. Chờ ứng dụng tải bản mới. Cho phép WFX Smart đóng để thay file. Chờ ứng dụng tự mở lại. Kiểm tra phiên bản ở góc trên bảng điều khiển. Mẹo Mẹo Cài đặt cá nhân và dữ liệu WFX Smart trên máy được giữ nguyên khi cập nhật. Lưu ý Hãy chờ tác vụ đang chạy hoàn tất trước khi bắt đầu cập nhật. Gặp lỗi thì sao Hiện tượng Cách xử lý Tải bản mới bị gián đoạn Kiểm tra mạng rồi bấm cập nhật lại. Ứng dụng chưa tự mở lại Mở WFX Smart từ Desktop hoặc Start Menu. Phiên bản vẫn chưa đổi Đóng hẳn WFX Smart, mở lại và kiểm tra dải cập nhật.
+Dùng để làm gì Cập nhật WFX Smart lên bản mới để nhận tính năng và sửa lỗi mới nhất. Các bước Đọc dải thông báo có phiên bản mới trên bảng điều khiển. Bấm nút cập nhật trên dải thông báo. Chờ ứng dụng tải bản mới. Cho phép WFX Smart đóng để thay file. Chờ ứng dụng tự mở lại. Kiểm tra phiên bản ở góc trên bảng điều khiển. Mẹo Mẹo Cài đặt cá nhân và dữ liệu WFX Smart trên máy được giữ nguyên khi cập nhật. Mẹo Nếu bạn cài WFX Smart bằng Setup, ứng dụng sẽ nâng cấp bằng bộ cài để giữ shortcut và mục Uninstall. Nếu dùng bản portable, ứng dụng cập nhật trực tiếp các file trong thư mục portable. Lưu ý Hãy chờ tác vụ đang chạy hoàn tất trước khi bắt đầu cập nhật. Gặp lỗi thì sao Hiện tượng Cách xử lý Tải bản mới bị gián đoạn Kiểm tra mạng rồi bấm cập nhật lại. Ứng dụng chưa tự mở lại Mở WFX Smart từ Desktop hoặc Start Menu. Phiên bản vẫn chưa đổi Đóng hẳn WFX Smart, mở lại và kiểm tra dải cập nhật.
 
 ### Tra mã lỗi
 

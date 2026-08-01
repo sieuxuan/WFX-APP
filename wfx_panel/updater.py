@@ -26,13 +26,20 @@ from wfx_panel.version import APP_VERSION
 REPOSITORY = "sieuxuan/WFX-APP"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 REQUEST_TIMEOUT_SECONDS = 20
-ASSET_PATTERN = re.compile(
+PORTABLE_ASSET_PATTERN = re.compile(
     r"^WFX-Smart-v(?P<version>\d+\.\d+\.\d+)-win64\.zip$",
+    re.IGNORECASE,
+)
+SETUP_ASSET_PATTERN = re.compile(
+    r"^WFX-Smart-Setup-v(?P<version>\d+\.\d+\.\d+)\.exe$",
     re.IGNORECASE,
 )
 PACKAGE_PREFIX = "WFX-Smart"
 EXPECTED_EXECUTABLE_NAME = "WFX-Panel.exe"
 OWNED_INSTALL_ITEMS = (EXPECTED_EXECUTABLE_NAME, "_internal")
+UPDATE_MODE_PORTABLE = "portable"
+UPDATE_MODE_INSTALLER = "installer"
+INNO_APP_ID = "{FA15EF75-74AD-463A-AFF0-272145061A2B}"
 
 
 def _version_tuple(value: str) -> tuple[int, int, int]:
@@ -69,13 +76,22 @@ def _safe_release_url(value: str) -> str:
     return url
 
 
+def _asset_name(version: str, update_mode: str) -> str:
+    if update_mode == UPDATE_MODE_INSTALLER:
+        return f"{PACKAGE_PREFIX}-Setup-v{version}.exe"
+    if update_mode == UPDATE_MODE_PORTABLE:
+        return f"{PACKAGE_PREFIX}-v{version}-win64.zip"
+    raise ValueError("Chế độ cập nhật không hợp lệ.")
+
+
 def _validate_asset_urls(
     version: str,
     package_url: str,
     checksum_url: str,
     signature_url: str,
+    update_mode: str,
 ) -> None:
-    package_name = f"{PACKAGE_PREFIX}-v{version}-win64.zip"
+    package_name = _asset_name(version, update_mode)
     expected = (
         package_name,
         package_name + ".sha256",
@@ -89,7 +105,10 @@ def _validate_asset_urls(
         raise ValueError("Tên các tệp cập nhật không khớp phiên bản được phát hành.")
 
 
-def _release_assets(release: dict[str, Any]) -> tuple[str, str, str, str]:
+def _release_assets(
+    release: dict[str, Any],
+    update_mode: str,
+) -> tuple[str, str, str, str]:
     tag = str(release.get("tag_name") or "").strip()
     version = tag.removeprefix("v")
     _version_tuple(version)
@@ -97,7 +116,7 @@ def _release_assets(release: dict[str, Any]) -> tuple[str, str, str, str]:
     if not isinstance(assets, list):
         raise ValueError("Bản phát hành chưa có gói cài đặt.")
 
-    package_name = f"{PACKAGE_PREFIX}-v{version}-win64.zip"
+    package_name = _asset_name(version, update_mode)
     checksum_name = package_name + ".sha256"
     signature_name = checksum_name + ".p7s"
     by_name = {
@@ -111,10 +130,71 @@ def _release_assets(release: dict[str, Any]) -> tuple[str, str, str, str]:
     return version, package_url, checksum_url, signature_url
 
 
+def _same_path(left: Path, right: Path) -> bool:
+    return os.path.normcase(str(left.resolve())) == os.path.normcase(
+        str(right.resolve())
+    )
+
+
+def _inno_install_locations() -> list[Path]:
+    if os.name != "nt":
+        return []
+    try:
+        import winreg
+    except ImportError:
+        return []
+    subkey = (
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
+        + INNO_APP_ID
+        + "_is1"
+    )
+    locations: list[Path] = []
+    access_modes = [winreg.KEY_READ]
+    for flag_name in ("KEY_WOW64_64KEY", "KEY_WOW64_32KEY"):
+        flag = getattr(winreg, flag_name, 0)
+        if flag:
+            access_modes.append(winreg.KEY_READ | flag)
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for access in access_modes:
+            try:
+                with winreg.OpenKey(hive, subkey, 0, access) as key:
+                    value, _kind = winreg.QueryValueEx(key, "InstallLocation")
+            except OSError:
+                continue
+            location = str(value or "").strip().strip('"')
+            if location:
+                path = Path(location).expanduser()
+                if path not in locations:
+                    locations.append(path)
+    return locations
+
+
+def detect_update_mode(executable: Path | None = None) -> str:
+    """Phân biệt bản Setup và portable bằng install registry + default path."""
+    target = Path(executable or sys.executable).resolve()
+    if target.name.casefold() != EXPECTED_EXECUTABLE_NAME.casefold():
+        return UPDATE_MODE_PORTABLE
+    for location in _inno_install_locations():
+        if _same_path(target.parent, location):
+            return UPDATE_MODE_INSTALLER
+    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        default_target = (
+            Path(local_app_data)
+            / "Programs"
+            / "WFX Smart"
+            / EXPECTED_EXECUTABLE_NAME
+        )
+        if _same_path(target, default_target):
+            return UPDATE_MODE_INSTALLER
+    return UPDATE_MODE_PORTABLE
+
+
 def check_for_updates(
     root: Path | None = None,
     *,
     channel: str = "stable",
+    executable: Path | None = None,
 ) -> dict[str, Any]:
     """Kiểm tra GitHub Release Stable mới nhất.
 
@@ -122,9 +202,13 @@ def check_for_updates(
     hành không còn phụ thuộc Git repository trên máy người dùng.
     """
     _ = root, channel
+    update_mode = detect_update_mode(executable)
     try:
         release = _load_latest_release()
-        version, package_url, checksum_url, signature_url = _release_assets(release)
+        version, package_url, checksum_url, signature_url = _release_assets(
+            release,
+            update_mode,
+        )
         common = {
             "channel": "stable",
             "version": version,
@@ -134,6 +218,7 @@ def check_for_updates(
             "package_url": package_url,
             "checksum_url": checksum_url,
             "signature_url": signature_url,
+            "update_mode": update_mode,
         }
         if _version_tuple(version) <= _version_tuple(APP_VERSION):
             return {
@@ -168,6 +253,7 @@ def check_for_updates(
             "can_update": False,
             "channel": "stable",
             "version": APP_VERSION,
+            "update_mode": update_mode,
         }
 
 
@@ -213,15 +299,20 @@ def schedule_update(
     package_url = _safe_release_url(str(state.get("package_url") or ""))
     checksum_url = _safe_release_url(str(state.get("checksum_url") or ""))
     signature_url = _safe_release_url(str(state.get("signature_url") or ""))
+    target_exe = Path(executable or sys.executable).resolve()
+    detected_mode = detect_update_mode(target_exe)
+    update_mode = str(state.get("update_mode") or detected_mode).strip().casefold()
+    if update_mode != detected_mode:
+        raise ValueError("Gói cập nhật không đúng kiểu cài đặt hiện tại.")
     _validate_asset_urls(
         version,
         package_url,
         checksum_url,
         signature_url,
+        update_mode,
     )
     if _version_tuple(version) <= _version_tuple(APP_VERSION):
         raise ValueError("Chỉ được cài phiên bản mới hơn bản đang chạy.")
-    target_exe = Path(executable or sys.executable).resolve()
     if target_exe.name.casefold() != EXPECTED_EXECUTABLE_NAME.casefold():
         raise ValueError(
             "Cập nhật tự động chỉ được phép thay WFX-Panel.exe trong bản đóng gói."
@@ -247,6 +338,7 @@ def schedule_update(
     result_path = data_dir / "update-result.json"
     work_dir = Path(tempfile.mkdtemp(prefix=f"wfx-panel-update-{pid}-")).resolve()
     helper = work_dir / "update.ps1"
+    package_name = _asset_name(version, update_mode)
 
     exe_args_list = [str(arg) for arg in (executable_args or [])]
     exe_args_ps = (
@@ -266,17 +358,19 @@ $checksumUrl = {_ps_quote(checksum_url)}
 $signatureUrl = {_ps_quote(signature_url)}
 $expectedSigner = {_ps_quote(signer_thumbprint)}
 $version = {_ps_quote(version)}
+$updateMode = {_ps_quote(update_mode)}
 $targetExe = {_ps_quote(target_exe)}
 $installDir = {_ps_quote(install_dir)}
 $exeArgs = @({exe_args_ps})
 $workDir = {_ps_quote(work_dir)}
-$zipPath = Join-Path $workDir 'WFX-Panel.zip'
-$checksumPath = Join-Path $workDir 'WFX-Panel.zip.sha256'
-$signaturePath = Join-Path $workDir 'WFX-Panel.zip.sha256.p7s'
+$packagePath = Join-Path $workDir {_ps_quote(package_name)}
+$checksumPath = Join-Path $workDir {_ps_quote(package_name + '.sha256')}
+$signaturePath = Join-Path $workDir {_ps_quote(package_name + '.sha256.p7s')}
 $expandedDir = Join-Path $workDir 'expanded'
 $backupDir = Join-Path $workDir 'backup'
 $ownedItems = @('WFX-Panel.exe', '_internal')
 $installStarted = $false
+$setupStarted = $false
 $allowedRemovePaths = @(
   [System.IO.Path]::GetFullPath($workDir).TrimEnd('\\'),
   [System.IO.Path]::GetFullPath(
@@ -517,7 +611,7 @@ function Perform-Update {{
       throw 'Thư mục tạm updater không an toàn.'
     }}
     Update-UI "Đang tải gói cập nhật WFX Smart v$version..."
-    Download-WithUi $packageUrl $zipPath
+    Download-WithUi $packageUrl $packagePath
     Download-WithUi $checksumUrl $checksumPath
     Download-WithUi $signatureUrl $signaturePath
 
@@ -548,9 +642,48 @@ function Perform-Update {{
     if ($expectedHash -notmatch '^[A-Fa-f0-9]{{64}}$') {{
       throw 'Tệp checksum SHA-256 không hợp lệ.'
     }}
-    $actualHash = Get-Sha256 $zipPath
+    $actualHash = Get-Sha256 $packagePath
     if ($actualHash.ToLowerInvariant() -ne $expectedHash.ToLowerInvariant()) {{
       throw 'Mã SHA-256 của gói tải về không trùng khớp.'
+    }}
+
+    if ($updateMode -eq 'installer') {{
+      Update-UI "Đang nâng cấp bằng bộ cài WFX Smart..." 75
+      $setupStarted = $true
+      $setupArgs = @(
+        '/VERYSILENT',
+        '/SUPPRESSMSGBOXES',
+        '/NORESTART',
+        '/CLOSEAPPLICATIONS'
+      )
+      $setupProcess = Start-Process `
+        -FilePath $packagePath `
+        -ArgumentList $setupArgs `
+        -Wait `
+        -PassThru
+      if ($setupProcess.ExitCode -ne 0) {{
+        throw "Bộ cài kết thúc với mã lỗi $($setupProcess.ExitCode)."
+      }}
+      if (
+        -not (Test-Path -LiteralPath $targetExe -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $installDir '_internal') -PathType Container)
+      ) {{
+        throw 'Bản cài đặt sau nâng cấp thiếu thành phần bắt buộc.'
+      }}
+      $installedVersion = (Get-Item -LiteralPath $targetExe).VersionInfo.ProductVersion
+      if (-not $installedVersion.StartsWith($version)) {{
+        throw "Bộ cài chưa nâng ứng dụng lên đúng phiên bản $version."
+      }}
+      Write-UpdateResult $true 'UPDATE_INSTALLED' "Đã nâng cấp bằng bộ cài lên phiên bản $version."
+      Update-UI "Cập nhật thành công! Đang tự động mở lại WFX Smart..." 100 'success'
+      Start-Sleep -Seconds 1.5
+      if ($exeArgs.Count -gt 0) {{
+        Start-Process -FilePath $targetExe -ArgumentList $exeArgs -WorkingDirectory $installDir
+      }} else {{
+        Start-Process -FilePath $targetExe -WorkingDirectory $installDir
+      }}
+      $form.Close()
+      return
     }}
 
     Update-UI "Đang giải nén gói cập nhật..." 70
@@ -558,7 +691,7 @@ function Perform-Update {{
     # ghi đè vì một số bản Windows PowerShell hiển thị lỗi "file đã tồn tại"
     # dù đây là lần tải đầu của user.
     Safe-Remove $expandedDir
-    Expand-Archive -LiteralPath $zipPath -DestinationPath $expandedDir -Force
+    Expand-Archive -LiteralPath $packagePath -DestinationPath $expandedDir -Force
     $newExecutables = @(
       Get-ChildItem -LiteralPath $expandedDir -Filter 'WFX-Panel.exe' -Recurse
     )
@@ -628,6 +761,8 @@ $technicalDetail
     $recoveryMessage = 'Bản hiện tại chưa bị thay đổi.'
     if ($installStarted) {{
       $recoveryMessage = 'Đang khôi phục phiên bản cũ...'
+    }} elseif ($setupStarted) {{
+      $recoveryMessage = 'Bộ cài không hoàn tất; dữ liệu người dùng vẫn được giữ nguyên.'
     }}
     Update-UI "Cập nhật thất bại: $err`n$recoveryMessage" 50 'error'
     try {{
@@ -645,6 +780,8 @@ $technicalDetail
           Copy-Item -LiteralPath $backupItem -Destination $targetItem -Recurse -Force
         }}
         Write-UpdateResult $false 'UPDATE_ROLLED_BACK' 'Cập nhật thất bại. Đã khôi phục phiên bản trước.'
+      }} elseif ($setupStarted) {{
+        Write-UpdateResult $false 'UPDATE_FAILED' 'Bộ cài không hoàn tất cập nhật. Vui lòng chạy lại Setup.'
       }} else {{
         Write-UpdateResult $false 'UPDATE_FAILED' 'Cập nhật thất bại trước khi thay đổi phiên bản hiện tại.'
       }}
@@ -655,6 +792,8 @@ $technicalDetail
 
     $finalMessage = if ($installStarted) {{
       'Đã thử khôi phục phiên bản trước. Vui lòng kiểm tra lại ứng dụng.'
+    }} elseif ($setupStarted) {{
+      'Vui lòng mở lại WFX Smart hoặc chạy lại bộ cài.'
     }} else {{
       'Bản hiện tại chưa bị thay đổi. Vui lòng thử lại.'
     }}

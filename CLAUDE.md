@@ -95,6 +95,10 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   `%LocalAppData%\Programs\WFX Smart`, không yêu cầu Admin, mặc định tạo shortcut
   Desktop/Start Menu và dùng Restart Manager để đóng app khi nâng cấp. Không
   được xóa dữ liệu `%LocalAppData%\WFX-Panel` khi cài, upgrade hoặc uninstall.
+  Updater phải nhận diện kiểu cài đặt hiện tại: bản đã cài bằng Setup luôn tải,
+  xác minh và chạy asset Setup để Inno Setup nâng cấp/giữ registry, shortcut và
+  Uninstall; chỉ bản portable chạy `WFX-Panel.exe` trực tiếp mới tải ZIP và tự
+  thay `WFX-Panel.exe`/`_internal` như luồng updater hiện tại.
 - Catalog tách `Tìm Style` và `Costing` thành hai workspace trong cùng module.
   Khi mở Costing hoặc upload/import XLSX, panel tự chuyển hẳn sang workspace
   Costing; không bắt người dùng cuộn xuống dưới form tìm kiếm. Hai workspace

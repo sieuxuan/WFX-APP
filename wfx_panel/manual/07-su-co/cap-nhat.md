@@ -16,6 +16,11 @@ Cập nhật WFX Smart lên bản mới để nhận tính năng và sửa lỗi
 > [!meo]
 > Cài đặt cá nhân và dữ liệu WFX Smart trên máy được giữ nguyên khi cập nhật.
 
+> [!meo]
+> Nếu bạn cài WFX Smart bằng Setup, ứng dụng sẽ nâng cấp bằng bộ cài để giữ
+> shortcut và mục Uninstall. Nếu dùng bản portable, ứng dụng cập nhật trực tiếp
+> các file trong thư mục portable.
+
 > [!luuy]
 > Hãy chờ tác vụ đang chạy hoàn tất trước khi bắt đầu cập nhật.
 

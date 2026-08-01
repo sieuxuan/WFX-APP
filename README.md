@@ -191,6 +191,10 @@ detached `.sha256.p7s`:
 - `WFX-Smart-v1.0.17-win64.zip` — bản portable. Giải nén nguyên thư mục rồi mở
   `WFX-Panel.exe`; không được tách EXE khỏi `_internal`.
 
+Khi cập nhật, bản cài bằng Setup tiếp tục nâng cấp qua bộ cài để giữ đúng
+shortcut, registry và Uninstall. Bản portable tiếp tục cập nhật trực tiếp bằng
+gói ZIP trong thư mục đang chạy.
+
 Build bộ cài tại máy Windows (cần Inno Setup 6 hoặc 7):
 
 ```powershell
@@ -205,9 +209,9 @@ GitHub Actions cần hai secrets:
 - `WFX_SIGNING_CERTIFICATE_BASE64`
 - `WFX_SIGNING_CERTIFICATE_PASSWORD`
 
-Updater xác minh chữ ký certificate đã ghim, SHA-256 và chỉ thay
-`WFX-Panel.exe` cùng `_internal`. Nếu cài lỗi, app rollback hai thành phần này
-và giữ nguyên tài khoản/settings. Installer cũng giữ dữ liệu người dùng tại
+Updater xác minh chữ ký certificate đã ghim và SHA-256. Bản portable chỉ thay
+`WFX-Panel.exe` cùng `_internal` và rollback hai thành phần này nếu lỗi; bản
+Setup chạy installer nâng cấp tại chỗ. Cả hai giữ nguyên tài khoản/settings tại
 `%LocalAppData%\WFX-Panel` khi cài mới, nâng cấp hoặc uninstall.
 
 Windows 11 thường có sẵn WebView2. Windows 10 cần Microsoft Edge WebView2
