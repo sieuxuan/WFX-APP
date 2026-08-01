@@ -26,6 +26,7 @@ from wfx_panel.automation._common import (
 )
 from wfx_panel.automation.catalog import open_catalog_folder
 from wfx_panel.automation.modules import _active_wfx_page
+from wfx_panel.automation.runtime import cancellation_deferred
 
 NEW_STYLE_XPATH = "/html/body/form/table/tbody/tr[3]/td/input"
 COPY_CODE_XPATH = "/html/body/form/table/tbody/tr[8]/td/input"
@@ -349,27 +350,20 @@ def _new_style_link(context: Any, timeout_s: float = 15) -> tuple[Page, Frame, A
     raise PlaywrightTimeoutError("Không tìm thấy nút New của Catalog Group.")
 
 
-def _open_style_choice(context: Any, link: Any) -> Frame:
-    """Mở popup New và chờ CDP nhận target trước khi tìm frame ArticleLeft."""
-    popup = None
+def _open_style_choice(context: Any, link: Any, timeout_s: float = 12) -> Frame:
+    """Mở popup New rồi chờ frame chọn New/Copy, dù WFX tái dùng cửa sổ cũ.
+
+    KHÔNG chờ blocking bằng ``expect_page``: WFX đặt tên cửa sổ ``CatalogDetail``
+    nên từ dòng thứ hai trở đi ``window.open`` tái dùng đúng cửa sổ đang mở và
+    Chromium không phát page event nào. Chờ cứng ở đây làm MỖI dòng mất trọn
+    timeout dù popup đã sẵn sàng ngay. Frame scan vốn đã là nguồn xác nhận cuối
+    cùng và tự nhận cả page mới lẫn page tái dùng, nên poll thẳng frame đích.
+    """
+    # WFX gắn onclick vào TD. Click chuột Playwright thường rơi vào anchor con
+    # và không bubble ổn định trên trang legacy này.
+    link.locator("xpath=..").evaluate("element => element.click()")
     try:
-        with context.expect_page(timeout=8_000) as page_info:
-            # WFX gắn onclick vào TD. Click chuột Playwright thường rơi vào
-            # anchor con và không bubble ổn định trên trang legacy này.
-            link.locator("xpath=..").evaluate("element => element.click()")
-        popup = page_info.value
-    except PlaywrightTimeoutError:
-        # Cửa sổ tên CatalogDetail có thể đã tồn tại và được WFX tái sử dụng,
-        # khi đó Chromium không phát event page mới; frame scan phía dưới vẫn
-        # là nguồn xác nhận cuối cùng.
-        pass
-    if popup is not None:
-        try:
-            popup.wait_for_load_state("domcontentloaded", timeout=12_000)
-        except PlaywrightTimeoutError:
-            pass
-    try:
-        return _article_left_frame(context, timeout_s=4)
+        return _article_left_frame(context, timeout_s=timeout_s)
     except PlaywrightTimeoutError:
         pass
 
@@ -400,6 +394,25 @@ def _open_style_choice(context: Any, link: Any) -> Frame:
     popup = context.new_page()
     popup.goto(target_url, wait_until="domcontentloaded", timeout=20_000)
     return _article_left_frame(context, timeout_s=20)
+
+
+def _close_pages_opened_since(context: Any, known: set) -> None:
+    """Đóng đúng những popup chính flow này mở ra, không đụng tab của user.
+
+    Chỉ dùng cho lượt quét dropdown: nó để lại một form New Style đã điền dở
+    (Material Type/Buyer/Division/Product Group cuối vòng lặp) mà người dùng
+    không hề yêu cầu. So sánh với snapshot page trước khi mở nên nếu WFX tái
+    dùng một cửa sổ đã có sẵn thì cửa sổ đó được giữ nguyên.
+    """
+    for page in list(context.pages):
+        if page in known:
+            continue
+        try:
+            page.close(run_before_unload=False)
+        except PlaywrightError:
+            # Popup đã tự đóng hoặc Chrome giữ target: không được để việc dọn
+            # dẹp làm hỏng kết quả quét đã đọc xong.
+            continue
 
 
 def _style_editor_frame(context: Any, timeout_s: float = 35) -> Frame:
@@ -499,10 +512,15 @@ def _save_style(context: Any, log: Callable[[str], None]) -> None:
     frame = _style_editor_frame(context)
     save = frame.locator(f"xpath={SAVE_STYLE_XPATH}").first
     save.wait_for(state="visible", timeout=8_000)
-    save.click()
-    _write_log(log, "[STYLE] Đã bấm Save theo lựa chọn Tự động Save.")
-    if context.pages:
-        _wait(context.pages[0], 800)
+    # Từ lúc click tới lúc WFX ghi xong là đoạn KHÔNG được ngắt. `_wait()` gọi
+    # checkpoint(); nếu người dùng bấm Stop đúng lúc này, flow trả
+    # ACTION_CANCELLED trong khi Style đã thật sự được tạo trên WFX — user tin
+    # là chưa ghi gì, chạy lại dòng đó và sinh Style trùng.
+    with cancellation_deferred():
+        save.click()
+        _write_log(log, "[STYLE] Đã bấm Save theo lựa chọn Tự động Save.")
+        if context.pages:
+            _wait(context.pages[0], 800)
 
 
 def _read_style_options(frame: Frame, ids: tuple[str, ...]) -> list[dict[str, str]]:
@@ -556,10 +574,13 @@ def scan_catalog_style_options(
     if str((opened.get("folder") or {}).get("kind") or "") != "group":
         return _result(False, "STYLE_GROUP_REQUIRED", "Vị trí đã chọn không phải Group.")
     playwright: Playwright | None = None
+    context: Any = None
+    known_pages: set = set()
     try:
         playwright = sync_playwright().start()
         browser, _page = _active_wfx_page(playwright, log)
         context = browser.contexts[0]
+        known_pages = set(context.pages)
         _owner, _frame, new_link = _new_style_link(context, 12)
         # Anchor href="#" dùng chung class với toolbar khác; click chính TD có
         # onclick="New()" mới ổn định trên WFX cũ.
@@ -688,6 +709,10 @@ def scan_catalog_style_options(
         _write_log(log, message)
         return _result(False, "STYLE_OPTIONS_SCAN_FAILED", message)
     finally:
+        # Lượt quét chỉ đọc option; form New Style bị điền dở trong quá trình
+        # quét không phải kết quả người dùng cần, phải dọn kể cả khi lỗi/Stop.
+        if context is not None:
+            _close_pages_opened_since(context, known_pages)
         if playwright is not None:
             playwright.stop()
 

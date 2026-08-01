@@ -1,3 +1,4 @@
+import ast
 import inspect
 from pathlib import Path
 
@@ -51,3 +52,79 @@ def test_style_flow_selects_exact_new_toolbar_action():
     source = Path(bulk_style.__file__).read_text(encoding="utf-8")
     assert "def _new_style_link" in source
     assert 'candidate.inner_text().strip().casefold() == "new"' in source
+
+
+def test_auto_save_click_is_wrapped_in_cancellation_deferred():
+    """Stop bấm đúng lúc Save đang chạy không được trả ACTION_CANCELLED.
+
+    ``_wait()`` gọi checkpoint(); nếu click Save nằm ngoài cancellation_deferred,
+    người dùng nhận báo đã hủy trong khi WFX đã tạo Style, chạy lại dòng đó là
+    sinh Style trùng.
+    """
+    tree = ast.parse(Path(bulk_style.__file__).read_text(encoding="utf-8"))
+    target = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_save_style"
+    )
+    guarded = [
+        node
+        for node in ast.walk(target)
+        if isinstance(node, ast.With)
+        and any(
+            isinstance(item.context_expr, ast.Call)
+            and getattr(item.context_expr.func, "id", None)
+            == "cancellation_deferred"
+            for item in node.items
+        )
+    ]
+    assert guarded, "_save_style phải bọc click Save trong cancellation_deferred()"
+    protected = {
+        line
+        for block in guarded
+        for node in ast.walk(block)
+        if (line := getattr(node, "lineno", None)) is not None
+    }
+    clicks = [
+        node.lineno
+        for node in ast.walk(target)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "attr", None) == "click"
+    ]
+    waits = [
+        node.lineno
+        for node in ast.walk(target)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_wait"
+    ]
+    assert clicks and set(clicks) <= protected
+    assert waits and set(waits) <= protected
+
+
+def test_open_style_choice_does_not_block_on_a_new_page_event():
+    """WFX tái dùng cửa sổ CatalogDetail nên page event không phát lại.
+
+    Chờ blocking ở đây làm mỗi dòng Tạo Style mất trọn timeout dù popup đã sẵn
+    sàng; frame scan mới là nguồn xác nhận và nhận được cả hai trường hợp.
+    """
+    source = inspect.getsource(bulk_style._open_style_choice)
+    assert "context.expect_page(" not in source
+    assert "_article_left_frame(context, timeout_s=timeout_s)" in source
+
+
+def test_option_scan_closes_only_the_popups_it_opened():
+    """Lượt quét chỉ đọc option; form New Style điền dở không được để lại."""
+    source = inspect.getsource(bulk_style.scan_catalog_style_options)
+    assert "known_pages = set(context.pages)" in source
+    assert "_close_pages_opened_since(context, known_pages)" in source
+    assert source.index("finally:") < source.index(
+        "_close_pages_opened_since(context, known_pages)"
+    )
+    cleanup = inspect.getsource(bulk_style._close_pages_opened_since)
+    assert "if page in known:" in cleanup
+    assert "continue" in cleanup
+
+
+def test_prepare_style_row_keeps_its_popup_for_the_user_to_review():
+    """Dòng đang chuẩn bị là kết quả người dùng cần xem và tự Save."""
+    source = inspect.getsource(bulk_style.prepare_catalog_style_row)
+    assert "_close_pages_opened_since" not in source

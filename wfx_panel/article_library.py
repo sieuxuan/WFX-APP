@@ -345,6 +345,77 @@ def load_cached(base_dir: Path) -> dict[str, Any] | None:
     return document
 
 
+SUGGESTION_FIELDS = frozenset(
+    {"article_code", "article_name", "buyer_reference"}
+)
+
+
+def suggestion_index(
+    document: dict[str, Any],
+    category: str,
+    field: str,
+) -> list[tuple[str, str, str, str, str, str]]:
+    """Index typeahead đã chuẩn hóa cho một cặp (Category, field tìm kiếm).
+
+    Quét lại toàn bộ thư viện trên TỪNG ký tự người dùng gõ tốn ~55 ms và vài MB
+    rác ở kho 15k Article, vì mỗi lượt phải dựng lại set khử trùng và gọi
+    strip()/casefold() trên cả 4 field của mọi dòng. Ở đây làm đúng một lần rồi
+    gắn kết quả vào chính ``document`` đang nằm trong cache: khi file cache đổi,
+    ``load_cached`` trả về document mới nên index cũ tự mất hiệu lực cùng nó.
+
+    Mỗi phần tử giữ nguyên thứ tự các trường mà bộ xếp hạng đang dùng:
+    ``(searchable_key, searchable, article_code, article_name,
+    buyer_reference, article_category)``.
+    """
+    if field not in SUGGESTION_FIELDS:
+        return []
+    category_key = str(category or "").strip().casefold()
+    cache = document.get("_suggestion_index")
+    if not isinstance(cache, dict):
+        cache = {}
+        document["_suggestion_index"] = cache
+    key = (category_key, field)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    entries: list[tuple[str, str, str, str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for section in document.get("sections") or ():
+        for option in section.get("options") or ():
+            article_category = str(option.get("article_category") or "").strip()
+            # Nguồn dữ liệu cũ (CSV/XLSX hai cột) không có cột Category; những
+            # dòng đó phải gợi ý được ở mọi Category thay vì biến mất.
+            if article_category and article_category.casefold() != category_key:
+                continue
+            code = str(option.get("article_code") or "").strip()
+            name = str(option.get("article_name") or "").strip()
+            buyer_reference = str(option.get("buyer_reference") or "").strip()
+            identity = (code.casefold(), name.casefold(), buyer_reference.casefold())
+            if identity in seen:
+                continue
+            seen.add(identity)
+            searchable = {
+                "article_code": code,
+                "article_name": name,
+                "buyer_reference": buyer_reference,
+            }[field]
+            if not searchable:
+                continue
+            entries.append(
+                (
+                    searchable.casefold(),
+                    searchable,
+                    code,
+                    name,
+                    buyer_reference,
+                    article_category,
+                )
+            )
+    cache[key] = entries
+    return entries
+
+
 def status(base_dir: Path) -> dict[str, Any]:
     cached = load_cached(base_dir)
     if cached is None:

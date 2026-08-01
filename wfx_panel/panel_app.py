@@ -836,14 +836,9 @@ class PanelApp:
                 "code": "STYLE_FILE_DIALOG_UNAVAILABLE",
                 "message": "Cửa sổ lưu file chưa sẵn sàng.",
             }
-        option_result = {"ok": True, "options": {}}
-        if str(group_id or "").strip():
-            option_result = self.api.ensure_catalog_style_options(
-                str(group_id or ""),
-                False,
-            )
-            if not option_result.get("ok"):
-                return option_result
+        # Hỏi nơi lưu TRƯỚC. ensure_catalog_style_options có thể gọi GitHub
+        # (timeout 20 s) hoặc chạy nguyên một lượt quét WFX; đặt nó trước hộp
+        # thoại làm người dùng bấm nút xong phải chờ rất lâu mà chưa thấy gì.
         try:
             selected = self.window.create_file_dialog(
                 webview.SAVE_DIALOG,
@@ -863,6 +858,14 @@ class PanelApp:
                 "code": "STYLE_FILE_DIALOG_CANCELLED",
                 "message": "Đã hủy tải form Tạo Style.",
             }
+        option_result = {"ok": True, "options": {}}
+        if str(group_id or "").strip():
+            option_result = self.api.ensure_catalog_style_options(
+                str(group_id or ""),
+                False,
+            )
+            if not option_result.get("ok"):
+                return option_result
         try:
             target = _dialog_selected_path(selected)
             target = write_style_template(

@@ -46,6 +46,12 @@ Card, Size Range và Season có dropdown lấy từ cache dùng chung. Sub-Categ
 > tạm lỗi, app giữ nguyên cache gần nhất; Group đã chọn vẫn dùng để quét WFX khi
 > cần làm mới trực tiếp.
 
+> [!luuy]
+> Bấm `Tải form Excel` sẽ hỏi nơi lưu file ngay. Nếu dữ liệu dropdown đã quá 30
+> ngày, app lấy danh sách mới sau khi bạn chọn xong nơi lưu, nên bước này có thể
+> chờ thêm một lúc. Lúc quét, app tự mở rồi tự đóng một cửa sổ Style trên trình
+> duyệt làm việc; cửa sổ đó chỉ để đọc danh sách và không ghi gì lên WFX.
+
 > [!meo]
 > Nếu tìm Copy ra nhiều Style, chọn đúng Style nguồn ngay trong bảng điều khiển.
 

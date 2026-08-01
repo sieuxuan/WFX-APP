@@ -444,6 +444,63 @@ def test_style_dialogs_choose_xlsx_and_generate_template(tmp_path, monkeypatch):
     assert app.window.calls[-1][0] == panel_app.webview.SAVE_DIALOG
 
 
+def test_style_template_asks_where_to_save_before_fetching_dropdowns(
+    tmp_path,
+    monkeypatch,
+):
+    """ensure_catalog_style_options có thể gọi GitHub (timeout 20 s) hoặc quét WFX.
+
+    Đặt nó trước hộp thoại làm người dùng bấm nút xong phải chờ rất lâu mà chưa
+    thấy gì, nên hỏi nơi lưu phải là việc đầu tiên.
+    """
+    order = []
+
+    class Window:
+        def create_file_dialog(self, dialog_type, **_kwargs):
+            order.append("dialog")
+            return str(tmp_path / "WFX-Smart-Tao-Style")
+
+    monkeypatch.setattr(panel_app, "_open_downloaded_file", lambda _path: True)
+    monkeypatch.setattr(panel_app, "_reveal_downloaded_file", lambda _path: True)
+    app = panel_app.PanelApp()
+    app.window = Window()
+
+    def ensure(group_id, force):
+        order.append("options")
+        return {"ok": True, "options": {}}
+
+    monkeypatch.setattr(app.api, "ensure_catalog_style_options", ensure)
+
+    exported = app.download_style_template("7740001")
+
+    assert exported["code"] == "STYLE_TEMPLATE_EXPORTED"
+    assert order == ["dialog", "options"]
+
+
+def test_style_template_cancelled_at_the_dialog_never_touches_wfx(
+    tmp_path,
+    monkeypatch,
+):
+    calls = []
+
+    class Window:
+        def create_file_dialog(self, _dialog_type, **_kwargs):
+            return None
+
+    app = panel_app.PanelApp()
+    app.window = Window()
+    monkeypatch.setattr(
+        app.api,
+        "ensure_catalog_style_options",
+        lambda group_id, force: calls.append(group_id) or {"ok": True},
+    )
+
+    result = app.download_style_template("7740001")
+
+    assert result["code"] == "STYLE_FILE_DIALOG_CANCELLED"
+    assert calls == []
+
+
 def test_notification_shows_full_action_detail_without_resizing_webview(
     monkeypatch,
 ):

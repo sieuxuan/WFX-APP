@@ -89,6 +89,11 @@ def _load(base_dir: Path) -> list[dict[str, Any]]:
 
 def _write(base_dir: Path, rows: list[dict[str, Any]]) -> None:
     base_dir.mkdir(parents=True, exist_ok=True)
+    # Đây là nơi trần MAX_JOBS thật sự cắt danh sách trong luồng append: _prune
+    # chạy TRƯỚC khi chèn dòng mới nên không bao giờ thấy dòng thứ 201. Ghi đè
+    # mà không nhả ảnh ở đây là bỏ lại ảnh mồ côi không dòng nào trỏ tới nữa.
+    for dropped in rows[MAX_JOBS:]:
+        _remove_screenshot(base_dir, dropped)
     write_json_atomic(_history_path(base_dir), rows[:MAX_JOBS], indent=2)
 
 
@@ -142,6 +147,12 @@ def _prune(
         kept.append(safe_row)
         changed = changed or safe_row != row
     trimmed = kept[:MAX_JOBS]
+    # Dòng bị cắt vì vượt trần cũng phải nhả ảnh của nó. Trước đây chỉ dòng quá
+    # RETENTION_DAYS mới gọi _remove_screenshot, nên máy chạy hơn MAX_JOBS job
+    # trong vòng 7 ngày sẽ bỏ lại ảnh mồ côi vĩnh viễn trong job-screenshots:
+    # không còn dòng nào trỏ tới chúng để lần dọn sau tìm ra.
+    for dropped in kept[MAX_JOBS:]:
+        _remove_screenshot(base_dir, dropped)
     return trimmed, changed or len(trimmed) != len(rows)
 
 
