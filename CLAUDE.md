@@ -343,7 +343,9 @@ Các workflow riêng hiện có:
   Sample; sau khi user chọn, app tiếp tục từ grid đang mở, không tìm lại.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
   No., New, và tải Documents. Luồng Documents nhận Invoice No. đang nhập
-  hoặc đúng một dòng đang chọn; click cột Docs, tải lần lượt Packing
+  hoặc đúng một dòng đang chọn; xác nhận invoice độc lập với cột Docs rồi quét
+  ngang AG Grid để tìm/click Docs theo metadata vì mỗi user có thể kéo cột tới
+  vị trí khác nhau; tải lần lượt Packing
   List và Buyer Invoice bằng Report Viewer `EXCELOPENXML`, ghép thành một
   workbook gồm hai sheet `Packing List`/`Buyer Invoice`, giữ nguyên format report
   nguồn, sau đó mới mở Save As với tên mặc định là Invoice No. thực tế.
