@@ -684,6 +684,13 @@
   }
   window.wfxSetReferenceSyncStatus = setReferenceSyncStatus;
 
+  // App nằm ở khay hệ thống cả ngày nên <pre> log phải có trần. Ngoài chuyện
+  // phình DOM, mọi lần đọc pre.textContent đều nối lại toàn bộ text node con:
+  // đọc nó trên từng dòng làm chi phí ghi log tăng theo bình phương số dòng.
+  // Vì vậy ở đây chỉ đụng tới childNodes/firstChild, không đọc textContent.
+  const LOG_PLACEHOLDER = "Chưa có nhật ký hệ thống.";
+  const LOG_MAX_LINES = 2000;
+
   function pushLog(line) {
     const pre = $(".catalog-log");
     const selection = window.getSelection?.();
@@ -699,12 +706,24 @@
       pre.scrollHeight - pre.scrollTop - pre.clientHeight <= 28
       && !selectionInLog
     );
-    if (pre.textContent === "Chưa có nhật ký hệ thống.") {
+    if (
+      pre.childNodes.length === 1
+      && pre.firstChild.nodeValue === LOG_PLACEHOLDER
+    ) {
       pre.textContent = "";
     }
     pre.append(document.createTextNode(
-      `${pre.textContent ? "\n" : ""}${line}`,
+      `${pre.childNodes.length ? "\n" : ""}${line}`,
     ));
+    while (pre.childNodes.length > LOG_MAX_LINES) {
+      pre.removeChild(pre.firstChild);
+    }
+    // Mỗi dòng mang sẵn "\n" ở đầu; sau khi cắt bớt phải bỏ ký tự đó của dòng
+    // đầu còn lại để log không mở màn bằng một dòng trống.
+    const first = pre.firstChild;
+    if (first && first.nodeValue.charCodeAt(0) === 10) {
+      first.nodeValue = first.nodeValue.slice(1);
+    }
     if (followLatest) pre.scrollTop = pre.scrollHeight;
     if (/(?:ERROR|FAILED|TIMEOUT)/i.test(line) && !$(".log-overlay").classList.contains("log-open")) {
       $(".log-button").classList.add("has-alert");
@@ -3532,7 +3551,7 @@
       const result = await callQuiet("clear_job_history");
       if (result) {
         renderJobs([]);
-        $(".catalog-log").textContent = "Chưa có nhật ký hệ thống.";
+        $(".catalog-log").textContent = LOG_PLACEHOLDER;
         setStatus("success", result.message || "");
       }
     });

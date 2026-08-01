@@ -113,7 +113,10 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   Playwright để ép dừng. Đoạn click/chờ Save phải dùng `cancellation_deferred()`
   để không trả trạng thái hủy khi WFX còn đang ghi dữ liệu.
 - `Log kỹ thuật` cho phép bôi đen/copy. Log mới chỉ tự cuộn khi người dùng đang
-  ở gần cuối và không chọn văn bản.
+  ở gần cuối và không chọn văn bản. App chạy cả ngày ở khay hệ thống nên `<pre>`
+  log có trần dòng cứng và cắt dòng cũ nhất; `pushLog` chỉ được đụng
+  `childNodes`/`firstChild`, KHÔNG đọc `pre.textContent` trên từng dòng vì getter
+  đó nối lại toàn bộ text node con, làm chi phí ghi log tăng theo bình phương.
 - Nội dung hiển thị cho người dùng phải là tiếng Việt Unicode NFC, dùng nhất
   quán `xóa`, `hủy`, `hóa`. Ưu tiên “bảng điều khiển”, “khay hệ thống” và
   “trình duyệt làm việc”; chỉ giữ tiếng Anh khi đó là tên nghiệp vụ hoặc nhãn
@@ -209,6 +212,15 @@ Các workflow riêng hiện có:
   app quét read-only form WFX trong Group đã chọn, không Save, lưu local và ghi
   `data/style-options.json` qua GitHub Contents API khi máy quản trị có token.
   Bản phát hành thường chỉ có quyền đọc GitHub Raw, không nhúng token ghi.
+  `Tải form Excel` phải hỏi nơi lưu TRƯỚC khi lấy dropdown, vì bước lấy dropdown
+  có thể gọi GitHub hoặc chạy nguyên một lượt quét WFX. Lượt quét để lại một form
+  New Style điền dở nên phải đóng đúng những popup chính nó mở (so với snapshot
+  `context.pages`), kể cả khi lỗi hoặc bị Stop; popup của `prepare_style_row` thì
+  giữ nguyên vì đó là kết quả user cần kiểm tra và tự Save.
+  Không dùng `expect_page` chờ blocking khi mở New: WFX đặt tên cửa sổ
+  `CatalogDetail` nên từ dòng thứ hai trở đi `window.open` tái dùng cửa sổ đang
+  mở và Chromium không phát page event, làm mỗi dòng mất trọn timeout. Frame scan
+  là nguồn xác nhận và nhận được cả hai trường hợp.
 - Costing file chỉ áp dụng cho Apparel và luôn chạy hai phase:
   1. scan live + validate file + dry-run, cache plan bằng opaque token tối đa
      15 phút, chưa ghi WFX;
@@ -297,7 +309,10 @@ Các workflow riêng hiện có:
   cho nhập tay. Khi người dùng chọn Article Name trong workbook, lúc đọc/import
   app phải đồng bộ ngược Article Code nếu tên chỉ khớp đúng một mã; tên trùng
   nhiều mã phải báo chọn Article Code, không tự đoán. Mọi gợi ý bắt đầu sau 2 ký
-  tự, tối đa 20 kết quả.
+  tự, tối đa 20 kết quả. Typeahead không được quét lại cả kho trên từng ký tự:
+  chuẩn hóa và khử trùng đúng một lần cho mỗi cặp (Category, field) qua
+  `article_library.suggestion_index`, gắn vào chính document trong cache để index
+  tự mất hiệu lực khi file cache đổi.
 - Khi user chọn một gợi ý từ Buyer Reference hoặc Article Name, UI phải lấy
   exact `Article Code` của chính dòng đó, chuyển filter sang Code và tìm bằng
   code; không lọc lại Buyer Reference/Name khiến user phải chọn Article lần hai.

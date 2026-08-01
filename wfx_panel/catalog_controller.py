@@ -1540,53 +1540,35 @@ class CatalogController:
                 **self.article_library_status(),
             }
 
+        # Chuẩn hóa + khử trùng đã làm sẵn một lần trong article_library; ở đây
+        # chỉ còn so khớp chuỗi để mỗi ký tự gõ không phải quét lại cả kho.
+        index = article_library.suggestion_index(cached, category, search_field)
+
         def candidates():
-            seen = set()
-            for section in cached.get("sections") or ():
-                for option in section.get("options") or ():
-                    code = str(option.get("article_code") or "").strip()
-                    name = str(option.get("article_name") or "").strip()
-                    buyer_reference = str(
-                        option.get("buyer_reference") or ""
-                    ).strip()
-                    article_category = str(
-                        option.get("article_category") or ""
-                    ).strip()
-                    if (
-                        article_category
-                        and article_category.casefold() != category.casefold()
-                    ):
-                        continue
-                    identity = (
-                        code.casefold(),
-                        name.casefold(),
-                        buyer_reference.casefold(),
-                    )
-                    if identity in seen:
-                        continue
-                    seen.add(identity)
-                    searchable = {
-                        "article_code": code,
-                        "article_name": name,
-                        "buyer_reference": buyer_reference,
-                    }[search_field]
-                    searchable_key = searchable.casefold()
-                    if searchable_key.startswith(needle):
-                        score = 0
-                    elif needle in searchable_key:
-                        score = 1
-                    else:
-                        continue
-                    yield (
-                        score,
-                        len(searchable),
-                        searchable_key,
-                        code,
-                        name,
-                        buyer_reference,
-                        article_category,
-                        searchable,
-                    )
+            for (
+                searchable_key,
+                searchable,
+                code,
+                name,
+                buyer_reference,
+                article_category,
+            ) in index:
+                if searchable_key.startswith(needle):
+                    score = 0
+                elif needle in searchable_key:
+                    score = 1
+                else:
+                    continue
+                yield (
+                    score,
+                    len(searchable),
+                    searchable_key,
+                    code,
+                    name,
+                    buyer_reference,
+                    article_category,
+                    searchable,
+                )
 
         ranked = nsmallest(maximum, candidates())
         suggestions = [

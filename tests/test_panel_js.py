@@ -10,6 +10,43 @@ def test_exposes_python_callable_globals():
         assert f"window.{name}" in JS
 
 
+def _push_log_body():
+    start = JS.index("function pushLog(line) {")
+    return JS[start : JS.index("\n  window.wfxPushLog", start)]
+
+
+def test_push_log_is_capped_and_never_reads_the_whole_log_back():
+    """App nằm ở khay hệ thống cả ngày nên <pre> log phải có trần.
+
+    ``pre.textContent`` nối lại toàn bộ text node con; đọc nó trên từng dòng
+    làm chi phí ghi log tăng theo bình phương số dòng đã ghi.
+    """
+    body = _push_log_body()
+
+    assert "pre.textContent" not in body.replace('pre.textContent = "";', "")
+    assert "pre.childNodes.length" in body
+    assert "LOG_MAX_LINES" in body
+    assert "pre.removeChild(pre.firstChild)" in body
+    assert "const LOG_MAX_LINES = 2000;" in JS
+
+
+def test_push_log_drops_the_leading_newline_after_trimming():
+    """Mỗi dòng mang sẵn "\\n" ở đầu, nên dòng đầu còn lại phải được gọt."""
+    body = _push_log_body()
+
+    assert 'first.nodeValue.charCodeAt(0) === 10' in body
+    assert "first.nodeValue = first.nodeValue.slice(1)" in body
+    assert body.index("pre.removeChild(pre.firstChild)") < body.index(
+        "first.nodeValue = first.nodeValue.slice(1)"
+    )
+
+
+def test_clearing_history_restores_the_exact_log_placeholder():
+    """pushLog nhận diện ô trống bằng đúng chuỗi này, không đọc textContent."""
+    assert 'const LOG_PLACEHOLDER = "Chưa có nhật ký hệ thống.";' in JS
+    assert '$(".catalog-log").textContent = LOG_PLACEHOLDER;' in JS
+
+
 def test_wires_all_catalog_actions():
     # Catalog dùng Article Code và đổi Buyer Reference/Article Name theo category.
     # rồi Tìm (primary) · Costing · BOM · File.
