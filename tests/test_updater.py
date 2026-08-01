@@ -8,6 +8,7 @@ from wfx_panel import updater
 
 def release_payload(version: str = "1.1.0") -> dict:
     package = f"WFX-Smart-v{version}-win64.zip"
+    setup = f"WFX-Smart-Setup-v{version}.exe"
     base = f"https://github.com/sieuxuan/WFX-APP/releases/download/v{version}"
     return {
         "id": 110,
@@ -26,12 +27,27 @@ def release_payload(version: str = "1.1.0") -> dict:
                 "name": package + ".sha256.p7s",
                 "browser_download_url": f"{base}/{package}.sha256.p7s",
             },
+            {
+                "name": setup,
+                "browser_download_url": f"{base}/{setup}",
+            },
+            {
+                "name": setup + ".sha256",
+                "browser_download_url": f"{base}/{setup}.sha256",
+            },
+            {
+                "name": setup + ".sha256.p7s",
+                "browser_download_url": f"{base}/{setup}.sha256.p7s",
+            },
         ],
     }
 
 
-def update_state(version: str = "1.1.0") -> dict:
-    package = f"WFX-Smart-v{version}-win64.zip"
+def update_state(
+    version: str = "1.1.0",
+    update_mode: str = updater.UPDATE_MODE_PORTABLE,
+) -> dict:
+    package = updater._asset_name(version, update_mode)
     package_url = (
         f"https://github.com/sieuxuan/WFX-APP/releases/download/v{version}/{package}"
     )
@@ -41,6 +57,7 @@ def update_state(version: str = "1.1.0") -> dict:
         "package_url": package_url,
         "checksum_url": package_url + ".sha256",
         "signature_url": package_url + ".sha256.p7s",
+        "update_mode": update_mode,
     }
 
 
@@ -62,6 +79,50 @@ def test_check_for_updates_reports_release_in_plain_language(monkeypatch):
     assert result["package_url"].endswith("WFX-Smart-v1.1.0-win64.zip")
     assert result["checksum_url"].endswith(".zip.sha256")
     assert result["signature_url"].endswith(".zip.sha256.p7s")
+    assert result["update_mode"] == updater.UPDATE_MODE_PORTABLE
+
+
+def test_setup_install_checks_the_installer_assets(monkeypatch):
+    monkeypatch.setattr(
+        updater,
+        "detect_update_mode",
+        lambda _executable=None: updater.UPDATE_MODE_INSTALLER,
+    )
+    monkeypatch.setattr(
+        updater,
+        "_load_latest_release",
+        lambda: release_payload("1.1.0"),
+    )
+
+    result = updater.check_for_updates()
+
+    assert result["can_update"] is True
+    assert result["update_mode"] == updater.UPDATE_MODE_INSTALLER
+    assert result["package_url"].endswith("WFX-Smart-Setup-v1.1.0.exe")
+    assert result["checksum_url"].endswith(".exe.sha256")
+    assert result["signature_url"].endswith(".exe.sha256.p7s")
+
+
+def test_update_mode_matches_setup_registry_location(monkeypatch, tmp_path):
+    install_dir = tmp_path / "Custom WFX"
+    install_dir.mkdir()
+    executable = install_dir / "WFX-Panel.exe"
+    executable.write_bytes(b"app")
+    monkeypatch.setattr(updater, "_inno_install_locations", lambda: [install_dir])
+
+    assert (
+        updater.detect_update_mode(executable)
+        == updater.UPDATE_MODE_INSTALLER
+    )
+
+
+def test_update_mode_keeps_unregistered_exe_portable(monkeypatch, tmp_path):
+    executable = tmp_path / "WFX-Panel.exe"
+    executable.write_bytes(b"app")
+    monkeypatch.setattr(updater, "_inno_install_locations", lambda: [])
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+
+    assert updater.detect_update_mode(executable) == updater.UPDATE_MODE_PORTABLE
 
 
 def test_current_release_is_up_to_date(monkeypatch):
@@ -343,6 +404,48 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
         stdout, stderr = isolated.communicate(timeout=15)
         assert isolated.returncode == 0, stderr or stdout
         assert outside.read_text(encoding="utf-8") == "sentinel"
+
+
+def test_setup_install_schedules_inno_installer_instead_of_zip_replacement(
+    monkeypatch,
+    tmp_path,
+):
+    local_data = tmp_path / "local"
+    install_dir = tmp_path / "installed" / "WFX Smart"
+    install_dir.mkdir(parents=True)
+    executable = install_dir / "WFX-Panel.exe"
+    executable.write_bytes(b"old")
+    (install_dir / "_internal").mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local_data))
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(updater, "EXPECTED_SIGNER_THUMBPRINT", "A" * 40)
+    monkeypatch.setattr(
+        updater,
+        "detect_update_mode",
+        lambda _executable=None: updater.UPDATE_MODE_INSTALLER,
+    )
+    launched = []
+    monkeypatch.setattr(
+        updater.subprocess,
+        "Popen",
+        lambda args, **kwargs: launched.append((args, kwargs)),
+    )
+
+    helper = updater.schedule_update(
+        update_state(update_mode=updater.UPDATE_MODE_INSTALLER),
+        current_pid=456,
+        executable=executable,
+    )
+    content = helper.read_text(encoding="utf-8-sig")
+
+    assert "$updateMode = 'installer'" in content
+    assert "WFX-Smart-Setup-v1.1.0.exe" in content
+    assert "if ($updateMode -eq 'installer')" in content
+    assert "'/VERYSILENT'" in content
+    assert "'/SUPPRESSMSGBOXES'" in content
+    assert "-FilePath $packagePath" in content
+    assert "Bộ cài chưa nâng ứng dụng lên đúng phiên bản" in content
+    assert launched
 
 
 def test_schedule_update_rejects_non_app_executable(monkeypatch, tmp_path):

@@ -328,6 +328,7 @@ jobs:
             - Sale ASN tải Packing List và Buyer Invoice, gộp thành một workbook theo Invoice No. và giữ format của hai sheet.
             - Sale ASN nhận đúng Invoice No. trước rồi tự quét ngang bảng để tìm cột Docs dù mỗi người dùng đã kéo cột tới vị trí khác nhau.
             - Mọi file tải hoặc xuất thành công đều tự mở thư mục người dùng đã chọn.
+            - Updater nhận diện bản Setup để nâng cấp bằng installer; bản portable tiếp tục cập nhật trực tiếp bằng gói ZIP.
             - Upload OC New dùng form một header, tự sinh Sheet1 EDI và validate trước khi gửi WFX.
             - Màn Review hiển thị Buyer, Season, số PO, số Style và tổng Units trước khi người dùng xác nhận upload.
             - Revise OC mở đúng báo cáo WFX, nhận file người dùng chỉnh sửa rồi chạy chung bước verify/Create Transaction.
