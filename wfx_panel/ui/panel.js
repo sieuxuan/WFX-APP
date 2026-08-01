@@ -33,6 +33,97 @@
   const escapeHtml = (value) => String(value == null ? "" : value)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const TOOLTIP_SHOW_DELAY_MS = 420;
+  const TOOLTIP_FOCUS_DELAY_MS = 80;
+  let tooltipTimer = 0;
+  let tooltipTarget = null;
+
+  function hideTooltip() {
+    window.clearTimeout(tooltipTimer);
+    tooltipTimer = 0;
+    const tooltip = $("#app-tooltip");
+    if (tooltip) tooltip.hidden = true;
+    if (tooltipTarget) {
+      const previous = tooltipTarget.dataset.tooltipPreviousDescribedby;
+      if (previous) tooltipTarget.setAttribute("aria-describedby", previous);
+      else tooltipTarget.removeAttribute("aria-describedby");
+      delete tooltipTarget.dataset.tooltipPreviousDescribedby;
+    }
+    tooltipTarget = null;
+  }
+
+  function positionTooltip(target, tooltip) {
+    const targetRect = target.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const edge = 8;
+    const gap = 8;
+    const roomAbove = targetRect.top - edge;
+    const placement = roomAbove >= tooltipRect.height + gap ? "top" : "bottom";
+    const preferredTop = placement === "top"
+      ? targetRect.top - tooltipRect.height - gap
+      : targetRect.bottom + gap;
+    const maxLeft = Math.max(edge, window.innerWidth - tooltipRect.width - edge);
+    const left = Math.min(
+      maxLeft,
+      Math.max(edge, targetRect.left + (targetRect.width - tooltipRect.width) / 2),
+    );
+    const maxTop = Math.max(edge, window.innerHeight - tooltipRect.height - edge);
+    tooltip.dataset.placement = placement;
+    tooltip.style.left = `${Math.round(left)}px`;
+    tooltip.style.top = `${Math.round(Math.min(maxTop, Math.max(edge, preferredTop)))}px`;
+  }
+
+  function showTooltip(target) {
+    const label = String(target?.dataset.tooltip || "").trim();
+    const tooltip = $("#app-tooltip");
+    if (!label || !tooltip || !target.isConnected) return;
+    hideTooltip();
+    tooltipTarget = target;
+    tooltip.textContent = label;
+    tooltip.hidden = false;
+    tooltipTarget.dataset.tooltipPreviousDescribedby =
+      tooltipTarget.getAttribute("aria-describedby") || "";
+    tooltipTarget.setAttribute("aria-describedby", tooltip.id);
+    positionTooltip(target, tooltip);
+  }
+
+  function scheduleTooltip(target, delay) {
+    if (!target || target === tooltipTarget) return;
+    hideTooltip();
+    tooltipTimer = window.setTimeout(() => showTooltip(target), delay);
+  }
+
+  function tooltipTrigger(event) {
+    return event.target instanceof Element
+      ? event.target.closest("[data-tooltip]")
+      : null;
+  }
+
+  function bindTooltips() {
+    document.addEventListener("pointerover", (event) => {
+      if (event.pointerType === "touch") return;
+      const target = tooltipTrigger(event);
+      if (!target || target.contains(event.relatedTarget)) return;
+      scheduleTooltip(target, TOOLTIP_SHOW_DELAY_MS);
+    });
+    document.addEventListener("pointerout", (event) => {
+      const target = tooltipTrigger(event);
+      if (target && !target.contains(event.relatedTarget)) hideTooltip();
+    });
+    document.addEventListener("focusin", (event) => {
+      const target = tooltipTrigger(event);
+      if (target) scheduleTooltip(target, TOOLTIP_FOCUS_DELAY_MS);
+    });
+    document.addEventListener("focusout", (event) => {
+      if (tooltipTrigger(event)) hideTooltip();
+    });
+    document.addEventListener("pointerdown", hideTooltip, true);
+    document.addEventListener("scroll", hideTooltip, true);
+    window.addEventListener("resize", hideTooltip);
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hideTooltip();
+    }, true);
+  }
   const MODULE_ICON_PATHS = {
     CA: '<path d="M4 7h6l2 2h8v10H4V7Z"/><path d="m9 14 2 2 4-5"/>',
     OC: '<path d="M6 3h9l3 3v15H6V3Z"/><path d="M14 3v4h4"/><path d="m9 14 2 2 4-5"/>',
@@ -250,7 +341,7 @@
           data-favorite-module-id="${escapeHtml(module.id)}"
           aria-label="${isFavorite ? "Bỏ ghim" : "Ghim"} ${escapeHtml(module.name)}"
           aria-pressed="${String(isFavorite)}"
-          title="${isFavorite ? "Bỏ khỏi Yêu thích" : "Ghim lên đầu"}">
+          data-tooltip="${isFavorite ? "Bỏ khỏi Yêu thích" : "Ghim lên đầu"}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg>
         </button>
       </div>`;
@@ -319,6 +410,13 @@
     if (value) {
       $$("button.is-loading").forEach((button) =>
         button.classList.remove("is-loading"));
+    } else {
+      // Result sink có thể nhả busy trước khi Promise pywebview resolve. Xóa
+      // luôn dấu vết nút khởi chạy để UI không còn highlight/aria-busy cũ.
+      $$("button.is-action-source").forEach((button) => {
+        button.classList.remove("is-loading", "is-action-source");
+        button.removeAttribute("aria-busy");
+      });
     }
     const progress = $(".operation-progress");
     const stopButton = $(".stop-action-button");
@@ -337,6 +435,11 @@
     $$("button, select, input").forEach((element) => {
       if (element.closest(".settings-overlay")) return;
       if (element.matches(".close-button, .module-back-button")) return;
+      // Manual, log và trợ giúp là các bề mặt chỉ đọc, rất hữu ích khi user
+      // đang chờ automation; cho phép mở mà không ảnh hưởng flow WFX.
+      if (element.matches(
+        ".manual-button, .log-button, .module-help-button, .footer-help-button"
+      )) return;
       if (element.matches(".stop-action-button")) return;
       element.disabled = value;
     });
@@ -450,7 +553,9 @@
     const health = $(".health-chrome");
     if (health) {
       health.dataset.state = alive ? "ok" : "bad";
-      health.title = alive ? `${name || "Chromium"} · trình duyệt làm việc` : "Chưa kết nối trình duyệt làm việc";
+      health.dataset.tooltip = alive
+        ? `${name || "Chromium"} · trình duyệt làm việc`
+        : "Chưa kết nối trình duyệt làm việc";
     }
     const banner = $(".browser-banner");
     if (banner) {
@@ -477,7 +582,7 @@
       current.textContent = label
         ? `${label}${name ? ` · ${name}` : ""}`
         : (sessionActive ? "Chưa nhận diện được Division" : "Đăng nhập để nhận diện");
-      current.title = name || "";
+      current.dataset.tooltip = name || "";
     }
   }
   window.wfxSetDivisionState = setDivisionState;
@@ -682,10 +787,12 @@
   async function withButtonLoading(button, run) {
     if (!button) return run();
     button.classList.add("is-loading", "is-action-source");
+    button.setAttribute("aria-busy", "true");
     try {
       return await run();
     } finally {
       button.classList.remove("is-loading", "is-action-source");
+      button.removeAttribute("aria-busy");
     }
   }
 
@@ -1053,7 +1160,7 @@
       const folderLabel =
         catalogDefaultFolder?.path_label || "Mặc định (Master)";
       $(".catalog-folder-current").textContent = folderLabel;
-      $(".catalog-folder-summary").title =
+      $(".catalog-folder-summary").dataset.tooltip =
         `Sửa vị trí mặc định: ${folderLabel}`;
     }
     if (result.admin_access !== undefined) {
@@ -1614,7 +1721,7 @@
     );
     $(".catalog-folder-current").textContent = selectedFolder?.path_label
       || "Mặc định (Master)";
-    $(".catalog-folder-summary").title =
+    $(".catalog-folder-summary").dataset.tooltip =
       `Sửa vị trí mặc định: ${
         selectedFolder?.path_label || "Mặc định (Master)"
       }`;
@@ -2033,7 +2140,7 @@
               <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
             </span>
             <span class="catalog-file-copy">
-              <strong title="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</strong>
+              <strong data-tooltip="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</strong>
               ${meta ? `<small>${meta}</small>` : ""}
               ${comments}
             </span>
@@ -2127,7 +2234,7 @@
               <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
             </span>
             <span class="catalog-file-copy">
-              <strong title="${escapeHtml(file.file_name || "")}">${escapeHtml(file.file_name || "")}</strong>
+              <strong data-tooltip="${escapeHtml(file.file_name || "")}">${escapeHtml(file.file_name || "")}</strong>
               ${meta ? `<small>${meta}</small>` : ""}
               ${file.comments ? `<small>Ghi chú: ${escapeHtml(file.comments)}</small>` : ""}
             </span>
@@ -2597,7 +2704,11 @@
     bindListboxKeys($(".catalog-folder-list"));
     bindListboxKeys($(".catalog-article-suggestions"));
     $$("[data-module-action]").forEach((button) =>
-      button.addEventListener("click", () => moduleActions[button.dataset.moduleAction]?.()));
+      button.addEventListener("click", () =>
+        withButtonLoading(
+          button,
+          () => moduleActions[button.dataset.moduleAction]?.(),
+        )));
     $$(".module-filter-button").forEach((button) =>
       button.addEventListener("click", () => setModuleFilterKind(
         button.dataset.filterGroup,
@@ -2644,12 +2755,16 @@
       openModulePage(button.dataset.moduleId);
     });
     $(".module-back-button").addEventListener("click", closeModulePage);
-    $(".oc-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["oc-search"](); });
-    $(".sample-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["sample-search"](); });
-    $(".sale-asn-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["sale-asn-search"](); });
+    const runModuleActionFromKeyboard = (action) => withButtonLoading(
+      $(`[data-module-action="${action}"]`),
+      () => moduleActions[action]?.(),
+    );
+    $(".oc-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("oc-search"); });
+    $(".sample-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("sample-search"); });
+    $(".sale-asn-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("sale-asn-search"); });
     [".rmpo-supplier-query", ".rmpo-order-query"].forEach((selector) =>
       $(selector).addEventListener("keydown", (event) => {
-        if (event.key === "Enter") moduleActions["rmpo-search"]();
+        if (event.key === "Enter") runModuleActionFromKeyboard("rmpo-search");
       }));
     [
       ".indent-supplier-query",
@@ -2658,10 +2773,10 @@
       ".indent-style-query",
     ].forEach((selector) =>
       $(selector).addEventListener("keydown", (event) => {
-        if (event.key === "Enter") moduleActions["indent-search"]();
+        if (event.key === "Enter") runModuleActionFromKeyboard("indent-search");
       }));
-    $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["supplier-find"](); });
-    $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") moduleActions["buyer-find"](); });
+    $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("supplier-find"); });
+    $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("buyer-find"); });
     // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble.
     // Bỏ qua khi đang chạy module (busy) để panel không biến mất giữa chừng;
     // backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.
@@ -3094,7 +3209,7 @@
     const folderLabel =
       catalogDefaultFolder?.path_label || "Mặc định (Master)";
     $(".catalog-folder-current").textContent = folderLabel;
-    $(".catalog-folder-summary").title =
+    $(".catalog-folder-summary").dataset.tooltip =
       `Sửa vị trí mặc định: ${folderLabel}`;
     setArticleLibraryStatus(state.article_library || {});
     setCostingSpecialOptionsState(state.costing_special_options || {});
@@ -3130,6 +3245,7 @@
 
   function init() {
     buildModules();
+    bindTooltips();
     bind();
     updateFeedbackState();
     // PanelApp chủ động inject bootstrap trong luồng khởi động. Chỉ gọi bridge

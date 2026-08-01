@@ -104,7 +104,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260801-3"',
+        'src="panel.js?v=20260801-5"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -264,7 +264,39 @@ def test_header_exposes_wfx_manual_button():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert 'class="icon-button manual-button"' in html
     assert 'aria-label="Mở hướng dẫn sử dụng WFX"' in html
-    assert 'title="WFX Manual"' in html
+    assert 'data-tooltip="Mở hướng dẫn sử dụng"' in html
+
+
+def test_panel_uses_custom_tooltips_instead_of_native_titles():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    bubble_html = (UI / "bubble.html").read_text(encoding="utf-8")
+    js = (UI / "panel.js").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+
+    assert 'id="app-tooltip" role="tooltip"' in html
+    assert "[data-tooltip]" in js
+    assert ".app-tooltip[data-placement=\"top\"]::after" in css
+    assert ".app-tooltip[data-placement=\"bottom\"]::after" in css
+    assert re.search(r"\stitle=\"", html) is None
+    assert re.search(r"\stitle=\"", bubble_html) is None
+    assert ".title =" not in js
+
+
+def test_visual_regression_harness_covers_theme_dpi_and_key_views():
+    source = (
+        UI.parent.parent / "scripts" / "visual_regression_panel.py"
+    ).read_text(encoding="utf-8")
+    for hook in (
+        "DPI_FACTORS = {100: 1.0, 125: 1.25, 150: 1.5, 200: 2.0}",
+        'THEMES = ("light", "dark")',
+        'STATES = ("home", "tooltip", "catalog", "settings")',
+        '"Emulation.setDeviceMetricsOverride"',
+        'webview.settings["REMOTE_DEBUGGING_PORT"]',
+        'metrics.get("nativeTitles") != 0',
+        'metrics.get("tinyButtons")',
+        'metrics.get("scrollWidth", 0) > metrics.get("innerWidth", 0)',
+    ):
+        assert hook in source
 
 
 def test_footer_has_health_indicators():
@@ -435,6 +467,62 @@ def test_ui_uses_short_compositor_motion_with_reduced_motion_fallback():
         "@media (prefers-reduced-motion: reduce)",
     ):
         assert hook in css
+
+
+def test_button_states_are_consistent_and_keyboard_visible():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    for hook in (
+        "button:focus-visible",
+        "button:disabled",
+        "button.is-action-source:disabled",
+        "button:not(.module-favorite-button):active:not(:disabled)",
+        ".footer-help-button { width: 22px; height: 22px; }",
+    ):
+        assert hook in css
+
+    supporting_css = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in (
+            UI / "manual.css",
+            UI / "bubble.css",
+            UI / "bubble_menu.css",
+            UI / "notification.css",
+        )
+    }
+    assert "button:focus-visible" in supporting_css["manual.css"]
+    assert ".bubble:focus-visible" in supporting_css["bubble.css"]
+    assert "button:focus-visible" in supporting_css["bubble_menu.css"]
+    assert ".notification-close:focus-visible" in supporting_css[
+        "notification.css"
+    ]
+
+
+def test_small_light_theme_text_tokens_meet_wcag_contrast():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    light_theme = css[: css.index(':root[data-theme="dark"]')]
+
+    def token(name: str) -> str:
+        match = re.search(rf"--{re.escape(name)}:\s*(#[0-9a-fA-F]{{6}})", light_theme)
+        assert match is not None
+        return match.group(1)
+
+    def luminance(color: str) -> float:
+        channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+        linear = [
+            value / 12.92
+            if value <= 0.04045
+            else ((value + 0.055) / 1.055) ** 2.4
+            for value in channels
+        ]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    background = luminance(token("surface-2"))
+    for name in ("text-3", "accent", "accent-strong", "warn", "bad"):
+        foreground = luminance(token(name))
+        ratio = (max(foreground, background) + 0.05) / (
+            min(foreground, background) + 0.05
+        )
+        assert ratio >= 4.5, f"{name} chỉ đạt contrast {ratio:.2f}:1"
 
 
 def test_spinners_use_one_calm_cross_device_duration():

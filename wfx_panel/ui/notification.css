@@ -6,8 +6,8 @@
   --surface: #f7fbfc;
   --border: rgba(23, 50, 61, .16);
   --text: #18323d;
-  --muted: #647c86;
-  --accent: #25aeb8;
+  --muted: #58717c;
+  --accent: #08748a;
   --accent-soft: rgba(37, 174, 184, .13);
   --shadow: 0 12px 32px rgba(14, 36, 45, .22);
 }
@@ -31,7 +31,7 @@ body { padding: 2px; background: transparent; }
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 18px;
+  grid-template-columns: 24px minmax(0, 1fr) 22px;
   align-items: start;
   gap: 6px;
   padding: 6px;
@@ -56,7 +56,7 @@ body { padding: 2px; background: transparent; }
   background: var(--accent-soft);
 }
 .notification-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.notification-error { --accent: #dc5e66; --accent-soft: rgba(220, 94, 102, .13); }
+.notification-error { --accent: #b82e48; --accent-soft: rgba(220, 94, 102, .13); }
 .notification-copy { min-width: 0; display: block; }
 .notification-title,
 .notification-message,
@@ -65,6 +65,13 @@ body { padding: 2px; background: transparent; }
 .notification-message { margin-top: 2px; color: var(--text); font-size: 12px; font-weight: 500; line-height: 1.3; white-space: normal; }
 .notification-detail { margin-top: 3px; color: var(--muted); font-size: 11.5px; font-weight: 600; line-height: 1.3; }
 .notification-detail[hidden] { display: none; }
-.notification-close { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; color: var(--muted); border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
+.notification-close { width: 22px; height: 22px; display: grid; place-items: center; padding: 0; color: var(--muted); border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
 .notification-close:hover { color: var(--text); background: var(--accent-soft); }
+.notification-close:focus-visible { color: var(--text); outline: 2px solid var(--accent); outline-offset: 1px; background: var(--accent-soft); }
+.notification-close:active { transform: scale(.94); }
 .notification-close svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important;
+    transition-duration: .01ms !important; }
+}

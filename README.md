@@ -171,6 +171,17 @@ ruff check .
 node --check wfx_panel/ui/panel.js
 ```
 
+Visual-regression chạy trên pywebview/WebView2 thật với light/dark và DPI
+100/125/150/200%, chụp bốn trạng thái Home/tooltip/Catalog/Settings:
+
+```powershell
+python scripts/visual_regression_panel.py --suite baseline
+python scripts/visual_regression_panel.py --suite current
+python scripts/visual_regression_panel.py --compare
+```
+
+Ảnh và `report.json` nằm trong `build/visual-regression/` (không đưa vào Git).
+
 Test tích hợp WFX thật sử dụng tài khoản trong `.env`:
 
 ```powershell

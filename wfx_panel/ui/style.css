@@ -84,16 +84,17 @@ body.compact-mode .compact-launcher .compact-mark {
       --bg: #eef2f5; --panel-bg: #f7fafb; --panel-border: rgba(15,45,60,.14);
       --surface: #ffffff; --surface-2: #eef3f6; --surface-3: rgba(15,45,60,.05); --surface-hover: rgba(12,148,174,.1);
       --border: rgba(15,45,60,.12); --border-strong: rgba(15,45,60,.2);
-      --text: #10242f; --text-2: #46606b; --text-3: #6b828d;
-      --accent: #0a94ae; --accent-strong: #0b7c93; --accent-soft: rgba(12,148,174,.1); --accent-border: rgba(12,148,174,.32);
+      --text: #10242f; --text-2: #46606b; --text-3: #58717c;
+      --accent: #08748a; --accent-strong: #06687e; --accent-soft: rgba(12,148,174,.1); --accent-border: rgba(12,148,174,.32);
       --accent-ink: #032027; --accent-grad: linear-gradient(105deg,#12b4d0,#0f9fb2 56%,#16b89f);
       --good: #0f9d68; --good-soft: rgba(18,168,110,.12);
-      --warn: #b9741a; --warn-soft: rgba(200,130,20,.14);
-      --bad: #cf3f57; --bad-soft: rgba(208,66,90,.12);
+      --warn: #92580c; --warn-soft: rgba(200,130,20,.14);
+      --bad: #b82e48; --bad-soft: rgba(208,66,90,.12);
       --shadow: 0 26px 64px rgba(20,54,70,.2), 0 2px 8px rgba(20,54,70,.08); --shadow-sm: 0 12px 30px rgba(20,54,70,.14);
       --footer-bg: rgba(15,45,60,.035); --sheet-bg: #f7fafb;
       --code-bg: #0e2531; --code-text: #b7d0d9;
       --toast-bg: #ffffff; --toast-text: #17323d; --toast-border: rgba(15,45,60,.14);
+      --tooltip-bg: #10242f; --tooltip-text: #f7fafb;
       --scrim: rgba(20,40,52,.42); --launcher-grad: linear-gradient(145deg,#12b4d0,#0f9fb2 62%,#16b89f);
       --launcher-ink: #ffffff; --glow: rgba(20,180,205,.16);
       --spinner-duration: 1.25s;
@@ -113,6 +114,7 @@ body.compact-mode .compact-launcher .compact-mark {
       --footer-bg: rgba(3,10,15,.22); --sheet-bg: #0d202b;
       --code-bg: rgba(2,12,18,.4); --code-text: #9eb6bf;
       --toast-bg: rgba(10,26,35,.97); --toast-text: #dcebef; --toast-border: rgba(255,255,255,.1);
+      --tooltip-bg: #e9f4f8; --tooltip-text: #10242f;
       --scrim: rgba(1,7,11,.7); --launcher-grad: linear-gradient(145deg,#0d2637,#091722 62%,#112a39);
       --launcher-ink: #e9fbff; --glow: rgba(40,202,225,.12);
     }
@@ -660,7 +662,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .module-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
     .accent-cyan { color: var(--accent); background-color: var(--accent-soft); }
     .accent-violet { color: #7c5cff; background-color: rgba(124,92,255,.1); }
-    .accent-amber { color: #b9741a; background-color: rgba(200,130,20,.12); }
+    .accent-amber { color: #92580c; background-color: rgba(200,130,20,.12); }
     :root[data-theme="dark"] .accent-violet { color: #b7a0ff; background-color: rgba(145,113,255,.09); }
     :root[data-theme="dark"] .accent-amber { color: #ffc36d; background-color: rgba(255,177,61,.09); }
     .group-accent.accent-cyan { background: currentColor; color: var(--accent); box-shadow: 0 0 8px currentColor; }
@@ -1889,6 +1891,125 @@ body.compact-mode .compact-launcher .compact-mark {
       margin-top: 6px;
       padding: 7px 9px;
       border-radius: 11px;
+    }
+
+    /* Shared interaction states --------------------------------------- */
+    /* Keyboard focus must be visible on every action, not only the star
+       button. Outline preserves each button's semantic fill and shadow. */
+    button:focus-visible {
+      position: relative;
+      z-index: 3;
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 0;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    /* Disabled means unavailable. Only the exact action source uses the
+       progress cursor and retains full contrast while automation runs. */
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .48;
+      filter: none !important;
+      transform: none !important;
+    }
+    button.is-action-source,
+    button.is-action-source:disabled {
+      opacity: 1;
+      cursor: progress;
+      outline: 2px solid var(--accent-border);
+      outline-offset: 1px;
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    button:not(.module-favorite-button):active:not(:disabled) {
+      transform: scale(.985);
+    }
+    .module-favorite-button:active:not(:disabled) {
+      transform: translateY(-50%) scale(.94);
+    }
+
+    :is(
+      .catalog-folder-summary,
+      .catalog-folder-refresh,
+      .catalog-folder-retry,
+      .catalog-log-copy,
+      .module-back-button,
+      .hotkey-button,
+      .toggle-password,
+      .account-change-button,
+      .oc-secondary-button,
+      .oc-upload-card-actions > button:not(.special-primary-button),
+      .job-actions button
+    ):hover:not(:disabled) {
+      color: var(--accent-strong);
+      border-color: var(--accent-border);
+      background: var(--accent-soft);
+    }
+    :is(
+      .special-primary-button,
+      .catalog-browse-button,
+      .update-banner-button,
+      .catalog-costing-import,
+      .catalog-costing-apply
+    ):hover:not(:disabled) {
+      filter: brightness(1.07);
+      transform: translateY(-1px);
+    }
+    .settings-tab:hover:not(:disabled):not([aria-selected="true"]),
+    .activity-tabs button:hover:not(:disabled):not([aria-selected="true"]) {
+      color: var(--text-2);
+      background: var(--surface-3);
+    }
+
+    /* Small utility actions stay compact but no longer collapse into an
+       18px click target. */
+    .footer-help-button { width: 22px; height: 22px; }
+    .health-refresh { min-width: 24px; height: 24px; border-radius: 6px; }
+    .catalog-costing-plan-heading > button { width: 28px; height: 28px; }
+
+    .app-tooltip {
+      position: fixed;
+      z-index: 2147483647;
+      max-width: min(250px, calc(100vw - 16px));
+      padding: 6px 8px;
+      color: var(--tooltip-text);
+      font: 650 11.5px/1.35 "Segoe UI", Tahoma, Arial, sans-serif;
+      text-align: center;
+      overflow-wrap: anywhere;
+      pointer-events: none;
+      border-radius: 7px;
+      background: var(--tooltip-bg);
+      box-shadow: 0 7px 20px rgba(4,24,33,.24);
+      animation: tooltip-enter .12s ease-out both;
+    }
+    .app-tooltip[hidden] { display: none !important; }
+    .app-tooltip::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      width: 0;
+      height: 0;
+      transform: translateX(-50%);
+      border-right: 4px solid transparent;
+      border-left: 4px solid transparent;
+    }
+    .app-tooltip[data-placement="top"]::after {
+      top: 100%;
+      border-top: 4px solid var(--tooltip-bg);
+    }
+    .app-tooltip[data-placement="bottom"]::after {
+      bottom: 100%;
+      border-bottom: 4px solid var(--tooltip-bg);
+    }
+    @keyframes tooltip-enter {
+      from { opacity: 0; transform: translateY(2px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
     @media (max-width: 760px) {
