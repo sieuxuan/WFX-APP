@@ -16,6 +16,10 @@ Mở Sample List, tìm Sample Order và tạo Sample Order mới.
 > [!meo]
 > Bạn có thể bấm `Tìm` ngay. Ứng dụng tự mở danh sách nếu cần.
 
+> [!meo]
+> Bạn có thể sắp xếp cột theo cách làm việc riêng. Ứng dụng tự quét ngang để tìm
+> Sample Order No., Style hoặc Created By và xóa các filter cũ trước khi tìm.
+
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |

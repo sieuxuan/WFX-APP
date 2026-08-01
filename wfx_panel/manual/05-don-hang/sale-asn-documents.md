@@ -25,10 +25,16 @@ Excel để gửi hoặc lưu trữ.
 > Bạn có thể kéo cột Docs tới vị trí bất kỳ; ứng dụng sẽ tự quét ngang bảng để
 > tìm cột, không yêu cầu đưa Docs về vị trí mặc định.
 
+> [!meo]
+> Nếu ô tìm kiếm để trống, hãy chọn đúng một dòng trên WFX. Ứng dụng đọc
+> Invoice No. từ chính dòng đã chọn, kể cả khi cột này đang nằm ngoài màn hình.
+
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Sale ASN không hỗ trợ Documents | Kiểm tra dòng đã chọn có nút Docs trên WFX hay không. |
+| Không tìm thấy Invoice No. | Kiểm tra số Invoice, xóa bộ lọc cũ trên WFX rồi thử lại. |
+| Có nhiều dòng phù hợp | Chọn đúng một dòng trên WFX rồi bấm tải lại. |
+| Đã tìm thấy Invoice nhưng không có nút Docs | Kiểm tra dòng đã chọn, trạng thái Sale ASN và quyền Documents của tài khoản trên WFX. |
 | Một báo cáo chưa sẵn sàng | Chờ WFX tạo báo cáo xong rồi tải lại. |
 | Không ghép hoặc lưu được file | Chọn một thư mục bạn có quyền ghi và bảo đảm file cũ không đang mở trong Excel. |

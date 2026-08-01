@@ -2007,6 +2007,13 @@ body.compact-mode .compact-launcher .compact-mark {
       bottom: 100%;
       border-bottom: 4px solid var(--tooltip-bg);
     }
+    .module-action-hint {
+      display: block;
+      margin-top: 7px;
+      color: var(--text-3);
+      font-size: 11px;
+      line-height: 1.4;
+    }
     @keyframes tooltip-enter {
       from { opacity: 0; transform: translateY(2px) scale(.98); }
       to { opacity: 1; transform: translateY(0) scale(1); }

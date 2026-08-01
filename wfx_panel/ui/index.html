@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260801-2">
+  <link rel="stylesheet" href="style.css?v=20260801-3">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -396,10 +396,11 @@
               <button type="button" class="seg-button module-filter-button" data-filter-group="sale_asn" data-filter-kind="buyer_order_ref" aria-pressed="false">Buyer Order Ref/OC</button>
             </div>
             <div class="module-query-row">
-              <input class="sale-asn-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Nội dung tìm Sale ASN" />
+              <input class="sale-asn-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Nội dung tìm Sale ASN" aria-describedby="sale-asn-documents-hint" />
               <button type="button" class="special-primary-button" data-module-action="sale-asn-search">Tìm</button>
             </div>
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="sale-asn-documents">Tải Packing List + Buyer Invoice</button>
+            <small class="module-action-hint" id="sale-asn-documents-hint">Nhập Invoice No. chính xác, hoặc để trống nếu đã chọn đúng một dòng trên WFX. Không cần kéo cột Docs.</small>
           </div>
         </div>
 

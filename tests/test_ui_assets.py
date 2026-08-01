@@ -282,6 +282,13 @@ def test_panel_uses_custom_tooltips_instead_of_native_titles():
     assert ".title =" not in js
 
 
+def test_sale_asn_documents_explains_query_and_reordered_docs_column():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'aria-describedby="sale-asn-documents-hint"' in html
+    assert 'id="sale-asn-documents-hint"' in html
+    assert "Không cần kéo cột Docs." in html
+
+
 def test_visual_regression_harness_covers_theme_dpi_and_key_views():
     source = (
         UI.parent.parent / "scripts" / "visual_regression_panel.py"
@@ -289,7 +296,7 @@ def test_visual_regression_harness_covers_theme_dpi_and_key_views():
     for hook in (
         "DPI_FACTORS = {100: 1.0, 125: 1.25, 150: 1.5, 200: 2.0}",
         'THEMES = ("light", "dark")',
-        'STATES = ("home", "tooltip", "catalog", "settings")',
+        'STATES = ("home", "tooltip", "catalog", "sale-asn", "settings")',
         '"Emulation.setDeviceMetricsOverride"',
         'webview.settings["REMOTE_DEBUGGING_PORT"]',
         'metrics.get("nativeTitles") != 0',

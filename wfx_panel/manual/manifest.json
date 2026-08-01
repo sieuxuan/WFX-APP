@@ -387,11 +387,15 @@
           "covers": {
             "actions": ["sale-asn-documents"],
             "errors": [
+              "SALE_ASN_DOCS_NOT_AVAILABLE",
               "SALE_ASN_DOCUMENTS_SAVE_FAILED",
               "SALE_ASN_DOCUMENTS_UNSUPPORTED",
+              "SALE_ASN_INVOICE_NOT_FOUND",
+              "SALE_ASN_MULTIPLE_RESULTS",
               "SALE_ASN_REPORT_DOWNLOAD_FAILED",
               "SALE_ASN_REPORT_MERGE_FAILED",
-              "SALE_ASN_REPORT_NOT_READY"
+              "SALE_ASN_REPORT_NOT_READY",
+              "SALE_ASN_SELECTION_REQUIRED"
             ]
           }
         }

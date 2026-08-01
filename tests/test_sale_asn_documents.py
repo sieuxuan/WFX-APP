@@ -2,9 +2,11 @@ import pytest
 
 from wfx_panel.automation.sale_asn_documents import (
     _CLICK_SALE_ASN_DOCS_JS,
+    _SALE_ASN_ROWS_JS,
     _SALE_ASN_SCROLL_STATE_JS,
     _SALE_ASN_SCROLL_TO_JS,
     _click_sale_asn_docs,
+    _merge_sale_asn_row_payloads,
     _sale_asn_horizontal_positions,
     _select_sale_asn_row,
 )
@@ -26,6 +28,46 @@ def test_select_exact_invoice_does_not_require_docs_column_to_be_rendered():
     assert selected == row
 
 
+def test_rows_reader_uses_nested_grid_button_value_for_invoice_number():
+    assert "element.querySelectorAll(" in _SALE_ASN_ROWS_JS
+    assert "candidate?.value" in _SALE_ASN_ROWS_JS
+    assert "candidate?.getAttribute?.('value')" in _SALE_ASN_ROWS_JS
+
+
+def test_row_payloads_merge_invoice_from_another_horizontal_viewport():
+    merged = _merge_sale_asn_row_payloads(
+        [
+            {
+                "rows": [
+                    {"row_key": "4", "invoice_no": "", "selected": True},
+                ],
+                "noRows": False,
+            },
+            {
+                "rows": [
+                    {
+                        "row_key": "4",
+                        "invoice_no": "104-PRO-2026",
+                        "selected": False,
+                    },
+                ],
+                "noRows": False,
+            },
+        ]
+    )
+
+    assert merged == {
+        "rows": [
+            {
+                "row_key": "4",
+                "invoice_no": "104-PRO-2026",
+                "selected": True,
+            }
+        ],
+        "noRows": False,
+    }
+
+
 def test_select_invoice_does_not_fall_back_to_a_different_single_row():
     with pytest.raises(RuntimeError, match="SALE_ASN_INVOICE_NOT_FOUND"):
         _select_sale_asn_row(
@@ -41,6 +83,29 @@ def test_select_invoice_does_not_fall_back_to_a_different_single_row():
             "invoice_no",
             "104-PRO-2026",
         )
+
+
+def test_one_selected_row_resolves_duplicate_exact_invoices():
+    selected = _select_sale_asn_row(
+        {
+            "rows": [
+                {
+                    "row_key": "1",
+                    "invoice_no": "104-PRO-2026",
+                    "selected": False,
+                },
+                {
+                    "row_key": "2",
+                    "invoice_no": "104-PRO-2026",
+                    "selected": True,
+                },
+            ]
+        },
+        "invoice_no",
+        "104-PRO-2026",
+    )
+
+    assert selected["row_key"] == "2"
 
 
 def test_horizontal_positions_cover_reordered_column_at_any_grid_location():

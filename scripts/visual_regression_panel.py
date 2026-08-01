@@ -17,7 +17,7 @@ UI_INDEX = ROOT / "wfx_panel" / "ui" / "index.html"
 DEFAULT_OUTPUT = ROOT / "build" / "visual-regression"
 DPI_FACTORS = {100: 1.0, 125: 1.25, 150: 1.5, 200: 2.0}
 THEMES = ("light", "dark")
-STATES = ("home", "tooltip", "catalog", "settings")
+STATES = ("home", "tooltip", "catalog", "sale-asn", "settings")
 WINDOW_WIDTH = 440
 WINDOW_HEIGHT = 620
 
@@ -248,6 +248,13 @@ def _capture_one(theme: str, dpi: int, suite: str, output: Path) -> None:
                     "catalog",
                     "document.activeElement?.blur();"
                     "document.querySelector('[data-module-id=\"0003_6200\"]').click()",
+                ),
+                (
+                    "sale-asn",
+                    "document.querySelector('.module-back-button').click();"
+                    "document.querySelector("
+                    "'[data-module-id=\"0004_0070_0020\"]'"
+                    ").click()",
                 ),
                 (
                     "settings",
