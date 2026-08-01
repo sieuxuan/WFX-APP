@@ -169,3 +169,99 @@ def test_admin_publish_uses_current_cache(tmp_path, monkeypatch):
     assert captured["key"] == "admin-test-key"
     assert len(captured["body"]["articles"]) == 1
     assert captured["body"]["company_id"] == "77400"
+
+
+def _plain_http_config(tmp_path: Path, monkeypatch, url: str) -> None:
+    config = tmp_path / "sync-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "read_key": "read-only-test-key",
+                "read_url": url,
+                "publish_url": url,
+                "company_id": "77400",
+                "division_key": "01",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        reference_sync,
+        "_private_config_paths",
+        lambda _base_dir: (config,),
+    )
+
+
+def test_sync_refuses_a_non_https_server_before_sending_the_read_key(
+    tmp_path,
+    monkeypatch,
+):
+    """Read key nằm trong header nên không được rời máy qua kênh không mã hóa."""
+    _plain_http_config(tmp_path, monkeypatch, "http://example.test/latest")
+    _seed_caches(tmp_path)
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("không được gọi mạng với URL không phải HTTPS")
+
+    monkeypatch.setattr(reference_sync, "urlopen", refuse)
+
+    result = reference_sync.sync_latest(tmp_path, lambda _line: None, force=True)
+
+    assert result["ok"] is False
+    assert result["code"] == "REFERENCE_SYNC_FAILED"
+    assert result["error_type"] == "ValueError"
+
+
+def test_sync_refuses_a_file_url_so_it_cannot_read_local_files(
+    tmp_path,
+    monkeypatch,
+):
+    """urlopen nhận file://; nếu không chặn thì _request_json đọc file trên máy."""
+    _plain_http_config(tmp_path, monkeypatch, "file:///C:/Windows/win.ini")
+    _seed_caches(tmp_path)
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("không được mở file:// qua urlopen")
+
+    monkeypatch.setattr(reference_sync, "urlopen", refuse)
+
+    result = reference_sync.sync_latest(tmp_path, lambda _line: None, force=True)
+
+    assert result["ok"] is False
+    assert result["code"] == "REFERENCE_SYNC_FAILED"
+
+
+def test_publish_refuses_a_non_https_server_before_sending_the_admin_key(
+    tmp_path,
+    monkeypatch,
+):
+    _plain_http_config(tmp_path, monkeypatch, "http://example.test/publish")
+    _seed_caches(tmp_path)
+    monkeypatch.setenv("WFX_SYNC_ADMIN_KEY", "admin-test-key")
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("không được gửi admin key qua HTTP")
+
+    monkeypatch.setattr(reference_sync, "urlopen", refuse)
+
+    result = reference_sync.publish_current(tmp_path, lambda _line: None)
+
+    assert result["ok"] is False
+    assert result["code"] == "REFERENCE_SYNC_PUBLISH_FAILED"
+
+
+def test_https_url_validator_matches_the_sibling_sync_modules():
+    for accepted in ("https://n8n.itx.io.vn/webhook/x", "https://example.test/a"):
+        assert reference_sync._safe_https_url(accepted) == accepted
+    for rejected in (
+        "http://example.test/a",
+        "file:///etc/passwd",
+        "ftp://example.test/a",
+        "https:///no-host",
+        "",
+    ):
+        try:
+            reference_sync._safe_https_url(rejected)
+        except ValueError:
+            continue
+        raise AssertionError(f"phải từ chối {rejected!r}")
