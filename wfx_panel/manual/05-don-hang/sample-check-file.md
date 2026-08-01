@@ -17,6 +17,10 @@ Tìm một Sample Order và xem các file đính kèm có thể tải về.
 > Nếu chỉ có một kết quả, ứng dụng tự mở Style và liệt kê file. Nếu có nhiều
 > kết quả, bạn chọn đúng Sample rồi ứng dụng tiếp tục ngay từ danh sách đang mở.
 
+> [!meo]
+> Check File vẫn tìm được khi cột Sample No., Style hoặc Created By đã được kéo
+> sang vị trí khác trong layout riêng của tài khoản.
+
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |

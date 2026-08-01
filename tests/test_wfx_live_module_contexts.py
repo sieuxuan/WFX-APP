@@ -118,14 +118,20 @@ def test_search_auto_opens_the_required_module_list():
         lambda _line: None,
     )
     assert sample_search["code"] == "MODULE_SEARCH_APPLIED"
-    _clear_visible_filter(
-        (
-            "#txtSampleOrderNo",
-            "#txtSampleNo",
-            'input[aria-label*="Sample Order" i]',
-            'input[id*="SampleOrder" i]',
-        )
+    created_by_search = login.search_sample_list(
+        sample["xpath"],
+        "created_by",
+        SMOKE_QUERY,
+        lambda _line: None,
     )
+    assert created_by_search["code"] == "MODULE_SEARCH_APPLIED"
+    created_by_files = login.find_sample_file_results(
+        sample["xpath"],
+        "created_by",
+        SMOKE_QUERY,
+        lambda _line: None,
+    )
+    assert created_by_files["code"] == "NO_RESULTS"
 
     sale = constants.MODULE_BY_ID["0004_0070_0020"]
     assert _open("0004_0070_0020")["ok"]

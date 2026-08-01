@@ -66,6 +66,54 @@ def _wait(target: Any, milliseconds: int) -> None:
     checkpoint()
 
 
+def _horizontal_grid_positions(state: dict[str, Any]) -> list[int]:
+    """Các điểm quét đủ viewport ngang mà không phụ thuộc độ rộng màn hình."""
+    current = max(0, int(float(state.get("current") or 0)))
+    maximum = max(0, int(float(state.get("maximum") or 0)))
+    viewport = max(0, int(float(state.get("viewport") or 0)))
+    step = max(160, int(viewport * 0.75))
+    positions = [current, 0]
+    positions.extend(range(step, maximum, step))
+    positions.append(maximum)
+    return list(dict.fromkeys(min(maximum, position) for position in positions))
+
+
+def _horizontal_grid_state(root: Any) -> dict[str, Any]:
+    return root.evaluate(
+        """root => {
+            const scroller = root.querySelector(
+                '.ag-body-horizontal-scroll-viewport'
+            ) || root.querySelector('.ag-center-cols-viewport')
+              || root.querySelector('.ag-body-viewport');
+            if (!scroller) return {current: 0, maximum: 0, viewport: 0};
+            return {
+                current: Number(scroller.scrollLeft || 0),
+                maximum: Math.max(
+                    0,
+                    Number(scroller.scrollWidth || 0)
+                        - Number(scroller.clientWidth || 0)
+                ),
+                viewport: Number(scroller.clientWidth || 0),
+            };
+        }"""
+    )
+
+
+def _scroll_horizontal_grid(root: Any, left: int) -> None:
+    root.evaluate(
+        """(root, left) => {
+            const scroller = root.querySelector(
+                '.ag-body-horizontal-scroll-viewport'
+            ) || root.querySelector('.ag-center-cols-viewport')
+              || root.querySelector('.ag-body-viewport');
+            if (!scroller) return;
+            scroller.scrollLeft = Number(left || 0);
+            scroller.dispatchEvent(new Event('scroll', {bubbles: true}));
+        }""",
+        left,
+    )
+
+
 def _sleep(seconds: float) -> None:
     """Sleep có thể hủy mà không cắt ngang một thao tác DOM đang thực thi."""
     deadline = time.monotonic() + max(0.0, seconds)
@@ -331,8 +379,11 @@ __all__ = [
     '_ensure_select_value',
     '_first_line',
     '_first_visible',
+    '_horizontal_grid_positions',
+    '_horizontal_grid_state',
     '_mark_document',
     '_result',
+    '_scroll_horizontal_grid',
     '_style_status_suffix',
     '_wait_frame_with_selectors',
     '_write_log',

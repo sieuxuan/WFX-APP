@@ -23,6 +23,10 @@ WFX.
 > [!meo]
 > Gõ từ hai ký tự để nhận tối đa 20 gợi ý từ Thư viện Article.
 
+> [!meo]
+> Bạn không cần kéo Code, Buyer Reference hoặc Article Name về vị trí cũ.
+> Ứng dụng tự tìm cột theo layout Catalog riêng của tài khoản và xóa filter cũ.
+
 > [!luuy]
 > Nếu chỉ có một kết quả, ứng dụng tự mở Style. Nếu có nhiều kết quả, bạn bấm
 > đúng dòng cần dùng trên màn hình WFX.

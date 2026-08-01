@@ -134,6 +134,10 @@ Mỗi nút trong module là một flow riêng:
 4. Trước khi điền, automation phải xác nhận context riêng của module trong cùng
    frame. Không được dùng chỉ `#txtArticle` hoặc `#txtCompanyName`, vì OC/Sample/
    Sale ASN và Buyer/Supplier có selector trùng nhau.
+   Với AG Grid có Floating Filter, automation phải quét toàn bộ scroll ngang để
+   tìm cột dù user đã kéo đổi thứ tự; đồng thời xóa các filter cũ ở cả cột đang
+   bị virtualize trước khi điền điều kiện mới. Sau cùng giữ cột đích trong
+   viewport để user thấy điều kiện đang áp dụng.
 5. Search và Đổi FOC không được trả `*_LIST_NOT_OPEN` hay hướng dẫn bấm List.
    Nếu đã tự mở
    nhưng List/search vẫn không sẵn sàng, trả lỗi kỹ thuật cụ thể kèm trạng thái
@@ -491,6 +495,8 @@ Code không phân biệt hoa/thường.
 
 - Tìm Code Filter bên trong chính `.ag-root-wrapper` đã xác nhận, không quét toàn bộ
   mọi frame rồi lấy input có score cao nhất.
+- Không giả định Code/Buyer Reference/Article Name đang ở viewport đầu tiên:
+  quét các vị trí scroll ngang của grid vì layout cột được lưu riêng theo user.
 - Nếu Code Filter chưa visible, click `#showfloatingfilter` trong cùng grid frame.
 - Sau click, resolve lại grid/frame vì Angular có thể thay document.
 - Xác nhận `Code Filter Input` visible, enabled và thuộc grid mới.
@@ -499,7 +505,8 @@ Code không phân biệt hoa/thường.
 ### Lọc
 
 - Xóa cả Code Filter và Buyer Reference Filter bằng thao tác tương đương
-  Playwright `locator.fill("")`.
+  Playwright `locator.fill("")`; phải quét ngang để xóa cả filter đang bị
+  AG Grid virtualize ngoài viewport.
 - Điền query bằng thao tác tương đương `locator.fill(query)`, không chỉ gán `.value`.
 - Xác nhận `input.value === query`.
 - Chờ debounce và chờ loading kết thúc.

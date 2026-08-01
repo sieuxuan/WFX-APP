@@ -88,7 +88,7 @@ Tìm Style và mở các phần dữ liệu liên quan trong WFX.
 
 Tìm theo mã Article, Buyer Reference hoặc tên Article.
 
-Dùng để làm gì Tìm đúng Style trong Catalog bằng thông tin bạn đang có và mở Style đó trên WFX. Các bước Chọn đúng Division ở đầu bảng điều khiển. Mở module Catalog. Chọn Category phù hợp với Style. Bấm Mở Catalog nếu bạn muốn mở danh sách Catalog trước. Chọn Article Code, Buyer Reference hoặc Article Name trong dòng kiểu tìm. Nhập nội dung vào ô tìm. Chọn một gợi ý nếu danh sách gợi ý xuất hiện. Bấm Tìm . Mẹo Mẹo Article Code dùng được với mọi Category. Buyer Reference dành cho Apparel. Article Name dành cho các Category còn lại. Mẹo Gõ từ hai ký tự để nhận tối đa 20 gợi ý từ Thư viện Article. Lưu ý Nếu chỉ có một kết quả, ứng dụng tự mở Style. Nếu có nhiều kết quả, bạn bấm đúng dòng cần dùng trên màn hình WFX. Gặp lỗi thì sao Hiện tượng Cách xử lý Không tìm thấy kết quả Kiểm tra lại Category, kiểu tìm và nội dung đã nhập rồi bấm Tìm lần nữa. Có nhiều Style gần giống nhau Đọc Article Code trên WFX và bấm đúng dòng bạn cần. Catalog chưa sẵn sàng Bấm Mở Catalog , chờ danh sách hiện đủ rồi tìm lại.
+Dùng để làm gì Tìm đúng Style trong Catalog bằng thông tin bạn đang có và mở Style đó trên WFX. Các bước Chọn đúng Division ở đầu bảng điều khiển. Mở module Catalog. Chọn Category phù hợp với Style. Bấm Mở Catalog nếu bạn muốn mở danh sách Catalog trước. Chọn Article Code, Buyer Reference hoặc Article Name trong dòng kiểu tìm. Nhập nội dung vào ô tìm. Chọn một gợi ý nếu danh sách gợi ý xuất hiện. Bấm Tìm . Mẹo Mẹo Article Code dùng được với mọi Category. Buyer Reference dành cho Apparel. Article Name dành cho các Category còn lại. Mẹo Gõ từ hai ký tự để nhận tối đa 20 gợi ý từ Thư viện Article. Mẹo Bạn không cần kéo Code, Buyer Reference hoặc Article Name về vị trí cũ. Ứng dụng tự tìm cột theo layout Catalog riêng của tài khoản và xóa filter cũ. Lưu ý Nếu chỉ có một kết quả, ứng dụng tự mở Style. Nếu có nhiều kết quả, bạn bấm đúng dòng cần dùng trên màn hình WFX. Gặp lỗi thì sao Hiện tượng Cách xử lý Không tìm thấy kết quả Kiểm tra lại Category, kiểu tìm và nội dung đã nhập rồi bấm Tìm lần nữa. Có nhiều Style gần giống nhau Đọc Article Code trên WFX và bấm đúng dòng bạn cần. Catalog chưa sẵn sàng Bấm Mở Catalog , chờ danh sách hiện đủ rồi tìm lại.
 
 ### Mở Costing
 
@@ -192,13 +192,13 @@ Dùng để làm gì Xuất dữ liệu OC cũ từ báo cáo WFX, sửa trong E
 
 Mở, tìm và tạo Sample Order.
 
-Dùng để làm gì Mở Sample List, tìm Sample Order và tạo Sample Order mới. Các bước Mở module Sample List. Bấm List để mở danh sách trên WFX. Chọn Sample Order No., Style hoặc Created By. Nhập nội dung vào ô tìm. Bấm Tìm . Bấm New nếu bạn muốn mở màn hình tạo Sample Order mới. Mẹo Mẹo Bạn có thể bấm Tìm ngay. Ứng dụng tự mở danh sách nếu cần. Gặp lỗi thì sao Hiện tượng Cách xử lý New chưa mở Chờ WFX tải xong rồi bấm New lại một lần. Không thấy Sample Kiểm tra đúng kiểu tìm và cách viết nội dung trên WFX.
+Dùng để làm gì Mở Sample List, tìm Sample Order và tạo Sample Order mới. Các bước Mở module Sample List. Bấm List để mở danh sách trên WFX. Chọn Sample Order No., Style hoặc Created By. Nhập nội dung vào ô tìm. Bấm Tìm . Bấm New nếu bạn muốn mở màn hình tạo Sample Order mới. Mẹo Mẹo Bạn có thể bấm Tìm ngay. Ứng dụng tự mở danh sách nếu cần. Mẹo Bạn có thể sắp xếp cột theo cách làm việc riêng. Ứng dụng tự quét ngang để tìm Sample Order No., Style hoặc Created By và xóa các filter cũ trước khi tìm. Gặp lỗi thì sao Hiện tượng Cách xử lý New chưa mở Chờ WFX tải xong rồi bấm New lại một lần. Không thấy Sample Kiểm tra đúng kiểu tìm và cách viết nội dung trên WFX.
 
 ### Kiểm tra file Sample
 
 Tìm Sample rồi xem các file có thể tải.
 
-Dùng để làm gì Tìm một Sample Order và xem các file đính kèm có thể tải về. Các bước Mở module Sample List. Chọn kiểu tìm và nhập nội dung Sample. Bấm Check File . Chờ ứng dụng tìm Sample trước. Chọn một dòng nếu có nhiều kết quả. Bấm file cần tải trong danh sách kết quả. Mẹo Mẹo Nếu chỉ có một kết quả, ứng dụng tự mở Style và liệt kê file. Nếu có nhiều kết quả, bạn chọn đúng Sample rồi ứng dụng tiếp tục ngay từ danh sách đang mở. Gặp lỗi thì sao Hiện tượng Cách xử lý Không hỗ trợ xem file Mở Sample trên WFX và kiểm tra Style đã có file đính kèm hay chưa. Không mở được Sample đã chọn Tìm lại, chọn đúng dòng và bấm Check File lần nữa. Không có kết quả Kiểm tra Sample Order No., Style hoặc Created By đã nhập.
+Dùng để làm gì Tìm một Sample Order và xem các file đính kèm có thể tải về. Các bước Mở module Sample List. Chọn kiểu tìm và nhập nội dung Sample. Bấm Check File . Chờ ứng dụng tìm Sample trước. Chọn một dòng nếu có nhiều kết quả. Bấm file cần tải trong danh sách kết quả. Mẹo Mẹo Nếu chỉ có một kết quả, ứng dụng tự mở Style và liệt kê file. Nếu có nhiều kết quả, bạn chọn đúng Sample rồi ứng dụng tiếp tục ngay từ danh sách đang mở. Mẹo Check File vẫn tìm được khi cột Sample No., Style hoặc Created By đã được kéo sang vị trí khác trong layout riêng của tài khoản. Gặp lỗi thì sao Hiện tượng Cách xử lý Không hỗ trợ xem file Mở Sample trên WFX và kiểm tra Style đã có file đính kèm hay chưa. Không mở được Sample đã chọn Tìm lại, chọn đúng dòng và bấm Check File lần nữa. Không có kết quả Kiểm tra Sample Order No., Style hoặc Created By đã nhập.
 
 ### Sale ASN
 
@@ -210,7 +210,7 @@ Dùng để làm gì Mở Sale ASN List, tìm chứng từ và tạo Sale ASN m�
 
 Ghép Packing List và Buyer Invoice thành một file Excel.
 
-Dùng để làm gì Tải Packing List và Buyer Invoice của một Sale ASN rồi ghép thành một file Excel để gửi hoặc lưu trữ. Các bước Mở module Sale ASN. Chọn Invoice No. và nhập số Invoice. Bấm Tải Packing List + Buyer Invoice . Chờ ứng dụng mở đúng dòng Sale ASN và tải hai báo cáo. Chọn nơi lưu file Excel. Chờ thư mục chứa file tự mở. Mở file và kiểm tra hai sheet Packing List và Buyer Invoice. Mẹo Mẹo Tên file mặc định là Invoice No. thực tế đọc được trên WFX. Mẹo Hai sheet giữ nguyên cách trình bày của báo cáo nguồn. Mẹo Bạn có thể kéo cột Docs tới vị trí bất kỳ; ứng dụng sẽ tự quét ngang bảng để tìm cột, không yêu cầu đưa Docs về vị trí mặc định. Gặp lỗi thì sao Hiện tượng Cách xử lý Sale ASN không hỗ trợ Documents Kiểm tra dòng đã chọn có nút Docs trên WFX hay không. Một báo cáo chưa sẵn sàng Chờ WFX tạo báo cáo xong rồi tải lại. Không ghép hoặc lưu được file Chọn một thư mục bạn có quyền ghi và bảo đảm file cũ không đang mở trong Excel.
+Dùng để làm gì Tải Packing List và Buyer Invoice của một Sale ASN rồi ghép thành một file Excel để gửi hoặc lưu trữ. Các bước Mở module Sale ASN. Chọn Invoice No. và nhập số Invoice. Bấm Tải Packing List + Buyer Invoice . Chờ ứng dụng mở đúng dòng Sale ASN và tải hai báo cáo. Chọn nơi lưu file Excel. Chờ thư mục chứa file tự mở. Mở file và kiểm tra hai sheet Packing List và Buyer Invoice. Mẹo Mẹo Tên file mặc định là Invoice No. thực tế đọc được trên WFX. Mẹo Hai sheet giữ nguyên cách trình bày của báo cáo nguồn. Mẹo Bạn có thể kéo cột Docs tới vị trí bất kỳ; ứng dụng sẽ tự quét ngang bảng để tìm cột, không yêu cầu đưa Docs về vị trí mặc định. Mẹo Nếu ô tìm kiếm để trống, hãy chọn đúng một dòng trên WFX. Ứng dụng đọc Invoice No. từ chính dòng đã chọn, kể cả khi cột này đang nằm ngoài màn hình. Gặp lỗi thì sao Hiện tượng Cách xử lý Không tìm thấy Invoice No. Kiểm tra số Invoice, xóa bộ lọc cũ trên WFX rồi thử lại. Có nhiều dòng phù hợp Chọn đúng một dòng trên WFX rồi bấm tải lại. Đã tìm thấy Invoice nhưng không có nút Docs Kiểm tra dòng đã chọn, trạng thái Sale ASN và quyền Documents của tài khoản trên WFX. Một báo cáo chưa sẵn sàng Chờ WFX tạo báo cáo xong rồi tải lại. Không ghép hoặc lưu được file Chọn một thư mục bạn có quyền ghi và bảo đảm file cũ không đang mở trong Excel.
 
 ## 6. Các danh sách khác
 
@@ -368,13 +368,17 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `QUICK_SEARCH_FAILED` | Quick Search gặp lỗi | Mở module thủ công và thử lại từng bước. |
 | `QUICK_SEARCH_TIMEOUT` | Quick Search phản hồi quá chậm | Chờ WFX tải xong rồi thử lại. |
 | `RESULT_DETACHED` | Dòng kết quả đã thay đổi trước khi mở | Tìm lại để lấy dòng kết quả mới. |
+| `SALE_ASN_DOCS_NOT_AVAILABLE` | Invoice không có nút Docs hoặc tài khoản chưa được cấp quyền | Kiểm tra đúng dòng Sale ASN và quyền Documents trên WFX. |
 | `SALE_ASN_DOCUMENTS_SAVE_FAILED` | Không lưu được file Documents Sale ASN | Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại. |
 | `SALE_ASN_DOCUMENTS_UNSUPPORTED` | Chưa hỗ trợ tải Documents Sale ASN | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
+| `SALE_ASN_INVOICE_NOT_FOUND` | Không tìm thấy Invoice No. trên Sale ASN List | Kiểm tra Invoice No., xóa bộ lọc cũ trên WFX rồi thử lại. |
+| `SALE_ASN_MULTIPLE_RESULTS` | Có nhiều dòng Sale ASN phù hợp | Chọn đúng một dòng trên WFX rồi bấm tải lại. |
 | `SALE_ASN_NEW_FAILED` | Không thể tạo màn Sale ASN mới | Mở lại Sale ASN và kiểm tra quyền tạo mới. |
 | `SALE_ASN_NEW_NOT_READY` | Màn Sale ASN mới chưa sẵn sàng | Chờ form tải xong rồi thử lại. |
 | `SALE_ASN_REPORT_DOWNLOAD_FAILED` | Không tải được report Sale ASN | Kiểm tra Packing List, Buyer Invoice và quyền export Excel. |
 | `SALE_ASN_REPORT_MERGE_FAILED` | Không ghép được hai report Sale ASN | Mở Log kỹ thuật và dùng Run ID để kiểm tra file report. |
 | `SALE_ASN_REPORT_NOT_READY` | Report Sale ASN chưa sẵn sàng | Chờ Documents/Report Viewer load xong rồi thử lại. |
+| `SALE_ASN_SELECTION_REQUIRED` | Chưa xác định được dòng Sale ASN cần tải | Nhập Invoice No. chính xác hoặc chọn đúng một dòng trên WFX. |
 | `SAMPLE_FILES_UNSUPPORTED` | Phiên bản tự động hóa chưa hỗ trợ Check File Sample | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
 | `SAMPLE_FILE_OPEN_FAILED` | Không thể mở Style từ kết quả Sample | Tìm lại Sample và kiểm tra Style Code trên grid WFX. |
 | `SAMPLE_FILE_SEARCH_FAILED` | Không thể đọc kết quả Sample để kiểm tra file | Mở lại Sample List, chờ grid ổn định rồi thử lại. |

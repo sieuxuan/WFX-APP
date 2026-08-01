@@ -352,6 +352,22 @@ ERROR_CODE_INFO.update(
             "Chưa hỗ trợ tải Documents Sale ASN",
             "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
         ),
+        "SALE_ASN_INVOICE_NOT_FOUND": (
+            "Không tìm thấy Invoice No. trên Sale ASN List",
+            "Kiểm tra Invoice No., xóa bộ lọc cũ trên WFX rồi thử lại.",
+        ),
+        "SALE_ASN_SELECTION_REQUIRED": (
+            "Chưa xác định được dòng Sale ASN cần tải",
+            "Nhập Invoice No. chính xác hoặc chọn đúng một dòng trên WFX.",
+        ),
+        "SALE_ASN_MULTIPLE_RESULTS": (
+            "Có nhiều dòng Sale ASN phù hợp",
+            "Chọn đúng một dòng trên WFX rồi bấm tải lại.",
+        ),
+        "SALE_ASN_DOCS_NOT_AVAILABLE": (
+            "Invoice không có nút Docs hoặc tài khoản chưa được cấp quyền",
+            "Kiểm tra đúng dòng Sale ASN và quyền Documents trên WFX.",
+        ),
         "SALE_ASN_REPORT_NOT_READY": (
             "Report Sale ASN chưa sẵn sàng",
             "Chờ Documents/Report Viewer load xong rồi thử lại.",

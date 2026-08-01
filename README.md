@@ -172,7 +172,8 @@ node --check wfx_panel/ui/panel.js
 ```
 
 Visual-regression chạy trên pywebview/WebView2 thật với light/dark và DPI
-100/125/150/200%, chụp bốn trạng thái Home/tooltip/Catalog/Settings:
+100/125/150/200%, chụp năm trạng thái
+Home/tooltip/Catalog/Sale ASN/Settings:
 
 ```powershell
 python scripts/visual_regression_panel.py --suite baseline

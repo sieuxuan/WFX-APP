@@ -66,6 +66,22 @@ def test_sale_asn_documents_export_both_reports_and_merge_workbook():
     assert '"SALE_ASN_SELECTION_REQUIRED"' in SOURCE
 
 
+def test_sale_asn_search_finds_virtualized_filter_across_horizontal_grid():
+    assert "def _search_input_across_horizontal_grid(" in SOURCE
+    assert "def _horizontal_grid_positions(" in SOURCE
+    assert "def _clear_list_search_fields(" in SOURCE
+    assert "scan_horizontal: bool = False" in SOURCE
+    assert "clear_visible()" in SOURCE
+    assert "scan_horizontal=search_spec.requires_floating_filter" in SOURCE
+    assert "scan_horizontal=True" in SOURCE
+
+
+def test_catalog_search_sweeps_user_reordered_floating_filters():
+    assert "def _resolve_catalog_filter(" in SOURCE
+    assert "_CATALOG_FILTER_INPUT_SELECTORS" in SOURCE
+    assert "Không tìm thấy Floating Filter" in SOURCE
+
+
 def test_oc_sample_and_sale_asn_search_auto_open_their_list():
     for function_name in (
         "search_oc_list",
@@ -108,6 +124,8 @@ def test_sample_check_file_reads_rows_and_opens_only_a_unique_style():
     assert '"SAMPLE_MULTIPLE_RESULTS"' in SOURCE
     assert '"SAMPLE_STYLE_OPENED"' in SOURCE
     assert "_SAMPLE_RESULT_ROWS_JS" in SOURCE
+    assert "element.querySelector?.(" in SOURCE
+    assert "input[value], button, a, [title], [aria-label]" in SOURCE
     assert "_CLICK_SAMPLE_STYLE_JS" in SOURCE
     assert "total_rows > 1 or len(rows) > 1" in SOURCE
     assert "_click_sample_style_result" in SOURCE

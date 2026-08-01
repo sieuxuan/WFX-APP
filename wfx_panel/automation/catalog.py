@@ -25,7 +25,10 @@ from wfx_panel.automation._common import (
     PlaywrightTimeoutError,
     _click,
     _first_line,
+    _horizontal_grid_positions,
+    _horizontal_grid_state,
     _result,
+    _scroll_horizontal_grid,
     _sleep,
     _style_status_suffix,
     _wait,
@@ -289,6 +292,27 @@ def _wait_catalog_grid_data_ready(
     raise PlaywrightTimeoutError("Dữ liệu AG Grid của Catalog chưa sẵn sàng.")
 
 
+def _catalog_filter_row_active(grid: Frame) -> bool:
+    """Floating Filter là trạng thái của header, không phải riêng cột Code."""
+    try:
+        root = grid.locator(".ag-root-wrapper").first
+        return bool(
+            root.evaluate(
+                """root => [...root.querySelectorAll(
+                    '.ag-header-row-column-filter, .ag-floating-filter'
+                )].some(row => {
+                    const style = getComputedStyle(row);
+                    const rect = row.getBoundingClientRect();
+                    return style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && rect.height >= 16;
+                })"""
+            )
+        )
+    except PlaywrightError:
+        return False
+
+
 def _show_catalog_floating_filter(
     page: Page,
     log: Callable[[str], None],
@@ -307,15 +331,15 @@ def _show_catalog_floating_filter(
                 previous_frame=excluded_frame,
                 timeout_seconds=min(1.0, remaining),
             )
-            code_input = grid.locator('input[aria-label="Code Filter Input"]')
             # Nếu Floating Filter đã hiển thị sẵn (vd. vừa prepare Master rồi
             # bấm Tìm), KHÔNG click lại #showfloatingfilter: nút này là toggle,
             # click sẽ TẮT filter rồi phải chờ 4s + retry — đúng cảm giác
-            # "search phải tải lại màn Catalog". Dùng lại grid ngay.
-            if code_input.count() > 0 and code_input.first.is_visible():
+            # "search phải tải lại màn Catalog". Không phụ thuộc riêng ô Code
+            # vì AG Grid có thể virtualize cột này ngoài viewport của user.
+            if _catalog_filter_row_active(grid):
                 if require_data_ready:
                     _wait_catalog_grid_data_ready(grid)
-                _write_log(log, "[FILTER] Ô lọc cột Code đã sẵn sàng, dùng lại grid.")
+                _write_log(log, "[FILTER] Floating Filter đã sẵn sàng, dùng lại grid.")
                 return grid
             show_button = grid.locator("#showfloatingfilter")
             if show_button.count() > 0 and show_button.is_visible():
@@ -325,17 +349,21 @@ def _show_catalog_floating_filter(
                     min(3_000, int((deadline - time.monotonic()) * 1_000)),
                 )
                 show_button.click(timeout=remaining_ms)
-            remaining_ms = max(
-                100,
-                min(4_000, int((deadline - time.monotonic()) * 1_000)),
-            )
-            code_input.wait_for(state="visible", timeout=remaining_ms)
+            while (
+                time.monotonic() < deadline
+                and not _catalog_filter_row_active(grid)
+            ):
+                _wait(grid, 150)
+            if not _catalog_filter_row_active(grid):
+                raise PlaywrightTimeoutError(
+                    "Hàng Floating Filter chưa hiển thị sau khi bật."
+                )
             if require_data_ready:
                 _wait_catalog_grid_data_ready(
                     grid,
                     timeout_seconds=max(0.1, deadline - time.monotonic()),
                 )
-            _write_log(log, "[FILTER] Đã sẵn sàng ô lọc cột Code.")
+            _write_log(log, "[FILTER] Đã sẵn sàng hàng Floating Filter.")
             return grid
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             last_error = exc
@@ -542,6 +570,64 @@ _CATALOG_FILTER_SPECS = {
         "lblArticleName",
     ),
 }
+
+_CATALOG_FILTER_INPUT_SELECTORS = (
+    'input[aria-label="Code Filter Input"]',
+    'input[aria-label="Buyer Reference Filter Input"]',
+    'input[aria-label="Article Name Filter Input"]',
+    'input[aria-label="Name Filter Input"]',
+)
+
+
+def _visible_catalog_filter(grid: Frame, selector: str) -> Any | None:
+    candidates = grid.locator(selector)
+    for index in range(candidates.count()):
+        candidate = candidates.nth(index)
+        try:
+            if candidate.is_visible() and candidate.is_enabled():
+                return candidate
+        except PlaywrightError:
+            continue
+    return None
+
+
+def _resolve_catalog_filter(
+    grid: Frame,
+    spec: _CatalogFilterSpec,
+) -> Any:
+    """Quét/clear mọi Floating Filter kể cả cột bị virtualize ngang."""
+    root = grid.locator(".ag-root-wrapper").first
+    state = _horizontal_grid_state(root)
+    original = max(0, int(float(state.get("current") or 0)))
+    target_position: int | None = None
+    try:
+        for position in _horizontal_grid_positions(state):
+            _scroll_horizontal_grid(root, position)
+            _wait(grid, 150)
+            for selector in _CATALOG_FILTER_INPUT_SELECTORS:
+                field = _visible_catalog_filter(grid, selector)
+                if field is None:
+                    continue
+                if field.input_value(timeout=500):
+                    field.fill("", timeout=3_000)
+            if _visible_catalog_filter(grid, spec.input_selector) is not None:
+                target_position = position
+    except PlaywrightError:
+        target_position = None
+
+    if target_position is None:
+        _scroll_horizontal_grid(root, original)
+        raise PlaywrightTimeoutError(
+            f"Không tìm thấy Floating Filter {spec.label} sau khi quét ngang."
+        )
+    _scroll_horizontal_grid(root, target_position)
+    _wait(grid, 150)
+    search_input = _visible_catalog_filter(grid, spec.input_selector)
+    if search_input is None:
+        raise PlaywrightTimeoutError(
+            f"Floating Filter {spec.label} vừa thay đổi sau khi quét ngang."
+        )
+    return search_input
 
 
 def _catalog_grid_state_key(state: Mapping[str, Any]) -> tuple[Any, ...]:
@@ -774,19 +860,8 @@ def _filter_grid_and_maybe_open(
     if spec is None:
         return _result(False, "INVALID_FILTER", f"Filter không hỗ trợ: {filter_kind}")
 
-    # Không để điều kiện cũ ở các cột chồng lên lần tìm mới.
-    for selector in (
-        'input[aria-label="Code Filter Input"]',
-        'input[aria-label="Buyer Reference Filter Input"]',
-        'input[aria-label="Article Name Filter Input"]',
-        'input[aria-label="Name Filter Input"]',
-    ):
-        field = grid.locator(selector)
-        if field.count() and field.is_visible():
-            field.fill("", timeout=3_000)
-
-    search_input = grid.locator(spec.input_selector)
-    search_input.wait_for(state="visible", timeout=5_000)
+    # Không để điều kiện cũ ở cột ngoài viewport chồng lên lần tìm mới.
+    search_input = _resolve_catalog_filter(grid, spec)
     _write_log(log, f"[{spec.label.upper()}] Đang lọc gần đúng: {query}")
     search_input.fill(query, timeout=3_000)
     if search_input.input_value(timeout=1_000) != query:

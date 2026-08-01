@@ -22,8 +22,11 @@ from wfx_panel.automation._common import (
     _ensure_select_value,
     _first_line,
     _first_visible,
+    _horizontal_grid_positions,
+    _horizontal_grid_state,
     _mark_document,
     _result,
+    _scroll_horizontal_grid,
     _wait,
     _wait_frame_with_selectors,
     _write_log,
@@ -579,6 +582,8 @@ def _search_input_in_frames(
     selectors: tuple[str, ...],
     aliases: tuple[str, ...],
     timeout_s: float = 25,
+    *,
+    scan_horizontal: bool = False,
 ) -> tuple[Frame, Any]:
     """Resolve đúng ô filter theo selector thật, rồi mới fallback theo header."""
     deadline = time.monotonic() + timeout_s
@@ -587,6 +592,15 @@ def _search_input_in_frames(
             candidate = _visible_search_input(frame, selectors, aliases)
             if candidate is not None:
                 return frame, candidate
+        if scan_horizontal:
+            for frame in page.frames:
+                candidate = _search_input_across_horizontal_grid(
+                    frame,
+                    selectors,
+                    aliases,
+                )
+                if candidate is not None:
+                    return frame, candidate
         _wait(page, 200)
     raise PlaywrightTimeoutError(
         "Không tìm thấy ô search cho: " + ", ".join(aliases)
@@ -599,17 +613,59 @@ def _search_input_in_frame(
     selectors: tuple[str, ...],
     aliases: tuple[str, ...],
     timeout_s: float = 4,
+    *,
+    scan_horizontal: bool = False,
 ) -> Any:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         candidate = _visible_search_input(frame, selectors, aliases)
         if candidate is not None:
             return candidate
+        if scan_horizontal:
+            candidate = _search_input_across_horizontal_grid(
+                frame,
+                selectors,
+                aliases,
+            )
+            if candidate is not None:
+                return candidate
         _wait(page, 200)
     raise PlaywrightTimeoutError(
         "Không tìm thấy ô search trong đúng màn List: "
         + ", ".join(aliases)
     )
+
+
+def _search_input_across_horizontal_grid(
+    frame: Frame,
+    selectors: tuple[str, ...],
+    aliases: tuple[str, ...],
+) -> Any | None:
+    """Tìm Floating Filter bị AG Grid virtualize ngoài viewport ngang."""
+    roots = frame.locator(".ag-root-wrapper")
+    for index in range(roots.count()):
+        root = roots.nth(index)
+        try:
+            if not root.is_visible():
+                continue
+            state = _horizontal_grid_state(root)
+            original = max(0, int(float(state.get("current") or 0)))
+            for position in _horizontal_grid_positions(state):
+                _scroll_horizontal_grid(root, position)
+                _wait(frame, MODULE_GRID_POLL_MS)
+                candidate = _visible_search_input(
+                    frame,
+                    selectors,
+                    aliases,
+                )
+                if candidate is not None:
+                    # Giữ cột vừa tìm thấy trong viewport để user thấy đúng
+                    # filter và kết quả đang được áp dụng.
+                    return candidate
+            _scroll_horizontal_grid(root, original)
+        except PlaywrightError:
+            continue
+    return None
 
 
 def _module_search_is_loading(page: Page) -> bool:
@@ -960,6 +1016,7 @@ def _open_list_search_context(
             search_spec.context_field.selectors,
             search_spec.context_field.aliases,
             timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
+            scan_horizontal=search_spec.requires_floating_filter,
         )
         return frame
     except PlaywrightTimeoutError:
@@ -981,6 +1038,7 @@ def _open_list_search_context(
             search_spec.context_field.selectors,
             search_spec.context_field.aliases,
             timeout_s=30,
+            scan_horizontal=search_spec.requires_floating_filter,
         )
         return frame
 
@@ -988,23 +1046,45 @@ def _open_list_search_context(
 def _clear_list_search_fields(
     frame: Frame,
     selectors: tuple[str, ...],
+    *,
+    scan_horizontal: bool = False,
 ) -> None:
     """Xóa filter cũ để các lần Search không âm thầm kết hợp điều kiện."""
-    # Một locator union trả node unique theo DOM order, tránh query lại cùng
-    # input khi nhiều selector fallback cùng match nó.
-    candidates = frame.locator(", ".join(selectors))
-    for index in range(candidates.count()):
-        candidate = candidates.nth(index)
-        try:
-            if not candidate.is_visible() or not candidate.is_enabled():
-                continue
-            if not candidate.input_value(timeout=500):
-                continue
-            candidate.fill("")
+    def clear_visible() -> None:
+        # Một locator union trả node unique theo DOM order, tránh query lại
+        # cùng input khi nhiều selector fallback cùng match nó.
+        candidates = frame.locator(", ".join(selectors))
+        for index in range(candidates.count()):
+            candidate = candidates.nth(index)
             try:
-                candidate.dispatch_event("change")
+                if not candidate.is_visible() or not candidate.is_enabled():
+                    continue
+                if not candidate.input_value(timeout=500):
+                    continue
+                candidate.fill("")
+                try:
+                    candidate.dispatch_event("change")
+                except PlaywrightError:
+                    pass
             except PlaywrightError:
-                pass
+                continue
+
+    clear_visible()
+    if not scan_horizontal:
+        return
+    roots = frame.locator(".ag-root-wrapper")
+    for index in range(roots.count()):
+        root = roots.nth(index)
+        try:
+            if not root.is_visible():
+                continue
+            state = _horizontal_grid_state(root)
+            original = max(0, int(float(state.get("current") or 0)))
+            for position in _horizontal_grid_positions(state):
+                _scroll_horizontal_grid(root, position)
+                _wait(frame, MODULE_GRID_POLL_MS)
+                clear_visible()
+            _scroll_horizontal_grid(root, original)
         except PlaywrightError:
             continue
 
@@ -1036,7 +1116,11 @@ def _search_module_list(
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
         frame = _open_list_search_context(page, search_spec, xpath, log)
-        _clear_list_search_fields(frame, search_spec.field_selectors)
+        _clear_list_search_fields(
+            frame,
+            search_spec.field_selectors,
+            scan_horizontal=search_spec.requires_floating_filter,
+        )
         _wait(page, 250)
         field = _search_input_in_frame(
             page,
@@ -1044,6 +1128,7 @@ def _search_module_list(
             selected_field.selectors,
             selected_field.aliases,
             timeout_s=8,
+            scan_horizontal=search_spec.requires_floating_filter,
         )
         search_started = True
         _apply_module_search(
@@ -1120,9 +1205,23 @@ _SAMPLE_RESULT_ROWS_JS = """root => {
             && Number(style.opacity || 1) !== 0
             && rect.width > 0 && rect.height > 0;
     };
-    const text = element => String(
-        element?.value || element?.textContent || element?.title || ''
+    const directText = element => String(
+        element?.value
+        || element?.getAttribute?.('value')
+        || element?.textContent
+        || element?.title
+        || element?.getAttribute?.('aria-label')
+        || ''
     ).replace(/\\s+/g, ' ').trim();
+    const text = element => {
+        if (!element) return '';
+        const direct = directText(element);
+        if (direct) return direct;
+        const nested = element.querySelector?.(
+            'input[value], button, a, [title], [aria-label]'
+        );
+        return directText(nested);
+    };
     const cellMetadata = cell => {
         if (!cell) return '';
         const colId = cell.getAttribute('col-id') || '';
@@ -1453,7 +1552,11 @@ def find_sample_file_results(
             xpath,
             log,
         )
-        _clear_list_search_fields(frame, SAMPLE_SEARCH_SPEC.field_selectors)
+        _clear_list_search_fields(
+            frame,
+            SAMPLE_SEARCH_SPEC.field_selectors,
+            scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
+        )
         _wait(page, 250)
         field = _search_input_in_frame(
             page,
@@ -1461,6 +1564,7 @@ def find_sample_file_results(
             selected_field.selectors,
             selected_field.aliases,
             timeout_s=8,
+            scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
         )
         search_started = True
         _apply_module_search(page, field, query, selected_field.label, log)
