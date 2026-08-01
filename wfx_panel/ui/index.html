@@ -135,6 +135,10 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5V3Z"/><path d="M8 7h8M8 11h3m2 0h3M8 15h3m2 0h3"/></svg>
               <span><strong>Costing</strong><small>XLSX &amp; Apply</small></span>
             </button>
+            <button type="button" role="tab" data-catalog-space="styles" aria-selected="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M12 8v8M8 12h8"/></svg>
+              <span><strong>Tạo Style</strong><small>Excel · Apparel</small></span>
+            </button>
           </div>
 
           <div class="catalog-space-panel" data-catalog-space-panel="search" role="tabpanel">
@@ -262,6 +266,44 @@
               </div>
             </div>
           </section>
+          </div>
+
+          <div class="catalog-space-panel catalog-style-workspace" data-catalog-space-panel="styles" role="tabpanel" hidden>
+            <section class="catalog-style-card" aria-labelledby="catalog-style-title">
+              <div class="catalog-costing-heading">
+                <span>
+                  <strong id="catalog-style-title">Tạo Style Apparel hàng loạt</strong>
+                  <small>Chuẩn bị từng dòng và dừng trước Save</small>
+                </span>
+                <span class="catalog-style-safe-badge">Không tự Save</span>
+              </div>
+              <label class="catalog-style-group-row">
+                <span>Group bắt buộc</span>
+                <select class="catalog-style-group" aria-label="Chọn Group Apparel" disabled>
+                  <option value="">Quét cây Catalog để chọn Group…</option>
+                </select>
+              </label>
+              <button type="button" class="catalog-style-refresh" data-style-action="refresh-groups">Quét lại Group</button>
+              <div class="catalog-style-file-actions">
+                <button type="button" data-style-action="template">Tải form Excel</button>
+                <button type="button" class="catalog-primary-action" data-style-action="import">Chọn file &amp; kiểm tra</button>
+              </div>
+              <p class="catalog-style-note">New điền đủ trường; Copy chỉ đổi ô có dữ liệu. Purchase UOM, Price Per và Color Definition dùng giá trị mặc định bắt buộc.</p>
+              <div class="catalog-style-review" aria-live="polite" hidden>
+                <div class="catalog-costing-plan-heading">
+                  <span>
+                    <strong>Danh sách chuẩn bị</strong>
+                    <small class="catalog-style-review-file"></small>
+                  </span>
+                  <button type="button" data-style-action="cancel" aria-label="Hủy danh sách Tạo Style">×</button>
+                </div>
+                <div class="catalog-style-progress"></div>
+                <div class="catalog-style-row-summary"></div>
+                <div class="catalog-style-copy-choices" hidden></div>
+                <button type="button" class="catalog-style-prepare" data-style-action="prepare-row">Chuẩn bị dòng đầu tiên</button>
+                <small class="catalog-style-save-reminder">Sau khi app điền xong, kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.</small>
+              </div>
+            </section>
           </div>
         </div>
 

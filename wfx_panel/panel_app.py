@@ -37,6 +37,7 @@ from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.oc_workbook import write_oc_input_template
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
+from wfx_panel.style_workbook import write_style_template
 from wfx_panel.version import APP_VERSION
 from wfx_panel.win32_window import (
     BUBBLE_MENU_TITLE,
@@ -775,6 +776,100 @@ class PanelApp:
             "ok": True,
             "code": "SALE_ASN_EXPORT_PATH_SELECTED",
             "message": f"Sẽ lưu thành {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
+    def choose_style_import_file(self) -> dict:
+        """Chọn workbook Tạo Style do người dùng chủ động cung cấp."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ chọn file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ chọn file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy chọn file Tạo Style.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != ".xlsx":
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_TYPE_UNSUPPORTED",
+                "message": "Tạo Style chỉ hỗ trợ file .xlsx.",
+            }
+        return {
+            "ok": True,
+            "code": "STYLE_FILE_SELECTED",
+            "message": f"Đã chọn {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
+    def download_style_template(self) -> dict:
+        """Sinh form Tạo Style và lưu vào nơi người dùng chọn."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename="WFX-Smart-Tao-Style.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "STYLE_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy tải form Tạo Style.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+            target = write_style_template(target)
+            _open_downloaded_file(target)
+            _reveal_downloaded_file(target)
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "STYLE_TEMPLATE_EXPORT_FAILED",
+                "message": f"Không tạo được form Tạo Style: {error}",
+            }
+        return {
+            "ok": True,
+            "code": "STYLE_TEMPLATE_EXPORTED",
+            "message": f"Đã tạo form {target.name}.",
             "file_path": str(target),
             "file_name": target.name,
         }
@@ -2098,6 +2193,8 @@ class PanelApp:
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]
         self.api.choose_oc_upload_file = self.choose_oc_upload_file  # type: ignore[attr-defined]
         self.api.choose_sale_asn_export_file = self.choose_sale_asn_export_file  # type: ignore[attr-defined]
+        self.api.choose_style_import_file = self.choose_style_import_file  # type: ignore[attr-defined]
+        self.api.download_style_template = self.download_style_template  # type: ignore[attr-defined]
         self.api.download_oc_template = self.download_oc_template  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)

@@ -489,7 +489,9 @@ def _catalog_folder_nodes(frame: Frame) -> list[dict[str, Any]]:
                         name: path[path.length - 1],
                         path,
                         path_label: path.join(' / '),
-                        kind: li.classList.contains('GroupNode')
+                        kind: [...li.classList, ...span.classList].some(name =>
+                            name.toLocaleLowerCase('en') === 'groupnode'
+                        )
                             ? 'group'
                             : 'folder',
                         depth: path.length,

@@ -192,6 +192,9 @@
   let catalogFolderSaving = false;
   let catalogFolderScanGeneration = 0;
   let catalogFolderEditorOpen = false;
+  let catalogStyleReview = null;
+  let catalogStyleRowIndex = 0;
+  let catalogStyleAwaitingSave = false;
   let articleSuggestionTimer = 0;
   let articleSuggestionGeneration = 0;
   const moduleFilterKinds = {
@@ -212,6 +215,7 @@
     "toggle_company_foc",
     "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
     "clear_catalog_costing_dependencies",
+    "review_catalog_style_import", "prepare_catalog_style_row",
   ]);
   const INTERACTIVE_RESULT_CODES = new Set([
     "MULTIPLE_RESULTS",
@@ -219,6 +223,7 @@
     "CATALOG_FILES_SCANNED",
     "COSTING_DRY_RUN_READY",
     "COSTING_ARTICLE_AMBIGUOUS",
+    "STYLE_COPY_MULTIPLE_RESULTS",
   ]);
   const BUSY_MESSAGES = {
     open_chrome: "Đang mở và đăng nhập WFX…",
@@ -238,6 +243,9 @@
     prepare_catalog_costing_import: "Đang kiểm tra file và lập dry-run…",
     apply_catalog_costing: "Đang áp dụng Costing và Save…",
     clear_catalog_costing_dependencies: "Đang Clear toàn bộ Dependency và Save…",
+    review_catalog_style_import: "Đang kiểm tra file Tạo Style…",
+    prepare_catalog_style_row: "Đang chuẩn bị Style và dừng trước Save…",
+    download_style_template: "Đang tạo form Tạo Style…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
     open_sample_new: "Đang mở Sample Order mới…",
     search_oc: "Đang tìm OC…",
@@ -283,6 +291,9 @@
     prepare_catalog_costing_import: "Dry-run Costing",
     apply_catalog_costing: "Áp dụng Costing",
     clear_catalog_costing_dependencies: "Clear All Dependency",
+    review_catalog_style_import: "Kiểm tra file Tạo Style",
+    prepare_catalog_style_row: "Chuẩn bị Style",
+    clear_catalog_style_import: "Hủy Tạo Style",
     open_sale_asn_new: "Sale ASN mới",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
@@ -899,12 +910,12 @@
   }
 
   function showCatalogSpace(space, { focus = true } = {}) {
-    const requested = space === "costing" ? "costing" : "search";
-    const costingAllowed =
+    const requested = ["costing", "styles"].includes(space) ? space : "search";
+    const apparelSpaceAllowed =
       ($(".catalog-category")?.value || "") === CATALOG_DEFAULT_CATEGORY;
-    catalogSpace = requested === "costing" && costingAllowed
-      ? "costing"
-      : "search";
+    catalogSpace = requested !== "search" && !apparelSpaceAllowed
+      ? "search"
+      : requested;
     $$("[data-catalog-space]").forEach((button) => {
       const selected = button.dataset.catalogSpace === catalogSpace;
       button.setAttribute("aria-selected", String(selected));
@@ -913,10 +924,19 @@
     $$("[data-catalog-space-panel]").forEach((panel) => {
       panel.hidden = panel.dataset.catalogSpacePanel !== catalogSpace;
     });
+    if (
+      catalogSpace === "styles"
+      && !catalogFoldersByCategory.has(CATALOG_DEFAULT_CATEGORY)
+      && !catalogFolderScanning
+    ) {
+      scanCatalogFolders(false);
+    }
     if (!focus) return;
     window.setTimeout(() => {
       if (catalogSpace === "costing") {
         $('[data-costing-action="import"]')?.focus();
+      } else if (catalogSpace === "styles") {
+        $(".catalog-style-group")?.focus();
       } else {
         $(".catalog-query")?.focus();
       }
@@ -989,9 +1009,23 @@
     if (searchSpaceButton) {
       searchSpaceButton.disabled = busy || catalogFolderScanning;
     }
-    if (!supportsDefault && catalogSpace === "costing") {
+    const styleSpaceButton = $('[data-catalog-space="styles"]');
+    if (styleSpaceButton) {
+      styleSpaceButton.hidden = !supportsDefault;
+      styleSpaceButton.disabled = busy || catalogFolderScanning;
+    }
+    if (!supportsDefault && catalogSpace !== "search") {
       showCatalogSpace("search", { focus: false });
     }
+    const styleGroup = $(".catalog-style-group");
+    if (styleGroup) {
+      styleGroup.disabled = busy || catalogFolderScanning
+        || Boolean(catalogStyleReview)
+        || !catalogFoldersByCategory.has(CATALOG_DEFAULT_CATEGORY);
+    }
+    $$("[data-style-action]").forEach((button) => {
+      button.disabled = busy || catalogFolderScanning;
+    });
     const costingOpen = currentCostingStatus.toLowerCase() === "open";
     const costingStatusKnown = Boolean(currentCostingStatus.trim());
     const costingState = $(".catalog-costing-state");
@@ -1804,7 +1838,179 @@
       });
     }
     renderCatalogFolderList();
+    renderCatalogStyleGroups();
   }
+
+  function renderCatalogStyleGroups() {
+    const select = $(".catalog-style-group");
+    if (!select) return;
+    const previous = select.value;
+    const groups = (catalogFoldersByCategory.get(CATALOG_DEFAULT_CATEGORY) || [])
+      .filter((item) => String(item.kind || "").toLowerCase() === "group");
+    select.innerHTML = '<option value="">Chọn một Group Apparel…</option>'
+      + groups.map((group) => (
+        `<option value="${escapeHtml(group.node_id)}">${escapeHtml(
+          group.path_label || group.name || group.node_id,
+        )}</option>`
+      )).join("");
+    if (groups.some((group) => String(group.node_id || "") === previous)) {
+      select.value = previous;
+    }
+    select.disabled = busy || catalogFolderScanning
+      || Boolean(catalogStyleReview) || !groups.length;
+  }
+
+  function resetCatalogStyleReview() {
+    catalogStyleReview = null;
+    catalogStyleRowIndex = 0;
+    catalogStyleAwaitingSave = false;
+    const review = $(".catalog-style-review");
+    if (review) review.hidden = true;
+    const choices = $(".catalog-style-copy-choices");
+    if (choices) {
+      choices.hidden = true;
+      choices.innerHTML = "";
+    }
+    renderCatalogStyleGroups();
+    syncCatalogStepButtons();
+  }
+
+  function currentCatalogStyleRow() {
+    return catalogStyleReview?.rows?.[catalogStyleRowIndex] || null;
+  }
+
+  function renderCatalogStyleReview() {
+    const review = $(".catalog-style-review");
+    if (!review || !catalogStyleReview) return;
+    const row = currentCatalogStyleRow();
+    const count = Number(catalogStyleReview.row_count || catalogStyleReview.rows.length);
+    review.hidden = false;
+    $(".catalog-style-review-file").textContent =
+      `${catalogStyleReview.file_name} · ${catalogStyleReview.group.path_label}`;
+    $(".catalog-style-progress").textContent = row
+      ? `Dòng ${catalogStyleRowIndex + 1}/${count} · Excel ${row.source_row}`
+      : `Hoàn tất ${count}/${count} dòng`;
+    $(".catalog-style-row-summary").textContent = row
+      ? [
+          row.type,
+          row.style_copy ? `Nguồn: ${row.style_copy}` : "Tạo mới",
+          row.buyer_style_ref ? `Buyer Ref: ${row.buyer_style_ref}` : "",
+          row.internal_style_ref ? `Internal Ref: ${row.internal_style_ref}` : "",
+        ].filter(Boolean).join(" · ")
+      : "Danh sách đã hoàn tất. Các Style chỉ được lưu khi bạn tự bấm Save trên WFX.";
+    const button = $(".catalog-style-prepare");
+    if (!row) {
+      button.textContent = "Đã hoàn tất";
+      button.disabled = true;
+    } else if (catalogStyleAwaitingSave) {
+      button.textContent = catalogStyleRowIndex + 1 >= count
+        ? "Tôi đã Save · Hoàn tất"
+        : "Tôi đã Save · Chuẩn bị dòng tiếp theo";
+      button.disabled = false;
+    } else {
+      button.textContent = catalogStyleRowIndex === 0
+        ? "Chuẩn bị dòng đầu tiên"
+        : "Chuẩn bị dòng này";
+      button.disabled = false;
+    }
+    renderCatalogStyleGroups();
+  }
+
+  async function downloadCatalogStyleTemplate() {
+    const result = await callQuiet("download_style_template");
+    if (result) handleResult(result);
+    return result;
+  }
+
+  async function importCatalogStyles() {
+    const groupId = String($(".catalog-style-group")?.value || "");
+    if (!groupId) {
+      setStatus("error", "Hãy chọn đúng một Group Apparel trước khi Import.");
+      $(".catalog-style-group")?.focus();
+      return null;
+    }
+    const selected = await callQuiet("choose_style_import_file");
+    if (!selected?.ok) {
+      if (selected?.code !== "STYLE_FILE_DIALOG_CANCELLED") handleResult(selected);
+      return selected;
+    }
+    const result = await call(
+      "review_catalog_style_import",
+      selected.file_path,
+      groupId,
+    );
+    if (result?.code === "STYLE_IMPORT_REVIEW_READY") {
+      catalogStyleReview = result;
+      catalogStyleRowIndex = 0;
+      catalogStyleAwaitingSave = false;
+      renderCatalogStyleReview();
+    }
+    return result;
+  }
+
+  async function cancelCatalogStyleReview() {
+    const token = String(catalogStyleReview?.review_token || "");
+    if (token) await callQuiet("clear_catalog_style_import", token);
+    resetCatalogStyleReview();
+    setStatus("warning", "Đã hủy danh sách Tạo Style; app chưa Save trên WFX.");
+  }
+
+  function renderCatalogStyleCopyChoices(result) {
+    const host = $(".catalog-style-copy-choices");
+    if (!host) return;
+    const choices = Array.isArray(result?.choices) ? result.choices : [];
+    host.innerHTML = choices.map((choice) => (
+      `<button type="button" data-style-copy-choice="${Number(choice.choice_index)}">${escapeHtml(
+        choice.label || choice.article_code || choice.buyer_reference || "Style nguồn",
+      )}</button>`
+    )).join("");
+    host.hidden = !choices.length;
+    $(".catalog-style-prepare").disabled = Boolean(choices.length);
+  }
+
+  async function prepareCatalogStyleRow(copyChoice = null) {
+    if (!catalogStyleReview) return null;
+    if (catalogStyleAwaitingSave) {
+      catalogStyleAwaitingSave = false;
+      catalogStyleRowIndex += 1;
+      if (!currentCatalogStyleRow()) {
+        await callQuiet(
+          "clear_catalog_style_import",
+          catalogStyleReview.review_token,
+        );
+        renderCatalogStyleReview();
+        setStatus("success", "Đã hoàn tất danh sách. App không tự Save Style nào.");
+        return null;
+      }
+      renderCatalogStyleReview();
+    }
+    const row = currentCatalogStyleRow();
+    if (!row) return null;
+    const result = await call(
+      "prepare_catalog_style_row",
+      catalogStyleReview.review_token,
+      row.source_row,
+      copyChoice,
+    );
+    if (result?.code === "STYLE_COPY_MULTIPLE_RESULTS") {
+      renderCatalogStyleCopyChoices(result);
+    } else if (result?.code === "STYLE_FORM_READY") {
+      const choices = $(".catalog-style-copy-choices");
+      choices.hidden = true;
+      choices.innerHTML = "";
+      catalogStyleAwaitingSave = true;
+      renderCatalogStyleReview();
+    }
+    return result;
+  }
+
+  const styleActions = {
+    "refresh-groups": () => scanCatalogFolders(true),
+    template: () => downloadCatalogStyleTemplate(),
+    import: () => importCatalogStyles(),
+    cancel: () => cancelCatalogStyleReview(),
+    "prepare-row": () => prepareCatalogStyleRow(),
+  };
 
   function toggleCatalogFolder(nodeId) {
     const category = $(".catalog-category").value;
@@ -2646,6 +2852,17 @@
     $$("[data-costing-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(button, () => costingActions[button.dataset.costingAction]?.())));
+    $$("[data-style-action]").forEach((button) =>
+      button.addEventListener("click", () =>
+        withButtonLoading(button, () => styleActions[button.dataset.styleAction]?.())));
+    $(".catalog-style-copy-choices")?.addEventListener("click", (event) => {
+      const choice = event.target.closest("[data-style-copy-choice]");
+      if (!choice) return;
+      withButtonLoading(
+        choice,
+        () => prepareCatalogStyleRow(Number(choice.dataset.styleCopyChoice)),
+      );
+    });
     $(".catalog-special-rescan-input")?.addEventListener(
       "change",
       async (event) => {

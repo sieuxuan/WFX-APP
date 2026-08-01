@@ -44,6 +44,10 @@ def costing_actions() -> set[str]:
     return _action("costing")
 
 
+def style_actions() -> set[str]:
+    return _action("style")
+
+
 def settings_controls() -> set[str]:
     controls: set[str] = set()
     for block in _SETTINGS_PANEL.findall(_HTML):

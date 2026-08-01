@@ -29,6 +29,19 @@ def test_wires_all_catalog_actions():
     assert '"scan_catalog_folders"' in JS
 
 
+def test_wires_bulk_style_review_and_manual_save_flow():
+    for method in [
+        "download_style_template",
+        "choose_style_import_file",
+        "review_catalog_style_import",
+        "prepare_catalog_style_row",
+        "clear_catalog_style_import",
+    ]:
+        assert f'"{method}"' in JS
+    assert "STYLE_COPY_MULTIPLE_RESULTS" in JS
+    assert "Tôi đã Save · Chuẩn bị dòng tiếp theo" in JS
+
+
 def test_costing_weekly_scan_and_clear_all_controls_are_wired():
     assert '"set_costing_special_options_rescan"' in JS
     assert "setCostingSpecialOptionsState" in JS
