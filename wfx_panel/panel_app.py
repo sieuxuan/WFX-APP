@@ -208,7 +208,7 @@ def _safe_costing_file_stem(value: object) -> str:
 
 
 def _dialog_selected_path(selected: object) -> Path:
-    """Chuẩn hoá kết quả pywebview: Windows có thể trả str hoặc list[str]."""
+    """Chuẩn hóa kết quả pywebview: Windows có thể trả str hoặc list[str]."""
     value = selected
     if not isinstance(selected, (str, Path)):
         try:
@@ -216,6 +216,34 @@ def _dialog_selected_path(selected: object) -> Path:
         except (IndexError, KeyError, TypeError) as error:
             raise ValueError("File dialog không trả về đường dẫn.") from error
     return Path(str(value)).expanduser().resolve()
+
+
+def _webview2_print_bindings():
+    """Nạp kiểu .NET trễ, sau khi backend WebView2 đã khởi tạo."""
+    from Microsoft.Web.WebView2.Core import CoreWebView2PrintDialogKind
+    from System import Action
+
+    return Action, CoreWebView2PrintDialogKind.System
+
+
+def _show_webview2_print_dialog(window: object) -> bool:
+    """Mở hộp thoại in hệ thống trên đúng luồng giao diện của WebView2."""
+    try:
+        native = window.native
+        action_type, system_dialog = _webview2_print_bindings()
+        opened = [False]
+
+        def show_print_dialog() -> None:
+            core = native.browser.webview.CoreWebView2
+            if core is None:
+                return
+            core.ShowPrintUI(system_dialog)
+            opened[0] = True
+
+        native.Invoke(action_type(show_print_dialog))
+        return opened[0]
+    except Exception:
+        return False
 
 
 class _WfxTrayIcon(pystray.Icon):
@@ -245,7 +273,7 @@ class _WfxTrayIcon(pystray.Icon):
 
 
 def _top_right_position() -> tuple[int, int]:
-    """Toạ độ mở panel gần góc trên-phải màn hình chính.
+    """Tọa độ mở panel gần góc trên-phải màn hình chính.
 
     pywebview không nhận x/y sẽ tự canh giữa cửa sổ, sai với thiết kế (panel
     phải neo góc trên-phải). webview.screens chỉ khả dụng SAU khi GUI backend
@@ -383,6 +411,9 @@ class _ManualBridge:
     def get_manual_book(self) -> dict:
         return self._app.manual_payload()
 
+    def print_manual(self) -> dict:
+        return self._app.print_manual()
+
     def open_manual_external(self) -> dict:
         try:
             opened = bool(webbrowser.open(WFX_MANUAL_URL, new=2))
@@ -490,7 +521,7 @@ class PanelApp:
         # đã load xong.
         self._hotkey_error: str | None = None
         self._hotkey_ready = threading.Event()
-        # Khoá một-instance; main() gán vào để quit() trả cổng lại cho lần mở sau.
+        # Khóa một-instance; main() gán vào để quit() trả cổng lại cho lần mở sau.
         self.lock: SingleInstance | None = None
 
     # -- window bridge -----------------------------------------------------
@@ -551,7 +582,7 @@ class PanelApp:
             return {
                 "ok": False,
                 "code": "COSTING_FILE_DIALOG_CANCELLED",
-                "message": "Đã huỷ chọn file Costing.",
+                "message": "Đã hủy chọn file Costing.",
             }
         try:
             target = _dialog_selected_path(selected)
@@ -618,7 +649,7 @@ class PanelApp:
             return {
                 "ok": False,
                 "code": "COSTING_FILE_DIALOG_CANCELLED",
-                "message": "Đã huỷ tải Costing.",
+                "message": "Đã hủy tải Costing.",
             }
         try:
             target = _dialog_selected_path(selected)
@@ -677,7 +708,7 @@ class PanelApp:
             return {
                 "ok": False,
                 "code": "OC_FILE_DIALOG_CANCELLED",
-                "message": "Đã huỷ chọn file Upload OC.",
+                "message": "Đã hủy chọn file Upload OC.",
             }
         try:
             target = _dialog_selected_path(selected)
@@ -728,7 +759,7 @@ class PanelApp:
             return {
                 "ok": False,
                 "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
-                "message": "Đã huỷ lưu Documents Sale ASN.",
+                "message": "Đã hủy lưu Documents Sale ASN.",
             }
         try:
             target = _dialog_selected_path(selected)
@@ -773,7 +804,7 @@ class PanelApp:
             return {
                 "ok": False,
                 "code": "OC_FILE_DIALOG_CANCELLED",
-                "message": "Đã huỷ tải form Upload OC.",
+                "message": "Đã hủy tải form Upload OC.",
             }
         try:
             target = _dialog_selected_path(selected)
@@ -847,7 +878,7 @@ class PanelApp:
                         pass
                 self._panel_visible = True
             # Đặt bounds sau khi show để Win32 chắc chắn thấy HWND panel và
-            # dùng cùng hệ toạ độ physical với bubble (quan trọng khi DPI khác
+            # dùng cùng hệ tọa độ physical với bubble (quan trọng khi DPI khác
             # nhau giữa hai màn hình).
             self._position_panel_beside_bubble()
             if not _native_window_visibility(
@@ -1309,6 +1340,26 @@ class PanelApp:
             except Exception:
                 pass
 
+    def print_manual(self) -> dict:
+        """Mở hộp thoại in hệ thống; người dùng có thể chọn lưu thành PDF."""
+        if self.manual_window is None:
+            return {
+                "ok": False,
+                "code": "MANUAL_PRINT_FAILED",
+                "message": "Cửa sổ hướng dẫn chưa mở.",
+            }
+        if not _show_webview2_print_dialog(self.manual_window):
+            return {
+                "ok": False,
+                "code": "MANUAL_PRINT_FAILED",
+                "message": "Không mở được hộp thoại in.",
+            }
+        return {
+            "ok": True,
+            "code": "MANUAL_PRINT_OPENED",
+            "message": "Đã mở hộp thoại in hoặc lưu PDF.",
+        }
+
     def open_wfx_manual(self, target: str = "") -> dict:
         """Mở Hướng dẫn; bấm lần hai thì đưa cửa sổ đó lên trước.
 
@@ -1453,7 +1504,7 @@ class PanelApp:
             "message": (
                 "Đã đưa cửa sổ WFX lên trước."
                 if focused
-                else "Chưa tìm thấy cửa sổ browser automation."
+                else "Chưa tìm thấy cửa sổ trình duyệt làm việc."
             ),
         }
 
@@ -1808,7 +1859,7 @@ class PanelApp:
                         )
                         self._open_panel_from_taskbar()
                 elif foreground_pid == os.getpid():
-                    # Menu pystray cũng thuộc process này. Huỷ trạng thái chờ để
+                    # Menu pystray cũng thuộc process này. Hủy trạng thái chờ để
                     # đóng menu tray không bị hiểu nhầm thành click taskbar.
                     self._taskbar_focus_armed = False
             except Exception:
@@ -1823,7 +1874,7 @@ class PanelApp:
         return False
 
     def _on_bubble_closing(self):
-        # Bubble bị đóng ngoài ý muốn → thu vào tray thay vì huỷ cửa sổ.
+        # Bubble bị đóng ngoài ý muốn → thu vào tray thay vì hủy cửa sổ.
         if self._quitting:
             return None
         self.hide_to_tray()

@@ -26,7 +26,7 @@ xác nhận.
 
 > [!luuy]
 > Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút `Xác nhận Upload` mới
-> bắt đầu thao tác trên WFX. Bấm `Huỷ` thì không có dữ liệu nào được gửi đi.
+> bắt đầu thao tác trên WFX. Bấm `Hủy` thì không có dữ liệu nào được gửi đi.
 
 ## Gặp lỗi thì sao
 

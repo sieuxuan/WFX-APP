@@ -472,7 +472,7 @@ def _set_process_window_bounds(
 
 
 def _native_cursor_position() -> tuple[int, int] | None:
-    """Toạ độ con trỏ theo physical screen coordinates của Win32."""
+    """Tọa độ con trỏ theo physical screen coordinates của Win32."""
     if os.name != "nt":
         return None
     try:
@@ -513,7 +513,7 @@ def _clamp_to_work_area(
 
     Nếu cửa sổ rộng/cao hơn work area thì neo góc trên-trái để phần đầu
     (header, nút đóng) luôn thấy được. ``area`` là ``None`` khi không xác định
-    được màn hình — khi đó giữ nguyên toạ độ, không được đoán bừa.
+    được màn hình — khi đó giữ nguyên tọa độ, không được đoán bừa.
     """
     if area is None:
         return int(x), int(y)
@@ -535,7 +535,7 @@ def _snap_to_nearest_edge(
 ) -> tuple[int, int]:
     """Dính rect vào mép work area gần nhất (trái/phải/trên/dưới).
 
-    Chỉ đổi toạ độ trên trục của mép gần nhất, giữ nguyên trục còn lại rồi
+    Chỉ đổi tọa độ trên trục của mép gần nhất, giữ nguyên trục còn lại rồi
     clamp lại — để icon luôn nằm gọn trong màn hình sau khi dính.
     """
     if area is None:

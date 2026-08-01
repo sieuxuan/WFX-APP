@@ -15,7 +15,7 @@ from wfx_panel.version import APP_VERSION
 
 # save_prefs là read-modify-write. Nó được gọi từ UI thread (Settings), từ
 # automation worker (_refresh_admin_access, scan_catalog_folders) và từ thread
-# poll cập nhật (_check_update_once). Không có khoá thì hai lần ghi song song
+# poll cập nhật (_check_update_once). Không có khóa thì hai lần ghi song song
 # mất một trong hai thay đổi (write_text_atomic chỉ chống hỏng file, không
 # chống lost-update của chu trình đọc-sửa-ghi).
 _WRITE_LOCK = threading.RLock()
@@ -70,7 +70,7 @@ def _resolve_data_dir() -> Path:
 
     Ở bản build đóng gói (frozen), RESOURCE_DIR nằm trong thư mục dist của ứng
     dụng — ghi .env (mật khẩu plaintext) vào đó nghĩa là: (1) rebuild/ghi đè
-    thư mục dist sẽ xoá sạch tài khoản đã lưu, (2) zip thư mục dist để chia sẻ
+    thư mục dist sẽ xóa sạch tài khoản đã lưu, (2) zip thư mục dist để chia sẻ
     app vô tình phát tán luôn mật khẩu người dùng. Vì vậy khi frozen, dữ liệu
     phải đi vào %LOCALAPPDATA%/WFX-Panel, tách khỏi thư mục cài đặt.
     """
@@ -491,7 +491,7 @@ def load_account(base_dir: Path | None = None) -> dict:
     try:
         raw_lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
-        # Đọc tài khoản là bước đầu của get_initial_state. File bị khoá bởi
+        # Đọc tài khoản là bước đầu của get_initial_state. File bị khóa bởi
         # antivirus/sync hoặc quyền sai không được làm panel không mở lên nổi.
         raw_lines = []
     for raw in raw_lines:
@@ -557,7 +557,7 @@ def save_account(user_id: str, password: str, base_dir: Path | None = None) -> N
         if os.name == "nt" and password:
             # Trên Windows không bao giờ hạ cấp im lặng từ DPAPI xuống plaintext.
             raise CredentialProtectionError(
-                "Windows không mã hoá được mật khẩu bằng DPAPI; chưa lưu thay đổi."
+                "Windows không mã hóa được mật khẩu bằng DPAPI; chưa lưu thay đổi."
             )
         # Hỗ trợ môi trường phát triển không phải Windows.
         password_line = (
@@ -571,7 +571,7 @@ def save_account(user_id: str, password: str, base_dir: Path | None = None) -> N
     with _WRITE_LOCK:
         write_text_atomic(path, "\n".join(lines) + "\n")
     # Runtime (session.run) đọc mật khẩu plaintext qua env trong tiến trình; chỉ
-    # bản trên đĩa được mã hoá.
+    # bản trên đĩa được mã hóa.
     os.environ["WFX_USER_ID"] = user_id
     os.environ["WFX_PASSWORD"] = password
 

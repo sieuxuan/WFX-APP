@@ -21,6 +21,6 @@ Soát cấu trúc và dữ liệu trong file Excel trước khi bạn nhập tha
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Báo thiếu sheet Costing | Dùng file được tải từ nút `Tải XLSX`, không đổi tên hoặc xoá sheet. |
+| Báo thiếu sheet Costing | Dùng file được tải từ nút `Tải XLSX`, không đổi tên hoặc xóa sheet. |
 | Báo lỗi ở một ô | Mở đúng địa chỉ ô được báo, sửa giá trị rồi kiểm tra file lại. |
 | Không chọn được file | Kiểm tra file có đuôi .xlsx và không bị hỏng. |

@@ -31,7 +31,7 @@ _FLUSH_LOCK = threading.Lock()
 METHOD_LABELS = {
     "login": "Đăng nhập WFX",
     "check_session": "Kiểm tra phiên WFX",
-    "open_chrome": "Mở trình duyệt automation",
+    "open_chrome": "Mở trình duyệt làm việc",
     "open_module": "Mở module",
     "prepare_catalog": "Chuẩn bị Catalog",
     "browse_catalog": "Mở Catalog List",
@@ -53,7 +53,7 @@ METHOD_LABELS = {
     "upload_oc": "Upload OC qua EDI Buyer PO",
     "review_oc_upload": "Review file Upload OC",
     "confirm_oc_upload": "Xác nhận Upload OC qua EDI Buyer PO",
-    "cancel_oc_upload_review": "Huỷ review Upload OC",
+    "cancel_oc_upload_review": "Hủy bước xem lại Upload OC",
     "search_sample": "Tìm trong Sample List",
     "check_sample_files": "Check File trong Sample List",
     "open_sample_file_choice": "Mở Style đã chọn trong Sample List",
@@ -145,15 +145,15 @@ ERROR_CODE_INFO.update(
             "Mở Log kỹ thuật và kiểm tra cấu hình file trên WFX.",
         ),
         "CATALOG_FOLDER_OPEN_FAILED": (
-            "Không thể mở folder Catalog",
+            "Không thể mở thư mục Catalog",
             "Quét lại cây folder rồi thử mở lại.",
         ),
         "CATALOG_FOLDER_OPEN_TIMEOUT": (
-            "WFX phản hồi chậm khi mở folder Catalog",
+            "WFX phản hồi chậm khi mở thư mục Catalog",
             "Chờ Catalog tải xong rồi thử lại.",
         ),
         "CATALOG_FOLDER_SCAN_FAILED": (
-            "Không thể quét cây folder Catalog",
+            "Không thể quét cây thư mục Catalog",
             "Kiểm tra quyền Catalog của tài khoản rồi thử lại.",
         ),
         "CATALOG_FOLDER_SCAN_TIMEOUT": (
@@ -225,7 +225,7 @@ ERROR_CODE_INFO.update(
             "Mở lại module và kiểm tra quyền Category của tài khoản.",
         ),
         "CHROME_OPEN_FAILED": (
-            "Không thể mở trình duyệt automation",
+            "Không thể mở trình duyệt làm việc",
             "Kiểm tra cài đặt Chrome/Edge và quyền chạy ứng dụng.",
         ),
         "CODE_FILTER_FAILED": (
@@ -281,7 +281,7 @@ ERROR_CODE_INFO.update(
             "Chờ Costing tải ổn định rồi bấm Clear All Dependency lại.",
         ),
         "COSTING_CLEAR_UNSUPPORTED": (
-            "Bản automation chưa hỗ trợ Clear All Dependency",
+            "Phiên bản tự động hóa chưa hỗ trợ Clear All Dependency",
             "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
         ),
         "OC_EDI_FAILED": (
@@ -377,7 +377,7 @@ ERROR_CODE_INFO.update(
             "Chờ form tải xong rồi thử lại.",
         ),
         "SAMPLE_FILES_UNSUPPORTED": (
-            "Phiên bản automation chưa hỗ trợ Check File Sample",
+            "Phiên bản tự động hóa chưa hỗ trợ Check File Sample",
             "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
         ),
         "SAMPLE_FILE_SEARCH_FAILED": (
@@ -390,7 +390,7 @@ ERROR_CODE_INFO.update(
         ),
         "SESSION_CHECK_FAILED": (
             "Không thể kiểm tra phiên WFX",
-            "Kiểm tra trình duyệt automation và đăng nhập lại.",
+            "Kiểm tra trình duyệt làm việc và đăng nhập lại.",
         ),
         "SUPPLIER_MASTER_NOT_READY": (
             "Supplier Master chưa sẵn sàng",
@@ -688,7 +688,7 @@ def _write_outbox(base_dir: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def _json_safe(value: Any) -> Any:
-    """Chỉ giữ giá trị JSON hoá được.
+    """Chỉ giữ giá trị JSON hóa được.
 
     Payload góp ý nhúng cả ``get_status()`` và diagnostics; một object lạ lọt
     vào sẽ làm ``json.dumps`` raise TypeError — mà TypeError không nằm trong
@@ -802,7 +802,7 @@ def flush(
             "sent": 0,
             "queued": len(_load_outbox(base_dir)),
         }
-    # _FLUSH_LOCK tuần tự hoá phần GỬI, _LOCK chỉ bảo vệ đọc/ghi file.
+    # _FLUSH_LOCK tuần tự hóa phần GỬI, _LOCK chỉ bảo vệ đọc/ghi file.
     # Vì sao tách: mỗi lỗi automation spawn một thread flush, nên hai flush có
     # thể chồng nhau. Nếu chúng cùng snapshot outbox thì cùng POST một event —
     # webhook nhận trùng. Còn nếu giữ _LOCK suốt lúc gửi (bản cũ) thì 100 event
@@ -830,7 +830,7 @@ def flush(
             with _LOCK:
                 # Chỉ bỏ đúng số event ĐÃ gửi ở đầu hàng đợi, không ghi đè cả
                 # file bằng snapshot cũ: event mới xếp vào trong lúc đang gửi
-                # phải còn nguyên. Cũng không xoá outbox trước khi gửi — bị kill
+                # phải còn nguyên. Cũng không xóa outbox trước khi gửi — bị kill
                 # giữa lúc POST thì gửi lại vài event vẫn tốt hơn là mất chúng.
                 _write_outbox(base_dir, _load_outbox(base_dir)[sent:])
         queued = len(_load_outbox(base_dir))

@@ -8,7 +8,7 @@ ngày.
 1. Bấm biểu tượng bánh răng ở góc trên bảng điều khiển.
 2. Chọn thẻ Tự động hóa.
 3. Bật `Khởi động cùng Windows`.
-4. Bật `Mở ẩn trong tray` nếu bạn muốn ứng dụng khởi động yên lặng.
+4. Bật `Mở ẩn trong khay hệ thống` nếu bạn muốn ứng dụng khởi động yên lặng.
 5. Đóng Cài đặt để tiếp tục làm việc.
 
 ## Mẹo

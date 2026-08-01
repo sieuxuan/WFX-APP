@@ -19,5 +19,5 @@ Tìm nhanh đúng module bạn cần mà không phải đọc từng thẻ trên
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Không thấy module cần dùng | Xoá nội dung ô tìm rồi kiểm tra lại toàn bộ danh sách. Một số module chỉ hiện khi tài khoản của bạn có quyền. |
-| Danh sách vẫn đang bị lọc | Bấm dấu xoá trong ô tìm hoặc bôi đen nội dung rồi nhấn Backspace. |
+| Không thấy module cần dùng | Xóa nội dung ô tìm rồi kiểm tra lại toàn bộ danh sách. Một số module chỉ hiện khi tài khoản của bạn có quyền. |
+| Danh sách vẫn đang bị lọc | Bấm dấu xóa trong ô tìm hoặc bôi đen nội dung rồi nhấn Backspace. |

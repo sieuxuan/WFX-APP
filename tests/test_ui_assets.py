@@ -104,7 +104,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260801-2"',
+        'src="panel.js?v=20260801-3"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -711,10 +711,30 @@ def test_manual_home_co_loi_tat_va_enter_mo_ket_qua_dau():
     assert '$(".manual-results .manual-hit")?.click()' in js
 
 
-def test_manual_ctrl_p_goi_ban_in_rieng():
+def test_manual_co_nut_in_va_ctrl_p_goi_bridge_native():
+    html = (UI / "manual.html").read_text(encoding="utf-8")
     js = (UI / "manual.js").read_text(encoding="utf-8")
+    assert 'class="manual-print"' in html
+    assert "In / Lưu PDF" in html
     assert 'event.key.toLowerCase() === "p"' in js
-    assert "window.print()" in js
+    assert "print_manual" in js
+    assert "window.print()" not in js
+
+
+def test_manual_tim_kiem_khong_dau_va_tim_duoc_noi_dung_ma_loi():
+    js = (UI / "manual.js").read_text(encoding="utf-8")
+    assert '.normalize("NFD")' in js
+    assert 'replace(/đ/g, "d")' in js
+    assert "row.haystack.includes(needle)" in js
+
+
+def test_nhan_giao_dien_dung_tieng_viet_thong_nhat():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert "Phím tắt mở bảng điều khiển" in html
+    assert "Mở ẩn trong khay hệ thống" in html
+    assert "Chưa có trình duyệt làm việc" in html
+    for phrase in ("Hotkey mở panel", "Mở ẩn trong tray", "trình duyệt automation"):
+        assert phrase not in html
 
 
 def test_module_page_co_nut_tro_giup():

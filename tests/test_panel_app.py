@@ -1776,6 +1776,57 @@ def test_manual_bridge_mo_trang_web_wfx(monkeypatch):
     assert calls == [(module.WFX_MANUAL_URL, 2)]
 
 
+def test_hop_thoai_in_manual_dung_webview2_native(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    shown = []
+    ui_thread = {"active": False}
+
+    class FakeCore:
+        def ShowPrintUI(self, kind):
+            shown.append(kind)
+
+    class FakeWebView:
+        @property
+        def CoreWebView2(self):
+            assert ui_thread["active"], "CoreWebView2 phải được đọc trên UI thread"
+            return FakeCore()
+
+    class FakeNative:
+        browser = type("Browser", (), {"webview": FakeWebView()})()
+
+        @staticmethod
+        def Invoke(action):
+            ui_thread["active"] = True
+            try:
+                action()
+            finally:
+                ui_thread["active"] = False
+
+    window = type("Window", (), {"native": FakeNative()})()
+    monkeypatch.setattr(
+        module,
+        "_webview2_print_bindings",
+        lambda: (lambda callback: callback, "system"),
+    )
+
+    assert module._show_webview2_print_dialog(window) is True
+    assert shown == ["system"]
+
+
+def test_manual_bridge_mo_hop_thoai_in_native(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app.manual_window = object()
+    monkeypatch.setattr(module, "_show_webview2_print_dialog", lambda _window: True)
+
+    result = module._ManualBridge(app).print_manual()
+
+    assert result["ok"] is True
+    assert result["code"] == "MANUAL_PRINT_OPENED"
+
+
 def test_manual_entry_cho_module_catalog():
     import wfx_panel.panel_app as module
 

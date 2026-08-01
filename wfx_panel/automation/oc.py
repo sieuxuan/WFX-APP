@@ -638,7 +638,7 @@ def upload_oc_edi(
             return _result(
                 False,
                 "OC_UPLOAD_FILE_MISSING",
-                "File EDI đã chuẩn hoá không còn tồn tại.",
+                "File EDI đã chuẩn hóa không còn tồn tại.",
             )
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
@@ -705,7 +705,7 @@ def upload_oc_edi(
         code = str(error)
         if code in {"CHROME_CLOSED", "NOT_LOGGED_IN"}:
             message = (
-                "Chrome automation chưa được mở."
+                "Trình duyệt làm việc chưa được mở."
                 if code == "CHROME_CLOSED"
                 else "Phiên WFX chưa đăng nhập hoặc đã hết hạn."
             )
@@ -796,7 +796,7 @@ def open_oc_revision_report(
     except RuntimeError as error:
         code = str(error)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên WFX chưa đăng nhập hoặc đã hết hạn."
         )

@@ -62,7 +62,7 @@ def normalize(spec: str) -> str:
     if key in UNSAFE_KEYS:
         raise ValueError(
             f"Không dùng {key.upper()} làm hotkey được: phím này sẽ bị chặn "
-            "trên toàn máy, khiến bạn không gõ hoặc xoá chữ được ở mọi ứng dụng."
+            "trên toàn máy, khiến bạn không gõ hoặc xóa chữ được ở mọi ứng dụng."
         )
     if not modifiers and not _is_function_key(key):
         raise ValueError(

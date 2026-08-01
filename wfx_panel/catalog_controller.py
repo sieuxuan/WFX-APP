@@ -2,7 +2,7 @@
 
 Tách khỏi ``PanelAPI`` để bridge không còn là god-object: toàn bộ state Catalog
 (kết quả tìm hiện tại, category đã chuẩn bị, cache cây folder) và logic sống ở
-đây. Controller mượn hạ tầng chung của panel (``_run`` khoá + lịch sử, ``_account``,
+đây. Controller mượn hạ tầng chung của panel (``_run`` khóa + lịch sử, ``_account``,
 ``_prefs``, ``_log``, ``_login``) qua tham chiếu ``panel`` — cùng package nên coupling
 chặt là chấp nhận được, đổi lại panel gọn và luồng Catalog test được độc lập.
 
@@ -173,7 +173,7 @@ class CatalogController:
             return {
                 "ok": False,
                 "code": "CATALOG_FILES_UNSUPPORTED",
-                "message": "Bản automation chưa hỗ trợ kiểm tra file style.",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ kiểm tra file Style.",
             }
         return self._publish_file_scan(
             scanner(article_code, self._panel._log)
@@ -254,7 +254,7 @@ class CatalogController:
         def action() -> dict:
             # Reset context CHỈ sau khi đã giành được run lock (bên trong _run).
             # Nếu đặt ở đầu method, một lần gọi bị từ chối ACTION_IN_PROGRESS vẫn
-            # xoá mất Catalog đang chuẩn bị của workflow đang chạy.
+            # xóa mất Catalog đang chuẩn bị của workflow đang chạy.
             self.result = None
             self.active_article_destination = None
             self.prepared_category = None
@@ -271,7 +271,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "CATALOG_FOLDER_SCAN_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ quét folder Catalog.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ quét thư mục Catalog.",
                 }
             return scanner(category_name, value, panel._log)
 
@@ -412,7 +412,7 @@ class CatalogController:
 
         def action() -> dict:
             # Reset context sau khi giành run lock, không phải ở đầu method:
-            # tránh xoá Catalog đang chuẩn bị khi lần gọi này bị ACTION_IN_PROGRESS.
+            # tránh xóa Catalog đang chuẩn bị khi lần gọi này bị ACTION_IN_PROGRESS.
             self.result = None
             self.active_article_destination = None
             self.prepared_category = None
@@ -429,7 +429,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "CATALOG_FOLDER_OPEN_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ mở folder mặc định.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ mở thư mục mặc định.",
                 }
             saved = (
                 self.default_folder_for_account()
@@ -483,7 +483,7 @@ class CatalogController:
 
         def action() -> dict:
             # Reset context sau khi giành run lock (bên trong _run). Đặt ở đầu
-            # method sẽ xoá Catalog đang chuẩn bị ngay cả khi lần gọi này bị
+            # method sẽ xóa Catalog đang chuẩn bị ngay cả khi lần gọi này bị
             # từ chối ACTION_IN_PROGRESS vì một workflow khác đang chạy.
             self.result = None
             self.active_article_destination = None
@@ -550,7 +550,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "CATALOG_SEARCH_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ tìm theo từng bước.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ tìm theo từng bước.",
                 }
             return panel._login.find_in_open_catalog(
                 category_name,
@@ -1400,7 +1400,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "COSTING_EXPORT_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ đọc Costing.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ đọc Costing.",
                 }
             if cleaned_query:
                 scan_kwargs = {
@@ -1525,7 +1525,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "COSTING_EXPORT_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ đọc tab Costing.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ đọc thẻ Costing.",
                 }
             return inspector(log=panel._log)
 
@@ -1669,7 +1669,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "COSTING_IMPORT_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ đọc Costing.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ đọc Costing.",
                 }
             if active_tab_only:
                 scanned = scanner(
@@ -1772,7 +1772,7 @@ class CatalogController:
         return {
             "ok": True,
             "code": "COSTING_PLAN_CLEARED",
-            "message": "Đã huỷ dry-run Costing." if existed else "Dry-run đã hết hạn.",
+            "message": "Đã hủy bản xem trước Costing." if existed else "Bản xem trước đã hết hạn.",
         }
 
     def apply_costing(
@@ -1836,7 +1836,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "COSTING_IMPORT_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ ghi Costing.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ ghi Costing.",
                 }
             result = applier(
                 expected_code,
@@ -1880,7 +1880,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "CATALOG_FILE_DOWNLOAD_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ tải file.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ tải file.",
                 }
             result = downloader(file_info, panel._log)
             if result.get("ok"):
@@ -1908,7 +1908,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "COSTING_CLEAR_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ Clear All Dependency.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ Clear All Dependency.",
                 }
             return clearer(log=panel._log)
 
@@ -1933,7 +1933,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "SAMPLE_FILES_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ Check File ở Sample List.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ Check File ở Sample List.",
                 }
             sample = constants.MODULE_BY_ID["0004_0056_4070"]
             found = finder(
@@ -1956,7 +1956,7 @@ class CatalogController:
         )
 
     def open_sample_file_choice(self, choice_id: str) -> dict:
-        """Mở lựa chọn Sample đã token hoá và tiếp tục quét file."""
+        """Mở lựa chọn Sample đã token hóa và tiếp tục quét file."""
         panel = self._panel
         choice_id = str(choice_id or "").strip()
 
@@ -1976,7 +1976,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "SAMPLE_FILES_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ mở Style từ Sample.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ mở Style từ Sample.",
                 }
             opened = opener(
                 choice["row_key"],
@@ -2025,7 +2025,7 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "CATALOG_DESTINATION_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ bước này.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ bước này.",
                 }
             return panel._login.open_catalog_destination(
                 expected,

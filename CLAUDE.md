@@ -110,6 +110,10 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   để không trả trạng thái hủy khi WFX còn đang ghi dữ liệu.
 - `Log kỹ thuật` cho phép bôi đen/copy. Log mới chỉ tự cuộn khi người dùng đang
   ở gần cuối và không chọn văn bản.
+- Nội dung hiển thị cho người dùng phải là tiếng Việt Unicode NFC, dùng nhất
+  quán `xóa`, `hủy`, `hóa`. Ưu tiên “bảng điều khiển”, “khay hệ thống” và
+  “trình duyệt làm việc”; chỉ giữ tiếng Anh khi đó là tên nghiệp vụ hoặc nhãn
+  chính thức trên WFX.
 
 ### Quy tắc flow List → thao tác
 

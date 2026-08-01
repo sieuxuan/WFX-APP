@@ -21,5 +21,5 @@ Mở Indent List hoặc User Indent và tìm bằng nhiều thông tin trong m�
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Không có kết quả | Xoá bớt điều kiện quá chi tiết rồi tìm lại. |
+| Không có kết quả | Xóa bớt điều kiện quá chi tiết rồi tìm lại. |
 | Kết quả không đúng module | Quay lại danh sách module và mở đúng Indent List hoặc User Indent. |

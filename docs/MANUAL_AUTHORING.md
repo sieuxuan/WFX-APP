@@ -17,21 +17,15 @@ tên nút mà người đọc nhìn thấy.
 
 ## 3. Khuôn file `.md`
 
-Sao chép khuôn dưới đây. Mỗi mục phải có đủ bốn phần chính: Khi nào dùng, Trước
-khi bắt đầu, Cách làm và Kết quả mong đợi.
+Sao chép khuôn dưới đây. Mỗi mục bắt buộc có `Dùng để làm gì` và `Các bước`.
+Thêm `Mẹo` hoặc `Gặp lỗi thì sao` khi có thông tin hữu ích.
 
 ```markdown
-# Tên thao tác giống trên màn hình
-
-## Khi nào dùng
+## Dùng để làm gì
 
 Nói ngắn gọn tình huống người dùng cần thao tác này.
 
-## Trước khi bắt đầu
-
-- Điều kiện cần kiểm tra trước khi bấm nút.
-
-## Cách làm
+## Các bước
 
 1. Mở màn hình `Tên màn hình`.
 2. Bấm `Tên nút`.
@@ -48,10 +42,6 @@ Nói ngắn gọn tình huống người dùng cần thao tác này.
 > [!loi]
 > Gặp lỗi thì sao
 > Nêu thông báo có thể gặp và từng bước xử lý.
-
-## Kết quả mong đợi
-
-Mô tả điều người dùng nhìn thấy khi thao tác hoàn tất.
 ```
 
 Sau khi tạo file, thêm mục tương ứng vào đúng chương trong `manifest.json`.
@@ -85,12 +75,19 @@ dùng. Cột thay thế là gợi ý; hãy chọn câu tự nhiên theo đúng t
 - Đặt tên nút trong dấu backtick và viết y hệt chữ trên màn hình.
 - Mô tả điều người dùng nhìn thấy, không giải thích cách chương trình vận hành.
 - Nếu có nhiều nhánh, tách thành các bước hoặc bảng dễ quét mắt.
+- Lưu file ở dạng Unicode NFC để dấu tiếng Việt hiển thị thống nhất.
+- Dùng nhất quán cách viết hiện đại: `xóa, hủy, hóa`; không trộn với các dạng
+  `xoá, huỷ, hoá` trong cùng sản phẩm.
+- Ưu tiên từ tiếng Việt như “bảng điều khiển”, “khay hệ thống”, “trình duyệt
+  làm việc”. Chỉ giữ từ tiếng Anh khi đó là tên chính thức hiện trên WFX hoặc
+  trên nút của ứng dụng.
 
 ## 6. Checklist tự kiểm
 
-- [ ] Có đủ Khi nào dùng, Trước khi bắt đầu, Cách làm và Kết quả mong đợi.
+- [ ] Có đủ `Dùng để làm gì` và `Các bước`.
 - [ ] Không còn từ cấm trong nội dung người dùng.
 - [ ] Không có HTML thô.
+- [ ] Dấu tiếng Việt dùng Unicode NFC và chính tả nhất quán.
 - [ ] Mọi giá trị trong `covers` khớp chức năng thật.
 - [ ] Đã chạy `python scripts/generate_user_features.py`.
 - [ ] `python -m pytest tests/test_manual.py` đã xanh.

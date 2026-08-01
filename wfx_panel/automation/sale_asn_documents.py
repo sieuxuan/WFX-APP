@@ -515,7 +515,7 @@ def prepare_sale_asn_documents(
     except RuntimeError as exc:
         code = str(exc)
         messages = {
-            "CHROME_CLOSED": "Chrome automation chưa được mở.",
+            "CHROME_CLOSED": "Trình duyệt làm việc chưa được mở.",
             "NOT_LOGGED_IN": "Phiên chưa đăng nhập hoặc đã hết hạn.",
             "SALE_ASN_INVOICE_NOT_FOUND": "Không tìm thấy invoice có cột Docs.",
             "SALE_ASN_MULTIPLE_RESULTS": (

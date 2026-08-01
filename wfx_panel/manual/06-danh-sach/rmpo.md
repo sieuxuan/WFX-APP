@@ -20,5 +20,5 @@ Mở RMPO List hoặc lọc danh sách bằng nhà cung cấp và số RMPO cùn
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Không thấy RMPO | Xoá bớt một điều kiện rồi tìm lại để kiểm tra dữ liệu. |
+| Không thấy RMPO | Xóa bớt một điều kiện rồi tìm lại để kiểm tra dữ liệu. |
 | Danh sách chưa mở | Bấm `List`, chờ WFX tải xong rồi tìm lại. |

@@ -58,8 +58,8 @@ CHROME_START_TIMEOUT_SECONDS = 25
 
 
 def _browser_env_signature() -> tuple[str, ...]:
-    """Khoá cache phải phủ MỌI input mà detect_browser đọc, không chỉ
-    WFX_CHROME_PATH: nếu chỉ khoá theo một biến, lần dò sau vẫn nhận kết quả cũ
+    """Khóa cache phải phủ MỌI input mà detect_browser đọc, không chỉ
+    WFX_CHROME_PATH: nếu chỉ khóa theo một biến, lần dò sau vẫn nhận kết quả cũ
     khi PROGRAMFILES/LOCALAPPDATA đổi (đúng tình huống test monkeypatch)."""
     return tuple(os.getenv(key) or "" for key in _BROWSER_ENV_KEYS)
 
@@ -242,7 +242,7 @@ def _start_persistent_chrome(
     )
     _write_log(
         log,
-        f"Đang mở {browser.name} với profile automation riêng.",
+        f"Đang mở {browser.name} với hồ sơ làm việc riêng.",
     )
 
     if _wait_for_chrome_ready(CHROME_START_TIMEOUT_SECONDS):
@@ -272,9 +272,9 @@ def start_chrome(log: Callable[[str], None] = print) -> dict[str, Any]:
             True,
             "CHROME_ALREADY_OPEN" if was_ready else "CHROME_OPENED",
             (
-                "Trình duyệt automation đã sẵn sàng."
+                "Trình duyệt làm việc đã sẵn sàng."
                 if was_ready
-                else f"{browser.name} automation đã sẵn sàng."
+                else f"{browser.name} đã sẵn sàng để làm việc."
             ),
             chrome_alive=True,
             browser_available=True,

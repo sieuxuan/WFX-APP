@@ -307,7 +307,7 @@ def _options(value: Any) -> list[str]:
 
 
 def _excel_safe(value: Any) -> Any:
-    """Giữ identifier là text và vô hiệu hoá formula injection khi export."""
+    """Giữ identifier là text và vô hiệu hóa formula injection khi export."""
     if not isinstance(value, str):
         return value
     if value.startswith(_DANGEROUS_EXCEL_PREFIXES):
@@ -414,7 +414,7 @@ def _normalized_item(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
 
 
 def normalize_document(document: Mapping[str, Any]) -> dict[str, Any]:
-    """Chuẩn hoá và validate document trước khi ghi file hoặc lập dry-run."""
+    """Chuẩn hóa và validate document trước khi ghi file hoặc lập dry-run."""
     fields = [
         _normalized_field(field, index)
         for index, field in enumerate(document.get("fields") or ())

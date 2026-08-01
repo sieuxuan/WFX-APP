@@ -5,6 +5,11 @@
   const escapeHtml = (value) => String(value == null ? "" : value)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const foldSearch = (value) => String(value == null ? "" : value)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
+  const normalizeSearch = (value) => foldSearch(value)
+    .replace(/\s+/g, " ").trim();
 
   let book = null;
   let currentId = null;
@@ -107,20 +112,19 @@
     $(".manual-next").disabled = position < 0 || position >= book.order.length - 1;
   }
 
-  function snippet(entry, needle) {
-    const text = entry.text;
-    const at = text.toLowerCase().indexOf(needle);
-    if (at < 0) return escapeHtml(entry.summary);
+  function snippet(text, needle) {
+    const at = foldSearch(text).indexOf(needle);
+    if (at < 0) return escapeHtml(text.slice(0, 120));
     const from = Math.max(0, at - 40);
     const raw = text.slice(from, from + 120);
-    return escapeHtml(raw).replace(
-      new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
-      (hit) => `<mark>${hit}</mark>`
-    );
+    const localAt = at - from;
+    return escapeHtml(raw.slice(0, localAt))
+      + `<mark>${escapeHtml(raw.slice(localAt, localAt + needle.length))}</mark>`
+      + escapeHtml(raw.slice(localAt + needle.length));
   }
 
   function search(query) {
-    const needle = query.trim().toLowerCase();
+    const needle = normalizeSearch(query);
     const results = $(".manual-results");
     if (needle.length < 2) {
       results.hidden = true;
@@ -128,7 +132,7 @@
       return;
     }
     const exactError = book.error_table.find(
-      (row) => row.code.toLowerCase() === needle
+      (row) => normalizeSearch(row.code) === needle
     );
     if (exactError) {
       showErrorTable(exactError.code);
@@ -141,15 +145,30 @@
       $(".manual-toc").hidden = true;
       return;
     }
-    const hits = book.search_index
+    const entryHits = book.search_index
       .filter((row) => row.haystack.includes(needle))
-      .slice(0, 40);
+      .slice(0, 30);
+    const errorHits = book.error_table
+      .filter((row) => row.haystack.includes(needle))
+      .slice(0, 10);
+    const hits = [
+      ...entryHits.map((row) => ({ kind: "entry", row })),
+      ...errorHits.map((row) => ({ kind: "error", row })),
+    ].slice(0, 40);
     results.innerHTML = hits.length
       ? hits.map((hit) => {
-          const entry = book.entries[hit.id];
+          if (hit.kind === "error") {
+            const row = hit.row;
+            return `<button class="manual-link manual-hit" data-error-target="${
+              escapeHtml(row.code)}"><b>${escapeHtml(row.code)}</b>`
+              + `<small>${snippet(`${row.title}. ${row.suggestion}`, needle)}`
+              + `</small></button>`;
+          }
+          const entry = book.entries[hit.row.id];
+          const searchable = `${entry.title}. ${entry.summary}. ${entry.text}`;
           return `<button class="manual-link manual-hit" data-entry="${
-            escapeHtml(hit.id)}"><b>${escapeHtml(entry.title)}</b>`
-            + `<small>${snippet(entry, needle)}</small></button>`;
+            escapeHtml(hit.row.id)}"><b>${escapeHtml(entry.title)}</b>`
+            + `<small>${snippet(searchable, needle)}</small></button>`;
         }).join("")
       : `<p class="manual-chapter">Không tìm thấy nội dung phù hợp.</p>`;
     results.hidden = false;
@@ -177,7 +196,19 @@
     window.wfxManualGoTo(book.target || "");
   }
 
+  async function printManual() {
+    const status = $(".manual-print-status");
+    const bridge = api();
+    if (!bridge?.print_manual) {
+      status.textContent = "Không mở được hộp thoại in.";
+      return;
+    }
+    const result = await bridge.print_manual();
+    status.textContent = result?.message || "";
+  }
+
   document.addEventListener("click", (event) => {
+    if (event.target.closest(".manual-print")) { printManual(); return; }
     const errorTarget = event.target.closest("[data-error-target]");
     if (errorTarget) { showErrorTable(errorTarget.dataset.errorTarget); return; }
     const link = event.target.closest("[data-entry]");
@@ -195,7 +226,7 @@
       event.preventDefault(); input.focus(); input.select(); return;
     }
     if (event.ctrlKey && event.key.toLowerCase() === "p") {
-      event.preventDefault(); window.print(); return;
+      event.preventDefault(); printManual(); return;
     }
     if (event.key === "Escape") {
       if (input.value) { input.value = ""; search(""); }

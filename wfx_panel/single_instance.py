@@ -1,10 +1,10 @@
-"""Khoá một-instance cho WFX Panel.
+"""Khóa một-instance cho WFX Panel.
 
 App sống trong system tray và mở/ẩn bằng hotkey, nên người dùng rất dễ bấm lại
 shortcut khi tưởng app đã tắt — nếu không chặn, sẽ có nhiều tiến trình cùng
 giành hotkey Ctrl+Shift+X và cùng vẽ tray icon.
 
-Dùng socket localhost thay vì file khoá: file khoá còn sót lại sau khi app bị
+Dùng socket localhost thay vì file khóa: file khóa còn sót lại sau khi app bị
 kill sẽ chặn nhầm lần mở kế tiếp, còn socket được HĐH thu hồi ngay khi tiến
 trình chết. Socket đồng thời làm kênh IPC: lần mở thứ hai báo cho instance đang
 chạy hiện panel lên rồi tự thoát, đúng với kỳ vọng "bấm lại thì thấy app".
@@ -61,7 +61,7 @@ class SingleInstance:
             server.listen(4)
         except OSError:
             server.close()
-            # Named mutex mới là khoá độc quyền trên Windows. Socket chỉ là
+            # Named mutex mới là khóa độc quyền trên Windows. Socket chỉ là
             # kênh IPC để lần mở thứ hai yêu cầu instance cũ hiện panel.
             # Bản <=1.0.11 chưa có mutex, nên nếu handshake socket đúng WFX thì
             # phải nhường cho bản cũ và thả mutex vừa tạo.

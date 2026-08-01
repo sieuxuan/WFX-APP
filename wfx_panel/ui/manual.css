@@ -110,6 +110,9 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
   border-radius: 8px; background: var(--surface); color: var(--text-2);
   font: inherit; cursor: pointer; }
 .manual-foot button:disabled { opacity: .4; cursor: default; }
+.manual-foot-actions { display: flex; align-items: center; gap: 8px; }
+.manual-print-status { position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 @media print {
   .manual-side, .manual-foot { display: none; }
