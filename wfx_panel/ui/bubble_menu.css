@@ -6,7 +6,7 @@
   --hover: rgba(12,148,174,.11);
   --border: rgba(15,45,60,.16);
   --text: #18323d;
-  --accent: #0b8da5;
+  --accent: #07758c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -54,6 +54,8 @@ button {
 }
 button:hover,
 button:focus-visible { outline: none; background: var(--hover); }
+button:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+button:active { transform: scale(.985); }
 button svg {
   width: 16px;
   height: 16px;
@@ -63,4 +65,9 @@ button svg {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important;
+    transition-duration: .01ms !important; }
 }

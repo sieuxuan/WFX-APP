@@ -394,6 +394,34 @@ def test_article_suggestion_selection_switches_to_exact_code():
 def test_action_buttons_show_inline_spinner():
     assert "withButtonLoading" in JS
     assert 'classList.add("is-loading", "is-action-source")' in JS
+    assert 'button.setAttribute("aria-busy", "true")' in JS
+    assert 'button.removeAttribute("aria-busy")' in JS
+
+
+def test_all_module_workflows_keep_their_source_button_highlighted():
+    assert '$$("[data-module-action]").forEach' in JS
+    assert "runModuleActionFromKeyboard" in JS
+    assert 'runModuleActionFromKeyboard("oc-search")' in JS
+    assert 'runModuleActionFromKeyboard("rmpo-search")' in JS
+
+
+def test_read_only_help_surfaces_remain_available_while_busy():
+    assert (
+        '".manual-button, .log-button, .module-help-button, '
+        '.footer-help-button"'
+    ) in JS
+
+
+def test_custom_tooltips_support_pointer_keyboard_and_escape():
+    for hook in (
+        "function bindTooltips()",
+        'document.addEventListener("pointerover"',
+        'document.addEventListener("focusin"',
+        'event.key === "Escape"',
+        'setAttribute("aria-describedby", tooltip.id)',
+        "positionTooltip(target, tooltip)",
+    ):
+        assert hook in JS
 
 
 def test_bridge_calls_have_a_watchdog_against_hangs():

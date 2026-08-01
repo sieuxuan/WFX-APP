@@ -302,8 +302,13 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} bổ sung hướng dẫn sử dụng tiếng Việt
-            trong ứng dụng và hoàn thiện tải Documents từ Sale ASN.
+            WFX Smart ${{ env.VERSION }} bổ sung hướng dẫn sử dụng tiếng Việt,
+            hoàn thiện tải Documents từ Sale ASN và đồng bộ trải nghiệm UI.
+
+            Giao diện mới chuẩn hóa trạng thái hover/focus/active/disabled/loading
+            của button, tăng độ tương phản và thay tooltip Windows bằng tooltip
+            riêng hỗ trợ chuột lẫn bàn phím. Light/dark đã được kiểm tra trực
+            tiếp trên pywebview/WebView2 ở DPI 100/125/150/200%.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.
