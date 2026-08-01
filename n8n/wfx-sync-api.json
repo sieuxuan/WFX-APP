@@ -1,0 +1,244 @@
+{
+  "name": "WFX Smart - PostgreSQL Sync API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wfx-sync-publish",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -620,
+        -180
+      ],
+      "id": "4ea4f1c4-dd66-42cf-81df-bb846f3b4a10",
+      "name": "Admin Publish",
+      "webhookId": "6a77aa90-0b38-4639-a471-9b598ffb7df0"
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = ($json.body && typeof $json.body === 'object') ? $json.body : $json;\n\nconst text = (value, max = 500) => String(value ?? '').normalize('NFC').trim().slice(0, max);\nconst required = (value, name, max = 100) => {\n  const result = text(value, max);\n  if (!result) throw new Error(`${name} is required`);\n  return result;\n};\nconst array = (value, name, max) => {\n  if (value === undefined || value === null) return [];\n  if (!Array.isArray(value)) throw new Error(`${name} must be an array`);\n  if (value.length > max) throw new Error(`${name} exceeds ${max} rows`);\n  return value;\n};\nconst unique = (rows, keyOf) => [...new Map(rows.map(row => [keyOf(row), row])).values()];\n\nconst companyId = required(source.company_id, 'company_id', 64);\nconst divisionKey = required(source.division_key, 'division_key', 64);\nconst version = text(source.version, 100) || new Date().toISOString();\n\nconst articles = unique(\n  array(source.articles, 'articles', 100000).map((row, index) => {\n    const articleCode = required(row?.article_code, `articles[${index}].article_code`, 200);\n    return {\n      article_code: articleCode,\n      article_name: text(row?.article_name, 500),\n      buyer_reference: text(row?.buyer_reference, 500),\n    };\n  }),\n  row => `${row.article_code.toLocaleLowerCase('en')}\\u001f${row.buyer_reference.toLocaleLowerCase('en')}`,\n);\n\nconst styleOptions = unique(\n  array(source.style_options, 'style_options', 20000).map((row, index) => {\n    const fieldName = required(row?.field_name, `style_options[${index}].field_name`, 100)\n      .toLocaleLowerCase('en')\n      .replace(/[ -]+/g, '_');\n    const optionValue = required(row?.option_value, `style_options[${index}].option_value`, 500);\n    return {\n      material_type: text(row?.material_type, 100).toLocaleUpperCase('en'),\n      field_name: fieldName,\n      option_value: optionValue,\n      option_label: text(row?.option_label, 500) || optionValue,\n    };\n  }),\n  row => `${row.material_type}\\u001f${row.field_name}\\u001f${row.option_value.toLocaleLowerCase('en')}`,\n);\n\nconst styleSubcategories = unique(\n  array(source.style_subcategories, 'style_subcategories', 20000).map((row, index) => ({\n    material_type: text(row?.material_type, 100).toLocaleUpperCase('en'),\n    product_group: required(row?.product_group, `style_subcategories[${index}].product_group`, 500),\n    sub_category: required(row?.sub_category, `style_subcategories[${index}].sub_category`, 500),\n  })),\n  row => `${row.material_type}\\u001f${row.product_group.toLocaleLowerCase('en')}\\u001f${row.sub_category.toLocaleLowerCase('en')}`,\n);\n\nreturn [{ json: {\n  company_id: companyId,\n  division_key: divisionKey,\n  version,\n  articles_json: JSON.stringify(articles),\n  style_options_json: JSON.stringify(styleOptions),\n  style_subcategories_json: JSON.stringify(styleSubcategories),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        -180
+      ],
+      "id": "b6c7d297-1216-4221-84f8-b36ddc79554b",
+      "name": "Validate Publish Payload"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT wfx_sync.publish_bundle(\n  $1::text,\n  $2::text,\n  $3::text,\n  $4::jsonb,\n  $5::jsonb,\n  $6::jsonb\n) AS response;",
+        "options": {
+          "queryReplacement": "={{ [$json.company_id, $json.division_key, $json.version, $json.articles_json, $json.style_options_json, $json.style_subcategories_json] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -100,
+        -180
+      ],
+      "id": "46ad0fb3-b41b-415f-92cc-b09039abf555",
+      "name": "Publish Bundle to PostgreSQL"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        160,
+        -180
+      ],
+      "id": "af71db23-44be-42cb-aa0c-4c003d19f403",
+      "name": "Publish Response"
+    },
+    {
+      "parameters": {
+        "path": "wfx-sync-latest",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -620,
+        180
+      ],
+      "id": "d682cb2f-b4a8-47d9-a109-1e581c73275a",
+      "name": "User Get Latest",
+      "webhookId": "39fbd238-ddd1-4669-bc85-8e6af41308b6"
+    },
+    {
+      "parameters": {
+        "jsCode": "const query = ($json.query && typeof $json.query === 'object') ? $json.query : {};\nconst text = (value, max = 100) => String(value ?? '').normalize('NFC').trim().slice(0, max);\nconst companyId = text(query.company_id, 64);\nconst divisionKey = text(query.division_key, 64);\nif (!companyId) throw new Error('company_id is required');\nif (!divisionKey) throw new Error('division_key is required');\nreturn [{ json: {\n  company_id: companyId,\n  division_key: divisionKey,\n  client_version: text(query.client_version, 100),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        180
+      ],
+      "id": "66ccffdf-4520-44f7-a935-c1d406da2cdd",
+      "name": "Validate Latest Query"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT wfx_sync.get_latest_bundle(\n  $1::text,\n  $2::text,\n  NULLIF($3::text, '')\n) AS response;",
+        "options": {
+          "queryReplacement": "={{ [$json.company_id, $json.division_key, $json.client_version] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -100,
+        180
+      ],
+      "id": "58621a5c-64bb-42b8-aa7d-e71eda6fdc29",
+      "name": "Read Latest from PostgreSQL"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "private, max-age=300"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        160,
+        180
+      ],
+      "id": "e9615f9b-8c4d-47e4-bdf8-becbfe88ee57",
+      "name": "Latest Response"
+    },
+    {
+      "parameters": {
+        "content": "## Sau khi import\n1. Chạy file `wfx-sync-schema.sql` trên database.\n2. Chọn cùng một PostgreSQL credential cho hai node PostgreSQL.\n3. Tạo Header Auth riêng cho Admin Publish và User Get Latest.\n4. Activate workflow rồi chỉ dùng Production URL.",
+        "height": 220,
+        "width": 390,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        300,
+        -100
+      ],
+      "id": "34c0cdfd-8182-4512-985a-f96df7d90724",
+      "name": "Setup Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Admin Publish": {
+      "main": [
+        [
+          {
+            "node": "Validate Publish Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Publish Payload": {
+      "main": [
+        [
+          {
+            "node": "Publish Bundle to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Bundle to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Publish Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User Get Latest": {
+      "main": [
+        [
+          {
+            "node": "Validate Latest Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Latest Query": {
+      "main": [
+        [
+          {
+            "node": "Read Latest from PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Latest from PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Latest Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "69a832f7-9768-4dd8-917a-e969e57708cc",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

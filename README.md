@@ -150,7 +150,8 @@ nằm ở đường dẫn riêng.
 - `wfx_panel/panel_app.py`: pywebview, launcher, tray và hotkey.
 - `wfx_panel/ui/`: HTML/CSS/JavaScript của panel.
 - `wfx_panel/telemetry.py`: webhook, outbox và redaction dữ liệu nhạy cảm.
-- `n8n/`: Code node và workflow webhook có thể import.
+- `n8n/`: workflow webhook có thể import; xem `WFX_SYNC_SETUP.md` để cài API
+  đồng bộ Article/Style qua PostgreSQL.
 - `CLAUDE.md`: đặc tả kỹ thuật chuẩn bắt buộc.
 
 ## Đóng gói EXE
