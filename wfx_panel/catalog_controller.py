@@ -28,8 +28,10 @@ from wfx_panel.costing_workbook import (
     read_costing_file,
     write_costing_file,
 )
+from wfx_panel.style_workbook import StyleWorkbookError, read_style_workbook
 
 COSTING_PLAN_TTL_SECONDS = 15 * 60
+STYLE_IMPORT_TTL_SECONDS = 30 * 60
 _SPECIAL_COST_SECTION_KEYS = frozenset(
     {"cmcosts", "productioncosts", "indirectcosts"}
 )
@@ -66,6 +68,9 @@ class CatalogController:
         # Plan import chứa document/selector-independent diff ở process Python.
         # WebView chỉ nhận token ngẫu nhiên; plan tự hết hạn sau 15 phút.
         self.costing_plans: dict[str, dict] = {}
+        # Workbook Style chỉ tồn tại trong process qua token ngẫu nhiên. Mỗi
+        # lần chạy chỉ chuẩn bị một dòng và luôn dừng trước Save.
+        self.style_imports: dict[str, dict] = {}
 
     # -- state hooks do panel gọi -----------------------------------------
     def reset_context(self) -> None:
@@ -76,6 +81,7 @@ class CatalogController:
         self.files.clear()
         self.sample_file_choices.clear()
         self.costing_plans.clear()
+        self.style_imports.clear()
 
     def reset_for_account_change(self) -> None:
         """Đổi tài khoản: cache cây folder theo user cũ cũng không còn dùng được."""
@@ -86,6 +92,7 @@ class CatalogController:
         self.files.clear()
         self.sample_file_choices.clear()
         self.costing_plans.clear()
+        self.style_imports.clear()
 
     # -- helpers -----------------------------------------------------------
     def default_folder_for_account(
@@ -224,6 +231,167 @@ class CatalogController:
         self.result = None
         self.active_article_destination = None
         self.prepared_category = None
+
+    def _style_group(self, group_id: str) -> dict | None:
+        group_id = str(group_id or "").strip()
+        return next(
+            (
+                item
+                for item in self.folder_cache.get("Apparel", [])
+                if str(item.get("node_id") or "") == group_id
+                and str(item.get("kind") or "").casefold() == "group"
+            ),
+            None,
+        )
+
+    def _active_style_import(self, token: str) -> dict | None:
+        now = time.monotonic()
+        for old_token, review in tuple(self.style_imports.items()):
+            if now - float(review.get("created_at") or 0) > STYLE_IMPORT_TTL_SECONDS:
+                self.style_imports.pop(old_token, None)
+        return self.style_imports.get(str(token or "").strip())
+
+    def review_style_import(self, file_path: str, group_id: str) -> dict:
+        """Validate file local và tạo queue; chưa mở hoặc thay đổi WFX."""
+        source = Path(str(file_path or "")).expanduser().resolve()
+        group = self._style_group(group_id)
+        if group is None:
+            return {
+                "ok": False,
+                "code": "STYLE_GROUP_REQUIRED",
+                "message": "Hãy quét cây và chọn đúng một Group Apparel.",
+            }
+
+        def action() -> dict:
+            try:
+                rows = read_style_workbook(source)
+            except StyleWorkbookError as error:
+                return {
+                    "ok": False,
+                    "code": error.code,
+                    "message": error.message,
+                    "errors": list(error.errors),
+                    "file_name": source.name,
+                }
+            self.style_imports.clear()
+            token = uuid.uuid4().hex
+            self.style_imports[token] = {
+                "created_at": time.monotonic(),
+                "group": dict(group),
+                "rows": [row.automation_payload() for row in rows],
+                "file_name": source.name,
+            }
+            public_rows = [
+                {
+                    "source_row": row.source_row,
+                    "type": row.type,
+                    "style_copy": row.style_copy,
+                    "buyer_style_ref": row.buyer_style_ref,
+                    "internal_style_ref": row.internal_style_ref,
+                }
+                for row in rows
+            ]
+            return {
+                "ok": True,
+                "code": "STYLE_IMPORT_REVIEW_READY",
+                "message": (
+                    f"File hợp lệ: {len(rows)} dòng. App sẽ chuẩn bị từng dòng "
+                    "và luôn dừng trước Save."
+                ),
+                "review_token": token,
+                "file_name": source.name,
+                "group": {
+                    "node_id": str(group.get("node_id") or ""),
+                    "name": str(group.get("name") or ""),
+                    "path_label": str(group.get("path_label") or ""),
+                },
+                "row_count": len(rows),
+                "rows": public_rows,
+                "requires_manual_save": True,
+            }
+
+        return self._panel._run(
+            "review_catalog_style_import",
+            action,
+            {"file_name": source.name, "group_id": str(group_id or "")},
+        )
+
+    def clear_style_import(self, token: str) -> dict:
+        self.style_imports.pop(str(token or "").strip(), None)
+        return {
+            "ok": True,
+            "code": "STYLE_IMPORT_CANCELLED",
+            "message": "Đã hủy danh sách Tạo Style; WFX chưa được Save.",
+        }
+
+    def prepare_style_row(
+        self,
+        token: str,
+        source_row: int,
+        copy_choice: int | None = None,
+    ) -> dict:
+        """Mở/điền một dòng và trả quyền Save cho người dùng."""
+        review = self._active_style_import(token)
+        if review is None:
+            return {
+                "ok": False,
+                "code": "STYLE_IMPORT_EXPIRED",
+                "message": "Danh sách Tạo Style đã hết hạn; hãy chọn lại file.",
+            }
+        group = review["group"]
+        current_group = self._style_group(str(group.get("node_id") or ""))
+        if current_group is None:
+            return {
+                "ok": False,
+                "code": "STYLE_GROUP_STALE",
+                "message": "Group đã đổi hoặc không còn quyền; hãy quét và chọn lại.",
+            }
+        try:
+            wanted_row = int(source_row)
+        except (TypeError, ValueError):
+            wanted_row = -1
+        row = next(
+            (
+                item
+                for item in review["rows"]
+                if int(item.get("source_row") or 0) == wanted_row
+            ),
+            None,
+        )
+        if row is None:
+            return {
+                "ok": False,
+                "code": "STYLE_ROW_INVALID",
+                "message": "Không tìm thấy dòng Excel cần chuẩn bị.",
+            }
+
+        panel = self._panel
+
+        def action() -> dict:
+            preparer = getattr(panel._login, "prepare_catalog_style_row", None)
+            if not callable(preparer):
+                return {
+                    "ok": False,
+                    "code": "STYLE_PREPARE_UNSUPPORTED",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ Tạo Style.",
+                }
+            return preparer(
+                constants.CATEGORIES["Apparel"],
+                str(group.get("node_id") or ""),
+                dict(row),
+                copy_choice,
+                panel._log,
+            )
+
+        return panel._run(
+            "prepare_catalog_style_row",
+            action,
+            {
+                "source_row": wanted_row,
+                "style_type": str(row.get("type") or ""),
+                "group_id": str(group.get("node_id") or ""),
+            },
+        )
 
     # -- workflows ---------------------------------------------------------
     def scan_folders(self, category_name: str, force: bool = False) -> dict:

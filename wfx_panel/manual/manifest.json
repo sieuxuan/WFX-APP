@@ -195,6 +195,44 @@
               "CATALOG_FOLDER_SCAN_TIMEOUT"
             ]
           }
+        },
+        {
+          "id": "catalog-tao-style-hang-loat",
+          "title": "Tạo Style Apparel hàng loạt",
+          "summary": "Chuẩn bị từng Style từ Excel trong một Group và tự kiểm tra trước khi Save.",
+          "file": "03-catalog/tao-style-hang-loat.md",
+          "keywords": ["tạo style", "new", "copy as variant", "excel", "group"],
+          "covers": {
+            "actions": [
+              "refresh-groups",
+              "template",
+              "import",
+              "cancel",
+              "prepare-row"
+            ],
+            "errors": [
+              "STYLE_COPY_CHOICE_INVALID",
+              "STYLE_COPY_NOT_FOUND",
+              "STYLE_COPY_RESULT_DETACHED",
+              "STYLE_FIELD_NOT_AVAILABLE",
+              "STYLE_FILE_EMPTY",
+              "STYLE_FILE_HEADERS_INVALID",
+              "STYLE_FILE_INVALID",
+              "STYLE_FILE_TOO_LARGE",
+              "STYLE_FILE_TYPE_UNSUPPORTED",
+              "STYLE_FILE_UNSAFE",
+              "STYLE_FILE_VALIDATION_FAILED",
+              "STYLE_FORM_NOT_READY",
+              "STYLE_GROUP_REQUIRED",
+              "STYLE_GROUP_STALE",
+              "STYLE_IMPORT_EXPIRED",
+              "STYLE_PREPARE_FAILED",
+              "STYLE_PREPARE_UNSUPPORTED",
+              "STYLE_REQUIRED_FIELD_MISSING",
+              "STYLE_ROW_INVALID",
+              "STYLE_TEMPLATE_SHEET_MISSING"
+            ]
+          }
         }
       ]
     },

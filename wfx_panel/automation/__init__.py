@@ -54,6 +54,9 @@ from wfx_panel.automation.browser import (  # noqa: F401
     detect_browser,
     start_chrome,
 )
+from wfx_panel.automation.bulk_style import (  # noqa: F401
+    prepare_catalog_style_row,
+)
 from wfx_panel.automation.catalog import (  # noqa: F401
     ARTICLE_FILE_TAB_INDEXES,
     _attachment_url,
@@ -249,6 +252,7 @@ __all__ = [
     'open_supplier_category',
     'os',
     'prepare_catalog_master',
+    'prepare_catalog_style_row',
     'prepare_sale_asn_documents',
     'quick_find_catalog',
     'run',

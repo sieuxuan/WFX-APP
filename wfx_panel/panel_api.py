@@ -67,6 +67,8 @@ SESSION_OK = frozenset(
         "SALE_ASN_NEW_READY",
         "SALE_ASN_DOCUMENTS_PREPARED",
         "SALE_ASN_DOCUMENTS_EXPORTED",
+        "STYLE_COPY_MULTIPLE_RESULTS",
+        "STYLE_FORM_READY",
         "COMPANY_FOC_CHANGED",
         "SUPPLIER_CATEGORY_READY",
         "SUPPLIER_FOUND",
@@ -214,6 +216,23 @@ NON_REPORTABLE_FAILURES = frozenset(
         "SALE_ASN_SELECTION_REQUIRED",
         "SALE_ASN_DOCUMENTS_EXPIRED",
         "SALE_ASN_FILE_DIALOG_CANCELLED",
+        "STYLE_FILE_TYPE_UNSUPPORTED",
+        "STYLE_FILE_NOT_FOUND",
+        "STYLE_FILE_TOO_LARGE",
+        "STYLE_FILE_UNSAFE",
+        "STYLE_FILE_INVALID",
+        "STYLE_FILE_HEADERS_INVALID",
+        "STYLE_FILE_VALIDATION_FAILED",
+        "STYLE_FILE_EMPTY",
+        "STYLE_TEMPLATE_SHEET_MISSING",
+        "STYLE_GROUP_REQUIRED",
+        "STYLE_GROUP_STALE",
+        "STYLE_IMPORT_EXPIRED",
+        "STYLE_ROW_INVALID",
+        "STYLE_TYPE_INVALID",
+        "STYLE_COPY_NOT_FOUND",
+        "STYLE_COPY_CHOICE_INVALID",
+        "STYLE_REQUIRED_FIELD_MISSING",
     }
 )
 
@@ -244,6 +263,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "open_oc_revision_report",
         "upload_oc",
         "confirm_oc_upload",
+        "prepare_catalog_style_row",
     }
 )
 
@@ -1364,6 +1384,28 @@ class PanelAPI:
 
     def prepare_catalog(self, category_name: str) -> dict:
         return self._catalog.prepare(category_name)
+
+    def review_catalog_style_import(
+        self,
+        file_path: str,
+        group_id: str,
+    ) -> dict:
+        return self._catalog.review_style_import(file_path, group_id)
+
+    def clear_catalog_style_import(self, review_token: str) -> dict:
+        return self._catalog.clear_style_import(review_token)
+
+    def prepare_catalog_style_row(
+        self,
+        review_token: str,
+        source_row: int,
+        copy_choice: int | None = None,
+    ) -> dict:
+        return self._catalog.prepare_style_row(
+            review_token,
+            source_row,
+            copy_choice,
+        )
 
     def find_code(
         self, category_name: str, code: str, destination: str | None = None

@@ -412,6 +412,38 @@ def test_oc_dialogs_choose_xlsx_and_generate_simple_template(tmp_path, monkeypat
     assert app.window.calls[-1][0] == panel_app.webview.SAVE_DIALOG
 
 
+def test_style_dialogs_choose_xlsx_and_generate_template(tmp_path, monkeypatch):
+    class Window:
+        def __init__(self):
+            self.calls = []
+            self.selection = None
+
+        def create_file_dialog(self, dialog_type, **kwargs):
+            self.calls.append((dialog_type, kwargs))
+            return self.selection
+
+    monkeypatch.setattr(panel_app, "_open_downloaded_file", lambda _path: True)
+    monkeypatch.setattr(panel_app, "_reveal_downloaded_file", lambda _path: True)
+    app = panel_app.PanelApp()
+    app.window = Window()
+    selected_file = tmp_path / "styles.xlsx"
+    selected_file.write_bytes(b"xlsx")
+    app.window.selection = str(selected_file)
+
+    selected = app.choose_style_import_file()
+
+    assert selected["code"] == "STYLE_FILE_SELECTED"
+    assert app.window.calls[-1][0] == panel_app.webview.OPEN_DIALOG
+
+    target = tmp_path / "WFX-Smart-Tao-Style"
+    app.window.selection = str(target)
+    exported = app.download_style_template()
+
+    assert exported["code"] == "STYLE_TEMPLATE_EXPORTED"
+    assert target.with_suffix(".xlsx").is_file()
+    assert app.window.calls[-1][0] == panel_app.webview.SAVE_DIALOG
+
+
 def test_notification_shows_full_action_detail_without_resizing_webview(
     monkeypatch,
 ):

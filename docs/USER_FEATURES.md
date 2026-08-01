@@ -120,6 +120,12 @@ Chọn vị trí Apparel mặc định và làm mới thư mục.
 
 Dùng để làm gì Chọn vị trí Apparel mà bạn thường dùng và làm mới danh sách thư mục Catalog khi WFX có thay đổi. Các bước Mở module Catalog. Bấm nút biểu tượng nhỏ cạnh Mở Catalog . Chọn vị trí Apparel bạn muốn dùng mặc định. Bấm nút xác nhận trong hộp chọn. Bấm Quét lại thư mục Catalog khi bạn cần đọc lại danh sách thư mục từ WFX. Mẹo Mẹo Vị trí mặc định được ghi nhớ cho lần mở Catalog tiếp theo. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy thư mục cần chọn Bấm Quét lại thư mục Catalog , chờ danh sách tải xong rồi mở lại hộp chọn. Mở thư mục quá lâu Kiểm tra phiên WFX còn kết nối rồi thử lại.
 
+### Tạo Style Apparel hàng loạt
+
+Chuẩn bị từng Style từ Excel trong một Group và tự kiểm tra trước khi Save.
+
+Dùng để làm gì Tạo nhiều Style Apparel từ một file Excel trong đúng Group bạn đã chọn. Ứng dụng chuẩn bị từng Style trên WFX nhưng không tự bấm Save. Các bước Mở module Catalog. Chọn tab Tạo Style . Bấm Quét lại Group nếu danh sách Group chưa hiện. Chọn đúng một Group Apparel trong ô Group bắt buộc . Bấm Tải form Excel . Điền dữ liệu trong sheet Tạo Style rồi lưu file. Bấm Chọn file & kiểm tra và chọn file vừa lưu. Đọc dòng đang chờ rồi bấm Chuẩn bị dòng đầu tiên . Kiểm tra toàn bộ trường trên WFX. Tự bấm Save trên WFX nếu dữ liệu đúng. Quay lại bảng điều khiển và bấm Tôi đã Save · Chuẩn bị dòng tiếp theo . Cách điền file Cột Cách dùng Type Chọn New hoặc Copy . Style copy Bắt buộc với Copy . Mã bắt đầu bằng SWN/SKN được tìm theo Article Code; giá trị khác được tìm theo Buyer Reference. Material Type Chọn KNIT hoặc WOVEN . Các cột còn lại New cần điền đủ. Với Copy , ô trống giữ nguyên dữ liệu Style nguồn. Lưu ý App luôn đặt Purchase UOM là Pcs , Price Per là Article và Color Definition là Single Colors . Lưu ý App không tự Save. Chỉ xác nhận dòng tiếp theo sau khi bạn đã kiểm tra và tự Save dòng hiện tại trên WFX. Mẹo Nếu tìm Copy ra nhiều Style, chọn đúng Style nguồn ngay trong bảng điều khiển. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa chọn được Group Bấm Quét lại Group , chờ danh sách hiện rồi chọn lại. File báo sai header Tải form mới và sao chép dữ liệu vào đúng cột. New báo thiếu trường Điền đủ các cột từ Material Type đến Internal Style Ref. Không tìm thấy Style nguồn Kiểm tra Style copy ; SWN/SKN phải là Article Code, giá trị khác phải là Buyer Reference. Một danh sách Style nguồn xuất hiện Chọn đúng dòng theo Article Code và Buyer Reference. Không điền được một trường Giữ nguyên màn hình WFX, chụp ảnh lỗi trong Lịch sử và gửi cho nhóm hỗ trợ.
+
 ## 4. File Costing
 
 Xuất, kiểm tra và áp dụng thay đổi Costing bằng file Excel.
@@ -385,6 +391,26 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `SAMPLE_NEW_FAILED` | Không thể tạo màn Sample Order mới | Mở lại Sample List và kiểm tra quyền tạo mới. |
 | `SAMPLE_NEW_NOT_READY` | Màn Sample Order mới chưa sẵn sàng | Chờ form tải xong rồi thử lại. |
 | `SESSION_CHECK_FAILED` | Không thể kiểm tra phiên WFX | Kiểm tra trình duyệt làm việc và đăng nhập lại. |
+| `STYLE_COPY_CHOICE_INVALID` | Lựa chọn Style nguồn không còn hợp lệ | Tìm lại và chọn đúng một Style nguồn trong bảng điều khiển. |
+| `STYLE_COPY_NOT_FOUND` | Không tìm thấy Style nguồn | Kiểm tra Article Code hoặc Buyer Reference trong cột Style copy. |
+| `STYLE_COPY_RESULT_DETACHED` | Kết quả Style nguồn đã thay đổi | Tìm lại Style nguồn rồi chọn lại đúng dòng. |
+| `STYLE_FIELD_NOT_AVAILABLE` | Không điền được một trường Style | Giữ form Article đang mở, xem Log kỹ thuật và kiểm tra danh sách giá trị WFX. |
+| `STYLE_FILE_EMPTY` | File Tạo Style chưa có dữ liệu | Điền ít nhất một dòng trong sheet Tạo Style rồi chọn lại file. |
+| `STYLE_FILE_HEADERS_INVALID` | Header file Tạo Style không đúng | Tải form mới và giữ nguyên tên, thứ tự các cột. |
+| `STYLE_FILE_INVALID` | File Tạo Style không hợp lệ | Lưu lại bằng định dạng XLSX rồi chọn lại. |
+| `STYLE_FILE_TOO_LARGE` | File Tạo Style quá lớn | Giảm số dòng hoặc dữ liệu thừa để file nhỏ hơn 15 MB. |
+| `STYLE_FILE_TYPE_UNSUPPORTED` | Định dạng file Tạo Style không được hỗ trợ | Chỉ chọn file XLSX được tạo từ form của WFX Smart. |
+| `STYLE_FILE_UNSAFE` | File Tạo Style có nội dung không an toàn | Xóa macro hoặc tải form XLSX mới rồi nhập lại dữ liệu. |
+| `STYLE_FILE_VALIDATION_FAILED` | Dữ liệu Tạo Style chưa hợp lệ | Sửa các dòng được báo trong bảng điều khiển rồi chọn lại file. |
+| `STYLE_FORM_NOT_READY` | Form Article chưa sẵn sàng | Chờ WFX tải xong Group và màn New/Copy rồi thử lại. |
+| `STYLE_GROUP_REQUIRED` | Chưa chọn Group Apparel | Quét lại Group và chọn đúng một Group trước khi Import. |
+| `STYLE_GROUP_STALE` | Group Apparel đã thay đổi | Quét lại danh sách Group, chọn lại rồi Import file lần nữa. |
+| `STYLE_IMPORT_EXPIRED` | Danh sách Tạo Style đã hết hạn | Chọn lại file để tạo danh sách chuẩn bị mới. |
+| `STYLE_PREPARE_FAILED` | Không chuẩn bị được form Style | Giữ màn hình WFX, xem Log kỹ thuật rồi thử lại dòng hiện tại. |
+| `STYLE_PREPARE_UNSUPPORTED` | Phiên bản chưa hỗ trợ Tạo Style | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
+| `STYLE_REQUIRED_FIELD_MISSING` | Style New còn thiếu trường bắt buộc | Điền đủ các cột của dòng New rồi chọn lại file. |
+| `STYLE_ROW_INVALID` | Không tìm thấy dòng Tạo Style | Chọn lại file để làm mới danh sách dòng. |
+| `STYLE_TEMPLATE_SHEET_MISSING` | Thiếu sheet Tạo Style | Tải form mới và nhập dữ liệu vào đúng sheet Tạo Style. |
 | `SUPPLIER_MASTER_NOT_READY` | Supplier Master chưa sẵn sàng | Chờ Supplier List và Category tải xong rồi thử lại. |
 | `SUPPLIER_OPEN_FAILED` | Không thể mở Supplier List | Kiểm tra quyền Supplier và menu WFX. |
 | `SUPPLIER_SEARCH_FAILED` | Không thể tìm Supplier | Mở Log kỹ thuật và kiểm tra Category đang thao tác. |

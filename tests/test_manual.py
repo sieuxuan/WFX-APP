@@ -251,6 +251,13 @@ def test_helper_trich_dung_so_luong_hien_co():
         "cancel-plan",
         "clear-dependencies",
     }
+    assert surface.style_actions() == {
+        "refresh-groups",
+        "template",
+        "import",
+        "cancel",
+        "prepare-row",
+    }
     assert surface.settings_controls() == {
         "return-list-input",
         "focus-chrome-input",
@@ -298,6 +305,11 @@ def test_module_catalog_co_huong_dan():
 def test_moi_nut_costing_deu_co_huong_dan():
     missing = surface.costing_actions() - surface.covered("actions")
     assert not missing, f"Chưa có hướng dẫn cho nút Costing: {sorted(missing)}"
+
+
+def test_moi_nut_tao_style_deu_co_huong_dan():
+    missing = surface.style_actions() - surface.covered("actions")
+    assert not missing, f"Chưa có hướng dẫn cho nút Tạo Style: {sorted(missing)}"
 
 
 def test_cong_tac_quet_lai_chi_phi_co_huong_dan():

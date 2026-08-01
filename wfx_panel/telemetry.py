@@ -69,6 +69,8 @@ METHOD_LABELS = {
     "find_buyer": "Tìm Buyer",
     "toggle_company_foc": "Đổi FOC trong Company Setup",
     "switch_division": "Đổi Division",
+    "review_catalog_style_import": "Kiểm tra file Tạo Style",
+    "prepare_catalog_style_row": "Chuẩn bị Style",
 }
 
 ERROR_CODE_INFO = {
@@ -159,6 +161,86 @@ ERROR_CODE_INFO.update(
         "CATALOG_FOLDER_SCAN_TIMEOUT": (
             "WFX phản hồi chậm khi tải cây Catalog",
             "Chờ cây Catalog hiển thị rồi quét lại.",
+        ),
+        "STYLE_COPY_CHOICE_INVALID": (
+            "Lựa chọn Style nguồn không còn hợp lệ",
+            "Tìm lại và chọn đúng một Style nguồn trong bảng điều khiển.",
+        ),
+        "STYLE_COPY_NOT_FOUND": (
+            "Không tìm thấy Style nguồn",
+            "Kiểm tra Article Code hoặc Buyer Reference trong cột Style copy.",
+        ),
+        "STYLE_COPY_RESULT_DETACHED": (
+            "Kết quả Style nguồn đã thay đổi",
+            "Tìm lại Style nguồn rồi chọn lại đúng dòng.",
+        ),
+        "STYLE_FIELD_NOT_AVAILABLE": (
+            "Không điền được một trường Style",
+            "Giữ form Article đang mở, xem Log kỹ thuật và kiểm tra danh sách giá trị WFX.",
+        ),
+        "STYLE_FILE_EMPTY": (
+            "File Tạo Style chưa có dữ liệu",
+            "Điền ít nhất một dòng trong sheet Tạo Style rồi chọn lại file.",
+        ),
+        "STYLE_FILE_HEADERS_INVALID": (
+            "Header file Tạo Style không đúng",
+            "Tải form mới và giữ nguyên tên, thứ tự các cột.",
+        ),
+        "STYLE_FILE_INVALID": (
+            "File Tạo Style không hợp lệ",
+            "Lưu lại bằng định dạng XLSX rồi chọn lại.",
+        ),
+        "STYLE_FILE_TOO_LARGE": (
+            "File Tạo Style quá lớn",
+            "Giảm số dòng hoặc dữ liệu thừa để file nhỏ hơn 15 MB.",
+        ),
+        "STYLE_FILE_TYPE_UNSUPPORTED": (
+            "Định dạng file Tạo Style không được hỗ trợ",
+            "Chỉ chọn file XLSX được tạo từ form của WFX Smart.",
+        ),
+        "STYLE_FILE_UNSAFE": (
+            "File Tạo Style có nội dung không an toàn",
+            "Xóa macro hoặc tải form XLSX mới rồi nhập lại dữ liệu.",
+        ),
+        "STYLE_FILE_VALIDATION_FAILED": (
+            "Dữ liệu Tạo Style chưa hợp lệ",
+            "Sửa các dòng được báo trong bảng điều khiển rồi chọn lại file.",
+        ),
+        "STYLE_FORM_NOT_READY": (
+            "Form Article chưa sẵn sàng",
+            "Chờ WFX tải xong Group và màn New/Copy rồi thử lại.",
+        ),
+        "STYLE_GROUP_REQUIRED": (
+            "Chưa chọn Group Apparel",
+            "Quét lại Group và chọn đúng một Group trước khi Import.",
+        ),
+        "STYLE_GROUP_STALE": (
+            "Group Apparel đã thay đổi",
+            "Quét lại danh sách Group, chọn lại rồi Import file lần nữa.",
+        ),
+        "STYLE_IMPORT_EXPIRED": (
+            "Danh sách Tạo Style đã hết hạn",
+            "Chọn lại file để tạo danh sách chuẩn bị mới.",
+        ),
+        "STYLE_PREPARE_FAILED": (
+            "Không chuẩn bị được form Style",
+            "Giữ màn hình WFX, xem Log kỹ thuật rồi thử lại dòng hiện tại.",
+        ),
+        "STYLE_PREPARE_UNSUPPORTED": (
+            "Phiên bản chưa hỗ trợ Tạo Style",
+            "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
+        ),
+        "STYLE_REQUIRED_FIELD_MISSING": (
+            "Style New còn thiếu trường bắt buộc",
+            "Điền đủ các cột của dòng New rồi chọn lại file.",
+        ),
+        "STYLE_ROW_INVALID": (
+            "Không tìm thấy dòng Tạo Style",
+            "Chọn lại file để làm mới danh sách dòng.",
+        ),
+        "STYLE_TEMPLATE_SHEET_MISSING": (
+            "Thiếu sheet Tạo Style",
+            "Tải form mới và nhập dữ liệu vào đúng sheet Tạo Style.",
         ),
         "COSTING_CONTEXT_NOT_FOUND": (
             "Không tìm thấy màn Costing",

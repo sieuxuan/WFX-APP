@@ -193,6 +193,14 @@ Các workflow riêng hiện có:
 - Catalog: Category/folder, Master, Article Code; Apparel dùng Buyer Reference,
   category khác dùng Article Name; Costing, BOM,
   file đính kèm và Costing file import/export XLSX.
+- Catalog có workspace `Tạo Style` riêng cho Apparel. User phải quét/chọn một
+  node đúng loại Group rồi mới Import form XLSX. Form gồm Type New/Copy, Style
+  copy và các trường Style; mã copy bắt đầu SWN/SKN tìm bằng Article Code, mã
+  khác tìm bằng Buyer Reference. Copy mặc định chọn CostSheet và Copy as
+  Variant; nhiều kết quả phải để user chọn trong app. Mỗi lần chỉ chuẩn bị một
+  dòng, đặt Purchase UOM=Pcs, Price Per=Article và Color Definition=Single
+  Colors, rồi **dừng trước Save**. App chỉ sang dòng kế sau khi user xác nhận đã
+  tự kiểm tra/Save trên WFX; automation Tạo Style tuyệt đối không click Save.
 - Costing file chỉ áp dụng cho Apparel và luôn chạy hai phase:
   1. scan live + validate file + dry-run, cache plan bằng opaque token tối đa
      15 phút, chưa ghi WFX;
