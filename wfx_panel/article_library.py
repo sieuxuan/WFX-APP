@@ -398,6 +398,70 @@ def seed_bundled(base_dir: Path, source: Path) -> bool:
     return True
 
 
+def save_server_articles(
+    base_dir: Path,
+    raw_articles: list[object],
+    *,
+    version: str,
+    generated_at: str = "",
+) -> dict[str, Any]:
+    """Lưu list 3 cột từ PostgreSQL và giữ Category từ cache đóng gói.
+
+    API chia sẻ cố ý chỉ có Code/Name/Buyer Reference. Category vẫn cần cho
+    bộ lọc Catalog, nên app ghép lại từ CSV đóng gói/cache cũ theo mã Article.
+    """
+    existing = load_cached(base_dir)
+    category_by_code: dict[str, str] = {}
+    if existing is not None:
+        for section in existing.get("sections") or ():
+            for option in section.get("options") or ():
+                code = str(option.get("article_code") or "").strip().casefold()
+                category = str(option.get("article_category") or "").strip()
+                if code and category:
+                    category_by_code.setdefault(code, category)
+    enriched = []
+    for raw in raw_articles:
+        if not isinstance(raw, Mapping):
+            continue
+        row = dict(raw)
+        code = str(row.get("article_code") or row.get("code") or "").strip()
+        if not str(row.get("article_category") or "").strip():
+            row["article_category"] = category_by_code.get(code.casefold(), "")
+        enriched.append(row)
+    articles = _normalise_articles(enriched)
+    if not articles:
+        raise ValueError("Server không trả Article hợp lệ.")
+    digest_payload = json.dumps(
+        articles,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    target = _cache_path(base_dir)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    write_json_atomic(
+        target,
+        {
+            "schema_version": SCHEMA_VERSION,
+            "remote_version": str(version or "")[:120],
+            "generated_at": str(generated_at or "")[:120],
+            "synced_at": time.time(),
+            "sha256": hashlib.sha256(digest_payload).hexdigest(),
+            "sections": [
+                {
+                    "section_key": "*",
+                    "section_name": "All Categories",
+                    "options": articles,
+                }
+            ],
+        },
+        separators=(",", ":"),
+    )
+    with _MEMORY_LOCK:
+        _MEMORY_CACHE.pop(target, None)
+    return status(base_dir)
+
+
 def sync(
     base_dir: Path,
     log: Callable[[str], None] = print,

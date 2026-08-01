@@ -12,6 +12,7 @@ import os
 import time
 from base64 import b64encode
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -126,6 +127,56 @@ def save_snapshot(base_dir: Path, snapshot: Mapping[str, Any]) -> dict[str, Any]
     target.parent.mkdir(parents=True, exist_ok=True)
     write_json_atomic(target, normalised, separators=(",", ":"))
     return normalised
+
+
+def save_server_options(
+    base_dir: Path,
+    raw_options: list[object],
+    raw_subcategories: list[object],
+    *,
+    version: str,
+    published_at: str,
+    company_id: str,
+    division_key: str,
+) -> dict[str, Any]:
+    """Chuyển bundle phẳng của PostgreSQL về snapshot dùng bởi form Style."""
+    fields: dict[str, list[str]] = {key: [] for key in FIELD_KEYS}
+    for raw in raw_options:
+        if not isinstance(raw, Mapping):
+            continue
+        field_name = str(raw.get("field_name") or "").strip().casefold()
+        value = str(
+            raw.get("option_value") or raw.get("option_label") or ""
+        ).strip()
+        if field_name in fields and value:
+            fields[field_name].append(value)
+    dependencies: dict[str, list[str]] = {}
+    for raw in raw_subcategories:
+        if not isinstance(raw, Mapping):
+            continue
+        product_group = str(raw.get("product_group") or "").strip()
+        sub_category = str(raw.get("sub_category") or "").strip()
+        if product_group and sub_category:
+            dependencies.setdefault(product_group, []).append(sub_category)
+    try:
+        generated_at = datetime.fromisoformat(
+            str(published_at or "").replace("Z", "+00:00")
+        ).timestamp()
+    except (TypeError, ValueError):
+        generated_at = time.time()
+    return save_snapshot(
+        base_dir,
+        {
+            "generated_at": generated_at,
+            "source": "postgresql",
+            "company_id": company_id,
+            "division_key": division_key,
+            "group_id": "",
+            "remote_version": version,
+            "fields": fields,
+            "subcategories_by_product_group": dependencies,
+        },
+    )
 
 
 def status(base_dir: Path) -> dict[str, Any]:

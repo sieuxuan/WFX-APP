@@ -16,6 +16,7 @@ from wfx_panel import (
     job_history,
     log_bridge,
     module_controllers,
+    reference_sync,
     status,
     telemetry,
     updater,
@@ -233,6 +234,10 @@ NON_REPORTABLE_FAILURES = frozenset(
         "STYLE_COPY_NOT_FOUND",
         "STYLE_COPY_CHOICE_INVALID",
         "STYLE_REQUIRED_FIELD_MISSING",
+        "REFERENCE_SYNC_NOT_CONFIGURED",
+        "REFERENCE_SYNC_FAILED",
+        "REFERENCE_ADMIN_KEY_REQUIRED",
+        "REFERENCE_SYNC_PUBLISH_FAILED",
     }
 )
 
@@ -450,6 +455,7 @@ class PanelAPI:
                 self._catalog.default_folder_for_account(preferences)
             ),
             "article_library": self._catalog.article_library_status(),
+            "reference_sync": reference_sync.status(self._base_dir),
             "costing_special_options": (
                 self._catalog.costing_special_options_state(preferences)
             ),
@@ -1701,6 +1707,64 @@ class PanelAPI:
 
     def sync_article_library(self) -> dict:
         return self._catalog.sync_article_library()
+
+    def sync_reference_data(self, force: bool = True) -> dict:
+        return self._run(
+            "sync_reference_data",
+            lambda: reference_sync.sync_latest(
+                self._base_dir,
+                self._log,
+                force=bool(force),
+            ),
+            {"force": bool(force)},
+        )
+
+    def save_sync_admin_key(self, admin_key: str) -> dict:
+        if self._admin_access is not True:
+            return {
+                "ok": False,
+                "code": "ADMIN_ACCESS_DENIED",
+                "message": "Tài khoản WFX chưa có quyền quản trị.",
+                **reference_sync.status(self._base_dir),
+            }
+        try:
+            configured = self._prefs.save_sync_admin_key(
+                str(admin_key or ""),
+                base_dir=self._base_dir,
+            )
+        except (OSError, RuntimeError) as error:
+            return {
+                "ok": False,
+                "code": "REFERENCE_ADMIN_KEY_SAVE_FAILED",
+                "message": str(error),
+                **reference_sync.status(self._base_dir),
+            }
+        return {
+            "ok": True,
+            "code": "REFERENCE_ADMIN_KEY_SAVED",
+            "message": (
+                "Đã lưu Admin key an toàn trên máy này."
+                if configured
+                else "Đã xóa Admin key trên máy này."
+            ),
+            **reference_sync.status(self._base_dir),
+        }
+
+    def publish_reference_data(self) -> dict:
+        if self._admin_access is not True:
+            return {
+                "ok": False,
+                "code": "ADMIN_ACCESS_DENIED",
+                "message": "Tài khoản WFX chưa có quyền quản trị.",
+                **reference_sync.status(self._base_dir),
+            }
+        return self._run(
+            "publish_reference_data",
+            lambda: reference_sync.publish_current(
+                self._base_dir,
+                self._log,
+            ),
+        )
 
     def set_costing_special_options_rescan(self, value: bool) -> dict:
         return self._catalog.set_costing_special_options_rescan(value)

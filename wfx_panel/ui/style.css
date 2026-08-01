@@ -2148,6 +2148,87 @@ body.compact-mode .compact-launcher .compact-mark {
       border-radius: 11px;
     }
 
+    .reference-sync-card {
+      margin-top: 12px;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface-3);
+    }
+    .reference-sync-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .reference-sync-heading > span,
+    .reference-sync-heading strong,
+    .reference-sync-heading small { display: block; min-width: 0; }
+    .reference-sync-heading strong { font-size: 12px; color: var(--text); }
+    .reference-sync-heading small { margin-top: 3px; font-size: 11px; color: var(--muted); }
+    .reference-sync-button,
+    .reference-sync-admin button {
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      background: var(--surface);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .reference-sync-button:hover:not(:disabled),
+    .reference-sync-admin button:hover:not(:disabled) {
+      border-color: var(--accent-border);
+      background: var(--accent-soft);
+      transform: translateY(-1px);
+    }
+    .reference-sync-counts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .reference-sync-counts span {
+      padding: 4px 8px;
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 11px;
+    }
+    .reference-sync-counts b { color: var(--text); }
+    .reference-sync-admin {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .reference-sync-admin[hidden] { display: none !important; }
+    .reference-sync-admin label > span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .reference-sync-admin input {
+      width: 100%;
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      background: var(--surface);
+      font: inherit;
+    }
+    .reference-sync-admin > div {
+      display: flex;
+      gap: 7px;
+      margin-top: 8px;
+    }
+    .reference-sync-admin > div button:last-child { flex: 1; }
+
     /* Shared interaction states --------------------------------------- */
     /* Keyboard focus must be visible on every action, not only the star
        button. Outline preserves each button's semantic fill and shadow. */

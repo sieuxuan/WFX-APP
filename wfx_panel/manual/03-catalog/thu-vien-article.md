@@ -14,8 +14,8 @@ hoặc điền file Costing.
 ## Mẹo
 
 > [!meo]
-> Thư viện tự kiểm tra bản mới khi ứng dụng mở và mỗi giờ. Bạn không cần chọn
-> file hoặc bấm cập nhật.
+> Dữ liệu được lấy từ PostgreSQL qua n8n tối đa một lần mỗi 30 ngày. Muốn lấy
+> ngay bản mới, mở `Cài đặt > Tài khoản` và bấm `Đồng bộ ngay`.
 
 > [!meo]
 > Khi mất mạng, ứng dụng tiếp tục dùng danh sách gần nhất đã lưu trên máy.
@@ -25,4 +25,16 @@ hoặc điền file Costing.
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Chưa có gợi ý | Bạn vẫn có thể nhập Article Code hoặc tên Article bằng tay. |
-| Gợi ý chưa có Article mới | Chờ lần cập nhật kế tiếp hoặc mở lại ứng dụng khi có mạng. |
+| Gợi ý chưa có Article mới | Bấm `Đồng bộ ngay`; nếu server chưa có, báo Admin publish snapshot mới. |
+
+## Dành cho Admin
+
+1. Đăng nhập tài khoản WFX có quyền quản trị.
+2. Mở `Cài đặt > Tài khoản`.
+3. Nhập Admin key một lần và bấm `Lưu key`. Key được mã hóa bằng Windows DPAPI,
+   chỉ dùng được bởi đúng tài khoản Windows trên máy đó.
+4. Sau khi cache Article và dropdown Style đã đúng, bấm
+   `Publish dữ liệu hiện tại` và xác nhận.
+
+User khác sẽ nhận snapshot mới ở lần tự đồng bộ tháng kế tiếp hoặc ngay khi họ
+bấm `Đồng bộ ngay`.

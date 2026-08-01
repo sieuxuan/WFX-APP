@@ -161,6 +161,7 @@
   let adminAccess = false;
   let adminMode = false;
   let adminModuleIds = new Set();
+  let referenceSyncState = {};
   let sessionActive = null;
   let currentDivision = null;
   let manualErrorCodes = new Set();
@@ -272,6 +273,8 @@
     find_buyer: "Đang tìm Buyer…",
     toggle_company_foc: "Đang đổi và lưu cấu hình FOC…",
     switch_division: "Đang đổi Division…",
+    sync_reference_data: "Đang đồng bộ Article và Style từ server…",
+    publish_reference_data: "Đang publish Article và Style lên server…",
     login: "Đang đăng nhập WFX…",
   };
   // Nhãn tiếng Việt cho lịch sử tác vụ; tránh phơi tên hàm kỹ thuật ra người dùng.
@@ -297,6 +300,8 @@
     review_catalog_style_import: "Kiểm tra file Tạo Style",
     prepare_catalog_style_row: "Chuẩn bị Style",
     clear_catalog_style_import: "Hủy Tạo Style",
+    sync_reference_data: "Đồng bộ Article và Style",
+    publish_reference_data: "Publish Article và Style",
     open_sale_asn_new: "Sale ASN mới",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
@@ -637,9 +642,47 @@
     if (row) row.hidden = !adminAccess;
     const input = $(".admin-mode-input");
     if (input) input.checked = adminMode;
+    const syncAdmin = $(".reference-sync-admin");
+    if (syncAdmin) syncAdmin.hidden = !adminAccess;
     buildModules();
   }
   window.wfxSetAdminAccess = setAdminAccess;
+
+  function setReferenceSyncStatus(state) {
+    if (!state || typeof state !== "object") return;
+    referenceSyncState = { ...referenceSyncState, ...state };
+    const articleCount = Number(referenceSyncState.article_count || 0);
+    const optionCount = Number(referenceSyncState.style_option_count || 0);
+    const lastSuccess = Number(referenceSyncState.last_success || 0);
+    const statusNode = $(".reference-sync-status");
+    if ($(".reference-sync-articles")) {
+      $(".reference-sync-articles").textContent = articleCount.toLocaleString("vi-VN");
+    }
+    if ($(".reference-sync-options")) {
+      $(".reference-sync-options").textContent = optionCount.toLocaleString("vi-VN");
+    }
+    if (statusNode) {
+      if (!referenceSyncState.configured) {
+        statusNode.textContent = "Bản app chưa có cấu hình đọc server";
+      } else if (lastSuccess > 0) {
+        const when = new Date(lastSuccess * 1000).toLocaleString("vi-VN", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+        });
+        statusNode.textContent = `${referenceSyncState.fresh ? "Đã cập nhật" : "Cần cập nhật"} · ${when}`;
+      } else {
+        statusNode.textContent = "Sẵn sàng đồng bộ lần đầu";
+      }
+    }
+    const publishButton = $(".reference-sync-publish");
+    if (publishButton) {
+      publishButton.textContent = referenceSyncState.admin_configured
+        ? "Publish dữ liệu hiện tại"
+        : "Lưu key trước khi publish";
+      publishButton.disabled = !referenceSyncState.admin_configured;
+    }
+  }
+  window.wfxSetReferenceSyncStatus = setReferenceSyncStatus;
 
   function pushLog(line) {
     const pre = $(".catalog-log");
@@ -1850,6 +1893,9 @@
       catalogStyleGroupId = groups.some(
         (group) => String(group.node_id || "") === defaultId,
       ) ? defaultId : "";
+    }
+    if (result.last_success !== undefined && result.article_count !== undefined) {
+      setReferenceSyncStatus(result);
     }
     input.value = catalogStyleGroupId;
     const selected = groups.find(
@@ -3387,6 +3433,38 @@
         setStatus(result.ok ? "success" : "error", result.message || "");
       }
     });
+    $(".reference-sync-button")?.addEventListener("click", async (event) => {
+      const result = await withButtonLoading(
+        event.currentTarget,
+        () => call("sync_reference_data", true),
+      );
+      if (result) setReferenceSyncStatus(result);
+    });
+    $(".reference-sync-save-key")?.addEventListener("click", async (event) => {
+      const keyInput = $(".reference-sync-admin-key");
+      const key = String(keyInput?.value || "").trim();
+      if (!key) {
+        setStatus("warning", "Hãy nhập Admin key cần lưu trên máy này.");
+        keyInput?.focus();
+        return;
+      }
+      const result = await withButtonLoading(
+        event.currentTarget,
+        () => call("save_sync_admin_key", key),
+      );
+      if (keyInput) keyInput.value = "";
+      if (result) setReferenceSyncStatus(result);
+    });
+    $(".reference-sync-publish")?.addEventListener("click", async (event) => {
+      if (!window.confirm(
+        "Publish sẽ thay thế snapshot Article/Style hiện tại trên server. Tiếp tục?"
+      )) return;
+      const result = await withButtonLoading(
+        event.currentTarget,
+        () => call("publish_reference_data"),
+      );
+      if (result) setReferenceSyncStatus(result);
+    });
     $(".health-refresh").addEventListener("click", async () => {
       const result = await callQuiet("refresh_status");
       if (result) {
@@ -3511,6 +3589,7 @@
     $(".catalog-folder-summary").dataset.tooltip =
       `Sửa vị trí mặc định: ${folderLabel}`;
     setArticleLibraryStatus(state.article_library || {});
+    setReferenceSyncStatus(state.reference_sync || {});
     setCostingSpecialOptionsState(state.costing_special_options || {});
     if (
       catalogDefaultFolder?.category_name

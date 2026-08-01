@@ -595,6 +595,29 @@
               <small class="account-status-user" hidden></small>
             </div>
           </div>
+          <section class="reference-sync-card" aria-labelledby="reference-sync-title">
+            <div class="reference-sync-heading">
+              <span>
+                <strong id="reference-sync-title">Dữ liệu Article &amp; Style</strong>
+                <small class="reference-sync-status">Chưa kiểm tra dữ liệu server</small>
+              </span>
+              <button class="reference-sync-button" type="button">Đồng bộ ngay</button>
+            </div>
+            <div class="reference-sync-counts" aria-live="polite">
+              <span><b class="reference-sync-articles">0</b> Article</span>
+              <span><b class="reference-sync-options">0</b> lựa chọn Style</span>
+            </div>
+            <div class="reference-sync-admin" hidden>
+              <label>
+                <span>Admin key (chỉ lưu trên máy này)</span>
+                <input class="reference-sync-admin-key" type="password" autocomplete="off" placeholder="Nhập key khi cần publish" />
+              </label>
+              <div>
+                <button class="reference-sync-save-key" type="button">Lưu key</button>
+                <button class="reference-sync-publish" type="button">Publish dữ liệu hiện tại</button>
+              </div>
+            </div>
+          </section>
           <div class="account-connected-view" hidden>
             <p>Phiên WFX đang hoạt động. Bạn chỉ cần đổi tài khoản khi muốn đăng nhập bằng User ID khác.</p>
             <button class="account-change-button" type="button">Đổi tài khoản</button>

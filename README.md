@@ -152,6 +152,9 @@ nằm ở đường dẫn riêng.
 - `wfx_panel/telemetry.py`: webhook, outbox và redaction dữ liệu nhạy cảm.
 - `n8n/`: workflow webhook có thể import; xem `WFX_SYNC_SETUP.md` để cài API
   đồng bộ Article/Style qua PostgreSQL.
+- App User tự lấy snapshot Article/Style từ n8n tối đa một lần mỗi 30 ngày và
+  có nút `Đồng bộ ngay` trong Cài đặt > Tài khoản. Admin key được lưu bằng
+  Windows DPAPI và chỉ dùng khi xác nhận publish cache hiện tại.
 - `CLAUDE.md`: đặc tả kỹ thuật chuẩn bắt buộc.
 
 ## Đóng gói EXE

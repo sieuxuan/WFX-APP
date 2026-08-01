@@ -41,9 +41,10 @@ Card, Size Range và Season có dropdown lấy từ cache dùng chung. Sub-Categ
 > Style sẽ được ghi lên WFX ngay sau khi điền xong.
 
 > [!meo]
-> Dropdown được lấy từ GitHub trước. Chỉ khi dữ liệu quá 30 ngày, app mới quét
-> lại form WFX bằng Group đã chọn và lưu cache trên máy. Máy quản trị có khóa
-> quyền ghi GitHub sẽ cập nhật snapshot để các máy khác dùng chung.
+> Dropdown ưu tiên snapshot PostgreSQL dùng chung và chỉ tự tải tối đa một lần
+> mỗi 30 ngày. Nút `Đồng bộ ngay` nằm trong `Cài đặt > Tài khoản`. Nếu server
+> tạm lỗi, app giữ nguyên cache gần nhất; Group đã chọn vẫn dùng để quét WFX khi
+> cần làm mới trực tiếp.
 
 > [!meo]
 > Nếu tìm Copy ra nhiều Style, chọn đúng Style nguồn ngay trong bảng điều khiển.
@@ -53,7 +54,7 @@ Card, Size Range và Season có dropdown lấy từ cache dùng chung. Sub-Categ
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Chưa chọn được Group | Bấm nút làm mới nhỏ, tìm bằng tên/đường dẫn rồi chọn lại. |
-| Chưa quét được dropdown | Giữ Chrome đăng nhập, chọn Group có quyền tạo Style rồi tải lại form. App vẫn ưu tiên cache gần nhất khi GitHub hoặc WFX tạm lỗi. |
+| Chưa quét được dropdown | Giữ Chrome đăng nhập, chọn Group có quyền tạo Style rồi tải lại form. App vẫn ưu tiên cache gần nhất khi server hoặc WFX tạm lỗi. |
 | File báo sai header | Tải form mới và sao chép dữ liệu vào đúng cột. |
 | New báo thiếu trường | Điền đủ các cột từ Material Type đến Internal Style Ref. |
 | Không tìm thấy Style nguồn | Kiểm tra `Style copy`; SWN/SKN phải là Article Code, giá trị khác phải là Buyer Reference. |
