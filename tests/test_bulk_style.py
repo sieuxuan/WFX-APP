@@ -30,10 +30,13 @@ def test_style_flow_contains_mandatory_defaults():
     }
 
 
-def test_style_automation_never_uses_save_selector():
+def test_style_automation_only_saves_when_auto_save_is_enabled():
     source = inspect.getsource(bulk_style.prepare_catalog_style_row)
     assert "titlebarArticle" not in source
-    assert "requires_manual_save=True" in source
+    assert "if saved:" in source
+    assert "_save_style(context, log)" in source
+    assert "requires_manual_save=not saved" in source
+    assert bulk_style.SAVE_STYLE_XPATH.endswith("/span/div[1]/a")
 
 
 def test_group_class_detection_accepts_actual_lowercase_wfx_class():
@@ -42,3 +45,9 @@ def test_group_class_detection_accepts_actual_lowercase_wfx_class():
     )
     assert "[...li.classList, ...span.classList]" in catalog_source
     assert "name.toLocaleLowerCase('en') === 'groupnode'" in catalog_source
+
+
+def test_style_flow_selects_exact_new_toolbar_action():
+    source = Path(bulk_style.__file__).read_text(encoding="utf-8")
+    assert "def _new_style_link" in source
+    assert 'candidate.inner_text().strip().casefold() == "new"' in source

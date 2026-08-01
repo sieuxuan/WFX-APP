@@ -1,13 +1,14 @@
 """Chuẩn bị form New/Copy Style Apparel từ một dòng Excel.
 
-Ranh giới an toàn của module này là form Article đã được điền. Module tuyệt đối
-không click Save; người dùng kiểm tra và tự Save trên WFX trước khi chạy dòng kế.
+Mặc định module dừng trước Save. Chỉ khi UI truyền ``auto_save=True`` từ toggle
+chủ động của người dùng, module mới click Save đúng một lần sau khi điền xong.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 from wfx_panel.automation._common import (
     Callable,
@@ -38,6 +39,7 @@ COPY_AS_VARIANT_XPATH = (
     '//*[@id="wfx_ArticleEdit"]/form/table[3]/tbody/tr/td[2]/table/'
     "tbody/tr/td[2]/input"
 )
+SAVE_STYLE_XPATH = '//*[@id="titlebarArticle"]/tbody/tr/td[2]/span/div[1]/a'
 
 _COPY_RESULTS_JS = """() => {
     const root = document.querySelector('#wfx_ArticleEdit') || document;
@@ -181,6 +183,53 @@ _SET_STYLE_FIELD_JS = """spec => {
     };
 }"""
 
+_READ_STYLE_OPTIONS_JS = """spec => {
+    const clean = value => String(value || '').replace(/\\s+/g, ' ').trim();
+    const folded = value => clean(value).toLocaleLowerCase('en');
+    let control = null;
+    for (const id of spec.ids || []) {
+        const candidate = document.getElementById(id);
+        if (candidate && !candidate.disabled) {
+            control = candidate;
+            break;
+        }
+    }
+    if (!control) return [];
+    if (control.tagName === 'SELECT') {
+        return [...control.options].map(option => ({
+            value: clean(option.value),
+            label: clean(option.textContent),
+            disabled: Boolean(option.disabled),
+        })).filter(option => option.label && option.value
+            && !option.disabled
+            && !/^(select|choose|--)/i.test(option.label));
+    }
+    if (['radio', 'checkbox'].includes(folded(control.type))) {
+        const group = control.name
+            ? [...document.querySelectorAll(`input[name="${CSS.escape(control.name)}"]`)]
+            : [control];
+        return group.filter(item => !item.disabled).map(item => ({
+            value: clean(item.value),
+            label: clean(item.title || item.parentElement?.textContent || item.value),
+        })).filter(option => option.label);
+    }
+    return [];
+}"""
+
+_HYDRATE_STYLE_OPTIONS_JS = """spec => {
+    for (const id of spec.ids || []) {
+        const control = document.getElementById(id);
+        if (!control || control.disabled || control.tagName !== 'SELECT') continue;
+        control.dispatchEvent(new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+        }));
+        return true;
+    }
+    return false;
+}"""
+
 
 STYLE_FIELDS = (
     (
@@ -278,6 +327,81 @@ def _article_left_frame(context: Any, timeout_s: float = 20) -> Frame:
     return frame
 
 
+def _new_style_link(context: Any, timeout_s: float = 15) -> tuple[Page, Frame, Any]:
+    """Lấy đúng toolbar New; WFX dùng cùng class cho nhiều action khác."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for page in reversed(context.pages):
+            for frame in reversed(page.frames):
+                try:
+                    links = frame.locator("a.clsNavLinkNew")
+                    for index in range(links.count()):
+                        candidate = links.nth(index)
+                        if (
+                            candidate.is_visible()
+                            and candidate.inner_text().strip().casefold() == "new"
+                        ):
+                            return page, frame, candidate
+                except PlaywrightError:
+                    continue
+        if context.pages:
+            _wait(context.pages[0], 120)
+    raise PlaywrightTimeoutError("Không tìm thấy nút New của Catalog Group.")
+
+
+def _open_style_choice(context: Any, link: Any) -> Frame:
+    """Mở popup New và chờ CDP nhận target trước khi tìm frame ArticleLeft."""
+    popup = None
+    try:
+        with context.expect_page(timeout=8_000) as page_info:
+            # WFX gắn onclick vào TD. Click chuột Playwright thường rơi vào
+            # anchor con và không bubble ổn định trên trang legacy này.
+            link.locator("xpath=..").evaluate("element => element.click()")
+        popup = page_info.value
+    except PlaywrightTimeoutError:
+        # Cửa sổ tên CatalogDetail có thể đã tồn tại và được WFX tái sử dụng,
+        # khi đó Chromium không phát event page mới; frame scan phía dưới vẫn
+        # là nguồn xác nhận cuối cùng.
+        pass
+    if popup is not None:
+        try:
+            popup.wait_for_load_state("domcontentloaded", timeout=12_000)
+        except PlaywrightTimeoutError:
+            pass
+    try:
+        return _article_left_frame(context, timeout_s=4)
+    except PlaywrightTimeoutError:
+        pass
+
+    # Một số phiên Chrome giữ target đã đóng theo tên CatalogDetail: hàm
+    # window.open của WFX không báo lỗi nhưng cũng không sinh page event. Đọc
+    # URL từ chính hàm New() trong CatalogBottom để mở bằng cùng browser context.
+    target_url = ""
+    for page in reversed(context.pages):
+        for frame in reversed(page.frames):
+            try:
+                relative = frame.evaluate(
+                    """() => {
+                        if (typeof New !== 'function') return '';
+                        const source = New.toString();
+                        const match = source.match(/FullScreenForChrome\\('([^']+)'/);
+                        return match ? match[1] : '';
+                    }"""
+                )
+                if relative:
+                    target_url = urljoin(frame.url, str(relative))
+                    break
+            except PlaywrightError:
+                continue
+        if target_url:
+            break
+    if not target_url:
+        raise PlaywrightTimeoutError("Không đọc được URL New của Catalog Group.")
+    popup = context.new_page()
+    popup.goto(target_url, wait_until="domcontentloaded", timeout=20_000)
+    return _article_left_frame(context, timeout_s=20)
+
+
 def _style_editor_frame(context: Any, timeout_s: float = 35) -> Frame:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -285,10 +409,10 @@ def _style_editor_frame(context: Any, timeout_s: float = 35) -> Frame:
             for frame in reversed(page.frames):
                 try:
                     title = frame.locator("#titlebarArticle")
-                    buyer = frame.locator(
-                        "#ddlBuyer, #select2-ddlBuyer-container"
+                    material = frame.locator(
+                        "#ddlMaterialType, #select2-ddlMaterialType-container"
                     )
-                    if title.count() and buyer.count():
+                    if title.count() and material.count():
                         return frame
                 except PlaywrightError:
                     continue
@@ -370,6 +494,204 @@ def _fill_style_editor(
     return filled
 
 
+def _save_style(context: Any, log: Callable[[str], None]) -> None:
+    """Click đúng Save của Article editor một lần khi user đã bật Auto Save."""
+    frame = _style_editor_frame(context)
+    save = frame.locator(f"xpath={SAVE_STYLE_XPATH}").first
+    save.wait_for(state="visible", timeout=8_000)
+    save.click()
+    _write_log(log, "[STYLE] Đã bấm Save theo lựa chọn Tự động Save.")
+    if context.pages:
+        _wait(context.pages[0], 800)
+
+
+def _read_style_options(frame: Frame, ids: tuple[str, ...]) -> list[dict[str, str]]:
+    raw = frame.evaluate(_READ_STYLE_OPTIONS_JS, {"ids": list(ids)}) or []
+    seen: set[str] = set()
+    options: list[dict[str, str]] = []
+    for item in raw:
+        label = str(item.get("label") or "").strip()
+        value = str(item.get("value") or "").strip()
+        identity = label.casefold()
+        if not label or identity in seen:
+            continue
+        seen.add(identity)
+        options.append({"label": label, "value": value})
+    return options
+
+
+def _field_options_with_wait(
+    context: Any,
+    ids: tuple[str, ...],
+    timeout_s: float = 8,
+) -> list[dict[str, str]]:
+    deadline = time.monotonic() + timeout_s
+    hydrated = False
+    while time.monotonic() < deadline:
+        frame = _style_editor_frame(context, timeout_s=2)
+        options = _read_style_options(frame, ids)
+        if options:
+            return options
+        if not hydrated:
+            try:
+                hydrated = bool(
+                    frame.evaluate(_HYDRATE_STYLE_OPTIONS_JS, {"ids": list(ids)})
+                )
+            except PlaywrightError:
+                pass
+        if context.pages:
+            _wait(context.pages[0], 180)
+    return []
+
+
+def scan_catalog_style_options(
+    category_value: str,
+    group_id: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Quét dropdown Style và quan hệ Product Group → Sub-category, không Save."""
+    opened = open_catalog_folder("Apparel", category_value, str(group_id), log)
+    if not opened.get("ok"):
+        return opened
+    if str((opened.get("folder") or {}).get("kind") or "") != "group":
+        return _result(False, "STYLE_GROUP_REQUIRED", "Vị trí đã chọn không phải Group.")
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        browser, _page = _active_wfx_page(playwright, log)
+        context = browser.contexts[0]
+        _owner, _frame, new_link = _new_style_link(context, 12)
+        # Anchor href="#" dùng chung class với toolbar khác; click chính TD có
+        # onclick="New()" mới ổn định trên WFX cũ.
+        choice_frame = _open_style_choice(context, new_link)
+        choice_frame.locator(f"xpath={NEW_STYLE_XPATH}").first.evaluate(
+            "element => element.click()"
+        )
+        editor = _style_editor_frame(context)
+        fields: dict[str, list[dict[str, str]]] = {}
+        specs = {key: (label, ids, labels) for key, label, ids, labels in STYLE_FIELDS}
+        fields["material_type"] = _read_style_options(
+            editor, specs["material_type"][1]
+        )
+        if not fields.get("material_type"):
+            fields["material_type"] = [
+                {"label": "KNIT", "value": "KNIT"},
+                {"label": "WOVEN", "value": "WOVEN"},
+            ]
+        folder_label = str((opened.get("folder") or {}).get("path_label") or "")
+        material = next(
+            (
+                option
+                for option in fields["material_type"]
+                if option["label"].casefold() in folder_label.casefold()
+            ),
+            fields["material_type"][0],
+        )
+        _set_field(
+            context,
+            specs["material_type"][0],
+            material.get("value") or material["label"],
+            specs["material_type"][1],
+            specs["material_type"][2],
+            lambda _message: None,
+        )
+        for key in ("buyer", "division"):
+            label, ids, labels = specs[key]
+            options = _field_options_with_wait(context, ids)
+            fields[key] = options
+            if options:
+                first = options[0]
+                _set_field(
+                    context,
+                    label,
+                    first.get("value") or first["label"],
+                    ids,
+                    labels,
+                    lambda _message: None,
+                )
+
+        product_spec = ("product_group", *specs["product_group"])
+        subcategory_spec = ("sub_category", *specs["sub_category"])
+        fields["product_group"] = _field_options_with_wait(
+            context, product_spec[2]
+        )
+        dependencies: dict[str, list[dict[str, str]]] = {}
+        for option in fields.get("product_group", [])[:500]:
+            label = option["label"]
+            try:
+                _set_field(
+                    context,
+                    product_spec[1],
+                    option.get("value") or label,
+                    product_spec[2],
+                    product_spec[3],
+                    lambda _message: None,
+                )
+                editor = _style_editor_frame(context)
+                values = _field_options_with_wait(context, subcategory_spec[2])
+                if values:
+                    dependencies[label] = values
+            except (RuntimeError, PlaywrightError, PlaywrightTimeoutError):
+                continue
+        if fields["product_group"]:
+            first_product = fields["product_group"][0]
+            _set_field(
+                context,
+                product_spec[1],
+                first_product.get("value") or first_product["label"],
+                product_spec[2],
+                product_spec[3],
+                lambda _message: None,
+            )
+            first_subcategories = dependencies.get(first_product["label"], [])
+            if first_subcategories:
+                first_subcategory = first_subcategories[0]
+                _set_field(
+                    context,
+                    subcategory_spec[1],
+                    first_subcategory.get("value") or first_subcategory["label"],
+                    subcategory_spec[2],
+                    subcategory_spec[3],
+                    lambda _message: None,
+                )
+        for key in ("color_card", "size_range", "season"):
+            fields[key] = _field_options_with_wait(context, specs[key][1])
+        missing = [
+            label
+            for key, label in (
+                ("buyer", "Buyer"),
+                ("product_group", "Product Group"),
+                ("season", "Season"),
+            )
+            if not fields.get(key)
+        ]
+        if missing:
+            raise RuntimeError(
+                "STYLE_OPTIONS_INCOMPLETE:" + ", ".join(missing)
+            )
+        _write_log(
+            log,
+            "[STYLE OPTIONS] Đã quét "
+            f"{sum(len(values) for values in fields.values())} lựa chọn và "
+            f"{len(dependencies)} nhóm Sub-category; không Save.",
+        )
+        return _result(
+            True,
+            "STYLE_OPTIONS_SCANNED",
+            "Đã cập nhật danh sách dropdown Style từ WFX.",
+            fields=fields,
+            subcategories_by_product_group=dependencies,
+            group_id=str(group_id),
+        )
+    except Exception as exc:
+        message = f"Không quét được dropdown Style: {type(exc).__name__}: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(False, "STYLE_OPTIONS_SCAN_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
 def _prepare_copy(
     context: Any,
     frame: Frame,
@@ -430,9 +752,10 @@ def prepare_catalog_style_row(
     group_id: str,
     row: dict[str, Any],
     copy_choice: int | None = None,
+    auto_save: bool = False,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    """Chuẩn bị đúng một Style và dừng trước Save."""
+    """Chuẩn bị đúng một Style; chỉ Save khi ``auto_save`` được bật rõ ràng."""
     kind = str(row.get("type") or "").strip().casefold()
     if kind not in {"new", "copy"}:
         return _result(False, "STYLE_TYPE_INVALID", "Type phải là New hoặc Copy.")
@@ -459,18 +782,13 @@ def prepare_catalog_style_row(
         playwright = sync_playwright().start()
         browser, page = _active_wfx_page(playwright, log)
         context = browser.contexts[0]
-        _page, _frame, new_link = _frame_with_visible_locator(
-            context,
-            "a.clsNavLinkNew",
-            12,
-        )
-        new_link.click()
+        _owner, _frame, new_link = _new_style_link(context, 12)
+        choice_frame = _open_style_choice(context, new_link)
         _write_log(log, "[STYLE] Đã mở New trong Group đã chọn.")
-        choice_frame = _article_left_frame(context)
 
         if kind == "new":
             new_button = choice_frame.locator(f"xpath={NEW_STYLE_XPATH}").first
-            new_button.click()
+            new_button.evaluate("element => element.click()")
         else:
             pending = _prepare_copy(
                 context,
@@ -484,19 +802,24 @@ def prepare_catalog_style_row(
 
         _style_editor_frame(context)
         filled = _fill_style_editor(context, row, log)
+        saved = bool(auto_save)
+        if saved:
+            _save_style(context, log)
         page.bring_to_front()
         source_row = int(row.get("source_row") or 0)
         return _result(
             True,
             "STYLE_FORM_READY",
             (
-                f"Đã chuẩn bị dòng {source_row} trên WFX và dừng trước Save. "
-                "Hãy kiểm tra rồi tự bấm Save."
+                f"Đã chuẩn bị dòng {source_row} trên WFX"
+                + (" và Save tự động." if saved else " và dừng trước Save. ")
+                + ("" if saved else "Hãy kiểm tra rồi tự bấm Save.")
             ),
             source_row=source_row,
             style_type="New" if kind == "new" else "Copy",
             filled_fields=filled,
-            requires_manual_save=True,
+            requires_manual_save=not saved,
+            saved=saved,
         )
     except RuntimeError as exc:
         raw = str(exc)

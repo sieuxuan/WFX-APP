@@ -71,6 +71,7 @@ METHOD_LABELS = {
     "switch_division": "Đổi Division",
     "review_catalog_style_import": "Kiểm tra file Tạo Style",
     "prepare_catalog_style_row": "Chuẩn bị Style",
+    "scan_catalog_style_options": "Quét dropdown Style",
 }
 
 ERROR_CODE_INFO = {
@@ -237,6 +238,14 @@ ERROR_CODE_INFO.update(
         "STYLE_ROW_INVALID": (
             "Không tìm thấy dòng Tạo Style",
             "Chọn lại file để làm mới danh sách dòng.",
+        ),
+        "STYLE_OPTIONS_SCAN_FAILED": (
+            "Chưa quét được dropdown Style",
+            "Giữ Chrome đăng nhập, chọn Group có quyền tạo Style rồi thử lại.",
+        ),
+        "STYLE_OPTIONS_SCAN_UNSUPPORTED": (
+            "Chưa hỗ trợ quét dropdown Style",
+            "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
         ),
         "STYLE_TEMPLATE_SHEET_MISSING": (
             "Thiếu sheet Tạo Style",

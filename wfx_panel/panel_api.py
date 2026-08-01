@@ -264,6 +264,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "upload_oc",
         "confirm_oc_upload",
         "prepare_catalog_style_row",
+        "scan_catalog_style_options",
     }
 )
 
@@ -1395,16 +1396,25 @@ class PanelAPI:
     def clear_catalog_style_import(self, review_token: str) -> dict:
         return self._catalog.clear_style_import(review_token)
 
+    def ensure_catalog_style_options(
+        self,
+        group_id: str,
+        force: bool = False,
+    ) -> dict:
+        return self._catalog.ensure_style_options(group_id, bool(force))
+
     def prepare_catalog_style_row(
         self,
         review_token: str,
         source_row: int,
         copy_choice: int | None = None,
+        auto_save: bool = False,
     ) -> dict:
         return self._catalog.prepare_style_row(
             review_token,
             source_row,
             copy_choice,
+            bool(auto_save),
         )
 
     def find_code(

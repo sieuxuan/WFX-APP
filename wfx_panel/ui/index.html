@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260801-3">
+  <link rel="stylesheet" href="style.css?v=20260801-4">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -217,34 +217,25 @@
               <span>
                 <strong id="catalog-costing-title">File Costing</strong>
               </span>
-              <span class="catalog-costing-state" data-ready="false">Quét tab Costing hiện tại</span>
             </div>
             <div class="catalog-costing-current" aria-live="polite" hidden>
               <span>Tab hiện tại</span>
               <strong class="catalog-costing-current-code"></strong>
               <b class="catalog-costing-current-status">—</b>
             </div>
-            <div class="catalog-article-library" data-ready="false">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5Z"/><path d="M8 9h8M8 13h8"/></svg>
-              <span>
-                <strong>Thư viện Article</strong>
-                <small class="catalog-article-library-status">Đang chờ đồng bộ từ server…</small>
-              </span>
-              <label class="catalog-special-rescan toggle-row">
-                <span>
-                  <strong>Quét lại danh sách chi phí</strong>
-                  <small class="catalog-special-rescan-status">CM · Production · Indirect ở lần Costing kế tiếp</small>
-                </span>
-                <input class="catalog-special-rescan-input" type="checkbox" />
-                <i aria-hidden="true"></i>
-              </label>
-            </div>
             <div class="catalog-costing-actions">
               <button type="button" data-costing-action="export-xlsx">Tải XLSX</button>
               <button type="button" data-costing-action="validate-file">Kiểm tra file</button>
               <button type="button" class="catalog-costing-import" data-costing-action="import">Import</button>
             </div>
-            <button type="button" class="catalog-costing-clear-dependencies" data-costing-action="clear-dependencies">Clear All Dependency</button>
+            <div class="catalog-costing-utility-row">
+              <label class="catalog-special-rescan toggle-row" data-tooltip="Quét mới CM · Production · Indirect ở lần Costing kế tiếp">
+                <span>Quét lại chi phí</span>
+                <input class="catalog-special-rescan-input" type="checkbox" />
+                <i aria-hidden="true"></i>
+              </label>
+              <button type="button" class="catalog-costing-clear-dependencies" data-costing-action="clear-dependencies">Clear All Dependency</button>
+            </div>
             <div class="catalog-costing-file-check" aria-live="polite" hidden></div>
             <p class="catalog-costing-note">
               Mọi status đều tải XLSX được; Import/Save cần <b>Open</b>.
@@ -273,17 +264,34 @@
               <div class="catalog-costing-heading">
                 <span>
                   <strong id="catalog-style-title">Tạo Style Apparel hàng loạt</strong>
-                  <small>Chuẩn bị từng dòng và dừng trước Save</small>
+                  <small class="catalog-style-mode-copy">Chuẩn bị từng dòng và dừng trước Save</small>
                 </span>
-                <span class="catalog-style-safe-badge">Không tự Save</span>
+                <label class="catalog-style-autosave toggle-row" data-tooltip="Bật để app bấm Save sau khi điền xong từng Style">
+                  <span>Tự động Save</span>
+                  <input class="catalog-style-autosave-input" type="checkbox" />
+                  <i aria-hidden="true"></i>
+                </label>
               </div>
-              <label class="catalog-style-group-row">
+              <input class="catalog-style-group" type="hidden" value="" />
+              <div class="catalog-style-group-row">
                 <span>Group bắt buộc</span>
-                <select class="catalog-style-group" aria-label="Chọn Group Apparel" disabled>
-                  <option value="">Quét cây Catalog để chọn Group…</option>
-                </select>
-              </label>
-              <button type="button" class="catalog-style-refresh" data-style-action="refresh-groups">Quét lại Group</button>
+                <div class="catalog-style-group-controls">
+                  <button type="button" class="catalog-style-group-summary" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+                    <strong class="catalog-style-group-current">Chọn Group Apparel…</strong>
+                  </button>
+                  <button type="button" class="catalog-style-refresh" data-style-action="refresh-groups" data-tooltip="Quét lại Group" aria-label="Quét lại Group">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="catalog-style-group-picker" hidden>
+                <div class="catalog-folder-search-box">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                  <input class="catalog-style-group-search" type="search" autocomplete="off" placeholder="Tìm tên Group hoặc đường dẫn…" />
+                </div>
+                <div class="catalog-style-group-list" role="listbox" aria-label="Chọn Group Apparel"></div>
+              </div>
               <div class="catalog-style-file-actions">
                 <button type="button" data-style-action="template">Tải form Excel</button>
                 <button type="button" class="catalog-primary-action" data-style-action="import">Chọn file &amp; kiểm tra</button>
@@ -682,6 +690,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260801-5"></script>
+  <script src="panel.js?v=20260801-6"></script>
 </body>
 </html>

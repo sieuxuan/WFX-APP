@@ -40,6 +40,8 @@ def test_wires_bulk_style_review_and_manual_save_flow():
         assert f'"{method}"' in JS
     assert "STYLE_COPY_MULTIPLE_RESULTS" in JS
     assert "Tôi đã Save · Chuẩn bị dòng tiếp theo" in JS
+    assert "catalogStyleAutoSave" in JS
+    assert 'download_style_template", groupId' in JS
 
 
 def test_costing_weekly_scan_and_clear_all_controls_are_wired():
@@ -372,7 +374,7 @@ def test_catalog_costing_export_can_scan_current_tab_without_query():
     assert '"article_name"' in JS
     assert '"suggest_articles",\n        $(".catalog-category")' in JS
     assert "wfxSetArticleLibraryStatus" in JS
-    assert "Có thể Export/Import tab Costing hiện tại" in JS
+    assert "Có thể Export/Import tab Costing hiện tại" not in JS
     import_block = JS[
         JS.index("async function importCatalogCosting()")
         : JS.index("async function applyCatalogCosting()")

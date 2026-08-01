@@ -14,9 +14,10 @@ class _FakeLogin:
         group_id,
         row,
         copy_choice,
+        auto_save,
         log,
     ):
-        self.calls.append((category_value, group_id, row, copy_choice))
+        self.calls.append((category_value, group_id, row, copy_choice, auto_save))
         return {
             "ok": True,
             "code": "STYLE_FORM_READY",
@@ -71,11 +72,12 @@ def test_style_controller_freezes_review_to_selected_group_and_row(tmp_path):
     assert review["code"] == "STYLE_IMPORT_REVIEW_READY"
     assert review["requires_manual_save"] is True
     assert prepared["code"] == "STYLE_FORM_READY"
-    category, group_id, row, copy_choice = panel._login.calls[0]
+    category, group_id, row, copy_choice, auto_save = panel._login.calls[0]
     assert category == "01"
     assert group_id == "774001163"
     assert row["internal_style_ref"] == "INT-1"
     assert copy_choice is None
+    assert auto_save is False
 
 
 def test_style_controller_rejects_folder_that_is_not_group(tmp_path):
@@ -94,3 +96,27 @@ def test_style_controller_rejects_folder_that_is_not_group(tmp_path):
     result = controller.review_style_import(str(source), "42")
 
     assert result["code"] == "STYLE_GROUP_REQUIRED"
+
+
+def test_style_controller_forwards_explicit_auto_save(tmp_path):
+    source = tmp_path / "styles.xlsx"
+    _new_style_file(source)
+    panel = _FakePanel()
+    controller = CatalogController(panel)
+    controller.folder_cache["Apparel"] = [
+        {
+            "node_id": "774001163",
+            "kind": "group",
+            "name": "Jackets",
+            "path_label": "Master / Jackets",
+        }
+    ]
+    review = controller.review_style_import(str(source), "774001163")
+
+    controller.prepare_style_row(
+        review["review_token"],
+        review["rows"][0]["source_row"],
+        auto_save=True,
+    )
+
+    assert panel._login.calls[0][-1] is True

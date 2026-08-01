@@ -199,8 +199,16 @@ Các workflow riêng hiện có:
   khác tìm bằng Buyer Reference. Copy mặc định chọn CostSheet và Copy as
   Variant; nhiều kết quả phải để user chọn trong app. Mỗi lần chỉ chuẩn bị một
   dòng, đặt Purchase UOM=Pcs, Price Per=Article và Color Definition=Single
-  Colors, rồi **dừng trước Save**. App chỉ sang dòng kế sau khi user xác nhận đã
-  tự kiểm tra/Save trên WFX; automation Tạo Style tuyệt đối không click Save.
+  Colors. Toggle `Tự động Save` luôn mặc định off: khi off, app dừng trước Save
+  và chỉ sang dòng kế sau khi user xác nhận đã tự kiểm tra/Save trên WFX; khi on,
+  automation click đúng Save một lần sau khi điền xong rồi chuyển sang dòng kế.
+  Group dùng picker có tìm kiếm theo tên/đường dẫn thay cho select dài; nút quét
+  Group là icon nhỏ nằm cùng hàng. Form Excel có dropdown từ snapshot GitHub/cache
+  30 ngày cho Material Type, Buyer, Division, Product Group, Color Card, Size
+  Range và Season; Sub-Category phụ thuộc Product Group. Khi snapshot hết hạn,
+  app quét read-only form WFX trong Group đã chọn, không Save, lưu local và ghi
+  `data/style-options.json` qua GitHub Contents API khi máy quản trị có token.
+  Bản phát hành thường chỉ có quyền đọc GitHub Raw, không nhúng token ghi.
 - Costing file chỉ áp dụng cho Apparel và luôn chạy hai phase:
   1. scan live + validate file + dry-run, cache plan bằng opaque token tối đa
      15 phút, chưa ghi WFX;
@@ -272,7 +280,7 @@ Các workflow riêng hiện có:
   `Sections`, `_Fields`, `_Meta`; hộp thoại chỉ hỗ trợ `.xlsx`.
 - Ba danh sách dùng chung của CM Costs/Production Costs/Indirect Costs chỉ scan
   một lần trong 7 ngày, cache theo User ID + Division. Công tắc `Quét lại danh
-  sách chi phí` nằm cạnh Thư viện Article, mặc định off, chỉ ép lần Export/Import
+  sách chi phí` nằm cùng hàng với `Clear All Dependency`, mặc định off, chỉ ép lần Export/Import
   Costing kế tiếp và tự off sau khi scan + lưu cache thành công. Việc này không
   được bỏ qua scan Color/Size, dependency mapping hoặc field riêng của Style.
 - Article Library là danh sách toàn cục bốn cột `Article Code`/`Article Name`/

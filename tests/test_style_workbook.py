@@ -2,6 +2,7 @@ from openpyxl import load_workbook
 
 from wfx_panel.style_workbook import (
     GUIDE_SHEET,
+    LIST_SHEET,
     STYLE_COLUMNS,
     STYLE_SHEET,
     StyleWorkbookError,
@@ -10,17 +11,46 @@ from wfx_panel.style_workbook import (
 )
 
 
-def test_style_template_has_two_user_facing_sheets_and_expected_columns(tmp_path):
+def test_style_template_has_two_user_facing_sheets_and_hidden_lists(tmp_path):
     target = write_style_template(tmp_path / "styles.xlsx")
 
     workbook = load_workbook(target)
-    assert workbook.sheetnames == [GUIDE_SHEET, STYLE_SHEET]
+    assert workbook.sheetnames == [GUIDE_SHEET, STYLE_SHEET, LIST_SHEET]
+    assert workbook[LIST_SHEET].sheet_state == "veryHidden"
     sheet = workbook[STYLE_SHEET]
     assert tuple(cell.value for cell in sheet[1]) == STYLE_COLUMNS
     assert sheet.freeze_panes == "A2"
     validations = list(sheet.data_validations.dataValidation)
     assert any(item.formula1 == '"New,Copy"' for item in validations)
-    assert any(item.formula1 == '"KNIT,WOVEN"' for item in validations)
+    assert any(item.formula1 == "=StyleMaterialType" for item in validations)
+    workbook.close()
+
+
+def test_style_template_has_server_dropdowns_and_dependent_subcategory(tmp_path):
+    target = write_style_template(
+        tmp_path / "styles.xlsx",
+        options={
+            "fields": {
+                "material_type": ["KNIT", "WOVEN"],
+                "buyer": ["Buyer A"],
+                "division": ["Division A"],
+                "product_group": ["Top", "Bottom"],
+                "color_card": ["Color A"],
+                "size_range": ["Size A"],
+                "season": ["FW27"],
+            },
+            "subcategories_by_product_group": {
+                "Top": ["Jacket", "Shirt"],
+                "Bottom": ["Pants"],
+            },
+        },
+    )
+    workbook = load_workbook(target)
+    validations = list(workbook[STYLE_SHEET].data_validations.dataValidation)
+    formulas = {item.formula1 for item in validations}
+    assert "=StyleBuyer" in formulas
+    assert "=StyleProductGroup" in formulas
+    assert any("VLOOKUP($F2" in formula for formula in formulas)
     workbook.close()
 
 

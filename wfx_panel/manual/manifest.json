@@ -199,9 +199,9 @@
         {
           "id": "catalog-tao-style-hang-loat",
           "title": "Tạo Style Apparel hàng loạt",
-          "summary": "Chuẩn bị từng Style từ Excel trong một Group và tự kiểm tra trước khi Save.",
+          "summary": "Tạo Style từ Excel với picker Group, dropdown phụ thuộc và Auto Save tùy chọn.",
           "file": "03-catalog/tao-style-hang-loat.md",
-          "keywords": ["tạo style", "new", "copy as variant", "excel", "group"],
+          "keywords": ["tạo style", "new", "copy as variant", "excel", "group", "auto save", "dropdown", "sub-category"],
           "covers": {
             "actions": [
               "refresh-groups",
@@ -230,6 +230,8 @@
               "STYLE_PREPARE_UNSUPPORTED",
               "STYLE_REQUIRED_FIELD_MISSING",
               "STYLE_ROW_INVALID",
+              "STYLE_OPTIONS_SCAN_FAILED",
+              "STYLE_OPTIONS_SCAN_UNSUPPORTED",
               "STYLE_TEMPLATE_SHEET_MISSING"
             ]
           }

@@ -7,7 +7,7 @@ thêm hoặc đổi lựa chọn.
 
 1. Mở module Catalog.
 2. Chuyển sang khu Costing.
-3. Bật `Quét lại danh sách chi phí` cạnh Thư viện Article.
+3. Bật `Quét lại chi phí` trên cùng hàng với `Clear All Dependency`.
 4. Bấm `Tải XLSX` hoặc `Import` cho Costing kế tiếp.
 5. Chờ ứng dụng quét và lưu danh sách mới.
 6. Kiểm tra công tắc đã tự tắt sau khi hoàn tất.
