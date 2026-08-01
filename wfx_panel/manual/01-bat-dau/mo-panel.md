@@ -22,11 +22,12 @@ Hai cách gọi khác:
 > chạy, bảng chờ tác vụ xong mới thu.
 
 > [!meo]
-> Đổi tổ hợp phím trong Cài đặt, thẻ Tự động hóa, dòng Hotkey mở panel.
+> Đổi tổ hợp phím trong Cài đặt, thẻ Tự động hóa, dòng `Phím tắt mở bảng điều
+> khiển`.
 
 > [!luuy]
-> Bật Mở ẩn trong tray nếu bạn muốn ứng dụng khởi động yên lặng cùng Windows và
-> chỉ hiện khi được gọi.
+> Bật `Mở ẩn trong khay hệ thống` nếu bạn muốn ứng dụng khởi động yên lặng cùng
+> Windows và chỉ hiện khi được gọi.
 
 > [!meo]
 > Bật `Luôn trên cùng` trong Cài đặt, thẻ Giao diện, nếu bạn muốn bảng điều

@@ -1,4 +1,5 @@
 import json
+import unicodedata
 
 import pytest
 
@@ -10,6 +11,11 @@ from wfx_panel.version import APP_VERSION
 def test_slugify_bo_dau_tieng_viet():
     assert manual_book.slugify("Tìm Style trên WFX") == "tim-style-tren-wfx"
     assert manual_book.slugify("Gặp lỗi thì sao?") == "gap-loi-thi-sao"
+
+
+def test_chuan_hoa_tim_kiem_bo_dau_tieng_viet():
+    assert manual_book.normalize_search_text("Tìm Style ĐÃ MỞ") == "tim style da mo"
+    assert manual_book.normalize_search_text("  Mã   lỗi  ") == "ma loi"
 
 
 def test_render_inline_escape_truoc_khi_dinh_dang():
@@ -116,6 +122,26 @@ def test_noi_dung_khong_chua_tu_cam_va_khong_bo_trong():
         assert "<" not in text, f"{path.name} có HTML thô"
 
 
+def test_noi_dung_manual_dung_chinh_ta_va_dau_tieng_viet_thong_nhat():
+    paths = [manual_book.MANUAL_DIR / "manifest.json"]
+    paths.extend(manual_book.MANUAL_DIR.rglob("*.md"))
+    nonstandard = (
+        "xoá",
+        "Xoá",
+        "huỷ",
+        "Huỷ",
+        "mã hoá",
+        "Mở ẩn trong tray",
+        "Hotkey mở panel",
+        "trình duyệt automation",
+    )
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        assert text == unicodedata.normalize("NFC", text), path
+        for phrase in nonstandard:
+            assert phrase not in text, f"{path.name} còn dùng '{phrase}'"
+
+
 def test_moi_muc_co_du_hai_phan_bat_buoc():
     for path in manual_book.MANUAL_DIR.rglob("*.md"):
         text = path.read_text(encoding="utf-8")
@@ -194,7 +220,15 @@ def test_chi_muc_tim_kiem_gom_tieu_de_tu_khoa_va_noi_dung():
     )
     assert "hotkey" in row["haystack"]
     assert "ctrl + shift + x" in row["haystack"]
+    assert "mo va dong bang dieu khien" in row["haystack"]
     assert row["haystack"] == row["haystack"].lower()
+
+
+def test_bang_ma_loi_co_chi_muc_tim_kiem_khong_dau():
+    book = manual_book.load_book()
+    row = next(item for item in book["error_table"] if item["code"] == "LOGIN_FAILED")
+
+    assert "dang nhap" in row["haystack"]
 
 
 def test_helper_trich_dung_so_luong_hien_co():
@@ -331,3 +365,15 @@ def test_huong_dan_viet_manual_liet_ke_du_tu_cam():
         assert word in text, word
     for label in manual_book.CALLOUT_LABELS.values():
         assert label in text, label
+
+
+def test_huong_dan_viet_manual_dung_khuon_va_quy_tac_chinh_ta_hien_tai():
+    root = manual_book.MANUAL_DIR.parent.parent
+    text = (root / "docs" / "MANUAL_AUTHORING.md").read_text(encoding="utf-8")
+
+    assert "## Dùng để làm gì" in text
+    assert "## Các bước" in text
+    assert "Unicode NFC" in text
+    assert "xóa, hủy, hóa" in text
+    assert "## Khi nào dùng" not in text
+    assert "## Cách làm" not in text

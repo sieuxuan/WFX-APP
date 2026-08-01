@@ -95,7 +95,7 @@ class AutomationRuntime:
             )
             # Gán thread_id ngay tại thread tạo, không chờ worker tự set: nếu
             # worker cũ kết thúc SAU khi worker mới đã set id, dòng dọn dẹp của
-            # nó sẽ xoá id của worker mới. Khi đó playwright_start() tưởng mình
+            # nó sẽ xóa id của worker mới. Khi đó playwright_start() tưởng mình
             # đang chạy ngoài worker và tự mở driver riêng — runtime mất quyền
             # sở hữu lifecycle, driver không bao giờ được stop.
             self._thread_id = self._thread.ident
@@ -124,7 +124,7 @@ class AutomationRuntime:
                     with self._state_lock:
                         self._active = False
                     self._cancel.clear()
-                    # Nhả driver/CDP trước khi mở khoá caller. Nếu báo flow đã
+                    # Nhả driver/CDP trước khi mở khóa caller. Nếu báo flow đã
                     # xong rồi mới cleanup, workflow kế tiếp có thể được xếp
                     # vào đúng lúc driver cũ còn detach và trông như không phản
                     # hồi. Result sink đã cập nhật UI ngay khi action kết thúc;

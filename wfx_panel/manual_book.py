@@ -49,18 +49,24 @@ _COVER_KEYS = ("modules", "actions", "settings", "errors")
 
 
 class ManualContentError(Exception):
-    """Nội dung manual không hợp lệ — thiếu file, sai khoá, hoặc trùng id."""
+    """Nội dung manual không hợp lệ — thiếu file, sai khóa, hoặc trùng id."""
+
+
+def normalize_search_text(text: str) -> str:
+    """Chuẩn hóa văn bản để tìm tiếng Việt có dấu hoặc không dấu như nhau."""
+    decomposed = unicodedata.normalize("NFD", str(text or ""))
+    plain = "".join(
+        char for char in decomposed if unicodedata.category(char) != "Mn"
+    )
+    plain = plain.replace("đ", "d").replace("Đ", "D")
+    return " ".join(plain.casefold().split())
 
 
 def slugify(text: str) -> str:
     """Bỏ dấu tiếng Việt và đổi thành chuỗi an toàn cho thuộc tính id."""
-    decomposed = unicodedata.normalize("NFD", text)
-    ascii_text = "".join(
-        char for char in decomposed if unicodedata.category(char) != "Mn"
-    )
-    ascii_text = ascii_text.replace("đ", "d").replace("Đ", "D")
+    ascii_text = normalize_search_text(text)
     ascii_text = re.sub(r"[^A-Za-z0-9]+", "-", ascii_text)
-    return ascii_text.strip("-").lower()
+    return ascii_text.strip("-")
 
 
 def render_inline(text: str) -> str:
@@ -221,6 +227,9 @@ def build_error_table(entries: dict) -> list[dict]:
                 "title": title,
                 "suggestion": suggestion,
                 "entry": owner.get(code),
+                "haystack": normalize_search_text(
+                    f"{code} {title} {suggestion}"
+                ),
             }
         )
     rows.sort(key=lambda row: row["code"])
@@ -231,7 +240,7 @@ def build_search_index(entries: dict) -> list[dict]:
     index = []
     for entry_id in entries:
         entry = entries[entry_id]
-        haystack = " ".join(
+        haystack = normalize_search_text(" ".join(
             [
                 entry["title"],
                 entry["chapter_title"],
@@ -240,7 +249,7 @@ def build_search_index(entries: dict) -> list[dict]:
                 " ".join(entry["covers"]["errors"]),
                 entry["text"],
             ]
-        ).lower()
+        ))
         index.append(
             {
                 "id": entry_id,

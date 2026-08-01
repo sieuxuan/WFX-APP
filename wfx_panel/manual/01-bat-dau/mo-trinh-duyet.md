@@ -4,7 +4,7 @@ Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công vi�
 
 ## Các bước
 
-1. Tìm dải thông báo Chưa có trình duyệt automation ở đầu bảng điều khiển.
+1. Tìm dải thông báo `Chưa có trình duyệt làm việc` ở đầu bảng điều khiển.
 2. Bấm `Mở trình duyệt`.
 3. Chờ Chrome, Edge, Brave hoặc Chromium mở ra.
 4. Đăng nhập WFX nếu trình duyệt yêu cầu.

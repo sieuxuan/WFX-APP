@@ -65,7 +65,7 @@ def open_module(
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
-            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+            return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
         browser, page = _connect_to_chrome(playwright)
@@ -399,7 +399,7 @@ def open_module_with_floating_filter(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -452,7 +452,7 @@ def open_sale_asn_new(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -905,7 +905,7 @@ def _search_module_fields(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -1064,7 +1064,7 @@ def _search_module_list(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -1468,7 +1468,7 @@ def find_sample_file_results(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -1536,7 +1536,7 @@ def open_sample_file_result(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -1725,7 +1725,7 @@ def open_module_new(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -1771,7 +1771,7 @@ def open_sample_new(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -1994,7 +1994,7 @@ def toggle_company_foc(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )

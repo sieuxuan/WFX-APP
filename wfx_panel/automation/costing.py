@@ -4219,7 +4219,7 @@ def apply_costing_plan(
     if validation_error is not None:
         return validation_error
     if not _chrome_is_ready():
-        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
@@ -4431,7 +4431,7 @@ def scan_open_costing(
             "Hãy tìm và mở một Style Code trước.",
         )
     if not _chrome_is_ready():
-        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
@@ -4470,7 +4470,7 @@ def scan_active_open_costing(
 ) -> dict[str, Any]:
     """Quét đúng tab Costing đang hiển thị, không tìm Style hoặc đổi tab."""
     if not _chrome_is_ready():
-        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
     playwright: Playwright | None = None
     article_code = ""
     try:
@@ -4525,7 +4525,7 @@ def clear_active_costing_dependencies(
 ) -> dict[str, Any]:
     """Bấm mọi Clear Dependency của đúng tab Costing đang chọn rồi Save."""
     if not _chrome_is_ready():
-        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
     playwright: Playwright | None = None
     article_code = ""
     try:
@@ -4616,7 +4616,7 @@ def inspect_active_costing(
 ) -> dict[str, Any]:
     """Đọc nhanh Style Code/status của tab Costing hiện tại, không inventory."""
     if not _chrome_is_ready():
-        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
     playwright: Playwright | None = None
     article_code = ""
     try:

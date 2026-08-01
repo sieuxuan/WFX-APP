@@ -21,7 +21,7 @@ WFX.
 > bảo đảm lấy đúng OC cần sửa.
 
 > [!luuy]
-> Không xoá hoặc đổi các cột nhận dạng OC gốc. WFX cần các cột này để biết OC
+> Không xóa hoặc đổi các cột nhận dạng OC gốc. WFX cần các cột này để biết OC
 > nào sẽ được cập nhật.
 
 ## Gặp lỗi thì sao
@@ -30,4 +30,4 @@ WFX.
 |---|---|
 | Báo cáo chưa mở | Chờ khu Reporting & Analytic tải xong rồi bấm `Mở report` lại. |
 | File thiếu thông tin OC gốc | Xuất lại báo cáo WFX và sửa trên file mới. |
-| Review không đúng OC | Bấm `Huỷ`, kiểm tra file rồi chọn lại đúng bản Revise. |
+| Review không đúng OC | Bấm `Hủy`, kiểm tra file rồi chọn lại đúng bản Revise. |

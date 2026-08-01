@@ -369,7 +369,7 @@ def open_supplier_category(
         )
     except RuntimeError as exc:
         code = str(exc)
-        message = "Chrome automation chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        message = "Trình duyệt làm việc chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
         return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         message = f"Supplier chưa sẵn sàng: {_first_line(exc)}"
@@ -684,7 +684,7 @@ def find_supplier_across_categories(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -764,7 +764,7 @@ def find_supplier_in_category(
     except RuntimeError as exc:
         code = str(exc)
         message = (
-            "Chrome automation chưa được mở."
+            "Trình duyệt làm việc chưa được mở."
             if code == "CHROME_CLOSED"
             else "Phiên chưa đăng nhập hoặc đã hết hạn."
         )
@@ -952,7 +952,7 @@ def find_and_open_buyer(
         )
     except RuntimeError as exc:
         code = str(exc)
-        message = "Chrome automation chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        message = "Trình duyệt làm việc chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
         return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         return _result(False, "BUYER_SEARCH_NOT_READY", _first_line(exc))

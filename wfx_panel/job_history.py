@@ -230,8 +230,8 @@ def clear(base_dir: Path) -> None:
                 try:
                     item.unlink()
                 except OSError:
-                    # Một ảnh đang bị giữ không được chặn việc xoá các ảnh còn
-                    # lại; nút "Xoá lịch sử" phải luôn hoàn tất.
+                    # Một ảnh đang bị giữ không được chặn việc xóa các ảnh còn
+                    # lại; nút "Xóa lịch sử" phải luôn hoàn tất.
                     continue
         try:
             shots.rmdir()

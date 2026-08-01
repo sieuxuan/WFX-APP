@@ -6,7 +6,7 @@ khi lưu.
 ## Các bước
 
 1. Hoàn tất bước Import để có bản xem trước.
-2. Đọc số dòng thêm mới, cập nhật và xoá trong bản xem trước.
+2. Đọc số dòng thêm mới, cập nhật và xóa trong bản xem trước.
 3. Bấm `Áp dụng & Save`.
 4. Chờ ứng dụng điền dữ liệu và lưu Costing.
 5. Chờ dòng trạng thái xác nhận các giá trị đã được đọc lại.
@@ -18,11 +18,11 @@ khi lưu.
 > để ứng dụng kiểm tra Costing hiện tại.
 
 > [!meo]
-> Bấm nút dấu nhân trên bản xem trước nếu bạn muốn huỷ và chọn file khác.
+> Bấm nút dấu nhân trên bản xem trước nếu bạn muốn hủy và chọn file khác.
 
 > [!luuy]
 > Ô để trống nghĩa là giữ nguyên giá trị đang có. Ghi `__CLEAR__` khi bạn thật
-> sự muốn xoá giá trị. Cột Action để trống nghĩa là thêm mới hoặc cập nhật.
+> sự muốn xóa giá trị. Cột Action để trống nghĩa là thêm mới hoặc cập nhật.
 
 ## Gặp lỗi thì sao
 

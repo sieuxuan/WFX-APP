@@ -40,7 +40,7 @@
           "title": "Khởi động cùng Windows",
           "summary": "Để ứng dụng sẵn sàng ngay khi bật máy.",
           "file": "01-bat-dau/khoi-dong-cung-windows.md",
-          "keywords": ["tự khởi động", "tray", "ẩn"],
+          "keywords": ["tự khởi động", "khay hệ thống", "ẩn"],
           "covers": {
             "settings": ["autostart-input", "start-hidden-input"]
           }
@@ -89,7 +89,7 @@
           "title": "Dừng một tác vụ đang chạy",
           "summary": "Dừng an toàn mà không làm hỏng dữ liệu đang ghi.",
           "file": "02-hang-ngay/dung-tac-vu.md",
-          "keywords": ["stop", "dừng", "huỷ"],
+          "keywords": ["stop", "dừng", "hủy"],
           "covers": {}
         },
         {
@@ -266,10 +266,10 @@
         },
         {
           "id": "costing-xoa-phu-thuoc",
-          "title": "Xoá toàn bộ phụ thuộc",
-          "summary": "Xoá các liên kết màu và cỡ trong Costing đang mở.",
+          "title": "Xóa toàn bộ phụ thuộc",
+          "summary": "Xóa các liên kết màu và cỡ trong Costing đang mở.",
           "file": "04-costing/xoa-phu-thuoc.md",
-          "keywords": ["clear all dependency", "xoá phụ thuộc"],
+          "keywords": ["clear all dependency", "xóa phụ thuộc"],
           "covers": {
             "actions": ["clear-dependencies"],
             "errors": [

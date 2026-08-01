@@ -1,4 +1,4 @@
-"""Mã hoá mật khẩu at-rest bằng Windows DPAPI (CryptProtectData).
+"""Mã hóa mật khẩu at-rest bằng Windows DPAPI (CryptProtectData).
 
 Không thêm phụ thuộc pywin32 — gọi thẳng ``crypt32.dll`` qua ctypes. Blob DPAPI
 gắn với tài khoản Windows hiện tại: chỉ đúng user đó, trên đúng máy đó, mới giải
@@ -47,7 +47,7 @@ def is_protected(token: object) -> bool:
 
 
 def protect(plaintext: str) -> str | None:
-    """Mã hoá bằng DPAPI; trả token ``dpapi:v1:<base64>`` hoặc None nếu không thể."""
+    """Mã hóa bằng DPAPI; trả token ``dpapi:v1:<base64>`` hoặc None nếu không thể."""
     if not _available() or not plaintext:
         return None
     try:

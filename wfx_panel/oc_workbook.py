@@ -1,4 +1,4 @@
-"""Chuẩn hoá và kiểm tra workbook Upload OC trước khi gửi sang WFX EDI."""
+"""Chuẩn hóa và kiểm tra workbook Upload OC trước khi gửi sang WFX EDI."""
 
 from __future__ import annotations
 

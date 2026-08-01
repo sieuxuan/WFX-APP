@@ -3,7 +3,7 @@
 Trước đây mỗi module tự viết lại cùng một đoạn write-temp-rồi-replace, với năm
 cách đặt tên temp khác nhau (``prefs.json.tmp``, ``jobs.tmp``,
 ``telemetry-outbox.json.tmp``, ``Preferences.tmp``). Sự phân tán đó chính là lý
-do một biến thể dùng tên ``.tmp`` cố định KHÔNG có khoá tồn tại lâu mà không ai
+do một biến thể dùng tên ``.tmp`` cố định KHÔNG có khóa tồn tại lâu mà không ai
 thấy: hai thread cùng ghi thì bên replace() sau gặp FileNotFoundError/
 PermissionError vì temp đã bị bên kia move đi.
 

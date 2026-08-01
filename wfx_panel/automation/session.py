@@ -191,7 +191,7 @@ def get_division_state(
         return _result(
             False,
             "CHROME_CLOSED",
-            "Chrome automation chưa được mở.",
+            "Trình duyệt làm việc chưa được mở.",
             **_division_state_for_page_placeholder(),
         )
     playwright: Playwright | None = None
@@ -257,7 +257,7 @@ def switch_division(
         return _result(
             False,
             "CHROME_CLOSED",
-            "Chrome automation chưa được mở.",
+            "Trình duyệt làm việc chưa được mở.",
             **_division_state_for_page_placeholder(),
         )
 
@@ -369,7 +369,7 @@ def switch_division(
 def check_session(log: Callable[[str], None] = print) -> dict[str, Any]:
     """Kiểm tra Chrome hiện tại mà không điều hướng hoặc login lại."""
     if not _chrome_is_ready():
-        return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
@@ -408,7 +408,7 @@ def check_module_access(
         return _result(
             False,
             "CHROME_CLOSED",
-            "Chrome automation chưa được mở.",
+            "Trình duyệt làm việc chưa được mở.",
             accessible_module_ids=[],
         )
     playwright: Playwright | None = None

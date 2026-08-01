@@ -18,7 +18,7 @@ from wfx_panel import constants
 class ModuleController:
     module_id: ClassVar[str]
     kind: ClassVar[str] = "generic"
-    description: ClassVar[str] = "Mở màn hình WFX trong trình duyệt automation."
+    description: ClassVar[str] = "Mở màn hình WFX trong trình duyệt làm việc."
 
     @property
     def spec(self) -> dict[str, Any]:

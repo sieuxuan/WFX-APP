@@ -221,7 +221,7 @@ NON_REPORTABLE_FAILURES = frozenset(
 # Failed Record để người dùng tự sửa đúng Mapping/Doc No. trong Lịch sử tác vụ.
 DIAGNOSTIC_FAILURES = frozenset({"OC_EDI_VALIDATION_FAILED"})
 
-# Các flow này điều hướng tab WFX chính ra khỏi Catalog. Xoá dấu "Master đã
+# Các flow này điều hướng tab WFX chính ra khỏi Catalog. Xóa dấu "Master đã
 # chuẩn bị" ngay khi flow thành công để lần Search Catalog kế tiếp tự mở đúng
 # List, thay vì thử dùng một grid cũ không còn tồn tại.
 CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
@@ -273,9 +273,9 @@ class PanelAPI:
         # session. Trả về ngay thay vì xếp hàng khiến WebView trông bị treo.
         # RLock chứ không phải Lock: các thao tác Costing là composite gồm NHIỀU
         # _run liên tiếp (mở Costing rồi export/dry-run/apply). Với Lock thường,
-        # cách duy nhất để chúng chạy được là nhả khoá giữa các bước — và đúng
+        # cách duy nhất để chúng chạy được là nhả khóa giữa các bước — và đúng
         # khe hở đó cho phép flow khác đổi module/Division khiến bước sau thao
-        # tác nhầm màn hình. run_composite() giữ khoá xuyên suốt, các _run lồng
+        # tác nhầm màn hình. run_composite() giữ khóa xuyên suốt, các _run lồng
         # bên trong tái nhập trên cùng thread.
         self._run_lock = threading.RLock()
         # Không dùng RLock.locked() cho is_action_running(): API đó chỉ có từ
@@ -285,7 +285,7 @@ class PanelAPI:
         # Toàn bộ state + logic Catalog (kết quả tìm, category đã chuẩn bị, cache
         # cây folder) sống trong controller riêng để bridge không phình to.
         self._catalog = CatalogController(self)
-        # Workbook đã chuẩn hoá chỉ sống từ bước Review đến Confirm/Cancel.
+        # Workbook đã chuẩn hóa chỉ sống từ bước Review đến Confirm/Cancel.
         # Token ngẫu nhiên ngăn UI cũ hoặc click lặp upload nhầm review khác.
         self._oc_upload_reviews: dict[str, dict] = {}
         # Hai report Sale ASN được ghép trong file tạm trước khi UI
@@ -640,7 +640,7 @@ class PanelAPI:
             f"({int(elapsed * 1000)} ms)"
         )
         self._current_run_id = None
-        # Lịch sử và telemetry là phụ trợ. Ổ đĩa đầy, file jobs.json bị khoá
+        # Lịch sử và telemetry là phụ trợ. Ổ đĩa đầy, file jobs.json bị khóa
         # hoặc payload không serialize được KHÔNG được biến một flow đã chạy
         # xong thành exception bay ra bridge pywebview — khi đó UI mất kết quả
         # và các nút workflow đứng ở trạng thái busy vĩnh viễn.
@@ -1027,7 +1027,7 @@ class PanelAPI:
                 return {
                     "ok": False,
                     "code": "SALE_ASN_DOCUMENTS_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ tải Documents Sale ASN.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ tải Documents Sale ASN.",
                 }
             return preparer(
                 sale_asn["xpath"],
@@ -1081,7 +1081,7 @@ class PanelAPI:
         return {
             "ok": True,
             "code": "SALE_ASN_DOCUMENTS_CANCELLED",
-            "message": "Đã huỷ lưu Documents Sale ASN.",
+            "message": "Đã hủy lưu Documents Sale ASN.",
         }
 
     def save_sale_asn_documents(
@@ -1117,7 +1117,7 @@ class PanelAPI:
                 return {
                     "ok": False,
                     "code": "SALE_ASN_DOCUMENTS_EXPIRED",
-                    "message": "File Sale ASN tạm đã bị xoá; hãy tải lại.",
+                    "message": "File Sale ASN tạm đã bị xóa; hãy tải lại.",
                 }
             staging: Path | None = None
             try:
@@ -1228,7 +1228,7 @@ class PanelAPI:
                 return {
                     "ok": False,
                     "code": "COMPANY_FOC_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ đổi FOC.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ đổi FOC.",
                 }
             return toggler(company["xpath"], self._log)
 
@@ -1337,7 +1337,7 @@ class PanelAPI:
                 return {
                     "ok": False,
                     "code": "DIVISION_CHANGE_UNSUPPORTED",
-                    "message": "Bản automation chưa hỗ trợ đổi Division.",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ đổi Division.",
                 }
             result = self._login.switch_division(division_key, self._log)
             return self._with_admin_access(result)
@@ -1541,7 +1541,7 @@ class PanelAPI:
             return {
                 "ok": True,
                 "code": "OC_UPLOAD_REVIEW_CANCELLED",
-                "message": "Đã huỷ Upload OC; WFX chưa nhận dữ liệu.",
+                "message": "Đã hủy Upload OC; WFX chưa nhận dữ liệu.",
             }
 
         return self._run("cancel_oc_upload_review", action)

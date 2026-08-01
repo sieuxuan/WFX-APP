@@ -9,7 +9,7 @@ khi WFX có thay đổi.
 2. Bấm nút biểu tượng nhỏ cạnh `Mở Catalog`.
 3. Chọn vị trí Apparel bạn muốn dùng mặc định.
 4. Bấm nút xác nhận trong hộp chọn.
-5. Bấm `Quét lại folder Catalog` khi bạn cần đọc lại danh sách thư mục từ WFX.
+5. Bấm `Quét lại thư mục Catalog` khi bạn cần đọc lại danh sách thư mục từ WFX.
 
 ## Mẹo
 
@@ -20,5 +20,5 @@ khi WFX có thay đổi.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Không thấy thư mục cần chọn | Bấm `Quét lại folder Catalog`, chờ danh sách tải xong rồi mở lại hộp chọn. |
+| Không thấy thư mục cần chọn | Bấm `Quét lại thư mục Catalog`, chờ danh sách tải xong rồi mở lại hộp chọn. |
 | Mở thư mục quá lâu | Kiểm tra phiên WFX còn kết nối rồi thử lại. |

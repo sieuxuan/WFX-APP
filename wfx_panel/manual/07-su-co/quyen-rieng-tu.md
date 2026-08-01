@@ -25,5 +25,5 @@ giữ riêng trên máy.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Đã nhập thông tin bí mật trong mô tả | Xoá thông tin đó trước khi bấm `Gửi`. |
+| Đã nhập thông tin bí mật trong mô tả | Xóa thông tin đó trước khi bấm `Gửi`. |
 | Không muốn gửi chẩn đoán | Bỏ chọn `Đính kèm chẩn đoán an toàn`. |

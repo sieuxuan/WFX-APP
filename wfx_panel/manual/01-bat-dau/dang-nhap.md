@@ -18,7 +18,7 @@ phải nhập lại mỗi ngày.
 > phút khi trình duyệt đang rảnh. Bạn gần như không bao giờ phải nhập lại.
 
 > [!luuy]
-> Mật khẩu được mã hoá và lưu riêng trên máy này, không hiển thị lại và không
+> Mật khẩu được mã hóa và lưu riêng trên máy này, không hiển thị lại và không
 > được gửi đi đâu.
 
 ## Gặp lỗi thì sao

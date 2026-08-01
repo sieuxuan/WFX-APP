@@ -134,7 +134,7 @@
     retry_job: "Đang chạy lại tác vụ…",
     open_module: "Đang mở module trên WFX…",
     prepare_catalog: "Đang chuẩn bị Catalog…",
-    scan_catalog_folders: "Đang quét folder Catalog…",
+    scan_catalog_folders: "Đang quét thư mục Catalog…",
     browse_catalog: "Đang mở vị trí Catalog…",
     catalog_action: "Đang tìm và mở dữ liệu Catalog…",
     find_code: "Đang tìm Article Code…",
@@ -180,7 +180,7 @@
     open_module: "Mở module",
     prepare_catalog: "Chuẩn bị Catalog",
     browse_catalog: "Mở vị trí Catalog",
-    scan_catalog_folders: "Quét folder Catalog",
+    scan_catalog_folders: "Quét thư mục Catalog",
     catalog_action: "Tìm Catalog",
     find_code: "Tìm Article Code",
     find_buyer_reference: "Tìm Buyer Reference",
@@ -199,7 +199,7 @@
     upload_oc: "Upload OC",
     review_oc_upload: "Review Upload OC",
     confirm_oc_upload: "Xác nhận Upload OC",
-    cancel_oc_upload_review: "Huỷ Upload OC",
+    cancel_oc_upload_review: "Hủy Upload OC",
     search_sample: "Tìm Sample",
     check_sample_files: "Check File Sample",
     open_sample_file_choice: "Mở file Sample",
@@ -450,7 +450,7 @@
     const health = $(".health-chrome");
     if (health) {
       health.dataset.state = alive ? "ok" : "bad";
-      health.title = alive ? `${name || "Chromium"} automation` : "Chưa kết nối trình duyệt automation";
+      health.title = alive ? `${name || "Chromium"} · trình duyệt làm việc` : "Chưa kết nối trình duyệt làm việc";
     }
     const banner = $(".browser-banner");
     if (banner) {
@@ -1797,7 +1797,7 @@
       $(".catalog-folder-list").setAttribute("aria-busy", "false");
       setStatus(
         "error",
-        result?.message || "Chưa tải được folder Catalog.",
+        result?.message || "Chưa tải được thư mục Catalog.",
       );
       syncCatalogStepButtons();
     }
@@ -3016,8 +3016,8 @@
         button.disabled = false;
       }
     });
-    // Xóa lịch sử xoá luôn ảnh lỗi — yêu cầu bấm xác nhận hai bước để tránh mất
-    // bằng chứng do lỡ tay. Bấm lần đầu hỏi lại, tự huỷ sau 4 giây.
+    // Xóa lịch sử xóa luôn ảnh lỗi — yêu cầu bấm xác nhận hai bước để tránh mất
+    // bằng chứng do lỡ tay. Bấm lần đầu hỏi lại, tự hủy sau 4 giây.
     let clearHistoryArmed = null;
     $(".clear-history-button").addEventListener("click", async (event) => {
       const button = event.currentTarget;

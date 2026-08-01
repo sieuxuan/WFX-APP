@@ -1083,7 +1083,7 @@ def open_catalog_destination(
         return _result(
             False,
             "CHROME_CLOSED",
-            "Chrome automation chưa được mở.",
+            "Trình duyệt làm việc chưa được mở.",
         )
 
     playwright: Playwright | None = None
@@ -1572,7 +1572,7 @@ def scan_catalog_files(
         return _result(
             False,
             "CHROME_CLOSED",
-            "Chrome automation chưa được mở.",
+            "Trình duyệt làm việc chưa được mở.",
         )
 
     playwright: Playwright | None = None
@@ -1794,7 +1794,7 @@ def download_catalog_file(
         return _result(
             False,
             "CHROME_CLOSED",
-            "Chrome automation chưa được mở.",
+            "Trình duyệt làm việc chưa được mở.",
         )
 
     playwright: Playwright | None = None
@@ -1873,7 +1873,7 @@ def _find_in_open_catalog(
         return _result(
             False,
             "CHROME_CLOSED",
-            "Chrome automation chưa được mở.",
+            "Trình duyệt làm việc chưa được mở.",
         )
 
     playwright: Playwright | None = None
@@ -2043,7 +2043,7 @@ def prepare_catalog_master(
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
-            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+            return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
@@ -2102,7 +2102,7 @@ def scan_catalog_folders(
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
-            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+            return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
@@ -2173,7 +2173,7 @@ def open_catalog_folder(
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
-            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+            return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
@@ -2248,7 +2248,7 @@ def open_catalog_folder(
             folder=folder,
         )
     except PlaywrightTimeoutError as exc:
-        message = f"Không mở được folder Catalog: {_first_line(exc)}"
+        message = f"Không mở được thư mục Catalog: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "CATALOG_FOLDER_OPEN_TIMEOUT", message)
     except Exception as exc:
@@ -2384,7 +2384,7 @@ def set_catalog_category(
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
-            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+            return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
@@ -2464,7 +2464,7 @@ def open_catalog_master(log: Callable[[str], None] = print) -> dict[str, Any]:
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
-            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+            return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
@@ -2511,7 +2511,7 @@ def filter_and_open_catalog_code(
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
-            return _result(False, "CHROME_CLOSED", "Chrome automation chưa được mở.")
+            return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
         _attach_dialog_handler(page, log)

@@ -14,7 +14,7 @@ nhờ hỗ trợ.
 ## Mẹo
 
 > [!meo]
-> Lịch sử tác vụ được giữ trong bảy ngày rồi tự xoá.
+> Lịch sử tác vụ được giữ trong bảy ngày rồi tự xóa.
 
 > [!meo]
 > Log chỉ tự cuộn khi bạn đang ở gần cuối và không bôi đen nội dung.
