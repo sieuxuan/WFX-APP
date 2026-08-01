@@ -1709,14 +1709,26 @@ class PanelAPI:
         return self._catalog.sync_article_library()
 
     def sync_reference_data(self, force: bool = True) -> dict:
-        return self._run(
-            "sync_reference_data",
-            lambda: reference_sync.sync_latest(
-                self._base_dir,
-                self._log,
-                force=bool(force),
-            ),
-            {"force": bool(force)},
+        """Tải snapshot tham chiếu; chạy NGOÀI `_run()` như sync_article_library.
+
+        Đây là một lời gọi HTTP thuần, không đụng Playwright/Chrome, nhưng
+        `_run()` giữ `_run_lock` và chiếm luôn automation worker suốt cả
+        `REQUEST_TIMEOUT_SECONDS`. Hệ quả khi bọc nó vào `_run()`:
+
+        - vòng lặp nền mỗi giờ khóa mọi thao tác của người dùng tới 60 giây và
+          UI chỉ trả `ACTION_IN_PROGRESS` dù người dùng không chạy gì;
+        - ngược lại lúc khởi động, auto-login đang giữ lock nên chính lượt sync
+          bị bỏ qua và không thử lại suốt một tiếng;
+        - mỗi lượt còn đẩy một dòng nền vào `job_history`, làm loãng trần 200
+          dòng dành cho job thật.
+
+        Không cần khóa riêng: hai lượt sync chồng nhau chỉ tải trùng, vì cache
+        được ghi bằng `write_json_atomic` và nội dung là idempotent.
+        """
+        return reference_sync.sync_latest(
+            self._base_dir,
+            self._log,
+            force=bool(force),
         )
 
     def save_sync_admin_key(self, admin_key: str) -> dict:

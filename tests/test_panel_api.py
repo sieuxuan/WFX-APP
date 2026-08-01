@@ -2573,3 +2573,94 @@ def test_run_composite_rejects_when_another_thread_holds_the_lock(tmp_path):
         holder.join(timeout=5)
 
     assert outcome["code"] == "ACTION_IN_PROGRESS"
+
+
+def test_reference_sync_runs_without_taking_the_automation_lock(tmp_path, monkeypatch):
+    """Sync tham chiếu là HTTP thuần, không được chen vào hàng đợi automation.
+
+    Bọc nó trong `_run()` khiến vòng lặp nền mỗi giờ khoá mọi thao tác của
+    người dùng suốt cả timeout mạng, còn lúc khởi động thì auto-login giữ lock
+    nên chính lượt sync bị bỏ qua cả tiếng.
+    """
+    from wfx_panel import reference_sync
+
+    api, _fake = make_api(tmp_path)
+    monkeypatch.setattr(
+        reference_sync,
+        "sync_latest",
+        lambda base_dir, log, force=False: {
+            "ok": True,
+            "code": "REFERENCE_SYNC_UPDATED",
+            "message": "đã đồng bộ",
+            "force": force,
+        },
+    )
+
+    holding = threading.Event()
+    release = threading.Event()
+
+    def hold_lock():
+        api._run_lock.acquire()
+        holding.set()
+        release.wait(timeout=5)
+        api._run_lock.release()
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    try:
+        assert holding.wait(timeout=2)
+        # Một workflow khác đang giữ lock: sync vẫn phải chạy bình thường.
+        result = api.sync_reference_data(False)
+    finally:
+        release.set()
+        holder.join(timeout=5)
+
+    assert result["code"] == "REFERENCE_SYNC_UPDATED"
+    assert result["force"] is False
+
+
+def test_reference_sync_does_not_pollute_the_job_history(tmp_path, monkeypatch):
+    """Trần lịch sử 200 dòng phải dành cho job thật, không cho ~24 lượt sync/ngày."""
+    from wfx_panel import job_history, reference_sync
+
+    api, _fake = make_api(tmp_path)
+    monkeypatch.setattr(
+        reference_sync,
+        "sync_latest",
+        lambda base_dir, log, force=False: {
+            "ok": True,
+            "code": "REFERENCE_SYNC_UPDATED",
+            "message": "đã đồng bộ",
+        },
+    )
+
+    api.sync_reference_data(False)
+
+    assert job_history.list_jobs(tmp_path) == []
+
+
+def test_user_actions_stay_available_while_reference_sync_is_in_flight(tmp_path, monkeypatch):
+    """Lượt sync nền chậm không được biến cú bấm của user thành ACTION_IN_PROGRESS."""
+    from wfx_panel import reference_sync
+
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api, _fake = make_api(tmp_path)
+    started = threading.Event()
+    finish = threading.Event()
+
+    def slow_sync(base_dir, log, force=False):
+        started.set()
+        finish.wait(timeout=5)
+        return {"ok": True, "code": "REFERENCE_SYNC_UPDATED", "message": "xong"}
+
+    monkeypatch.setattr(reference_sync, "sync_latest", slow_sync)
+    syncer = threading.Thread(target=lambda: api.sync_reference_data(False))
+    syncer.start()
+    try:
+        assert started.wait(timeout=2)
+        during = api.prepare_catalog("Apparel")
+    finally:
+        finish.set()
+        syncer.join(timeout=5)
+
+    assert during["code"] != "ACTION_IN_PROGRESS"

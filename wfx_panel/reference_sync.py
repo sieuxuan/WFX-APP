@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from wfx_panel import article_library, prefs, style_options
@@ -32,6 +32,21 @@ ENV_READ_URL = "WFX_SYNC_READ_URL"
 ENV_PUBLISH_URL = "WFX_SYNC_PUBLISH_URL"
 ENV_COMPANY_ID = "WFX_SYNC_COMPANY_ID"
 ENV_DIVISION_KEY = "WFX_SYNC_DIVISION_KEY"
+
+
+def _safe_https_url(value: str) -> str:
+    """Chỉ cho phép HTTPS, giống article_library và style_options.
+
+    Hai URL này đến từ env hoặc `sync-config.json` rồi đi thẳng vào
+    ``urlopen``. Không kiểm scheme thì một cấu hình nhầm ``http://`` đủ để đẩy
+    read key và admin key qua mạng dưới dạng rõ, còn ``file://`` biến chính
+    ``_request_json`` thành trình đọc file cục bộ.
+    """
+    url = str(value or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme.casefold() != "https" or not parsed.hostname:
+        raise ValueError("Địa chỉ máy chủ đồng bộ phải là HTTPS.")
+    return url
 
 
 def _state_path(base_dir: Path) -> Path:
@@ -158,15 +173,18 @@ def sync_latest(
     version = str(state.get("version") or "").strip()
     if version:
         query["client_version"] = version
-    request = Request(
-        f"{config['read_url']}?{urlencode(query)}",
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "WFX-Smart-Reference-Sync/1",
-            "x-wfx-read-key": config["read_key"],
-        },
-    )
     try:
+        # Dựng Request bên trong try: read key nằm trong header nên URL phải
+        # được xác thực HTTPS trước khi có bất kỳ lời gọi mạng nào, và lỗi cấu
+        # hình phải trả về kết quả thân thiện thay vì ném ra bridge.
+        request = Request(
+            f"{_safe_https_url(config['read_url'])}?{urlencode(query)}",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "WFX-Smart-Reference-Sync/1",
+                "x-wfx-read-key": config["read_key"],
+            },
+        )
         response = _request_json(request)
         if not response.get("ok"):
             raise ValueError(str(response.get("message") or "Server chưa có dữ liệu."))
@@ -302,7 +320,7 @@ def publish_current(
             separators=(",", ":"),
         ).encode("utf-8")
         request = Request(
-            config["publish_url"],
+            _safe_https_url(config["publish_url"]),
             data=body,
             method="POST",
             headers={

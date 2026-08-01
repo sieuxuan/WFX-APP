@@ -163,6 +163,13 @@ Mỗi nút trong module là một flow riêng:
    nối. Không dùng object Playwright sync từ thread khác.
 8. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
    không thêm cơ chế terminate/close page từ thread UI.
+9. Chỉ tác vụ thật sự chạm Playwright/Chrome mới được bọc `_run()`. Các lời gọi
+   HTTP thuần như `sync_reference_data`/`sync_article_library` phải chạy ngoài
+   `_run()`: `_run()` giữ `_run_lock` và chiếm automation worker suốt cả timeout
+   mạng, nên vòng lặp nền sẽ trả `ACTION_IN_PROGRESS` cho mọi cú bấm của người
+   dùng, còn ở lúc khởi động thì auto-login giữ lock khiến chính lượt sync bị bỏ
+   qua tới lần poll sau. Chúng cũng không được đẩy dòng nền vào `job_history`,
+   vì trần 200 dòng phải dành cho job thật.
 
 ### Giới hạn bộ nhớ
 
@@ -419,6 +426,11 @@ Các workflow riêng hiện có:
 - Pytest phải có autouse fixture tắt `DEFAULT_WEBHOOK_URL` và xoá override
   environment. Test giao nhận chỉ được bật endpoint giả; không test nào được
   phép gọi webhook production.
+- Mọi URL máy chủ do cấu hình cung cấp (`article_library`, `style_options`,
+  `reference_sync`) phải qua kiểm tra scheme HTTPS + có hostname trước khi gọi
+  `urlopen`. Read key và admin key nằm trong header nên một cấu hình nhầm
+  `http://` đủ để đẩy chúng qua mạng dưới dạng rõ, còn `file://` biến chính hàm
+  đọc JSON thành trình đọc file cục bộ.
 - Không gửi password, cookie, SessionID, LoginID, URL WFX đầy đủ hoặc nội dung
   tìm kiếm. Mọi mô tả lỗi phải qua `redact_telemetry_text`.
 - Lỗi nhập liệu/trình tự như thiếu query, chưa mở List, không có kết quả hoặc
