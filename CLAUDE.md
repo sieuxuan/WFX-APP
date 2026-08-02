@@ -395,6 +395,17 @@ Các workflow riêng hiện có:
   List và Buyer Invoice bằng Report Viewer `EXCELOPENXML`, ghép thành một
   workbook gồm hai sheet `Packing List`/`Buyer Invoice`, giữ nguyên format report
   nguồn, sau đó mới mở Save As với tên mặc định là Invoice No. thực tế.
+- `(GDN) Dispatch`: UI phải cảnh báo và bắt user xác nhận GRN nhập kho thành
+  phẩm đã hoàn tất ít nhất 15 phút trước khi Submit. Flow nhận một Invoice GRN,
+  mở report `BuyerDispatchOrder_Invoice`, điền `Doc No.`, chờ report load thật,
+  export Excel Open XML rồi reload/save lại thành XLSX. Sau đó mở EDI Production
+  Order, chọn `PackageType=Import` và package
+  `DecisionOne_BuyerOrderDispatch`, upload và `Process Package`. Chỉ chọn dòng
+  package MỚI của lượt chạy hiện tại có `Transaction Detail=Pending`; nếu dòng
+  đầu đang `InProgress` phải bỏ qua và chọn Pending mới nhất theo `Processed ON`.
+  `Create Transaction` là ranh giới không idempotent: sau khi click không tự
+  retry, phải chờ WFX xác nhận thành công/lỗi; nếu mất xác nhận trả mã
+  `GDN_TRANSACTION_UNCONFIRMED` và hướng dẫn kiểm tra WFX để tránh tạo trùng.
 - Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
 - Buyer List: tự mở đúng Buyer List khi cần rồi mở Edit đầu tiên.
 - Company Setup: Đổi FOC tự mở đúng List nếu cần, mở Miscellaneous Settings rồi

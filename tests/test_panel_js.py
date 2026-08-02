@@ -121,6 +121,15 @@ def test_oc_workspace_wires_template_new_and_revise_flows():
     assert 'callQuiet("cancel_oc_upload_review", result.review_token)' in JS
 
 
+def test_gdn_dispatch_requires_grn_confirmation_and_calls_one_flow():
+    assert 'id: "gdn_dispatch"' in JS
+    assert 'kind: "gdn_dispatch"' in JS
+    assert '"gdn-dispatch-submit": submitGdnDispatch' in JS
+    assert 'runSelectedModuleAction("run_gdn_dispatch", invoice, confirmed)' in JS
+    assert "syncGdnDispatchAction" in JS
+    assert 'method === "run_gdn_dispatch"' in JS
+
+
 def test_sale_asn_documents_two_phase_export_is_wired():
     for method in (
         "prepare_sale_asn_documents",
@@ -312,6 +321,10 @@ def test_special_module_workflows_are_wired():
         "search_sale_asn",
         "search_rmpo",
         "search_indent",
+        "search_supplier_invoice",
+        "search_expense_invoice",
+        "cancel_supplier_invoice",
+        "cancel_supplier_invoice_choice",
         "open_module_new",
         "open_supplier_category",
         "find_supplier",
@@ -333,6 +346,12 @@ def test_special_module_workflows_are_wired():
         "rmpo-search",
         "indent-list",
         "indent-search",
+        "supplier-invoice-list",
+        "supplier-invoice-search",
+        "supplier-invoice-cancel",
+        "expense-invoice-list",
+        "expense-invoice-new",
+        "expense-invoice-search",
         "list-new-list",
         "list-new-new",
         "supplier-open",
@@ -347,6 +366,32 @@ def test_special_module_workflows_are_wired():
     assert '"supplier-list": () => selectedModule && call("open_module"' in JS
     assert '"find_supplier_in_category"' in JS
     assert '$(".supplier-category").value' in JS
+
+
+def test_sample_uses_combined_filters_and_group_picker_is_renderable():
+    for field in (
+        "sample-no-query",
+        "sample-style-query",
+        "sample-created-by-query",
+        "sample-buyer-query",
+    ):
+        assert field in JS
+    assert "function sampleFilterValues()" in JS
+    assert "...sampleFilterValues()" in JS
+    group_start = JS.index("function renderCatalogStyleGroups()")
+    group_end = JS.index("function resetCatalogStyleReview", group_start)
+    assert "result.last_success" not in JS[group_start:group_end]
+
+
+def test_supplier_and_expense_invoice_workspaces_use_combined_filters():
+    for hook in (
+        "supplierInvoiceFilterValues",
+        "expenseInvoiceFilterValues",
+        "renderSupplierInvoiceCancelResults",
+        "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
+        "cancel_supplier_invoice_choice",
+    ):
+        assert hook in JS
 
 
 def test_catalog_actions_are_one_click_and_folder_browse_is_separate():

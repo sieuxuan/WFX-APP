@@ -8,12 +8,19 @@ Invoice.
 1. Mở QA List, Advance PR List hoặc Expense Inv List.
 2. Bấm `List` để mở danh sách tương ứng trên WFX.
 3. Bấm `New` nếu bạn muốn tạo yêu cầu hoặc hóa đơn mới.
-4. Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ.
+4. Khi tạo Advance Payment Request, ứng dụng chọn sẵn `Advance Type = Against RMPO`.
+5. Khi tạo Expense Invoice, ứng dụng chọn sẵn `Invoice Type = General Expense`.
+6. Trong Expense Inv List, nhập một hoặc nhiều điều kiện Supplier, Invoice No.,
+   Created By và Status rồi bấm `Tìm theo các điều kiện đã nhập`.
+7. Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ.
 
 ## Mẹo
 
 > [!meo]
 > Nút `New` đi thẳng tới màn hình tạo mới. Bạn không cần bấm `List` trước.
+
+> [!meo]
+> Ứng dụng chỉ báo hoàn tất sau khi WFX xác nhận giá trị mặc định đã được chọn.
 
 ## Gặp lỗi thì sao
 

@@ -108,7 +108,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260801-6"',
+        'src="panel.js?v=20260802-1"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -192,6 +192,18 @@ def test_module_detail_page_header_uses_name_and_description_only():
     page = html[html.index('class="module-page"') :]
     assert 'role="dialog"' not in page[: page.index('class="settings-overlay')]
     assert ">Operation<" not in page
+
+
+def test_gdn_dispatch_workspace_matches_existing_module_ui():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert 'data-module-view="gdn_dispatch"' in html
+    assert 'class="gdn-invoice-query"' in html
+    assert 'class="gdn-grn-confirm-input"' in html
+    assert 'data-module-action="gdn-dispatch-submit"' in html
+    assert "GRN ít nhất 15 phút" in html
+    assert ".dispatch-warning" in css
+    assert ".dispatch-submit-button" in css
 
 
 def test_bubble_page_advertises_interactions():
@@ -453,9 +465,15 @@ def test_external_notification_and_generic_svg_icon_are_present():
     assert 'class="generic-module-code"' not in html
 
 
-def test_rmpo_indent_and_list_new_workspaces_are_present():
+def test_rmpo_indent_invoice_and_list_new_workspaces_are_present():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    for view in ("rmpo", "indent", "list_new"):
+    for view in (
+        "rmpo",
+        "indent",
+        "supplier_invoice",
+        "expense_invoice",
+        "list_new",
+    ):
         assert f'data-module-view="{view}"' in html
     for hook in (
         "rmpo-supplier-query",
@@ -464,6 +482,14 @@ def test_rmpo_indent_and_list_new_workspaces_are_present():
         "indent-article-query",
         "indent-no-query",
         "indent-style-query",
+        "supplier-invoice-supplier-query",
+        "supplier-invoice-no-query",
+        "supplier-invoice-po-query",
+        "supplier-invoice-asn-grn-query",
+        'data-module-action="supplier-invoice-cancel"',
+        "expense-invoice-supplier-query",
+        "expense-invoice-created-by-query",
+        'data-module-action="expense-invoice-search"',
         'data-module-action="list-new-new"',
     ):
         assert hook in html
@@ -664,7 +690,10 @@ def test_special_module_workspaces_have_contract_hooks():
         'data-module-action="sample-new"',
         'data-module-action="sample-search"',
         'data-module-action="sample-check-file"',
-        'class="sample-query"',
+        'class="sample-no-query"',
+        'class="sample-style-query"',
+        'class="sample-created-by-query"',
+        'class="sample-buyer-query"',
         'class="sample-file-results"',
         'data-module-view="sale_asn"',
         'data-module-action="sale-asn-list"',

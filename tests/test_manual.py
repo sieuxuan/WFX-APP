@@ -232,9 +232,9 @@ def test_bang_ma_loi_co_chi_muc_tim_kiem_khong_dau():
 
 
 def test_helper_trich_dung_so_luong_hien_co():
-    assert len(surface.module_ids()) == 16
+    assert len(surface.module_ids()) == 17
     assert "0003_6200" in surface.module_ids()
-    assert len(surface.module_actions()) == 29
+    assert len(surface.module_actions()) == 36
     assert surface.catalog_actions() == {
         "browse",
         "find",
@@ -321,10 +321,15 @@ def test_nhom_don_hang_co_du_huong_dan():
     missing = {
         action
         for action in surface.module_actions()
-        if action.startswith(("oc-", "sample-", "sale-asn-"))
+        if action.startswith(("oc-", "gdn-", "sample-", "sale-asn-"))
     } - covered
     assert not missing, f"Chưa có hướng dẫn cho: {sorted(missing)}"
-    for module_id in ("0004_0050_0020", "0004_0056_4070", "0004_0070_0020"):
+    for module_id in (
+        "0004_0050_0020",
+        "gdn_dispatch",
+        "0004_0056_4070",
+        "0004_0070_0020",
+    ):
         assert module_id in surface.covered("modules"), module_id
 
 

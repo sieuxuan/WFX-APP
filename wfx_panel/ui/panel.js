@@ -6,6 +6,7 @@
       { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở/tìm OC List, tạo Upload OC New hoặc Revise OC." },
       { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
       { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tìm Sale ASN, tải bộ Documents Excel hoặc tạo ASN mới." },
+      { name: "(GDN) Dispatch", id: "gdn_dispatch", icon: "GD", kind: "gdn_dispatch", description: "Tạo GDN Dispatch từ Invoice GRN sau thời gian chờ bắt buộc." },
       { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No." },
       { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Mở Indent List hoặc lọc kết hợp theo 4 điều kiện." },
       { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "indent", description: "Mở User Indent List hoặc lọc kết hợp theo 4 điều kiện." },
@@ -13,8 +14,8 @@
     ]},
     { name: "Finance", accent: "violet", modules: [
       { name: "Advance PR List", id: "0065_0880_0010_0020", icon: "PR", kind: "list_new", description: "Mở danh sách Advance PR hoặc tạo yêu cầu mới." },
-      { name: "Supplier Inv List", id: "0065_0880_0020_0020", icon: "SI", kind: "generic", description: "Mở danh sách hóa đơn nhà cung cấp." },
-      { name: "Expense Inv List", id: "0065_0880_0030_0020", icon: "EI", kind: "list_new", description: "Mở danh sách Expense Invoice hoặc tạo hóa đơn mới." },
+      { name: "Supplier Inv List", id: "0065_0880_0020_0020", icon: "SI", kind: "supplier_invoice", description: "Mở, lọc và Cancel Supplier Invoice an toàn." },
+      { name: "Expense Inv List", id: "0065_0880_0030_0020", icon: "EI", kind: "expense_invoice", description: "Mở, lọc Expense Invoice hoặc tạo hóa đơn mới." },
     ]},
     { name: "Admin", accent: "amber", modules: [
       { name: "Org Structure", id: "0090_0001", icon: "OR", kind: "generic", description: "Mở cấu trúc tổ chức." },
@@ -129,6 +130,7 @@
     OC: '<path d="M6 3h9l3 3v15H6V3Z"/><path d="M14 3v4h4"/><path d="m9 14 2 2 4-5"/>',
     SL: '<path d="M9 3h6M10 3v6l-4 7a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 16l-4-7V3"/><path d="M7.5 15h9"/>',
     AS: '<path d="M3 6h11v11H3V6Z"/><path d="M14 10h4l3 3v4h-7v-7Z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+    GD: '<path d="M4 5h11v13H4V5Z"/><path d="M8 9h4M8 13h4"/><path d="M15 10h3l2 3v5h-5v-8Z"/><circle cx="8" cy="19" r="2"/><circle cx="17" cy="19" r="2"/>',
     RM: '<path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/><path d="m9 14 2 2 4-4"/>',
     IN: '<path d="M4 5h16v14H4V5Z"/><path d="M4 14h4l2 3h4l2-3h4"/><path d="M12 3v8m0 0-3-3m3 3 3-3"/>',
     UI: '<path d="M5 4h14v16H5V4Z"/><circle cx="9" cy="10" r="2"/><path d="M6.5 16a2.5 2.5 0 0 1 5 0M14 9h3M14 13h3"/>',
@@ -150,6 +152,7 @@
   // Ngưỡng cứu UI nếu bridge call không phản hồi. Dài hơn tổng deadline hợp lệ
   // của các automation (login + grid settle + filter + mở đích ~ trên phút).
   const CALL_WATCHDOG_MS = 180000;
+  const LONG_CALL_WATCHDOG_MS = 360000;
   let busy = false;
   let hidePanelWhenIdle = false;
   let pointerInsidePanel = false;
@@ -202,7 +205,6 @@
   let articleSuggestionGeneration = 0;
   const moduleFilterKinds = {
     oc: "oc_no",
-    sample: "sample_no",
     sale_asn: "invoice_no",
   };
   const MODULE_RUN_METHODS = new Set([
@@ -212,11 +214,14 @@
     "open_sale_asn_new", "open_sample_new", "search_oc", "search_sample",
     "check_sample_files", "open_sample_file_choice",
     "search_sale_asn", "prepare_sale_asn_documents",
-    "save_sale_asn_documents", "search_rmpo", "search_indent", "open_module_new",
+    "save_sale_asn_documents", "search_rmpo", "search_indent",
+    "search_supplier_invoice", "search_expense_invoice",
+    "cancel_supplier_invoice", "cancel_supplier_invoice_choice", "open_module_new",
     "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
     "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
+    "run_gdn_dispatch",
     "clear_catalog_costing_dependencies",
     "review_catalog_style_import", "prepare_catalog_style_row",
     "download_style_template",
@@ -224,6 +229,7 @@
   const INTERACTIVE_RESULT_CODES = new Set([
     "MULTIPLE_RESULTS",
     "SAMPLE_MULTIPLE_RESULTS",
+    "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
     "CATALOG_FILES_SCANNED",
     "COSTING_DRY_RUN_READY",
     "COSTING_ARTICLE_AMBIGUOUS",
@@ -257,6 +263,7 @@
     upload_oc: "Đang kiểm tra file và upload OC qua EDI…",
     review_oc_upload: "Đang kiểm tra file và tổng hợp review…",
     confirm_oc_upload: "Đang upload OC đã xác nhận qua EDI…",
+    run_gdn_dispatch: "Đang tạo (GDN) Dispatch trên WFX…",
     download_oc_template: "Đang tạo form Upload OC…",
     search_sample: "Đang tìm Sample…",
     check_sample_files: "Đang tìm Sample và kiểm tra file…",
@@ -266,6 +273,10 @@
     save_sale_asn_documents: "Đang lưu file Excel Sale ASN…",
     search_rmpo: "Đang lọc RMPO List…",
     search_indent: "Đang lọc Indent List…",
+    search_supplier_invoice: "Đang lọc Supplier Inv List…",
+    search_expense_invoice: "Đang lọc Expense Inv List…",
+    cancel_supplier_invoice: "Đang tìm Supplier Invoice để Cancel…",
+    cancel_supplier_invoice_choice: "Đang Cancel Supplier Invoice đã chọn…",
     open_module_new: "Đang mở màn New…",
     open_supplier_category: "Đang mở Supplier…",
     find_supplier: "Đang tìm Supplier…",
@@ -309,6 +320,7 @@
     upload_oc: "Upload OC",
     review_oc_upload: "Review Upload OC",
     confirm_oc_upload: "Xác nhận Upload OC",
+    run_gdn_dispatch: "Tạo (GDN) Dispatch",
     cancel_oc_upload_review: "Hủy Upload OC",
     search_sample: "Tìm Sample",
     check_sample_files: "Check File Sample",
@@ -318,6 +330,10 @@
     save_sale_asn_documents: "Lưu Documents Sale ASN",
     search_rmpo: "Tìm RMPO",
     search_indent: "Tìm Indent",
+    search_supplier_invoice: "Tìm Supplier Invoice",
+    search_expense_invoice: "Tìm Expense Invoice",
+    cancel_supplier_invoice: "Cancel Supplier Invoice",
+    cancel_supplier_invoice_choice: "Cancel Supplier Invoice đã chọn",
     open_module_new: "Mở màn New",
     open_supplier_category: "Mở Supplier",
     find_supplier: "Tìm Supplier",
@@ -467,6 +483,7 @@
         button.disabled = sessionActive !== true;
       });
       syncCatalogStepButtons();
+      syncGdnDispatchAction();
     }
   }
   window.wfxSetBusy = setBusy;
@@ -542,7 +559,10 @@
       const focusTarget = {
         catalog: ".catalog-query",
         oc: ".oc-query",
-        sample: ".sample-query",
+        gdn_dispatch: ".gdn-invoice-query",
+        sample: ".sample-no-query",
+        supplier_invoice: ".supplier-invoice-supplier-query",
+        expense_invoice: ".expense-invoice-supplier-query",
         sale_asn: '[data-module-action="sale-asn-list"]',
         rmpo: ".rmpo-supplier-query",
         indent: ".indent-supplier-query",
@@ -1229,6 +1249,8 @@
       else renderCatalogResults(result);
     } else if (result.code === "SAMPLE_MULTIPLE_RESULTS") {
       renderSampleFileResults(result);
+    } else if (result.code === "SUPPLIER_INVOICE_MULTIPLE_RESULTS") {
+      renderSupplierInvoiceCancelResults(result);
     }
     if (result.code === "COSTING_DRY_RUN_READY") {
       showCatalogSpace("costing", { focus: false });
@@ -1295,9 +1317,12 @@
     // không resolve), giải phóng UI thay vì để mọi nút disable vĩnh viễn ("đơ").
     // Backend vẫn giữ run lock; kết quả thật (nếu có) sẽ về sau qua result sink.
     let watchdog;
+    const watchdogMs = method === "run_gdn_dispatch"
+      ? LONG_CALL_WATCHDOG_MS
+      : CALL_WATCHDOG_MS;
     const timeout = new Promise((resolve) => {
       watchdog = window.setTimeout(
-        () => resolve({ __timeout: true }), CALL_WATCHDOG_MS
+        () => resolve({ __timeout: true }), watchdogMs
       );
     });
     try {
@@ -1367,7 +1392,10 @@
     const focusTarget = {
       catalog: ".catalog-query",
       oc: ".oc-query",
-      sample: ".sample-query",
+      gdn_dispatch: ".gdn-invoice-query",
+      sample: ".sample-no-query",
+      supplier_invoice: ".supplier-invoice-supplier-query",
+      expense_invoice: ".expense-invoice-supplier-query",
       sale_asn: '[data-module-action="sale-asn-list"]',
       rmpo: ".rmpo-supplier-query",
       indent: ".indent-supplier-query",
@@ -1378,7 +1406,13 @@
       generic: ".generic-module-open",
     }[module.kind] || ".generic-module-open";
     if (module.kind === "list_new") {
-      $(".list-new-module-label").textContent = `Mở New từ ${module.name}`;
+      const defaultLabel = {
+        "0065_0880_0010_0020": "Against RMPO",
+        "0065_0880_0030_0020": "General Expense",
+      }[module.id];
+      $(".list-new-module-label").textContent = defaultLabel
+        ? `Mở New từ ${module.name} · mặc định ${defaultLabel}`
+        : `Mở New từ ${module.name}`;
     }
     setTimeout(() => $(focusTarget)?.focus(), 0);
     if (module.kind === "catalog") {
@@ -1422,6 +1456,7 @@
     if (result && [
       "MULTIPLE_RESULTS",
       "SAMPLE_MULTIPLE_RESULTS",
+      "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
       "CATALOG_FILES_SCANNED",
     ].includes(result.code)) return;
     if (result && result.ok && returnToListAfterAction) {
@@ -1452,11 +1487,6 @@
       oc_no: "Nhập OC No.",
       style: "Nhập Style",
     },
-    sample: {
-      sample_no: "Nhập Sample Order No.",
-      style: "Nhập Style",
-      created_by: "Nhập Created By",
-    },
     sale_asn: {
       invoice_no: "Nhập Invoice No.",
       buyer_order_ref: "Nhập Buyer Order Ref/OC No.",
@@ -1477,7 +1507,33 @@
       input.placeholder = moduleFilterPlaceholders[group][kind];
       input.focus();
     }
-    if (group === "sample") hideSampleFileResults();
+  }
+
+  function sampleFilterValues() {
+    return [
+      $(".sample-no-query").value.trim(),
+      $(".sample-style-query").value.trim(),
+      $(".sample-created-by-query").value.trim(),
+      $(".sample-buyer-query").value.trim(),
+    ];
+  }
+
+  function supplierInvoiceFilterValues() {
+    return [
+      $(".supplier-invoice-supplier-query").value.trim(),
+      $(".supplier-invoice-no-query").value.trim(),
+      $(".supplier-invoice-po-query").value.trim(),
+      $(".supplier-invoice-asn-grn-query").value.trim(),
+    ];
+  }
+
+  function expenseInvoiceFilterValues() {
+    return [
+      $(".expense-invoice-supplier-query").value.trim(),
+      $(".expense-invoice-no-query").value.trim(),
+      $(".expense-invoice-created-by-query").value.trim(),
+      $(".expense-invoice-status-query").value.trim(),
+    ];
   }
 
   function renderOcUploadResult(result, fileName = "") {
@@ -1608,6 +1664,31 @@
     return saved;
   }
 
+  function syncGdnDispatchAction() {
+    const invoice = String($(".gdn-invoice-query")?.value || "").trim();
+    const confirmed = $(".gdn-grn-confirm-input")?.checked === true;
+    const submit = $(".dispatch-submit-button");
+    if (submit) submit.disabled = busy || !invoice || !confirmed;
+  }
+
+  async function submitGdnDispatch() {
+    const invoice = String($(".gdn-invoice-query")?.value || "").trim();
+    const confirmed = $(".gdn-grn-confirm-input")?.checked === true;
+    if (!confirmed) {
+      setStatus(
+        "warning",
+        "Chỉ Submit sau khi GRN nhập kho thành phẩm đã hoàn tất ít nhất 15 phút.",
+      );
+      return null;
+    }
+    if (!invoice) {
+      setStatus("warning", "Hãy nhập Invoice GRN trước khi Submit.");
+      $(".gdn-invoice-query")?.focus();
+      return null;
+    }
+    return runSelectedModuleAction("run_gdn_dispatch", invoice, confirmed);
+  }
+
   const moduleActions = {
     "oc-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "oc-template": async () => {
@@ -1629,22 +1710,21 @@
       moduleFilterKinds.oc,
       $(".oc-query").value.trim(),
     ),
+    "gdn-dispatch-submit": submitGdnDispatch,
     "sample-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "sample-new": () => runSelectedModuleAction("open_sample_new"),
     "sample-search": () => {
       hideSampleFileResults();
       return runSelectedModuleAction(
         "search_sample",
-        moduleFilterKinds.sample,
-        $(".sample-query").value.trim(),
+        ...sampleFilterValues(),
       );
     },
     "sample-check-file": () => {
       hideSampleFileResults();
       return runSelectedModuleAction(
         "check_sample_files",
-        moduleFilterKinds.sample,
-        $(".sample-query").value.trim(),
+        ...sampleFilterValues(),
       );
     },
     "sale-asn-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
@@ -1669,6 +1749,24 @@
       $(".indent-article-query").value.trim(),
       $(".indent-no-query").value.trim(),
       $(".indent-style-query").value.trim(),
+    ),
+    "supplier-invoice-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "supplier-invoice-search": () => runSelectedModuleAction(
+      "search_supplier_invoice",
+      ...supplierInvoiceFilterValues(),
+    ),
+    "supplier-invoice-cancel": () => {
+      hideSupplierInvoiceCancelResults();
+      return runSelectedModuleAction(
+        "cancel_supplier_invoice",
+        $(".supplier-invoice-cancel-query").value.trim(),
+      );
+    },
+    "expense-invoice-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "expense-invoice-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
+    "expense-invoice-search": () => runSelectedModuleAction(
+      "search_expense_invoice",
+      ...expenseInvoiceFilterValues(),
     ),
     "list-new-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "list-new-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
@@ -1912,9 +2010,6 @@
       catalogStyleGroupId = groups.some(
         (group) => String(group.node_id || "") === defaultId,
       ) ? defaultId : "";
-    }
-    if (result.last_success !== undefined && result.article_count !== undefined) {
-      setReferenceSyncStatus(result);
     }
     input.value = catalogStyleGroupId;
     const selected = groups.find(
@@ -2523,6 +2618,7 @@
         const meta = [
           sample.sample_no ? `Sample ${escapeHtml(sample.sample_no)}` : "",
           sample.created_by ? `Tạo bởi ${escapeHtml(sample.created_by)}` : "",
+          sample.buyer ? `Buyer ${escapeHtml(sample.buyer)}` : "",
         ].filter(Boolean).join(" · ");
         return `<button type="button" class="catalog-result-row" role="option"
           data-sample-choice-id="${escapeHtml(sample.choice_id || "")}">
@@ -2585,6 +2681,53 @@
       row,
       () => call("open_sample_file_choice", choiceId),
     );
+  }
+
+  function hideSupplierInvoiceCancelResults() {
+    const wrap = $(".supplier-invoice-cancel-results");
+    if (!wrap) return;
+    wrap.hidden = true;
+    $(".supplier-invoice-cancel-results-title").textContent = "Chọn Supplier Invoice";
+    $(".supplier-invoice-cancel-results-count").textContent = "";
+    $(".supplier-invoice-cancel-results-list").innerHTML = "";
+  }
+
+  function renderSupplierInvoiceCancelResults(result) {
+    const wrap = $(".supplier-invoice-cancel-results");
+    const list = $(".supplier-invoice-cancel-results-list");
+    if (!wrap || !list || result.code !== "SUPPLIER_INVOICE_MULTIPLE_RESULTS") return;
+    const invoices = Array.isArray(result.invoices) ? result.invoices : [];
+    if (!invoices.length) {
+      hideSupplierInvoiceCancelResults();
+      return;
+    }
+    $(".supplier-invoice-cancel-results-title").textContent = "Chọn Supplier Invoice để Cancel";
+    $(".supplier-invoice-cancel-results-count").textContent =
+      `${Number(result.result_count || invoices.length)} kết quả`;
+    list.innerHTML = invoices.map((invoice) => {
+      const meta = [
+        invoice.supplier ? `Supplier ${escapeHtml(invoice.supplier)}` : "",
+        invoice.po_no ? `PO ${escapeHtml(invoice.po_no)}` : "",
+        invoice.asn_grn_no ? `ASN/GRN ${escapeHtml(invoice.asn_grn_no)}` : "",
+        invoice.status ? `Status ${escapeHtml(invoice.status)}` : "",
+      ].filter(Boolean).join(" · ");
+      return `<button type="button" class="catalog-result-row" role="option"
+        data-supplier-invoice-cancel-choice="${escapeHtml(invoice.choice_id || "")}">
+        <span class="catalog-result-code">${escapeHtml(invoice.invoice_no || "—")}</span>
+        <span class="catalog-result-meta">${meta}</span>
+      </button>`;
+    }).join("");
+    wrap.hidden = false;
+  }
+
+  async function cancelSupplierInvoiceChoice(row) {
+    const choiceId = String(row?.dataset.supplierInvoiceCancelChoice || "");
+    if (!choiceId) return;
+    const result = await withButtonLoading(
+      row,
+      () => call("cancel_supplier_invoice_choice", choiceId),
+    );
+    if (result?.ok) hideSupplierInvoiceCancelResults();
   }
 
   async function downloadCatalogFile(row) {
@@ -3046,6 +3189,10 @@
       const file = event.target.closest("[data-file-id]");
       if (file) downloadCatalogFile(file);
     });
+    $(".supplier-invoice-cancel-results-list").addEventListener("click", (event) => {
+      const choice = event.target.closest("[data-supplier-invoice-cancel-choice]");
+      if (choice) cancelSupplierInvoiceChoice(choice);
+    });
     $(".catalog-article-suggestions").addEventListener("click", (event) => {
       const row = event.target.closest("[data-suggestion-value]");
       if (!row) return;
@@ -3065,8 +3212,11 @@
     });
     bindListboxKeys($(".catalog-results-list"));
     bindListboxKeys($(".sample-file-results-list"));
+    bindListboxKeys($(".supplier-invoice-cancel-results-list"));
     bindListboxKeys($(".catalog-folder-list"));
     bindListboxKeys($(".catalog-article-suggestions"));
+    $(".gdn-invoice-query")?.addEventListener("input", syncGdnDispatchAction);
+    $(".gdn-grn-confirm-input")?.addEventListener("change", syncGdnDispatchAction);
     $$("[data-module-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(
@@ -3124,7 +3274,20 @@
       () => moduleActions[action]?.(),
     );
     $(".oc-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("oc-search"); });
-    $(".sample-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("sample-search"); });
+    $(".gdn-invoice-query")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !$(".dispatch-submit-button")?.disabled) {
+        runModuleActionFromKeyboard("gdn-dispatch-submit");
+      }
+    });
+    [
+      ".sample-no-query",
+      ".sample-style-query",
+      ".sample-created-by-query",
+      ".sample-buyer-query",
+    ].forEach((selector) =>
+      $(selector).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") runModuleActionFromKeyboard("sample-search");
+      }));
     $(".sale-asn-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("sale-asn-search"); });
     [".rmpo-supplier-query", ".rmpo-order-query"].forEach((selector) =>
       $(selector).addEventListener("keydown", (event) => {
@@ -3138,6 +3301,27 @@
     ].forEach((selector) =>
       $(selector).addEventListener("keydown", (event) => {
         if (event.key === "Enter") runModuleActionFromKeyboard("indent-search");
+      }));
+    [
+      ".supplier-invoice-supplier-query",
+      ".supplier-invoice-no-query",
+      ".supplier-invoice-po-query",
+      ".supplier-invoice-asn-grn-query",
+    ].forEach((selector) =>
+      $(selector).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") runModuleActionFromKeyboard("supplier-invoice-search");
+      }));
+    $(".supplier-invoice-cancel-query").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") runModuleActionFromKeyboard("supplier-invoice-cancel");
+    });
+    [
+      ".expense-invoice-supplier-query",
+      ".expense-invoice-no-query",
+      ".expense-invoice-created-by-query",
+      ".expense-invoice-status-query",
+    ].forEach((selector) =>
+      $(selector).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") runModuleActionFromKeyboard("expense-invoice-search");
       }));
     $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("supplier-find"); });
     $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("buyer-find"); });

@@ -1564,6 +1564,19 @@ body.compact-mode .compact-launcher .compact-mark {
     .workflow-choice-wide { width: 100%; }
     .oc-workspace { gap: 9px; padding: 9px; border: 0; background: transparent; }
     .oc-upload-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 5px 16px rgba(20,54,70,.055); }
+    .dispatch-workspace { padding: 9px; border: 0; background: transparent; }
+    .dispatch-card { gap: 13px; padding: 14px; }
+    .dispatch-warning { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 10px; padding: 11px; color: var(--text); border: 1px solid var(--warn); border-radius: 10px; background: var(--warn-soft); }
+    .dispatch-warning-icon { display: grid; width: 30px; height: 30px; place-items: center; color: var(--warn); border-radius: 9px; background: var(--surface); }
+    .dispatch-warning-icon svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .dispatch-warning strong,
+    .dispatch-warning small { display: block; min-width: 0; }
+    .dispatch-warning strong { font-size: 13px; line-height: 1.3; }
+    .dispatch-warning small { margin-top: 4px; color: var(--text-2); font-size: 11.5px; line-height: 1.45; }
+    .dispatch-invoice-field input { height: 40px; padding: 0 11px; font-size: 13px; background: var(--surface); }
+    .dispatch-confirm-row { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 8px; color: var(--text-2); font-size: 12px; font-weight: 650; line-height: 1.4; cursor: pointer; }
+    .dispatch-confirm-row input { width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--accent); }
+    .dispatch-submit-button { width: 100%; min-height: 40px; }
     .oc-upload-card-copy,
     .oc-upload-card-copy span,
     .oc-upload-card-copy strong,
@@ -1665,7 +1678,6 @@ body.compact-mode .compact-launcher .compact-mark {
     .module-filter-kind-three { grid-template-columns: repeat(3, minmax(0,1fr)); }
     .module-filter-kind .seg-button { min-width: 0; padding: 0 7px; font-size: 11px; }
     .module-query-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 7px; }
-    [data-module-view="sample"] .module-query-row { grid-template-columns: minmax(0,1fr) auto auto; }
     .module-query-row input { width: 100%; height: 34px; padding: 0 9px; color: var(--text); font-size: 12.5px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
     .module-query-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .module-multi-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
@@ -1685,6 +1697,12 @@ body.compact-mode .compact-launcher .compact-mark {
     .special-primary-button { height: 34px; padding: 0 11px; color: var(--accent-ink); font-size: 11.5px; font-weight: 750; white-space: nowrap; cursor: pointer; border: 0; border-radius: 8px; background: var(--accent-grad); }
     .sample-check-file-button { height: 34px; padding: 0 9px; color: var(--accent-strong); font-size: 11.5px; font-weight: 750; white-space: nowrap; cursor: pointer; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); }
     .sample-check-file-button:hover:not(:disabled) { color: var(--text); background: var(--surface-3); }
+    .module-cancel-section { border-color: var(--bad); }
+    .module-danger-button { height: 34px; padding: 0 11px; color: #fff; font-size: 11.5px; font-weight: 750; cursor: pointer; border: 0; border-radius: 8px; background: var(--bad); }
+    .module-danger-button:hover:not(:disabled) { filter: brightness(1.08); }
+    .supplier-invoice-cancel-results { margin-top: 1px; }
+    .supplier-invoice-cancel-results[hidden] { display: none !important; }
+    .supplier-invoice-cancel-results-list { display: flex; flex-direction: column; gap: 3px; }
     .sample-file-results { margin-top: 1px; }
     .sample-file-results[hidden] { display: none !important; }
     .sample-file-results-list { display: flex; flex-direction: column; gap: 3px; }

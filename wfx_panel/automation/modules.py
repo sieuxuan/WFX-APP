@@ -46,11 +46,13 @@ from wfx_panel.automation.catalog import (
 )
 from wfx_panel.automation.runtime import cancellation_deferred
 from wfx_panel.automation.search_specs import (
+    EXPENSE_INVOICE_SEARCH_SPEC,
     INDENT_SEARCH_SPECS,
     OC_SEARCH_SPEC,
     RMPO_SEARCH_SPEC,
     SALE_ASN_SEARCH_SPEC,
     SAMPLE_SEARCH_SPEC,
+    SUPPLIER_INVOICE_SEARCH_SPEC,
     ModuleSearchSpec,
 )
 
@@ -718,7 +720,7 @@ def _apply_module_search(
         raise PlaywrightTimeoutError(
             f"WFX không xác nhận giá trị search {label}."
         )
-    _write_log(log, f"[MODULE SEARCH] Đã nhập {label}: {query!r}")
+    _write_log(log, f"[MODULE SEARCH] Đã nhập {label}.")
     try:
         field.press("Enter", timeout=2_000)
     except PlaywrightError:
@@ -862,7 +864,16 @@ def _resolve_multi_search_fields(
 
 def _clear_multi_search_fields(fields: Mapping[str, Any]) -> None:
     for search_field in fields.values():
-        search_field.fill("")
+        tag_name = str(
+            search_field.evaluate("element => element.tagName") or ""
+        ).upper()
+        if tag_name == "SELECT":
+            try:
+                search_field.select_option(value="")
+            except PlaywrightError:
+                search_field.select_option(index=0)
+        else:
+            search_field.fill("")
         try:
             search_field.dispatch_event("change")
         except PlaywrightError:
@@ -881,8 +892,31 @@ def _fill_multi_search_fields(
     for field_name in active_fields:
         field_spec = search_spec.fields[field_name]
         search_field = fields[field_name]
-        search_field.type(cleaned_values[field_name], delay=25)
-        if search_field.input_value(timeout=1_000) != cleaned_values[field_name]:
+        value = cleaned_values[field_name]
+        tag_name = str(
+            search_field.evaluate("element => element.tagName") or ""
+        ).upper()
+        if tag_name == "SELECT":
+            try:
+                search_field.select_option(value=value)
+            except PlaywrightError:
+                search_field.select_option(label=value)
+            selected_text = str(
+                search_field.evaluate(
+                    "element => element.selectedOptions?.[0]?.textContent || ''"
+                )
+                or ""
+            ).strip()
+            value_confirmed = (
+                search_field.input_value(timeout=1_000) == value
+                or selected_text.casefold() == value.casefold()
+            )
+        else:
+            search_field.type(value, delay=25)
+            value_confirmed = (
+                search_field.input_value(timeout=1_000) == value
+            )
+        if not value_confirmed:
             raise PlaywrightTimeoutError(
                 f"WFX không xác nhận giá trị search {field_spec.label}."
             )
@@ -1305,6 +1339,10 @@ _SAMPLE_RESULT_ROWS_JS = """root => {
                 /sampleorder(no|number)/,
             ]),
             created_by: groupedFieldText([/created\\s*by/, /createdby/]),
+            buyer: groupedFieldText([
+                /buyer\\s*(name|company)?$/,
+                /buyer(name|company)/,
+            ]),
         });
     });
     const noRows = [...root.querySelectorAll(
@@ -1601,6 +1639,181 @@ def find_sample_file_results(
             playwright.stop()
 
 
+def _sample_filter_values(
+    values: Mapping[str, str],
+) -> tuple[dict[str, str], list[str]]:
+    cleaned = {
+        field_name: str(values.get(field_name) or "").strip()
+        for field_name in SAMPLE_SEARCH_SPEC.fields
+    }
+    return cleaned, [
+        field_name for field_name, value in cleaned.items() if value
+    ]
+
+
+def _apply_sample_filters(
+    page: Page,
+    frame: Frame,
+    cleaned_values: Mapping[str, str],
+    active_fields: list[str],
+    log: Callable[[str], None],
+) -> list[str]:
+    """Áp dụng filter Sample lần lượt để hỗ trợ các cột bị cuộn ngang."""
+    _clear_list_search_fields(
+        frame,
+        SAMPLE_SEARCH_SPEC.field_selectors,
+        scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
+    )
+    _wait(page, 250)
+    labels: list[str] = []
+    for field_name in active_fields:
+        field_spec = SAMPLE_SEARCH_SPEC.fields[field_name]
+        field = _search_input_in_frame(
+            page,
+            frame,
+            field_spec.selectors,
+            field_spec.aliases,
+            timeout_s=8,
+            scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
+        )
+        _apply_module_search(
+            page,
+            field,
+            cleaned_values[field_name],
+            field_spec.label,
+            log,
+        )
+        labels.append(field_spec.label)
+    return labels
+
+
+def search_sample_list_with_filters(
+    xpath: str,
+    values: Mapping[str, str],
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Tìm Sample theo một hoặc nhiều filter trên Floating Filter."""
+    cleaned_values, active_fields = _sample_filter_values(values)
+    if not active_fields:
+        labels = ", ".join(
+            field_spec.label for field_spec in SAMPLE_SEARCH_SPEC.fields.values()
+        )
+        return _result(
+            False,
+            "QUERY_REQUIRED",
+            f"Vui lòng nhập ít nhất một điều kiện: {labels}.",
+        )
+    playwright: Playwright | None = None
+    search_started = False
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        frame = _open_list_search_context(page, SAMPLE_SEARCH_SPEC, xpath, log)
+        search_started = True
+        labels = _apply_sample_filters(
+            page,
+            frame,
+            cleaned_values,
+            active_fields,
+            log,
+        )
+        return _result(
+            True,
+            "MODULE_SEARCH_APPLIED",
+            f"Đã lọc Sample List theo {', '.join(labels)}.",
+            module="Sample List",
+            filter_kinds=active_fields,
+        )
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Trình duyệt làm việc chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message, module="Sample List")
+    except PlaywrightTimeoutError as exc:
+        detail = _first_line(exc)
+        code = (
+            "MODULE_SEARCH_NOT_CONFIRMED"
+            if search_started
+            else "MODULE_SEARCH_NOT_READY"
+        )
+        message = f"Chưa thể tìm nhiều điều kiện trong Sample List: {detail}"
+        _write_log(log, message)
+        return _result(False, code, message, module="Sample List")
+    except Exception as exc:
+        message = f"Không thể tìm Sample List: {type(exc).__name__}: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(False, "MODULE_SEARCH_FAILED", message, module="Sample List")
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def find_sample_file_results_with_filters(
+    xpath: str,
+    values: Mapping[str, str],
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Dùng cùng filter đa điều kiện của Sample trước khi quét file."""
+    cleaned_values, active_fields = _sample_filter_values(values)
+    if not active_fields:
+        labels = ", ".join(
+            field_spec.label for field_spec in SAMPLE_SEARCH_SPEC.fields.values()
+        )
+        return _result(
+            False,
+            "QUERY_REQUIRED",
+            f"Vui lòng nhập ít nhất một điều kiện: {labels}.",
+        )
+    playwright: Playwright | None = None
+    search_started = False
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        frame = _open_list_search_context(page, SAMPLE_SEARCH_SPEC, xpath, log)
+        search_started = True
+        _apply_sample_filters(
+            page,
+            frame,
+            cleaned_values,
+            active_fields,
+            log,
+        )
+        return _sample_file_result(frame, log)
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Trình duyệt làm việc chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message, module="Sample List")
+    except PlaywrightTimeoutError as exc:
+        detail = _first_line(exc)
+        code = (
+            "MODULE_SEARCH_NOT_CONFIRMED"
+            if search_started
+            else "MODULE_SEARCH_NOT_READY"
+        )
+        message = f"Chưa thể kiểm tra file từ Sample List: {detail}"
+        _write_log(log, message)
+        return _result(False, code, message, module="Sample List")
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "SAMPLE_FILE_SEARCH_FAILED",
+            message,
+            module="Sample List",
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
 def open_sample_file_result(
     row_key: str,
     style_code: str,
@@ -1751,6 +1964,378 @@ def search_indent_list(
     )
 
 
+def search_supplier_invoice_list(
+    xpath: str,
+    supplier: str,
+    invoice_no: str,
+    po_no: str,
+    asn_grn_no: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    return _search_module_fields(
+        SUPPLIER_INVOICE_SEARCH_SPEC,
+        xpath,
+        {
+            "supplier": supplier,
+            "invoice_no": invoice_no,
+            "po_no": po_no,
+            "asn_grn_no": asn_grn_no,
+        },
+        log,
+    )
+
+
+def search_expense_invoice_list(
+    xpath: str,
+    supplier: str,
+    invoice_no: str,
+    created_by: str,
+    status: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    return _search_module_fields(
+        EXPENSE_INVOICE_SEARCH_SPEC,
+        xpath,
+        {
+            "supplier": supplier,
+            "invoice_no": invoice_no,
+            "created_by": created_by,
+            "status": status,
+        },
+        log,
+    )
+
+
+_SUPPLIER_INVOICE_ROWS_JS = """root => {
+    const norm = value => String(value || '').replace(/\\s+/g, ' ').trim();
+    const shown = element => {
+        if (!element || !element.isConnected) return false;
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden'
+            && rect.width > 0 && rect.height > 0;
+    };
+    const headers = [...document.querySelectorAll(
+        '#gridAPInvoiceList_tblGridHeader th, '
+        + '#gridAPInvoiceList_tblGridHeader td, '
+        + '#gridAPInvoiceList_tblGridHeader [id*="Header"]'
+    )].map(cell => norm([
+        cell.id || '', cell.getAttribute('title') || '',
+        cell.getAttribute('aria-label') || '', cell.textContent || ''
+    ].join(' ')).toLowerCase());
+    const metadata = cell => {
+        const index = Number(cell.cellIndex);
+        return norm([
+            cell.id || '', cell.getAttribute('title') || '',
+            cell.getAttribute('aria-label') || '', headers[index] || ''
+        ].join(' ')).toLowerCase();
+    };
+    const field = (cells, patterns) => {
+        const cell = cells.find(candidate =>
+            patterns.some(pattern => pattern.test(metadata(candidate)))
+        );
+        return norm(cell?.querySelector('input[value], a, button')?.value
+            || cell?.querySelector('input[value], a, button')?.textContent
+            || cell?.textContent || '');
+    };
+    return [...root.querySelectorAll('tbody tr, tr')]
+        .filter(row => shown(row) && row.querySelector('td'))
+        .map((row, index) => {
+            const cells = [...row.querySelectorAll('td')];
+            return {
+                row_key: row.id || row.getAttribute('data-key')
+                    || row.getAttribute('data-row-key') || String(index),
+                invoice_no: field(cells, [/invoice\\s*(no|number)?/, /apinvoice/]),
+                supplier: field(cells, [/supplier/, /vendor/]),
+                po_no: field(cells, [/\\bpo\\s*(no|number)?\\b/, /purchase\\s*order/]),
+                asn_grn_no: field(cells, [/asn/, /grn/]),
+                status: field(cells, [/status/]),
+            };
+        })
+        .filter(row => row.invoice_no || row.status || row.supplier);
+}"""
+
+
+_CLICK_SUPPLIER_INVOICE_ROW_JS = """(root, expected) => {
+    const norm = value => String(value || '').replace(/\\s+/g, ' ').trim();
+    const wantedKey = String(expected.row_key || '');
+    const wantedInvoice = norm(expected.invoice_no).toLowerCase();
+    const rows = [...root.querySelectorAll('tbody tr, tr')]
+        .filter(row => row.querySelector('td'));
+    const row = rows.find((candidate, index) => {
+        const key = candidate.id || candidate.getAttribute('data-key')
+            || candidate.getAttribute('data-row-key') || String(index);
+        if (wantedKey && key === wantedKey) return true;
+        return wantedInvoice && norm(candidate.textContent).toLowerCase()
+            .includes(wantedInvoice);
+    });
+    if (!row) return false;
+    const control = row.querySelector(
+        'input[type="radio"], input[type="checkbox"], input[type="button"]'
+    );
+    (control || row.cells?.[0] || row).click();
+    return true;
+}"""
+
+
+def _supplier_invoice_grid(frame: Frame) -> Any | None:
+    for selector in (
+        "#gridAPInvoiceList_tblGridContent",
+        "#gridAPInvoiceList",
+    ):
+        try:
+            grid = _first_visible(frame.locator(selector))
+            if grid is not None:
+                return grid
+        except PlaywrightError:
+            continue
+    return None
+
+
+def _supplier_invoice_rows(frame: Frame) -> list[dict[str, str]]:
+    grid = _supplier_invoice_grid(frame)
+    if grid is None:
+        raise PlaywrightTimeoutError("Không tìm thấy bảng Supplier Inv List.")
+    payload = grid.evaluate(_SUPPLIER_INVOICE_ROWS_JS)
+    if not isinstance(payload, list):
+        return []
+    rows: list[dict[str, str]] = []
+    for raw in payload:
+        if not isinstance(raw, dict):
+            continue
+        rows.append(
+            {
+                key: str(raw.get(key) or "").strip()
+                for key in (
+                    "row_key",
+                    "invoice_no",
+                    "supplier",
+                    "po_no",
+                    "asn_grn_no",
+                    "status",
+                )
+            }
+        )
+    return rows
+
+
+def _find_supplier_invoice_frame(page: Page) -> Frame:
+    return _frame_with_visible_context(
+        page,
+        ", ".join(SUPPLIER_INVOICE_SEARCH_SPEC.context_field.selectors),
+        module_name=SUPPLIER_INVOICE_SEARCH_SPEC.module_name,
+        timeout_s=8,
+    )
+
+
+def _select_supplier_invoice_row(
+    frame: Frame,
+    row_key: str,
+    invoice_no: str,
+) -> bool:
+    grid = _supplier_invoice_grid(frame)
+    if grid is None:
+        return False
+    try:
+        return bool(
+            grid.evaluate(
+                _CLICK_SUPPLIER_INVOICE_ROW_JS,
+                {"row_key": row_key, "invoice_no": invoice_no},
+            )
+        )
+    except PlaywrightError:
+        return False
+
+
+def _supplier_invoice_action_for_status(status: str) -> tuple[str, str, str] | None:
+    normalised = " ".join(str(status or "").casefold().split())
+    if normalised in {"save", "saved"}:
+        return (
+            '//*[@id="titlebarAPInvoiceList"]/tbody/tr/td[2]/span/div[2]',
+            "Delete",
+            "SUPPLIER_INVOICE_DELETE_SUBMITTED",
+        )
+    if normalised in {"confirm", "confirmed"}:
+        return (
+            '//*[@id="titlebarAPInvoiceList"]/tbody/tr/td[2]/span/div[4]',
+            "Cancel",
+            "SUPPLIER_INVOICE_CANCEL_SUBMITTED",
+        )
+    return None
+
+
+def _submit_supplier_invoice_cancel(
+    page: Page,
+    frame: Frame,
+    row: Mapping[str, str],
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    status = str(row.get("status") or "").strip()
+    action = _supplier_invoice_action_for_status(status)
+    if action is None:
+        return _result(
+            False,
+            "SUPPLIER_INVOICE_STATUS_NOT_CANCELLABLE",
+            "Invoice chỉ có thể xử lý khi Status là Save hoặc Confirm.",
+        )
+    row_key = str(row.get("row_key") or "")
+    invoice_no = str(row.get("invoice_no") or "")
+    if not _select_supplier_invoice_row(frame, row_key, invoice_no):
+        return _result(
+            False,
+            "SUPPLIER_INVOICE_RESULT_EXPIRED",
+            "Dòng Supplier Invoice đã thay đổi. Hãy tìm lại trước khi Cancel.",
+        )
+    selector, action_label, code = action
+    button = _first_visible(frame.locator(selector))
+    if button is None:
+        return _result(
+            False,
+            "SUPPLIER_INVOICE_ACTION_NOT_READY",
+            f"Không tìm thấy nút {action_label} trên Supplier Inv List.",
+        )
+    _attach_dialog_handler(page, log)
+    _click(button)
+    _wait(page, 300)
+    return _result(
+        True,
+        code,
+        (
+            f"Đã bấm {action_label} cho Supplier Invoice. "
+            "Nếu WFX hiện hộp xác nhận trong Chrome, hãy kiểm tra rồi xác nhận."
+        ),
+        action=action_label.casefold(),
+        status=status,
+    )
+
+
+def prepare_supplier_invoice_cancel(
+    xpath: str,
+    invoice_no: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Tìm theo Invoice No.; chỉ tự thao tác khi còn đúng một dòng."""
+    invoice_no = str(invoice_no or "").strip()
+    if not invoice_no:
+        return _result(
+            False,
+            "QUERY_REQUIRED",
+            "Vui lòng nhập Invoice No. cần Cancel.",
+        )
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        frame = _open_multi_field_search_context(
+            page,
+            SUPPLIER_INVOICE_SEARCH_SPEC,
+            xpath,
+            log,
+        )
+        fields = _resolve_multi_search_fields(
+            frame,
+            SUPPLIER_INVOICE_SEARCH_SPEC,
+        )
+        _clear_multi_search_fields(fields)
+        _fill_multi_search_fields(
+            fields,
+            {"invoice_no": invoice_no},
+            ["invoice_no"],
+            SUPPLIER_INVOICE_SEARCH_SPEC,
+            log,
+        )
+        _submit_multi_search(fields["invoice_no"])
+        _wait_module_search_settled(page, ["Invoice No."])
+        rows = _supplier_invoice_rows(frame)
+        if not rows:
+            return _result(
+                False,
+                "SUPPLIER_INVOICE_NOT_FOUND",
+                "Không tìm thấy Supplier Invoice phù hợp.",
+            )
+        if len(rows) > 1:
+            return _result(
+                True,
+                "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
+                "Có nhiều Supplier Invoice phù hợp; hãy chọn đúng invoice để tiếp tục.",
+                invoices=rows[:20],
+                result_count=len(rows),
+            )
+        return _submit_supplier_invoice_cancel(page, frame, rows[0], log)
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Trình duyệt làm việc chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message, module="Supplier Inv List")
+    except PlaywrightTimeoutError as exc:
+        message = f"Supplier Inv List chưa sẵn sàng: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(False, "SUPPLIER_INVOICE_NOT_READY", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(False, "SUPPLIER_INVOICE_CANCEL_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def cancel_supplier_invoice_choice(
+    row_key: str,
+    invoice_no: str,
+    expected_status: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Thực hiện Cancel trên dòng mà người dùng đã chọn từ nhiều kết quả."""
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        frame = _find_supplier_invoice_frame(page)
+        rows = _supplier_invoice_rows(frame)
+        selected = next(
+            (
+                row
+                for row in rows
+                if row["row_key"] == str(row_key or "")
+                and row["invoice_no"].casefold()
+                == str(invoice_no or "").strip().casefold()
+            ),
+            None,
+        )
+        if selected is None or selected["status"].casefold() != str(
+            expected_status or ""
+        ).strip().casefold():
+            return _result(
+                False,
+                "SUPPLIER_INVOICE_RESULT_EXPIRED",
+                "Danh sách hoặc Status Supplier Invoice đã thay đổi. Hãy tìm lại.",
+            )
+        return _submit_supplier_invoice_cancel(page, frame, selected, log)
+    except RuntimeError as exc:
+        code = str(exc)
+        message = (
+            "Trình duyệt làm việc chưa được mở."
+            if code == "CHROME_CLOSED"
+            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+        )
+        return _result(False, code, message, module="Supplier Inv List")
+    except PlaywrightTimeoutError as exc:
+        message = f"Supplier Inv List không còn mở: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(False, "SUPPLIER_INVOICE_RESULT_EXPIRED", message)
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(False, "SUPPLIER_INVOICE_CANCEL_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
 def open_module_new(
     module_id: str,
     log: Callable[[str], None] = print,
@@ -1761,16 +2346,19 @@ def open_module_new(
             '//a[@title="New" '
             'and contains(@href,"MenuName=mnuQAInspectionRequestNew") '
             'and contains(@href,"QARequestType=QualityInspection")]',
+            None,
         ),
         "0065_0880_0010_0020": (
             "Advance Payment Request",
             '//a[@title="New" '
             'and contains(@href,"MenuName=mnuAdvancePaymentRequestNew") '
             'and contains(@href,"WFXAdvancePaymentRequest.aspx?ARAPType=APR")]',
+            ("#ddlRequestType", "RMPO", "Against RMPO"),
         ),
         "0065_0880_0030_0020": (
             "Expense Invoice",
             '//*[@id="0065_0880_0030_0010"]/a',
+            ("#ddlInvoiceType", "GeneralExpense", "General Expense"),
         ),
     }
     if module_id not in definitions:
@@ -1779,7 +2367,7 @@ def open_module_new(
             "INVALID_FILTER",
             "Module này không hỗ trợ thao tác New.",
         )
-    module_name, selector = definitions[module_id]
+    module_name, selector, default_selection = definitions[module_id]
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
@@ -1801,6 +2389,7 @@ def open_module_new(
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if len(browser.contexts[0].pages) > page_count:
+                page = browser.contexts[0].pages[-1]
                 break
             current_frames = list(page.frames)
             if any(candidate not in old_frames for candidate in current_frames):
@@ -1820,10 +2409,23 @@ def open_module_new(
                 f"WFX chưa xác nhận màn New của {module_name}.",
                 module=module_name,
             )
+        selected_label = ""
+        if default_selection is not None:
+            select_selector, select_value, selected_label = default_selection
+            _ensure_select_value(
+                page,
+                select_selector,
+                select_value,
+                selected_label,
+                log,
+            )
+        message = f"Đã mở trực tiếp {module_name} New."
+        if selected_label:
+            message = f"{message} Đã chọn sẵn {selected_label}."
         return _result(
             True,
             "MODULE_NEW_READY",
-            f"Đã mở trực tiếp {module_name} New.",
+            message,
             module=module_name,
         )
     except RuntimeError as exc:

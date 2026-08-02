@@ -73,6 +73,12 @@ class SaleASNModule(ModuleController):
         return super().open(login_module, log)
 
 
+class GDNDispatchModule(ModuleController):
+    module_id = "gdn_dispatch"
+    kind = "gdn_dispatch"
+    description = "Tạo GDN Dispatch từ Invoice GRN sau thời gian chờ bắt buộc."
+
+
 class RMPOListModule(ModuleController):
     module_id = "0005_0050_0020"
     kind = "rmpo"
@@ -105,13 +111,14 @@ class AdvancePRListModule(ModuleController):
 
 class SupplierInvoiceListModule(ModuleController):
     module_id = "0065_0880_0020_0020"
-    description = "Mở danh sách hóa đơn nhà cung cấp."
+    kind = "supplier_invoice"
+    description = "Mở, lọc và Cancel Supplier Invoice an toàn."
 
 
 class ExpenseInvoiceListModule(ModuleController):
     module_id = "0065_0880_0030_0020"
-    kind = "list_new"
-    description = "Mở danh sách Expense Invoice hoặc tạo hóa đơn mới."
+    kind = "expense_invoice"
+    description = "Mở, lọc Expense Invoice hoặc tạo hóa đơn mới."
 
 
 class OrgStructureModule(ModuleController):
@@ -147,6 +154,7 @@ CONTROLLER_TYPES = (
     OCListModule,
     SampleListModule,
     SaleASNModule,
+    GDNDispatchModule,
     RMPOListModule,
     IndentListModule,
     UserIndentModule,

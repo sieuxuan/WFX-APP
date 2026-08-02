@@ -85,8 +85,30 @@ class FakeLogin:
         self.calls.append(("search_sample", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
 
+    def search_sample_list_with_filters(self, xpath, values, log=print):
+        self.calls.append(("search_sample_filters", xpath, dict(values)))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
     def find_sample_file_results(self, xpath, filter_kind, query, log=print):
         self.calls.append(("find_sample_files", xpath, filter_kind, query))
+        return {
+            "ok": True,
+            "code": "SAMPLE_STYLE_OPENED",
+            "message": "opened",
+            "article_code": "ABC123",
+        }
+
+    def run_gdn_dispatch(self, invoice, log=print):
+        self.calls.append(("run_gdn_dispatch", invoice))
+        return {
+            "ok": True,
+            "code": "GDN_DISPATCH_COMPLETED",
+            "message": "completed",
+            "transaction_submitted": True,
+        }
+
+    def find_sample_file_results_with_filters(self, xpath, values, log=print):
+        self.calls.append(("find_sample_files", xpath, dict(values)))
         return {
             "ok": True,
             "code": "SAMPLE_STYLE_OPENED",
@@ -147,6 +169,55 @@ class FakeLogin:
             style,
         ))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def search_supplier_invoice_list(
+        self, xpath, supplier, invoice_no, po_no, asn_grn_no, log=print
+    ):
+        self.calls.append((
+            "search_supplier_invoice",
+            xpath,
+            supplier,
+            invoice_no,
+            po_no,
+            asn_grn_no,
+        ))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def search_expense_invoice_list(
+        self, xpath, supplier, invoice_no, created_by, status, log=print
+    ):
+        self.calls.append((
+            "search_expense_invoice",
+            xpath,
+            supplier,
+            invoice_no,
+            created_by,
+            status,
+        ))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def prepare_supplier_invoice_cancel(self, xpath, invoice_no, log=print):
+        self.calls.append(("prepare_supplier_invoice_cancel", xpath, invoice_no))
+        return {
+            "ok": True,
+            "code": "SUPPLIER_INVOICE_CANCEL_SUBMITTED",
+            "message": "submitted",
+        }
+
+    def cancel_supplier_invoice_choice(
+        self, row_key, invoice_no, expected_status, log=print
+    ):
+        self.calls.append((
+            "cancel_supplier_invoice_choice",
+            row_key,
+            invoice_no,
+            expected_status,
+        ))
+        return {
+            "ok": True,
+            "code": "SUPPLIER_INVOICE_CANCEL_SUBMITTED",
+            "message": "submitted",
+        }
 
     def open_module_new(self, module_id, log=print):
         self.calls.append(("open_module_new", module_id))
@@ -492,6 +563,30 @@ def make_api(tmp_path):
     fake = FakeLogin()
     api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
     return api, fake
+
+
+def test_gdn_dispatch_requires_15_minute_grn_confirmation(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.run_gdn_dispatch("18.26.PSTT.DT", False)
+
+    assert result["code"] == "GDN_GRN_WAIT_CONFIRMATION_REQUIRED"
+    assert not any(call[0] == "run_gdn_dispatch" for call in fake.calls)
+
+
+def test_gdn_dispatch_runs_without_persisting_invoice_in_job_request(tmp_path):
+    from wfx_panel import job_history
+
+    api, fake = make_api(tmp_path)
+
+    result = api.run_gdn_dispatch("18.26.PSTT.DT", True)
+
+    assert result["code"] == "GDN_DISPATCH_COMPLETED"
+    assert ("run_gdn_dispatch", "18.26.PSTT.DT") in fake.calls
+    job = job_history.get_job(tmp_path, result["run_id"])
+    assert job is not None
+    assert job["request"] == {"module_id": "gdn_dispatch"}
+    assert "18.26.PSTT.DT" not in json.dumps(job, ensure_ascii=False)
 
 
 def test_stop_cancels_running_flow_at_safe_checkpoint(tmp_path):
@@ -1315,7 +1410,7 @@ def test_sample_check_file_opens_unique_style_and_reuses_catalog_file_tokens(
 ):
     api, fake = make_api(tmp_path)
 
-    result = api.check_sample_files("sample_no", "SMP-001")
+    result = api.check_sample_files("SMP-001")
 
     assert result["code"] == "CATALOG_FILES_SCANNED"
     assert result["source"] == "sample"
@@ -1326,8 +1421,12 @@ def test_sample_check_file_opens_unique_style_and_reuses_catalog_file_tokens(
         (
             "find_sample_files",
             '//*[@id="0004_0056_4070"]/a',
-            "sample_no",
-            "SMP-001",
+            {
+                "sample_no": "SMP-001",
+                "style": "",
+                "created_by": "",
+                "buyer": "",
+            },
         ),
         ("scan_catalog_files", "ABC123"),
     ]
@@ -1338,8 +1437,8 @@ def test_sample_check_file_tokens_multiple_rows_then_continues_without_search(
 ):
     api, fake = make_api(tmp_path)
 
-    def multiple(xpath, filter_kind, query, log=print):
-        fake.calls.append(("find_sample_files", xpath, filter_kind, query))
+    def multiple(xpath, values, log=print):
+        fake.calls.append(("find_sample_files", xpath, dict(values)))
         return {
             "ok": True,
             "code": "SAMPLE_MULTIPLE_RESULTS",
@@ -1351,6 +1450,7 @@ def test_sample_check_file_tokens_multiple_rows_then_continues_without_search(
                     "style_code": "ABC123",
                     "sample_no": "SMP-001",
                     "created_by": "Alice",
+                    "buyer": "Nike",
                 },
                 {
                     "row_key": "18",
@@ -1361,8 +1461,8 @@ def test_sample_check_file_tokens_multiple_rows_then_continues_without_search(
             ],
         }
 
-    fake.find_sample_file_results = multiple
-    found = api.check_sample_files("created_by", "Alice")
+    fake.find_sample_file_results_with_filters = multiple
+    found = api.check_sample_files("", "", "Alice")
 
     assert found["code"] == "SAMPLE_MULTIPLE_RESULTS"
     assert found["source"] == "sample"
@@ -2011,7 +2111,8 @@ def test_initial_state_contains_module_classes_and_jobs(tmp_path):
     assert modules["user_indent_list"]["kind"] == "indent"
     assert modules["0063_0030_0020"]["kind"] == "list_new"
     assert modules["0065_0880_0010_0020"]["kind"] == "list_new"
-    assert modules["0065_0880_0030_0020"]["kind"] == "list_new"
+    assert modules["0065_0880_0020_0020"]["kind"] == "supplier_invoice"
+    assert modules["0065_0880_0030_0020"]["kind"] == "expense_invoice"
     assert state["jobs"] == []
 
 
@@ -2285,7 +2386,7 @@ def test_company_foc_toggle_is_permission_gated_and_delegated(tmp_path):
 def test_oc_sample_and_sale_asn_workflows_delegate(tmp_path):
     api, fake = make_api(tmp_path)
     assert api.search_oc("oc_no", " OC-12 ")["ok"] is True
-    assert api.search_sample("created_by", " Alice ")["ok"] is True
+    assert api.search_sample("", "", " Alice ", " Nike ")["ok"] is True
     assert api.open_sample_new()["code"] == "SAMPLE_NEW_READY"
     assert api.search_sale_asn("invoice_no", " INV-9 ")["ok"] is True
     assert (
@@ -2295,10 +2396,14 @@ def test_oc_sample_and_sale_asn_workflows_delegate(tmp_path):
         "OC-12",
     ) in fake.calls
     assert (
-        "search_sample",
+        "search_sample_filters",
         '//*[@id="0004_0056_4070"]/a',
-        "created_by",
-        "Alice",
+        {
+            "sample_no": "",
+            "style": "",
+            "created_by": "Alice",
+            "buyer": "Nike",
+        },
     ) in fake.calls
     assert ("open_sample_new", constants.SAMPLE_NEW_XPATH) in fake.calls
     assert (
@@ -2394,6 +2499,78 @@ def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):
         "0065_0880_0030_0020",
     ):
         assert ("open_module_new", module_id) in fake.calls
+
+
+def test_supplier_and_expense_invoice_searches_delegate_multiple_filters(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    assert api.search_supplier_invoice(
+        " Acme ", " SI-01 ", " PO-01 ", " GRN-01 "
+    )["ok"] is True
+    assert api.search_expense_invoice(
+        " Acme ", " EI-01 ", " Alice ", " Save "
+    )["ok"] is True
+
+    assert (
+        "search_supplier_invoice",
+        constants.MODULE_BY_ID["0065_0880_0020_0020"]["xpath"],
+        "Acme",
+        "SI-01",
+        "PO-01",
+        "GRN-01",
+    ) in fake.calls
+    assert (
+        "search_expense_invoice",
+        constants.MODULE_BY_ID["0065_0880_0030_0020"]["xpath"],
+        "Acme",
+        "EI-01",
+        "Alice",
+        "Save",
+    ) in fake.calls
+
+
+def test_supplier_invoice_cancel_tokens_multiple_results_before_choice(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    def multiple(xpath, invoice_no, log=print):
+        fake.calls.append(("prepare_supplier_invoice_cancel", xpath, invoice_no))
+        return {
+            "ok": True,
+            "code": "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
+            "message": "choose",
+            "result_count": 2,
+            "invoices": [
+                {
+                    "row_key": "11",
+                    "invoice_no": "SI-01",
+                    "supplier": "Acme",
+                    "po_no": "PO-01",
+                    "asn_grn_no": "GRN-01",
+                    "status": "Save",
+                },
+                {
+                    "row_key": "12",
+                    "invoice_no": "SI-02",
+                    "supplier": "Acme",
+                    "status": "Confirm",
+                },
+            ],
+        }
+
+    fake.prepare_supplier_invoice_cancel = multiple
+    found = api.cancel_supplier_invoice(" SI- ")
+
+    assert found["code"] == "SUPPLIER_INVOICE_MULTIPLE_RESULTS"
+    assert len(found["invoices"]) == 2
+    assert "row_key" not in found["invoices"][0]
+    choice_id = found["invoices"][0]["choice_id"]
+    assert api.cancel_supplier_invoice_choice(choice_id)["ok"] is True
+    assert (
+        "cancel_supplier_invoice_choice",
+        "11",
+        "SI-01",
+        "Save",
+    ) in fake.calls
 
 
 def test_supplier_category_and_find_delegate_with_all_categories(tmp_path):

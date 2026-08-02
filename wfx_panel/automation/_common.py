@@ -280,13 +280,13 @@ def _ensure_select_value(
         field = frame.locator(selector)
         last_value = field.input_value(timeout=1_000)
         if last_value == value:
-            _write_log(log, f"[SALE ASN NEW] {label} đã đúng: {value}")
+            _write_log(log, f"[MODULE NEW] {label} đã đúng: {value}")
             return
         field.dispatch_event("mousedown")
         field.locator(f'option[value="{value}"]').wait_for(
             state="attached", timeout=4_000
         )
-        _write_log(log, f"[SALE ASN NEW] Đang chọn {label}: {value}")
+        _write_log(log, f"[MODULE NEW] Đang chọn {label}: {value}")
         field.select_option(value=value, timeout=4_000)
         _wait(page, 300)
     raise PlaywrightTimeoutError(
