@@ -210,6 +210,7 @@ class CatalogController:
                     "style_code": style_code,
                     "sample_no": str(raw.get("sample_no") or ""),
                     "created_by": str(raw.get("created_by") or ""),
+                    "buyer": str(raw.get("buyer") or ""),
                 }
             )
         return {
@@ -2207,6 +2208,53 @@ class CatalogController:
             "check_sample_files",
             action,
             {"filter_kind": filter_kind, "query": query},
+        )
+
+    def check_sample_files_with_filters(
+        self,
+        values: Mapping[str, str],
+    ) -> dict:
+        """Check File Sample theo các filter mà người dùng đã nhập."""
+        panel = self._panel
+        cleaned_values = {
+            name: str(values.get(name) or "").strip()
+            for name in ("sample_no", "style", "created_by", "buyer")
+        }
+        active_filters = [
+            name for name, value in cleaned_values.items() if value
+        ]
+
+        def action() -> dict:
+            self._invalidate_catalog_search_only()
+            self.files.clear()
+            self.sample_file_choices.clear()
+            finder = getattr(
+                panel._login,
+                "find_sample_file_results_with_filters",
+                None,
+            )
+            if not callable(finder):
+                return {
+                    "ok": False,
+                    "code": "SAMPLE_FILES_UNSUPPORTED",
+                    "message": (
+                        "Phiên bản tự động hóa chưa hỗ trợ lọc nhiều điều kiện "
+                        "ở Sample List."
+                    ),
+                }
+            sample = constants.MODULE_BY_ID["0004_0056_4070"]
+            found = finder(sample["xpath"], cleaned_values, panel._log)
+            if found.get("code") == "SAMPLE_MULTIPLE_RESULTS":
+                return self._publish_sample_file_choices(found)
+            if found.get("code") != "SAMPLE_STYLE_OPENED":
+                return {**found, "source": "sample"}
+            article_code = str(found.get("article_code") or "").strip()
+            return self._sample_files_result(article_code)
+
+        return panel._run(
+            "check_sample_files",
+            action,
+            {"filter_kind": "multiple", "filter_kinds": active_filters},
         )
 
     def open_sample_file_choice(self, choice_id: str) -> dict:

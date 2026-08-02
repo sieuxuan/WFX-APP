@@ -18,6 +18,7 @@ USER_INDENT_XPATH = (
     '//a[@title="User Indent List" '
     'and contains(@href,"mnuIndentControlUserList")]'
 )
+GDN_DISPATCH_XPATH = '//*[@id="0040_0020_0100"]/a'
 
 DIVISIONS = {
     "woven": {
@@ -52,6 +53,12 @@ MODULE_GROUPS = [
             {"name": "OC List", "id": "0004_0050_0020", "icon": "OC"},
             {"name": "Sample List", "id": "0004_0056_4070", "icon": "SL"},
             {"name": "Sale ASN", "id": "0004_0070_0020", "icon": "AS"},
+            {
+                "name": "(GDN) Dispatch",
+                "id": "gdn_dispatch",
+                "icon": "GD",
+                "xpath": GDN_DISPATCH_XPATH,
+            },
             {"name": "RMPO List", "id": "0005_0050_0020", "icon": "RM"},
             {"name": "Indent List", "id": "0005_0080_0020", "icon": "IN"},
             {

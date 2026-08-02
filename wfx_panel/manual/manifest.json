@@ -332,7 +332,7 @@
     {
       "id": "don-hang",
       "title": "Đơn hàng và chứng từ",
-      "summary": "Làm việc với OC, Sample List và Sale ASN.",
+      "summary": "Làm việc với OC, GDN Dispatch, Sample List và Sale ASN.",
       "entries": [
         {
           "id": "don-hang-oc-tim",
@@ -380,11 +380,38 @@
           }
         },
         {
+          "id": "don-hang-gdn-dispatch",
+          "title": "(GDN) Dispatch",
+          "summary": "Tạo Dispatch từ Invoice GRN sau thời gian chờ bắt buộc.",
+          "file": "05-don-hang/gdn-dispatch.md",
+          "keywords": ["gdn", "dispatch", "grn", "invoice", "process package"],
+          "covers": {
+            "modules": ["gdn_dispatch"],
+            "actions": ["gdn-dispatch-submit"],
+            "errors": [
+              "GDN_DISPATCH_FAILED",
+              "GDN_DISPATCH_UNSUPPORTED",
+              "GDN_EDI_NOT_READY",
+              "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
+              "GDN_INVOICE_INVALID",
+              "GDN_INVOICE_REQUIRED",
+              "GDN_PACKAGE_PROCESS_FAILED",
+              "GDN_PENDING_NOT_FOUND",
+              "GDN_REPORT_DOWNLOAD_FAILED",
+              "GDN_REPORT_EMPTY",
+              "GDN_REPORT_NOT_READY",
+              "GDN_TRANSACTION_FAILED",
+              "GDN_TRANSACTION_UNCONFIRMED",
+              "GDN_WORKBOOK_RELOAD_FAILED"
+            ]
+          }
+        },
+        {
           "id": "don-hang-sample-list",
           "title": "Sample List",
-          "summary": "Mở, tìm và tạo Sample Order.",
+          "summary": "Mở, lọc nhiều điều kiện và tạo Sample Order.",
           "file": "05-don-hang/sample-list.md",
-          "keywords": ["sample order", "created by", "new"],
+          "keywords": ["sample order", "created by", "buyer", "nhiều điều kiện", "new"],
           "covers": {
             "modules": ["0004_0056_4070"],
             "actions": ["sample-list", "sample-search", "sample-new"],
@@ -473,14 +500,14 @@
           "title": "QA và yêu cầu tài chính",
           "summary": "Mở danh sách hoặc đi thẳng tới màn hình tạo mới.",
           "file": "06-danh-sach/qa-va-tai-chinh.md",
-          "keywords": ["qa", "advance pr", "expense invoice", "new"],
+          "keywords": ["qa", "advance pr", "expense invoice", "supplier", "invoice no", "created by", "status", "new"],
           "covers": {
             "modules": [
               "0063_0030_0020",
               "0065_0880_0010_0020",
               "0065_0880_0030_0020"
             ],
-            "actions": ["list-new-list", "list-new-new"]
+            "actions": ["list-new-list", "list-new-new", "expense-invoice-list", "expense-invoice-new", "expense-invoice-search"]
           }
         },
         {
@@ -538,11 +565,12 @@
         {
           "id": "danh-sach-module-khac",
           "title": "Supplier Invoice, Org Structure và System Coding",
-          "summary": "Mở các module chỉ có một nút thao tác.",
+          "summary": "Lọc nhiều điều kiện và Cancel Supplier Invoice an toàn.",
           "file": "06-danh-sach/module-khac.md",
-          "keywords": ["supplier invoice", "org structure", "system coding"],
+          "keywords": ["supplier invoice", "cancel", "invoice no", "po no", "asn", "grn", "org structure", "system coding"],
           "covers": {
             "modules": ["0065_0880_0020_0020", "0090_0001", "0090_0250"],
+            "actions": ["supplier-invoice-list", "supplier-invoice-search", "supplier-invoice-cancel"],
             "errors": [
               "MODULE_ACCESS_CHECK_FAILED",
               "MODULE_FAILED",
@@ -550,7 +578,12 @@
               "MODULE_OPEN_NOT_CONFIRMED",
               "MODULE_SEARCH_FAILED",
               "MODULE_SEARCH_NOT_CONFIRMED",
-              "MODULE_SEARCH_NOT_READY"
+              "MODULE_SEARCH_NOT_READY",
+              "SUPPLIER_INVOICE_ACTION_NOT_READY",
+              "SUPPLIER_INVOICE_CANCEL_FAILED",
+              "SUPPLIER_INVOICE_NOT_FOUND",
+              "SUPPLIER_INVOICE_RESULT_EXPIRED",
+              "SUPPLIER_INVOICE_STATUS_NOT_CANCELLABLE"
             ]
           }
         }

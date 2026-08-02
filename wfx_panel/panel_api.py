@@ -78,6 +78,9 @@ SESSION_OK = frozenset(
         "BUYER_NOT_FOUND",
         "OC_REVISION_REPORT_READY",
         "OC_TRANSACTION_CREATED",
+        "GDN_DISPATCH_COMPLETED",
+        "SUPPLIER_INVOICE_DELETE_SUBMITTED",
+        "SUPPLIER_INVOICE_CANCEL_SUBMITTED",
     }
 )
 SESSION_LOST = frozenset(
@@ -211,6 +214,14 @@ NON_REPORTABLE_FAILURES = frozenset(
         "OC_TEMPLATE_SHEET_MISSING",
         "OC_EDI_VALIDATION_FAILED",
         "OC_TRANSACTION_UNCONFIRMED",
+        "GDN_INVOICE_REQUIRED",
+        "GDN_INVOICE_INVALID",
+        "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
+        "GDN_REPORT_EMPTY",
+        "GDN_PACKAGE_PROCESS_FAILED",
+        "GDN_PENDING_NOT_FOUND",
+        "GDN_TRANSACTION_FAILED",
+        "GDN_TRANSACTION_UNCONFIRMED",
         "OC_UPLOAD_REVIEW_EXPIRED",
         "SALE_ASN_INVOICE_NOT_FOUND",
         "SALE_ASN_MULTIPLE_RESULTS",
@@ -243,7 +254,13 @@ NON_REPORTABLE_FAILURES = frozenset(
 
 # Lỗi nội dung file không gửi telemetry, nhưng riêng lỗi EDI cần ảnh popup
 # Failed Record để người dùng tự sửa đúng Mapping/Doc No. trong Lịch sử tác vụ.
-DIAGNOSTIC_FAILURES = frozenset({"OC_EDI_VALIDATION_FAILED"})
+DIAGNOSTIC_FAILURES = frozenset(
+    {
+        "OC_EDI_VALIDATION_FAILED",
+        "GDN_PACKAGE_PROCESS_FAILED",
+        "GDN_TRANSACTION_FAILED",
+    }
+)
 
 # Các flow này điều hướng tab WFX chính ra khỏi Catalog. Xóa dấu "Master đã
 # chuẩn bị" ngay khi flow thành công để lần Search Catalog kế tiếp tự mở đúng
@@ -259,6 +276,10 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "prepare_sale_asn_documents",
         "search_rmpo",
         "search_indent",
+        "search_supplier_invoice",
+        "search_expense_invoice",
+        "cancel_supplier_invoice",
+        "cancel_supplier_invoice_choice",
         "open_module_new",
         "toggle_company_foc",
         "open_supplier_category",
@@ -268,6 +289,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "open_oc_revision_report",
         "upload_oc",
         "confirm_oc_upload",
+        "run_gdn_dispatch",
         "prepare_catalog_style_row",
         "scan_catalog_style_options",
     }
@@ -317,6 +339,9 @@ class PanelAPI:
         # Hai report Sale ASN được ghép trong file tạm trước khi UI
         # mở Save As. Token ngăn một panel cũ lưu nhầm workbook khác.
         self._sale_asn_document_exports: dict[str, dict] = {}
+        # Token hóa dòng Supplier Invoice khi Invoice No. có nhiều kết quả;
+        # WebView chỉ nhận token, không nhận row key nội bộ của WFX.
+        self._supplier_invoice_cancel_choices: dict[str, dict[str, str]] = {}
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -630,6 +655,7 @@ class PanelAPI:
                 "open_oc_revision_report",
                 "upload_oc",
                 "confirm_oc_upload",
+                "run_gdn_dispatch",
                 "search_sample",
                 "check_sample_files",
                 "open_sample_file_choice",
@@ -965,21 +991,29 @@ class PanelAPI:
 
     def search_sample(
         self,
-        filter_kind: str,
-        query: str,
+        sample_no: str = "",
+        style: str = "",
+        created_by: str = "",
+        buyer: str = "",
     ) -> dict:
         sample = constants.MODULE_BY_ID["0004_0056_4070"]
+        values = {
+            "sample_no": str(sample_no or "").strip(),
+            "style": str(style or "").strip(),
+            "created_by": str(created_by or "").strip(),
+            "buyer": str(buyer or "").strip(),
+        }
+        active_filters = [key for key, value in values.items() if value]
         return self._run(
             "search_sample",
-            lambda: self._login.search_sample_list(
+            lambda: self._login.search_sample_list_with_filters(
                 sample["xpath"],
-                str(filter_kind or ""),
-                str(query or "").strip(),
+                values,
                 self._log,
             ),
             {
-                "filter_kind": str(filter_kind or ""),
-                "query": str(query or "").strip(),
+                "filter_kind": "multiple",
+                "filter_kinds": active_filters,
             },
         )
 
@@ -1234,6 +1268,149 @@ class PanelAPI:
             {"module_id": module_id},
         )
 
+    def search_supplier_invoice(
+        self,
+        supplier: str = "",
+        invoice_no: str = "",
+        po_no: str = "",
+        asn_grn_no: str = "",
+    ) -> dict:
+        supplier_invoice = constants.MODULE_BY_ID["0065_0880_0020_0020"]
+        values = {
+            "supplier": str(supplier or "").strip(),
+            "invoice_no": str(invoice_no or "").strip(),
+            "po_no": str(po_no or "").strip(),
+            "asn_grn_no": str(asn_grn_no or "").strip(),
+        }
+        return self._run(
+            "search_supplier_invoice",
+            lambda: self._login.search_supplier_invoice_list(
+                supplier_invoice["xpath"],
+                values["supplier"],
+                values["invoice_no"],
+                values["po_no"],
+                values["asn_grn_no"],
+                self._log,
+            ),
+            {
+                "module_id": "0065_0880_0020_0020",
+                "filter_kinds": [
+                    name for name, value in values.items() if value
+                ],
+            },
+        )
+
+    def search_expense_invoice(
+        self,
+        supplier: str = "",
+        invoice_no: str = "",
+        created_by: str = "",
+        status: str = "",
+    ) -> dict:
+        expense_invoice = constants.MODULE_BY_ID["0065_0880_0030_0020"]
+        values = {
+            "supplier": str(supplier or "").strip(),
+            "invoice_no": str(invoice_no or "").strip(),
+            "created_by": str(created_by or "").strip(),
+            "status": str(status or "").strip(),
+        }
+        return self._run(
+            "search_expense_invoice",
+            lambda: self._login.search_expense_invoice_list(
+                expense_invoice["xpath"],
+                values["supplier"],
+                values["invoice_no"],
+                values["created_by"],
+                values["status"],
+                self._log,
+            ),
+            {
+                "module_id": "0065_0880_0030_0020",
+                "filter_kinds": [
+                    name for name, value in values.items() if value
+                ],
+            },
+        )
+
+    def cancel_supplier_invoice(self, invoice_no: str) -> dict:
+        cleaned_invoice = str(invoice_no or "").strip()
+        supplier_invoice = constants.MODULE_BY_ID["0065_0880_0020_0020"]
+
+        def action() -> dict:
+            self._supplier_invoice_cancel_choices.clear()
+            result = self._login.prepare_supplier_invoice_cancel(
+                supplier_invoice["xpath"],
+                cleaned_invoice,
+                self._log,
+            )
+            if result.get("code") != "SUPPLIER_INVOICE_MULTIPLE_RESULTS":
+                return result
+            public_invoices: list[dict[str, str]] = []
+            for raw in result.get("invoices") or []:
+                if not isinstance(raw, dict):
+                    continue
+                row_key = str(raw.get("row_key") or "").strip()
+                invoice = str(raw.get("invoice_no") or "").strip()
+                status = str(raw.get("status") or "").strip()
+                if not row_key or not invoice or not status:
+                    continue
+                choice_id = secrets.token_urlsafe(18)
+                self._supplier_invoice_cancel_choices[choice_id] = {
+                    "row_key": row_key,
+                    "invoice_no": invoice,
+                    "status": status,
+                }
+                public_invoices.append(
+                    {
+                        "choice_id": choice_id,
+                        "invoice_no": invoice,
+                        "supplier": str(raw.get("supplier") or ""),
+                        "po_no": str(raw.get("po_no") or ""),
+                        "asn_grn_no": str(raw.get("asn_grn_no") or ""),
+                        "status": status,
+                    }
+                )
+            if not public_invoices:
+                return {
+                    "ok": False,
+                    "code": "SUPPLIER_INVOICE_RESULT_EXPIRED",
+                    "message": "Không đọc được dòng Supplier Invoice để chọn an toàn.",
+                }
+            return {**result, "invoices": public_invoices}
+
+        return self._run(
+            "cancel_supplier_invoice",
+            action,
+            {"filter_kind": "invoice_no"},
+        )
+
+    def cancel_supplier_invoice_choice(self, choice_id: str) -> dict:
+        token = str(choice_id or "").strip()
+
+        def action() -> dict:
+            choice = self._supplier_invoice_cancel_choices.get(token)
+            if choice is None:
+                return {
+                    "ok": False,
+                    "code": "SUPPLIER_INVOICE_RESULT_EXPIRED",
+                    "message": (
+                        "Lựa chọn Supplier Invoice đã hết hiệu lực; "
+                        "hãy tìm lại trước khi Cancel."
+                    ),
+                }
+            return self._login.cancel_supplier_invoice_choice(
+                choice["row_key"],
+                choice["invoice_no"],
+                choice["status"],
+                self._log,
+            )
+
+        return self._run(
+            "cancel_supplier_invoice_choice",
+            action,
+            {"choice_id": token},
+        )
+
     def open_module_new(self, module_id: str) -> dict:
         return self._run(
             "open_module_new",
@@ -1482,10 +1659,19 @@ class PanelAPI:
 
     def check_sample_files(
         self,
-        filter_kind: str,
-        query: str,
+        sample_no: str = "",
+        style: str = "",
+        created_by: str = "",
+        buyer: str = "",
     ) -> dict:
-        return self._catalog.check_sample_files(filter_kind, query)
+        return self._catalog.check_sample_files_with_filters(
+            {
+                "sample_no": str(sample_no or "").strip(),
+                "style": str(style or "").strip(),
+                "created_by": str(created_by or "").strip(),
+                "buyer": str(buyer or "").strip(),
+            }
+        )
 
     def open_sample_file_choice(self, choice_id: str) -> dict:
         return self._catalog.open_sample_file_choice(choice_id)
@@ -1494,6 +1680,45 @@ class PanelAPI:
         return self._run(
             "open_oc_revision_report",
             lambda: self._login.open_oc_revision_report(self._log),
+        )
+
+    def run_gdn_dispatch(
+        self,
+        invoice: str,
+        grn_wait_confirmed: bool = False,
+    ) -> dict:
+        invoice_value = " ".join(str(invoice or "").split())
+        if not bool(grn_wait_confirmed):
+            return {
+                "ok": False,
+                "code": "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
+                "message": (
+                    "Chỉ Submit sau khi GRN nhập kho thành phẩm đã hoàn tất "
+                    "ít nhất 15 phút."
+                ),
+            }
+        if not invoice_value:
+            return {
+                "ok": False,
+                "code": "GDN_INVOICE_REQUIRED",
+                "message": "Hãy nhập Invoice GRN trước khi Submit.",
+            }
+
+        def action() -> dict:
+            runner = getattr(self._login, "run_gdn_dispatch", None)
+            if not callable(runner):
+                return {
+                    "ok": False,
+                    "code": "GDN_DISPATCH_UNSUPPORTED",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ (GDN) Dispatch.",
+                }
+            return runner(invoice_value, self._log)
+
+        # Không lưu Invoice vào request/job history/telemetry.
+        return self._run(
+            "run_gdn_dispatch",
+            action,
+            {"module_id": "gdn_dispatch"},
         )
 
     @staticmethod

@@ -4,7 +4,7 @@
 > sửa nội dung trong `wfx_panel/manual/` rồi chạy
 > `python scripts/generate_user_features.py`.
 
-Phiên bản: 1.0.18
+Phiên bản: 1.0.19
 
 ## 1. Bắt đầu
 
@@ -174,7 +174,7 @@ Dùng để làm gì Làm mới danh sách CM Costs, Production Costs và Indire
 
 ## 5. Đơn hàng và chứng từ
 
-Làm việc với OC, Sample List và Sale ASN.
+Làm việc với OC, GDN Dispatch, Sample List và Sale ASN.
 
 ### Tìm OC
 
@@ -194,11 +194,17 @@ Xuất báo cáo WFX, sửa file và cập nhật OC cũ.
 
 Dùng để làm gì Xuất dữ liệu OC cũ từ báo cáo WFX, sửa trong Excel và gửi bản cập nhật trở lại WFX. Các bước Mở module OC List. Bấm Mở report trong thẻ Revise OC. Chọn tham số trên báo cáo WFX. Xuất báo cáo thành file Excel. Sửa dữ liệu cần thay đổi trong file. Giữ nguyên các cột nhận dạng của OC gốc. Bấm Chọn file trong thẻ Revise OC. Kiểm tra bảng Review rồi bấm Xác nhận Upload . Mẹo Mẹo Ứng dụng chỉ mở đúng báo cáo. Bạn tự chọn tham số và xuất Excel trên WFX để bảo đảm lấy đúng OC cần sửa. Lưu ý Không xóa hoặc đổi các cột nhận dạng OC gốc. WFX cần các cột này để biết OC nào sẽ được cập nhật. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo cáo chưa mở Chờ khu Reporting & Analytic tải xong rồi bấm Mở report lại. File thiếu thông tin OC gốc Xuất lại báo cáo WFX và sửa trên file mới. Review không đúng OC Bấm Hủy , kiểm tra file rồi chọn lại đúng bản Revise.
 
+### (GDN) Dispatch
+
+Tạo Dispatch từ Invoice GRN sau thời gian chờ bắt buộc.
+
+Dùng để làm gì Tạo (GDN) Dispatch từ Invoice GRN sau khi hàng thành phẩm đã nhập kho trên WFX. Các bước Hoàn tất (GRN) nhập kho hàng thành phẩm trên WFX. Chờ ít nhất 15 phút để dữ liệu được đồng bộ. Mở module (GDN) Dispatch trong WFX Smart. Nhập đúng Invoice GRN . Đánh dấu xác nhận GRN đã hoàn tất ít nhất 15 phút. Bấm Submit & tạo Dispatch . Chờ thông báo kết quả ở cuối bảng điều khiển. WFX Smart sẽ tự tải report, làm mới file Excel, Process Package và chọn giao dịch Pending mới nhất theo Processed ON . Lưu ý Chờ đủ 15 phút Không Submit ngay sau khi nhập GRN. Dữ liệu chưa đồng bộ có thể làm package lỗi hoặc không tạo được Dispatch. Gặp lỗi thì sao Gặp lỗi thì sao Nếu WFX báo invoice đã được import, hãy kiểm tra GDN hiện có trước khi chạy lại. Nếu thông báo nói chưa xác nhận được kết quả, không Submit lại ngay; mở EDI Production Order và kiểm tra giao dịch mới nhất để tránh tạo trùng.
+
 ### Sample List
 
-Mở, tìm và tạo Sample Order.
+Mở, lọc nhiều điều kiện và tạo Sample Order.
 
-Dùng để làm gì Mở Sample List, tìm Sample Order và tạo Sample Order mới. Các bước Mở module Sample List. Bấm List để mở danh sách trên WFX. Chọn Sample Order No., Style hoặc Created By. Nhập nội dung vào ô tìm. Bấm Tìm . Bấm New nếu bạn muốn mở màn hình tạo Sample Order mới. Mẹo Mẹo Bạn có thể bấm Tìm ngay. Ứng dụng tự mở danh sách nếu cần. Mẹo Bạn có thể sắp xếp cột theo cách làm việc riêng. Ứng dụng tự quét ngang để tìm Sample Order No., Style hoặc Created By và xóa các filter cũ trước khi tìm. Gặp lỗi thì sao Hiện tượng Cách xử lý New chưa mở Chờ WFX tải xong rồi bấm New lại một lần. Không thấy Sample Kiểm tra đúng kiểu tìm và cách viết nội dung trên WFX.
+Dùng để làm gì Mở Sample List, lọc Sample Order theo một hoặc nhiều điều kiện và tạo Sample Order mới. Các bước Mở module Sample List. Bấm List để mở danh sách trên WFX. Nhập một hoặc nhiều điều kiện: Sample Order No., Style, Created By và Buyer. Bấm Tìm theo các điều kiện đã nhập . Nếu cần kiểm tra file, bấm Check File theo các điều kiện đã nhập để dùng đúng bộ điều kiện đó. Bấm New nếu bạn muốn mở màn hình tạo Sample Order mới. Mẹo Mẹo Bạn có thể bấm Tìm ngay. Ứng dụng tự mở danh sách nếu cần. Mẹo Bạn có thể sắp xếp cột theo cách làm việc riêng. Ứng dụng tự quét ngang để tìm Sample Order No., Style, Created By hoặc Buyer, xóa filter cũ trước khi tìm và kết hợp các điều kiện đã nhập. Gặp lỗi thì sao Hiện tượng Cách xử lý New chưa mở Chờ WFX tải xong rồi bấm New lại một lần. Không thấy Sample Kiểm tra các điều kiện đã nhập và cách viết nội dung trên WFX.
 
 ### Kiểm tra file Sample
 
@@ -238,7 +244,7 @@ Dùng để làm gì Mở Indent List hoặc User Indent và tìm bằng nhiều
 
 Mở danh sách hoặc đi thẳng tới màn hình tạo mới.
 
-Dùng để làm gì Mở danh sách hoặc tạo mới QA Request, Advance Payment Request và Expense Invoice. Các bước Mở QA List, Advance PR List hoặc Expense Inv List. Bấm List để mở danh sách tương ứng trên WFX. Bấm New nếu bạn muốn tạo yêu cầu hoặc hóa đơn mới. Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ. Mẹo Mẹo Nút New đi thẳng tới màn hình tạo mới. Bạn không cần bấm List trước. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Bật Chế độ quản trị nếu module thuộc quyền quản trị, hoặc nhờ quản trị WFX kiểm tra quyền tài khoản. New chưa mở Chờ WFX tải xong rồi bấm New lại một lần.
+Dùng để làm gì Mở danh sách hoặc tạo mới QA Request, Advance Payment Request và Expense Invoice. Các bước Mở QA List, Advance PR List hoặc Expense Inv List. Bấm List để mở danh sách tương ứng trên WFX. Bấm New nếu bạn muốn tạo yêu cầu hoặc hóa đơn mới. Khi tạo Advance Payment Request, ứng dụng chọn sẵn Advance Type = Against RMPO . Khi tạo Expense Invoice, ứng dụng chọn sẵn Invoice Type = General Expense . Trong Expense Inv List, nhập một hoặc nhiều điều kiện Supplier, Invoice No., Created By và Status rồi bấm Tìm theo các điều kiện đã nhập . Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ. Mẹo Mẹo Nút New đi thẳng tới màn hình tạo mới. Bạn không cần bấm List trước. Mẹo Ứng dụng chỉ báo hoàn tất sau khi WFX xác nhận giá trị mặc định đã được chọn. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Bật Chế độ quản trị nếu module thuộc quyền quản trị, hoặc nhờ quản trị WFX kiểm tra quyền tài khoản. New chưa mở Chờ WFX tải xong rồi bấm New lại một lần.
 
 ### Buyer List
 
@@ -260,9 +266,9 @@ Dùng để làm gì Mở Company Setup và chuyển nơi áp dụng FOC giữa 
 
 ### Supplier Invoice, Org Structure và System Coding
 
-Mở các module chỉ có một nút thao tác.
+Lọc nhiều điều kiện và Cancel Supplier Invoice an toàn.
 
-Dùng để làm gì Mở Supplier Inv List, Org Structure hoặc System Coding trên WFX bằng một nút. Các bước Bật Chế độ quản trị nếu bạn cần mở Org Structure hoặc System Coding. Mở thẻ module cần dùng trên bảng điều khiển. Bấm Mở module trên WFX . Chờ WFX chuyển sang đúng màn hình. Mẹo Mẹo Supplier Inv List nằm trong nhóm Finance. Org Structure và System Coding nằm trong nhóm Admin. Lưu ý Module chỉ hiện khi tài khoản được cấp quyền phù hợp trên WFX. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Admin Mở Cài đặt, thẻ Giao diện và bật Chế độ quản trị. WFX báo không có quyền Nhờ quản trị WFX kiểm tra quyền của tài khoản hiện tại. Màn hình không đổi Chờ WFX tải xong rồi bấm Mở module trên WFX lại.
+Dùng để làm gì Mở Supplier Inv List, lọc nhiều điều kiện hoặc Cancel Supplier Invoice an toàn. Bạn cũng có thể mở Org Structure và System Coding trên WFX. Các bước Mở Supplier Inv List trong nhóm Finance và bấm List . Nhập một hoặc nhiều điều kiện: Supplier, Invoice No., PO No. và ASN/GRN No. Bấm Tìm theo các điều kiện đã nhập . Để Cancel, nhập đúng Invoice No. vào phần Cancel Supplier Invoice rồi bấm nút Cancel. Nếu chỉ có một dòng, ứng dụng chọn dòng đó rồi bấm Delete khi Status là Save , hoặc Cancel khi Status là Confirm . Nếu có nhiều dòng, chọn đúng invoice trong danh sách của ứng dụng để tiếp tục; ứng dụng kiểm tra lại Status trước khi bấm nút trên WFX. Kiểm tra hộp xác nhận native của WFX trong Chrome trước khi xác nhận thao tác. Để mở Org Structure hoặc System Coding, bật Chế độ quản trị, mở thẻ module cần dùng rồi bấm Mở module trên WFX . Mẹo Mẹo Supplier Inv List nằm trong nhóm Finance. Org Structure và System Coding nằm trong nhóm Admin. Lưu ý Module chỉ hiện khi tài khoản được cấp quyền phù hợp trên WFX. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Admin Mở Cài đặt, thẻ Giao diện và bật Chế độ quản trị. WFX báo không có quyền Nhờ quản trị WFX kiểm tra quyền của tài khoản hiện tại. Màn hình không đổi Chờ WFX tải xong rồi bấm Mở module trên WFX lại. Status không phải Save/Confirm Ứng dụng dừng, không bấm nút thay đổi hóa đơn. Kiểm tra lại invoice và Status trên WFX. Có nhiều invoice Chọn một dòng trong danh sách ứng dụng rồi Cancel; không thao tác trực tiếp từ kết quả mơ hồ.
 
 ## 7. Cài đặt, cập nhật và xử lý sự cố
 
@@ -354,6 +360,20 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `FILTER_RESULTS_NOT_READY` | Kết quả filter chưa ổn định | Chờ grid tải xong rồi thử tìm lại. |
 | `FILTER_VALUE_NOT_CONFIRMED` | WFX chưa nhận giá trị filter | Mở lại Floating Filter rồi nhập lại. |
 | `FLOATING_FILTER_NOT_READY` | Floating Filter chưa sẵn sàng | App chưa chuẩn bị được bộ lọc tự động; hãy chờ WFX rồi thử lại. |
+| `GDN_DISPATCH_FAILED` | Không thể hoàn tất (GDN) Dispatch | Mở Log kỹ thuật, kiểm tra report và EDI Production Order rồi thử lại. |
+| `GDN_DISPATCH_UNSUPPORTED` | Phiên bản chưa hỗ trợ (GDN) Dispatch | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
+| `GDN_EDI_NOT_READY` | EDI Production Order chưa sẵn sàng | Chờ WFX tải xong và kiểm tra quyền EDI Production Order. |
+| `GDN_GRN_WAIT_CONFIRMATION_REQUIRED` | Chưa xác nhận thời gian chờ sau GRN | Chờ đủ 15 phút, đánh dấu xác nhận rồi Submit lại. |
+| `GDN_INVOICE_INVALID` | Invoice GRN không hợp lệ | Kiểm tra lại nội dung Invoice GRN rồi Submit lại. |
+| `GDN_INVOICE_REQUIRED` | Chưa nhập Invoice GRN | Nhập đúng Invoice GRN trước khi Submit. |
+| `GDN_PACKAGE_PROCESS_FAILED` | WFX từ chối Process Package GDN | Kiểm tra lỗi hiển thị trên WFX; invoice có thể đã được import trước đó. |
+| `GDN_PENDING_NOT_FOUND` | Không tìm thấy package GDN Pending mới | Kiểm tra Processed ON và Transaction Detail trên EDI Production Order. |
+| `GDN_REPORT_DOWNLOAD_FAILED` | Không tải được report Buyer Dispatch | Kiểm tra phiên WFX, quyền report và thử lại sau khi WFX ổn định. |
+| `GDN_REPORT_EMPTY` | Report Buyer Dispatch không có dữ liệu | Kiểm tra Invoice GRN và bảo đảm đã chờ đủ thời gian đồng bộ. |
+| `GDN_REPORT_NOT_READY` | Report Buyer Dispatch chưa sẵn sàng | Chờ report load xong rồi Submit lại. |
+| `GDN_TRANSACTION_FAILED` | WFX báo lỗi khi tạo GDN Dispatch | Xem lỗi WFX và Log kỹ thuật trước khi xử lý lại invoice. |
+| `GDN_TRANSACTION_UNCONFIRMED` | Chưa xác nhận được kết quả GDN Dispatch | Không chạy lại ngay; kiểm tra transaction mới nhất trên WFX để tránh tạo trùng. |
+| `GDN_WORKBOOK_RELOAD_FAILED` | Không reload được file XLSX GDN | Kiểm tra file report tải về và dung lượng thư mục tạm. |
 | `LOGIN_FAILED` | Đăng nhập WFX thất bại | Kiểm tra tài khoản, Company và trạng thái trang đăng nhập. |
 | `LOGIN_TIMEOUT` | WFX phản hồi quá chậm khi đăng nhập | Kiểm tra mạng và thử đăng nhập lại. |
 | `MASTER_FAILED` | Không thể mở Master | Mở lại Category rồi thử Master lần nữa. |
@@ -413,6 +433,12 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `STYLE_REQUIRED_FIELD_MISSING` | Style New còn thiếu trường bắt buộc | Điền đủ các cột của dòng New rồi chọn lại file. |
 | `STYLE_ROW_INVALID` | Không tìm thấy dòng Tạo Style | Chọn lại file để làm mới danh sách dòng. |
 | `STYLE_TEMPLATE_SHEET_MISSING` | Thiếu sheet Tạo Style | Tải form mới và nhập dữ liệu vào đúng sheet Tạo Style. |
+| `SUPPLIER_INVOICE_ACTION_NOT_READY` | Nút Delete/Cancel Supplier Invoice chưa sẵn sàng | Mở lại Supplier Inv List, tìm đúng invoice rồi thử lại. |
+| `SUPPLIER_INVOICE_CANCEL_FAILED` | Không thể Cancel Supplier Invoice | Mở Log kỹ thuật, kiểm tra đúng invoice và quyền thao tác trên WFX. |
+| `SUPPLIER_INVOICE_NOT_FOUND` | Không tìm thấy Supplier Invoice | Kiểm tra lại Invoice No. trước khi Cancel. |
+| `SUPPLIER_INVOICE_NOT_READY` | Supplier Inv List chưa sẵn sàng | Chờ WFX tải xong rồi tìm lại Invoice No. cần Cancel. |
+| `SUPPLIER_INVOICE_RESULT_EXPIRED` | Kết quả Supplier Invoice đã thay đổi | Tìm lại Invoice No. rồi chọn đúng một dòng để tiếp tục. |
+| `SUPPLIER_INVOICE_STATUS_NOT_CANCELLABLE` | Status Supplier Invoice không thể xử lý | Chỉ tiếp tục khi Status là Save hoặc Confirm. |
 | `SUPPLIER_MASTER_NOT_READY` | Supplier Master chưa sẵn sàng | Chờ Supplier List và Category tải xong rồi thử lại. |
 | `SUPPLIER_OPEN_FAILED` | Không thể mở Supplier List | Kiểm tra quyền Supplier và menu WFX. |
 | `SUPPLIER_SEARCH_FAILED` | Không thể tìm Supplier | Mở Log kỹ thuật và kiểm tra Category đang thao tác. |

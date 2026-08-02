@@ -1,14 +1,16 @@
 ## Dùng để làm gì
 
-Mở Sample List, tìm Sample Order và tạo Sample Order mới.
+Mở Sample List, lọc Sample Order theo một hoặc nhiều điều kiện và tạo Sample
+Order mới.
 
 ## Các bước
 
 1. Mở module Sample List.
 2. Bấm `List` để mở danh sách trên WFX.
-3. Chọn Sample Order No., Style hoặc Created By.
-4. Nhập nội dung vào ô tìm.
-5. Bấm `Tìm`.
+3. Nhập một hoặc nhiều điều kiện: Sample Order No., Style, Created By và Buyer.
+4. Bấm `Tìm theo các điều kiện đã nhập`.
+5. Nếu cần kiểm tra file, bấm `Check File theo các điều kiện đã nhập` để dùng
+   đúng bộ điều kiện đó.
 6. Bấm `New` nếu bạn muốn mở màn hình tạo Sample Order mới.
 
 ## Mẹo
@@ -18,11 +20,12 @@ Mở Sample List, tìm Sample Order và tạo Sample Order mới.
 
 > [!meo]
 > Bạn có thể sắp xếp cột theo cách làm việc riêng. Ứng dụng tự quét ngang để tìm
-> Sample Order No., Style hoặc Created By và xóa các filter cũ trước khi tìm.
+> Sample Order No., Style, Created By hoặc Buyer, xóa filter cũ trước khi tìm và
+> kết hợp các điều kiện đã nhập.
 
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |
 |---|---|
 | New chưa mở | Chờ WFX tải xong rồi bấm `New` lại một lần. |
-| Không thấy Sample | Kiểm tra đúng kiểu tìm và cách viết nội dung trên WFX. |
+| Không thấy Sample | Kiểm tra các điều kiện đã nhập và cách viết nội dung trên WFX. |

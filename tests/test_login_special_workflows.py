@@ -120,6 +120,9 @@ def test_oc_sample_and_sale_asn_search_auto_open_their_list():
 
 def test_sample_check_file_reads_rows_and_opens_only_a_unique_style():
     assert "def find_sample_file_results" in SOURCE
+    assert "def find_sample_file_results_with_filters" in SOURCE
+    assert "def search_sample_list_with_filters" in SOURCE
+    assert '"buyer": SearchFieldSpec' in SOURCE
     assert "def open_sample_file_result" in SOURCE
     assert '"SAMPLE_MULTIPLE_RESULTS"' in SOURCE
     assert '"SAMPLE_STYLE_OPENED"' in SOURCE
@@ -156,6 +159,23 @@ def test_rmpo_and_indent_support_context_bound_combined_filters():
     assert '"MODULE_LIST_NOT_OPEN"' not in combined_block
 
 
+def test_supplier_and_expense_invoice_support_combined_filters_and_safe_cancel():
+    for selector in (
+        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier",
+        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo",
+        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColPONo",
+        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColCreatedBy",
+        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColStatus",
+        "#ddlInvoiceType",
+    ):
+        assert selector in SOURCE
+    assert "def prepare_supplier_invoice_cancel" in SOURCE
+    assert "def cancel_supplier_invoice_choice" in SOURCE
+    assert '//*[@id="titlebarAPInvoiceList"]/tbody/tr/td[2]/span/div[2]' in SOURCE
+    assert '//*[@id="titlebarAPInvoiceList"]/tbody/tr/td[2]/span/div[4]' in SOURCE
+    assert '"SUPPLIER_INVOICE_MULTIPLE_RESULTS"' in SOURCE
+
+
 def test_qa_advance_pr_and_expense_new_use_direct_menu_links():
     assert "def open_module_new" in SOURCE
     new_block = SOURCE[
@@ -167,6 +187,9 @@ def test_qa_advance_pr_and_expense_new_use_direct_menu_links():
     assert "mnuAdvancePaymentRequestNew" in new_block
     assert "ARAPType=APR" in new_block
     assert '//*[@id="0065_0880_0030_0010"]/a' in new_block
+    assert '("#ddlRequestType", "RMPO", "Against RMPO")' in new_block
+    assert '("#ddlInvoiceType", "GeneralExpense", "General Expense")' in new_block
+    assert "_ensure_select_value" in new_block
     assert "_click_module_menu_on_page" in new_block
     assert '"MODULE_LIST_NOT_OPEN"' not in new_block
     assert "_document_changed" in new_block

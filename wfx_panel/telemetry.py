@@ -53,6 +53,7 @@ METHOD_LABELS = {
     "upload_oc": "Upload OC qua EDI Buyer PO",
     "review_oc_upload": "Review file Upload OC",
     "confirm_oc_upload": "Xác nhận Upload OC qua EDI Buyer PO",
+    "run_gdn_dispatch": "Tạo (GDN) Dispatch",
     "cancel_oc_upload_review": "Hủy bước xem lại Upload OC",
     "search_sample": "Tìm trong Sample List",
     "check_sample_files": "Check File trong Sample List",
@@ -62,6 +63,10 @@ METHOD_LABELS = {
     "save_sale_asn_documents": "Lưu Documents Sale ASN",
     "search_rmpo": "Tìm trong RMPO List",
     "search_indent": "Tìm trong Indent List",
+    "search_supplier_invoice": "Tìm trong Supplier Inv List",
+    "search_expense_invoice": "Tìm trong Expense Inv List",
+    "cancel_supplier_invoice": "Cancel Supplier Invoice",
+    "cancel_supplier_invoice_choice": "Cancel Supplier Invoice đã chọn",
     "open_module_new": "Mở màn New của module",
     "open_supplier_category": "Mở Supplier List",
     "find_supplier": "Tìm Supplier",
@@ -107,6 +112,30 @@ ERROR_CODE_INFO = {
 
 ERROR_CODE_INFO.update(
     {
+        "SUPPLIER_INVOICE_ACTION_NOT_READY": (
+            "Nút Delete/Cancel Supplier Invoice chưa sẵn sàng",
+            "Mở lại Supplier Inv List, tìm đúng invoice rồi thử lại.",
+        ),
+        "SUPPLIER_INVOICE_CANCEL_FAILED": (
+            "Không thể Cancel Supplier Invoice",
+            "Mở Log kỹ thuật, kiểm tra đúng invoice và quyền thao tác trên WFX.",
+        ),
+        "SUPPLIER_INVOICE_NOT_FOUND": (
+            "Không tìm thấy Supplier Invoice",
+            "Kiểm tra lại Invoice No. trước khi Cancel.",
+        ),
+        "SUPPLIER_INVOICE_NOT_READY": (
+            "Supplier Inv List chưa sẵn sàng",
+            "Chờ WFX tải xong rồi tìm lại Invoice No. cần Cancel.",
+        ),
+        "SUPPLIER_INVOICE_RESULT_EXPIRED": (
+            "Kết quả Supplier Invoice đã thay đổi",
+            "Tìm lại Invoice No. rồi chọn đúng một dòng để tiếp tục.",
+        ),
+        "SUPPLIER_INVOICE_STATUS_NOT_CANCELLABLE": (
+            "Status Supplier Invoice không thể xử lý",
+            "Chỉ tiếp tục khi Status là Save hoặc Confirm.",
+        ),
         "BUYER_EDIT_NOT_CONFIRMED": (
             "WFX chưa xác nhận màn Edit Buyer",
             "Mở Buyer List, tìm lại Buyer rồi thử mở Edit.",
@@ -538,6 +567,68 @@ _EXACT_CODE_PATTERN = re.compile(
 )
 
 
+ERROR_CODE_INFO.update(
+    {
+        "GDN_DISPATCH_FAILED": (
+            "Không thể hoàn tất (GDN) Dispatch",
+            "Mở Log kỹ thuật, kiểm tra report và EDI Production Order rồi thử lại.",
+        ),
+        "GDN_DISPATCH_UNSUPPORTED": (
+            "Phiên bản chưa hỗ trợ (GDN) Dispatch",
+            "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
+        ),
+        "GDN_GRN_WAIT_CONFIRMATION_REQUIRED": (
+            "Chưa xác nhận thời gian chờ sau GRN",
+            "Chờ đủ 15 phút, đánh dấu xác nhận rồi Submit lại.",
+        ),
+        "GDN_INVOICE_INVALID": (
+            "Invoice GRN không hợp lệ",
+            "Kiểm tra lại nội dung Invoice GRN rồi Submit lại.",
+        ),
+        "GDN_INVOICE_REQUIRED": (
+            "Chưa nhập Invoice GRN",
+            "Nhập đúng Invoice GRN trước khi Submit.",
+        ),
+        "GDN_EDI_NOT_READY": (
+            "EDI Production Order chưa sẵn sàng",
+            "Chờ WFX tải xong và kiểm tra quyền EDI Production Order.",
+        ),
+        "GDN_PACKAGE_PROCESS_FAILED": (
+            "WFX từ chối Process Package GDN",
+            "Kiểm tra lỗi hiển thị trên WFX; invoice có thể đã được import trước đó.",
+        ),
+        "GDN_PENDING_NOT_FOUND": (
+            "Không tìm thấy package GDN Pending mới",
+            "Kiểm tra Processed ON và Transaction Detail trên EDI Production Order.",
+        ),
+        "GDN_REPORT_DOWNLOAD_FAILED": (
+            "Không tải được report Buyer Dispatch",
+            "Kiểm tra phiên WFX, quyền report và thử lại sau khi WFX ổn định.",
+        ),
+        "GDN_REPORT_EMPTY": (
+            "Report Buyer Dispatch không có dữ liệu",
+            "Kiểm tra Invoice GRN và bảo đảm đã chờ đủ thời gian đồng bộ.",
+        ),
+        "GDN_REPORT_NOT_READY": (
+            "Report Buyer Dispatch chưa sẵn sàng",
+            "Chờ report load xong rồi Submit lại.",
+        ),
+        "GDN_TRANSACTION_FAILED": (
+            "WFX báo lỗi khi tạo GDN Dispatch",
+            "Xem lỗi WFX và Log kỹ thuật trước khi xử lý lại invoice.",
+        ),
+        "GDN_TRANSACTION_UNCONFIRMED": (
+            "Chưa xác nhận được kết quả GDN Dispatch",
+            "Không chạy lại ngay; kiểm tra transaction mới nhất trên WFX để tránh tạo trùng.",
+        ),
+        "GDN_WORKBOOK_RELOAD_FAILED": (
+            "Không reload được file XLSX GDN",
+            "Kiểm tra file report tải về và dung lượng thư mục tạm.",
+        ),
+    }
+)
+
+
 def redact_telemetry_text(value: object) -> str:
     """Loại URL, secret và query nghiệp vụ khỏi mô tả gửi ra ngoài."""
     text = str(value or "").strip()
@@ -563,16 +654,22 @@ _METHOD_MODULES = {
     "prepare_sale_asn_documents": "Sale ASN",
     "save_sale_asn_documents": "Sale ASN",
     "search_rmpo": "RMPO List",
+    "search_supplier_invoice": "Supplier Inv List",
+    "search_expense_invoice": "Expense Inv List",
+    "cancel_supplier_invoice": "Supplier Inv List",
+    "cancel_supplier_invoice_choice": "Supplier Inv List",
     "find_supplier": "Supplier List",
     "find_supplier_in_category": "Supplier List",
     "find_buyer": "Buyer List",
     "toggle_company_foc": "Company Setup",
+    "run_gdn_dispatch": "(GDN) Dispatch",
 }
 _MODULE_NAMES_BY_ID = {
     "0003_6200": "Catalog",
     "0004_0050_0020": "OC List",
     "0004_0056_4070": "Sample List",
     "0004_0070_0020": "Sale ASN",
+    "gdn_dispatch": "(GDN) Dispatch",
     "0005_0050_0020": "RMPO List",
     "0005_0080_0020": "Indent List",
     "user_indent_list": "User Indent",
@@ -595,11 +692,15 @@ _FILTER_LABELS = {
         "sample_no": "Sample Order No.",
         "style": "Style",
         "created_by": "Created By",
+        "buyer": "Buyer",
+        "multiple": "nhiều điều kiện Sample",
     },
     "check_sample_files": {
         "sample_no": "Sample Order No.",
         "style": "Style",
         "created_by": "Created By",
+        "buyer": "Buyer",
+        "multiple": "nhiều điều kiện Sample",
     },
     "search_sale_asn": {
         "invoice_no": "Invoice No.",
@@ -611,10 +712,22 @@ _FILTER_LABELS = {
         "buyer_order_ref": "Buyer Order Ref/OC No.",
         "style": "Buyer Order Ref/OC No.",
     },
+    "search_supplier_invoice": {
+        "multiple": "Supplier / Invoice No. / PO No. / ASN-GRN No.",
+    },
+    "search_expense_invoice": {
+        "multiple": "Supplier / Invoice No. / Created By / Status",
+    },
+    "cancel_supplier_invoice": {
+        "invoice_no": "Invoice No.",
+    },
 }
 _METHOD_DEFAULT_FILTERS = {
     "search_rmpo": "Supplier / RMPO No.",
     "search_indent": "Supplier / Article / Indent No. / Style",
+    "search_supplier_invoice": "Supplier / Invoice No. / PO No. / ASN-GRN No.",
+    "search_expense_invoice": "Supplier / Invoice No. / Created By / Status",
+    "cancel_supplier_invoice": "Invoice No.",
 }
 _DIVISION_LABELS = {
     "woven": "WOVEN",

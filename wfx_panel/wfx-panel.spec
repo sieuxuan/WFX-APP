@@ -37,6 +37,7 @@ a = Analysis(
         "wfx_panel.automation.modules",
         "wfx_panel.automation.oc",
         "wfx_panel.automation.directory",
+        "wfx_panel.automation.dispatch",
         "wfx_panel.automation._common",
         "wfx_panel.costing_planner",
         "wfx_panel.costing_workbook",

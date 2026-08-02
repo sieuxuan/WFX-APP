@@ -88,6 +88,18 @@ SAMPLE_SEARCH_SPEC = ModuleSearchSpec(
             ),
             ("created by", "createdby", "creator"),
         ),
+        "buyer": SearchFieldSpec(
+            "Buyer",
+            (
+                "#txtBuyer",
+                "#txtBuyerName",
+                'input[aria-label="Buyer Filter Input" i]',
+                'input[aria-label="Buyer Name Filter Input" i]',
+                'input[id*="BuyerName" i]',
+                'input[name*="BuyerName" i]',
+            ),
+            ("buyer", "buyer name", "buyer company"),
+        ),
     },
     context_field=SearchFieldSpec(
         "Sample Order No.",
@@ -136,6 +148,119 @@ SALE_ASN_SEARCH_SPEC = ModuleSearchSpec(
         ("invoice no", "invoice number", "invoice"),
     ),
     requires_floating_filter=True,
+)
+
+SUPPLIER_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
+    module_name="Supplier Inv List",
+    fields={
+        "supplier": SearchFieldSpec(
+            "Supplier",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier "
+                "input#txtSupplier",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colSupplier "
+                "input#txtSupplier",
+                "#txtSupplier",
+            ),
+        ),
+        "invoice_no": SearchFieldSpec(
+            "Invoice No.",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo "
+                "input#txtInvoiceNo",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colInvoiceNo "
+                "input#txtInvoiceNo",
+                "#txtInvoiceNo",
+                "#txtAPInvoiceNo",
+            ),
+        ),
+        "po_no": SearchFieldSpec(
+            "PO No.",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColPONo "
+                "input#txtPONo",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colPONo "
+                "input#txtPONo",
+                "#txtPONo",
+                "#txtPONumber",
+            ),
+        ),
+        "asn_grn_no": SearchFieldSpec(
+            "ASN/GRN No.",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColASNGRNNo "
+                "input#txtASNGRNNo",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colASNGRNNo "
+                "input#txtASNGRNNo",
+                "#txtASNGRNNo",
+                "#txtASNNo",
+                "#txtGRNNo",
+            ),
+        ),
+    },
+    context_field=SearchFieldSpec(
+        "Supplier Inv List",
+        (
+            "#titlebarAPInvoiceList",
+            "#gridAPInvoiceList_tblGridHeader",
+        ),
+    ),
+)
+
+EXPENSE_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
+    module_name="Expense Inv List",
+    fields={
+        "supplier": SearchFieldSpec(
+            "Supplier",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier "
+                "input#txtSupplier",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colSupplier "
+                "input#txtSupplier",
+                "#txtSupplier",
+            ),
+        ),
+        "invoice_no": SearchFieldSpec(
+            "Invoice No.",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo "
+                "input#txtInvoiceNo",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colInvoiceNo "
+                "input#txtInvoiceNo",
+                "#txtInvoiceNo",
+                "#txtAPInvoiceNo",
+            ),
+        ),
+        "created_by": SearchFieldSpec(
+            "Created By",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColCreatedBy "
+                "input#txtCreatedBy",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colCreatedBy "
+                "input#txtCreatedBy",
+                "#txtCreatedBy",
+            ),
+        ),
+        "status": SearchFieldSpec(
+            "Status",
+            (
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColStatus "
+                "input#txtStatus",
+                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colStatus "
+                "input#txtStatus",
+                "#txtStatus",
+                "select#ddlStatus",
+                'select[id*="Status" i]',
+            ),
+        ),
+    },
+    context_field=SearchFieldSpec(
+        "Expense Inv List",
+        (
+            "#titlebarAPInvoiceList",
+            "#gridAPInvoiceList_tblGridHeader",
+        ),
+    ),
 )
 
 RMPO_SEARCH_SPEC = ModuleSearchSpec(

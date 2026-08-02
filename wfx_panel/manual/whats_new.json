@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.0.19",
+    "date": "2026-08-02",
+    "highlights": [
+      {
+        "title": "Tự động hóa (GDN) Dispatch",
+        "body": "Nhập Invoice GRN để tải báo cáo, chuẩn hóa XLSX, import Buyer Order Dispatch và theo dõi kết quả ngay trong WFX Smart; ứng dụng luôn nhắc chờ đủ 15 phút sau GRN.",
+        "entry": "don-hang-gdn-dispatch"
+      },
+      {
+        "title": "Tra cứu và thao tác module đầy đủ hơn",
+        "body": "Các luồng Sample List, QA, Finance và module danh sách được bổ sung tìm kiếm, thao tác và hướng dẫn sử dụng thống nhất.",
+        "entry": "don-hang-sample-list"
+      }
+    ]
+  },
+  {
     "version": "1.0.18",
     "date": "2026-08-02",
     "highlights": [
