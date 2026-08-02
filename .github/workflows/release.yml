@@ -314,13 +314,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} bổ sung hướng dẫn sử dụng tiếng Việt,
-            hoàn thiện tải Documents từ Sale ASN và đồng bộ trải nghiệm UI.
-
-            Giao diện mới chuẩn hóa trạng thái hover/focus/active/disabled/loading
-            của button, tăng độ tương phản và thay tooltip Windows bằng tooltip
-            riêng hỗ trợ chuột lẫn bàn phím. Light/dark đã được kiểm tra trực
-            tiếp trên pywebview/WebView2 ở DPI 100/125/150/200%.
+            WFX Smart ${{ env.VERSION }} bổ sung luồng tạo Style Apparel hàng loạt
+            và đồng bộ dữ liệu Article/Style dùng chung qua n8n + PostgreSQL.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.
@@ -341,49 +336,12 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
-            - Nút Manual mở hướng dẫn tiếng Việt offline, tìm kiếm được và đi thẳng tới nội dung của module hoặc mã lỗi hiện tại.
-            - Catalog, Sample List và Sale ASN tự quét ngang để tìm đúng Floating Filter theo layout cột riêng của từng user, đồng thời xóa cả filter cũ đang bị ẩn ngoài viewport.
-            - Sample Check File đọc đúng Sample No. và Style Code kể cả khi WFX render giá trị bằng button/input lồng trong ô.
-            - Sale ASN tải Packing List và Buyer Invoice, gộp thành một workbook theo Invoice No. và giữ format của hai sheet.
-            - Sale ASN nhận đúng Invoice No. trước rồi tự quét ngang bảng để tìm cột Docs dù mỗi người dùng đã kéo cột tới vị trí khác nhau.
-            - Mọi file tải hoặc xuất thành công đều tự mở thư mục người dùng đã chọn.
-            - Updater nhận diện bản Setup để nâng cấp bằng installer; bản portable tiếp tục cập nhật trực tiếp bằng gói ZIP.
-            - Upload OC New dùng form một header, tự sinh Sheet1 EDI và validate trước khi gửi WFX.
-            - Màn Review hiển thị Buyer, Season, số PO, số Style và tổng Units trước khi người dùng xác nhận upload.
-            - Revise OC mở đúng báo cáo WFX, nhận file người dùng chỉnh sửa rồi chạy chung bước verify/Create Transaction.
-            - Bộ cài Windows tạo shortcut Desktop/Start Menu và nâng cấp tại chỗ; ZIP portable vẫn được phát hành song song.
-            - Updater xác minh exact PID + đường dẫn và chỉ force-stop đúng app đang nâng cấp nếu WebView2 đóng chậm.
-            - Article Library 15.240 dòng tự đồng bộ từ server, có Article Code, Article Name, Buyer Reference và Category.
-            - Catalog gợi ý theo Category; chọn Buyer Reference/Article Name sẽ mở bằng exact Article Code, không phải chọn lần hai.
-            - Costing chỉ đưa mã F vào Fabric, mã T vào Trim và tự lookup Article Name trong Excel.
-            - Khi Apply, Material Color/Size còn thiếu được tự thêm vào đúng Article card rồi Save.
-            - QA, Advance Payment Request và Expense Invoice mở thẳng màn New, không cần vào List trước.
-            - Keepalive không kéo Chrome khỏi tab Costing; luồng Article → Costing xác nhận exact code và phục hồi popup nhanh hơn.
-            - Catalog và Costing tách thành workspace riêng, giao diện gọn và giữ đúng màn đang làm.
-            - Dùng chung một Playwright worker và CDP connection giữa các flow, không reconnect ở từng thao tác.
-            - Nút Stop ở footer dừng tại checkpoint an toàn; không cắt ngang lúc Company Setup đang Save.
-            - Giới hạn Chrome/WebView2 renderer và tắt dịch vụ nền không cần thiết để giảm đỉnh RAM.
-            - Catalog có tiêu đề ngắn gọn hơn; chuyển màn và trạng thái tác vụ mượt hơn.
-            - Buyer/Supplier giữ đúng PartyType khi frame WFX reload, không đọc nhầm màn có cùng ô Company Name.
-            - Tìm Supplier tiếp tục qua Category lỗi, báo phần chưa kiểm tra và đếm tổng kết quả chính xác.
-            - Panel không tự thu nếu người dùng đã quay lại trước khi automation hoàn tất.
-            - Webhook n8n và crash log che dữ liệu nhạy cảm cả ở trường message/exception.
-            - File đính kèm được quét đủ bốn mục Article, tải file lớn theo chunk, hiện toast và mở Explorer tại file đã lưu.
-            - Company Setup đổi FOC ASN/GRN và Save ổn định qua các lần WFX thay frame.
-            - Supplier List nhận diện đúng frame hiện tại, mở Master và tìm nhà cung cấp trên các Category.
-            - Bubble bo góc mượt, kéo trực tiếp; font và bố cục Catalog/File dễ đọc, không còn scroll lồng nhau.
-            - Sửa updater trên Windows PowerShell 5.1 và môi trường thiếu module hash.
-            - Thêm nút Sao chép lỗi để gửi nhanh chẩn đoán khi cập nhật thất bại.
-            - Named mutex bảo đảm chỉ một WFX Smart chạy, kể cả lúc nâng cấp từ bản cũ.
-            - Panel và thông báo giữ đúng bố cục trên Windows Scale 100–200% và nhiều màn hình.
-            - Catalog Apparel tự nhận diện cây Group/Folder theo tài khoản.
-            - Cây Catalog chỉ scan lần đầu, được dùng lại sau khi mở lại app; Refresh mới ép scan lại.
-            - Group, Folder và Master đều có thể đặt làm vị trí mặc định.
-            - Tìm Style Code/Buyer Reference và mở thẳng Costing/BOM trong một thao tác.
-            - Không chạy chồng hai workflow WFX; UI báo tiến trình và vẫn cho phép đóng/thu panel.
-            - Toast nhỏ gọn, hiện chữ đồng bộ và không làm nghẽn WebView.
-            - Launcher, panel, tray, taskbar và nhiều màn hình tiếp tục hoạt động ổn định.
-            - Trình cập nhật chỉ thay file của WFX Smart và có rollback an toàn.
+            - Tạo Style Apparel hàng loạt từ Excel trong Group đã chọn, hỗ trợ New, Copy as Variant và Tự động Save tùy chọn.
+            - Dropdown Tạo Style, Sub-Category phụ thuộc Product Group và thư viện Article dùng snapshot chung từ PostgreSQL qua n8n.
+            - Người dùng có thể Đồng bộ ngay; khi mạng hoặc server tạm lỗi, app tiếp tục dùng cache gần nhất.
+            - Luồng Save Style không bị báo hủy sau khi WFX đã ghi dữ liệu; popup Style được nhận diện cả khi WFX tái sử dụng cửa sổ.
+            - Log kỹ thuật có trần dòng cố định và gợi ý Article tạo index một lần, giúp panel nhẹ hơn khi dùng lâu.
+            - Endpoint đồng bộ bắt buộc HTTPS; lượt đồng bộ nền không chiếm automation worker hoặc làm đầy lịch sử tác vụ.
 
             File `.sha256` và chữ ký `.p7s` xác minh gói tải về đúng từ nhà phát hành.
           make_latest: true
