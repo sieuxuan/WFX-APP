@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.0.18",
+    "date": "2026-08-02",
+    "highlights": [
+      {
+        "title": "Tạo Style Apparel hàng loạt",
+        "body": "Chuẩn bị Style từ Excel theo Group đã chọn; bạn có thể tự kiểm tra trước khi Save hoặc bật Tự động Save.",
+        "entry": "catalog-tao-style-hang-loat"
+      },
+      {
+        "title": "Đồng bộ dữ liệu Article và Style",
+        "body": "Thư viện Article và dropdown Tạo Style có thể đồng bộ ngay từ snapshot dùng chung; khi mất mạng, ứng dụng vẫn dùng cache gần nhất.",
+        "entry": "catalog-thu-vien-article"
+      },
+      {
+        "title": "Tạo Style ổn định và nhẹ hơn",
+        "body": "Save được bảo vệ khỏi thao tác Stop đúng lúc, popup Style tái dùng được nhận diện nhanh hơn và log kỹ thuật không tăng chi phí theo thời gian.",
+        "entry": "catalog-tao-style-hang-loat"
+      }
+    ]
+  },
+  {
     "version": "1.0.17",
     "date": "2026-08-01",
     "highlights": [
