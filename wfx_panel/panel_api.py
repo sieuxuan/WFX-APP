@@ -586,6 +586,7 @@ class PanelAPI:
             "divisions": list(constants.DIVISIONS.values()),
             "jobs": job_history.list_jobs(self._base_dir, 20),
             "sale_asn_buyers": list(self._sale_asn_buyers),
+            "sale_asn_stages": preferences["sale_asn_stages"],
             "logs": list(self._logs),
             **self.get_status(),
         }
@@ -2752,6 +2753,19 @@ class PanelAPI:
             "return_to_list_after_action": saved[
                 "return_to_list_after_action"
             ],
+        }
+
+    def set_sale_asn_stages(self, stages: list[str] | None = None) -> dict:
+        """Nhớ các bước Sale ASN user đã chọn giữa các phiên chạy."""
+        saved = self._prefs.save_prefs(
+            base_dir=self._base_dir,
+            sale_asn_stages=list(stages or []),
+        )
+        return {
+            "ok": True,
+            "code": "PREF_SAVED",
+            "message": "Đã lưu các bước Sale ASN.",
+            "sale_asn_stages": saved["sale_asn_stages"],
         }
 
     def set_costing_export_open_options(

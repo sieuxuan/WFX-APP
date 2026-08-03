@@ -729,6 +729,12 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "costing_export_dir": str(
             data.get("costing_export_dir") or ""
         ).strip()[:32_000],
+        "sale_asn_import_dir": str(
+            data.get("sale_asn_import_dir") or ""
+        ).strip()[:32_000],
+        "sale_asn_stages": _clean_sale_asn_stages(
+            data.get("sale_asn_stages")
+        ),
         "open_costing_file_after_export": data.get(
             "open_costing_file_after_export", True
         ) is not False,
@@ -741,6 +747,19 @@ def load_prefs(base_dir: Path | None = None) -> dict:
             "costing_special_options_rescan", False
         ) is True,
     }
+
+
+SALE_ASN_STAGES = ("po", "order_details", "style_details", "shipping_info")
+
+
+def _clean_sale_asn_stages(value: object) -> list[str]:
+    """Giữ đúng thứ tự bước của flow; giá trị hỏng thì quay về đủ bốn bước."""
+    if not isinstance(value, list):
+        return list(SALE_ASN_STAGES)
+    selected = {str(item or "").strip() for item in value}
+    cleaned = [stage for stage in SALE_ASN_STAGES if stage in selected]
+    # Không cho lưu trạng thái rỗng: user sẽ mở app ra mà không chạy được gì.
+    return cleaned or list(SALE_ASN_STAGES)
 
 
 def _clean_favorite_module_ids(values: list[str]) -> list[str]:
@@ -803,6 +822,8 @@ def save_prefs(
     panel_offset_y: int | None = None,
     catalog_default_folder: dict | None = None,
     costing_export_dir: str | None = None,
+    sale_asn_import_dir: str | None = None,
+    sale_asn_stages: list[str] | None = None,
     open_costing_file_after_export: bool | None = None,
     open_costing_folder_after_export: bool | None = None,
     costing_special_options_rescan: bool | None = None,
@@ -831,6 +852,8 @@ def save_prefs(
             panel_offset_y=panel_offset_y,
             catalog_default_folder=catalog_default_folder,
             costing_export_dir=costing_export_dir,
+            sale_asn_import_dir=sale_asn_import_dir,
+            sale_asn_stages=sale_asn_stages,
             open_costing_file_after_export=open_costing_file_after_export,
             open_costing_folder_after_export=open_costing_folder_after_export,
             costing_special_options_rescan=costing_special_options_rescan,
@@ -861,6 +884,8 @@ def _save_prefs_locked(
     panel_offset_y: int | None,
     catalog_default_folder: dict | None,
     costing_export_dir: str | None,
+    sale_asn_import_dir: str | None,
+    sale_asn_stages: list[str] | None,
     open_costing_file_after_export: bool | None,
     open_costing_folder_after_export: bool | None,
     costing_special_options_rescan: bool | None,
@@ -891,6 +916,10 @@ def _save_prefs_locked(
     )
     if theme is not None:
         current["theme"] = theme if theme in {"light", "dark", "system"} else "light"
+    if sale_asn_import_dir is not None:
+        current["sale_asn_import_dir"] = str(sale_asn_import_dir).strip()[:32_000]
+    if sale_asn_stages is not None:
+        current["sale_asn_stages"] = _clean_sale_asn_stages(sale_asn_stages)
     if favorite_module_ids is not None:
         current["favorite_module_ids"] = _clean_favorite_module_ids(
             favorite_module_ids

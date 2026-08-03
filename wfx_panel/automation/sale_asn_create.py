@@ -1036,8 +1036,18 @@ def _ensure_order_grid_rows(
     return refreshed_frame
 
 
-def _fill_order_details(frame: Frame, rows: Sequence[dict], log: Callable[[str], None]) -> None:
-    for row in rows:
+def _fill_order_details(
+    frame: Frame,
+    rows: Sequence[dict],
+    log: Callable[[str], None],
+    progress: Callable[..., None] | None = None,
+) -> None:
+    for index, row in enumerate(rows, 1):
+        _emit_stage_progress(
+            progress,
+            "order_details",
+            f"Order Details {index}/{len(rows)}",
+        )
         for key, column_id in ORDER_FIELD_COLUMNS.items():
             value = str(row.get(key) or "").strip()
             if not value:
@@ -1177,7 +1187,12 @@ def run_sale_asn_order_details(
             playwright.stop()
 
 
-def _fill_style_details(frame: Frame, rows: Sequence[dict], log: Callable[[str], None]) -> None:
+def _fill_style_details(
+    frame: Frame,
+    rows: Sequence[dict],
+    log: Callable[[str], None],
+    progress: Callable[..., None] | None = None,
+) -> None:
     tab = frame.locator("#tabStyleDetails").first
     tab.wait_for(state="visible", timeout=8_000)
     tab.click(timeout=5_000)
@@ -1190,7 +1205,12 @@ def _fill_style_details(frame: Frame, rows: Sequence[dict], log: Callable[[str],
         old = grouped.setdefault(style, code)
         if old != code:
             raise RuntimeError("SALE_ASN_STYLE_HS_CODE_CONFLICT")
-    for style, code in grouped.items():
+    for index, (style, code) in enumerate(grouped.items(), 1):
+        _emit_stage_progress(
+            progress,
+            "style_details",
+            f"Style Details {index}/{len(grouped)}",
+        )
         _set_style_hts_cell(frame, style, code)
         _write_log(log, f"[SALE ASN] Đã điền HS Code cho Style {style}.")
 
@@ -1382,9 +1402,9 @@ def run_sale_asn_create(
                             "SALE_ASN_ORDER_ROWS_NOT_FOUND:"
                             + ", ".join(missing_pos[:10])
                         )
-                _fill_order_details(main_frame, rows, log)
+                _fill_order_details(main_frame, rows, log, progress)
             elif step == "style_details":
-                _fill_style_details(main_frame, rows, log)
+                _fill_style_details(main_frame, rows, log, progress)
             elif step == "shipping_info":
                 shipping_warnings.extend(
                     _fill_shipping(main_frame, dict(rows[0]), log) or ()

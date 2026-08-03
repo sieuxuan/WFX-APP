@@ -831,9 +831,15 @@ class PanelApp:
                 "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
                 "message": "Cửa sổ chọn file chưa sẵn sàng.",
             }
+        saved_directory = str(
+            prefs.load_prefs(self._base_dir).get("sale_asn_import_dir") or ""
+        ).strip()
+        if not saved_directory or not Path(saved_directory).is_dir():
+            saved_directory = ""
         try:
             selected = self.window.create_file_dialog(
                 webview.OPEN_DIALOG,
+                directory=saved_directory,
                 allow_multiple=False,
                 file_types=("Excel workbook (*.xlsx)",),
             )
@@ -863,6 +869,13 @@ class PanelApp:
                 "code": "SALE_ASN_FILE_TYPE_UNSUPPORTED",
                 "message": "Tạo Sale ASN chỉ hỗ trợ file .xlsx.",
             }
+        try:
+            prefs.save_prefs(
+                self._base_dir,
+                sale_asn_import_dir=str(target.parent),
+            )
+        except OSError:
+            pass
         return {
             "ok": True,
             "code": "SALE_ASN_FILE_SELECTED",

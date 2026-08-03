@@ -9,8 +9,18 @@
         "entry": "don-hang-sale-asn"
       },
       {
+        "title": "Thoát ở khay hệ thống đóng hẳn ứng dụng",
+        "body": "Trước đây bấm Thoát vẫn để lại tiến trình chạy ngầm, khiến lần mở sau không lên được và phải kết thúc thủ công trong Task Manager. Nay ứng dụng đóng đủ mọi cửa sổ nên tiến trình kết thúc thật.",
+        "entry": "bat-dau-mo-panel"
+      },
+      {
+        "title": "Sale ASN nhớ thói quen của bạn",
+        "body": "Các bước bạn tích trong Tùy chọn nâng cao được nhớ giữa các lần mở app, và hộp thoại chọn file mở lại đúng thư mục lần trước.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
         "title": "Tiến độ bốn bước cho Sale ASN",
-        "body": "Trong lúc chạy, thẻ tiến độ hiện Thêm PO, Order Details, Style Details và Shipping Info sáng dần theo đúng bước; khi cần bạn chọn PO hoặc một bước bị lỗi, thông báo và nút xử lý nằm ngay trong dòng bước đó. Xong thì có nút sang thẳng Xuất Invoice + PKL.",
+        "body": "Trong lúc chạy, thẻ tiến độ hiện Thêm PO, Order Details, Style Details và Shipping Info sáng dần theo đúng bước, kèm số dòng đang xử lý; khi cần bạn chọn PO hoặc một bước bị lỗi, thông báo và nút xử lý nằm ngay trong dòng bước đó. Xong thì có nút sang thẳng Xuất Invoice + PKL.",
         "entry": "don-hang-sale-asn"
       },
       {
