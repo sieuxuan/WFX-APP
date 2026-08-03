@@ -10,10 +10,13 @@ Tạo `(GDN) Dispatch` từ Invoice GRN sau khi hàng thành phẩm đã nhập 
 4. Nhập đúng `Invoice GRN`.
 5. Đánh dấu xác nhận GRN đã hoàn tất ít nhất 15 phút.
 6. Bấm `Submit & tạo Dispatch`.
-7. Chờ thông báo kết quả ở cuối bảng điều khiển.
+7. Theo dõi sáu bước ngay trong thẻ `Tiến độ GDN`.
 
 WFX Smart sẽ tự tải report, làm mới file Excel, Process Package và chọn giao dịch
 `Pending` mới nhất theo `Processed ON`.
+
+Các bước hiển thị lần lượt là: mở báo cáo, tải Excel, chuẩn hóa XLSX, mở EDI,
+Process Package, rồi tạo và xác nhận transaction.
 
 > [!luuy]
 > Chờ đủ 15 phút
@@ -23,5 +26,6 @@ WFX Smart sẽ tự tải report, làm mới file Excel, Process Package và ch�
 > [!loi]
 > Gặp lỗi thì sao
 > Nếu WFX báo invoice đã được import, hãy kiểm tra GDN hiện có trước khi chạy lại.
-> Nếu thông báo nói chưa xác nhận được kết quả, không Submit lại ngay; mở EDI
-> Production Order và kiểm tra giao dịch mới nhất để tránh tạo trùng.
+> Nếu thông báo nói chưa xác nhận được kết quả, không Submit lại. Bấm
+> `Mở EDI kiểm tra` trong thẻ tiến độ, rồi kiểm tra giao dịch mới nhất để tránh
+> tạo trùng.

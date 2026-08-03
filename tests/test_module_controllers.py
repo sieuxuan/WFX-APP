@@ -61,6 +61,10 @@ def test_special_module_manifests_expose_page_kinds():
     assert module_controllers.get("0004_0070_0020").manifest()["kind"] == "sale_asn"
     assert module_controllers.get("gdn_dispatch").manifest()["kind"] == "gdn_dispatch"
     assert (
+        module_controllers.get("0065_0880_0010_0020").manifest()["kind"]
+        == "advance_pr"
+    )
+    assert (
         module_controllers.get("0065_0880_0020_0020").manifest()["kind"]
         == "supplier_invoice"
     )

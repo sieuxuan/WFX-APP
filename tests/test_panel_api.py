@@ -98,13 +98,23 @@ class FakeLogin:
             "article_code": "ABC123",
         }
 
-    def run_gdn_dispatch(self, invoice, log=print):
+    def run_gdn_dispatch(self, invoice, log=print, progress=None):
         self.calls.append(("run_gdn_dispatch", invoice))
+        if progress is not None:
+            progress("transaction", "Đã hoàn tất", 6, 6, state="completed")
         return {
             "ok": True,
             "code": "GDN_DISPATCH_COMPLETED",
             "message": "completed",
             "transaction_submitted": True,
+        }
+
+    def open_gdn_status(self, log=print):
+        self.calls.append(("open_gdn_status",))
+        return {
+            "ok": True,
+            "code": "GDN_STATUS_READY",
+            "message": "ready",
         }
 
     def find_sample_file_results_with_filters(self, xpath, values, log=print):
@@ -180,6 +190,19 @@ class FakeLogin:
             invoice_no,
             po_no,
             asn_grn_no,
+        ))
+        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+
+    def search_advance_pr_list(
+        self, xpath, buyer, supplier, invoice_no, order_no, log=print
+    ):
+        self.calls.append((
+            "search_advance_pr",
+            xpath,
+            buyer,
+            supplier,
+            invoice_no,
+            order_no,
         ))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
 
@@ -587,6 +610,22 @@ def test_gdn_dispatch_runs_without_persisting_invoice_in_job_request(tmp_path):
     assert job is not None
     assert job["request"] == {"module_id": "gdn_dispatch"}
     assert "18.26.PSTT.DT" not in json.dumps(job, ensure_ascii=False)
+
+
+def test_gdn_dispatch_streams_progress_and_can_open_safe_status_view(tmp_path):
+    api, fake = make_api(tmp_path)
+    updates = []
+    api.set_progress_sink(updates.append)
+
+    completed = api.run_gdn_dispatch("18.26.PSTT.DT", True)
+    inspected = api.open_gdn_status()
+
+    assert completed["code"] == "GDN_DISPATCH_COMPLETED"
+    assert updates[-1]["stage"] == "transaction"
+    assert updates[-1]["step"] == 6
+    assert updates[-1]["state"] == "completed"
+    assert inspected["code"] == "GDN_STATUS_READY"
+    assert ("open_gdn_status",) in fake.calls
 
 
 def test_stop_cancels_running_flow_at_safe_checkpoint(tmp_path):
@@ -1892,6 +1931,28 @@ def test_background_session_maintenance_relogs_expired_session(tmp_path):
     assert api.get_status()["session_active"] is True
 
 
+def test_healthy_session_maintenance_is_quiet_and_not_a_user_job(tmp_path):
+    class HealthyLogin(FakeLogin):
+        def check_session(self, log=print):
+            self.calls.append(("check_session",))
+            log("[SESSION] heartbeat")
+            return {"ok": True, "code": "SESSION_ACTIVE", "message": "active"}
+
+    fake = HealthyLogin()
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    api._session_active = True
+    delivered = []
+    api.set_result_sink(lambda *args: delivered.append(args))
+
+    result = api.maintain_session()
+
+    assert result["code"] == "SESSION_ACTIVE"
+    assert api.get_job_history()["jobs"] == []
+    assert api._logs == []
+    assert delivered == []
+
+
 def test_background_session_maintenance_stays_off_before_first_login(tmp_path):
     prefs.save_account("alice", "pw", base_dir=tmp_path)
     api = PanelAPI(
@@ -2110,7 +2171,7 @@ def test_initial_state_contains_module_classes_and_jobs(tmp_path):
     assert modules["0005_0080_0020"]["kind"] == "indent"
     assert modules["user_indent_list"]["kind"] == "indent"
     assert modules["0063_0030_0020"]["kind"] == "list_new"
-    assert modules["0065_0880_0010_0020"]["kind"] == "list_new"
+    assert modules["0065_0880_0010_0020"]["kind"] == "advance_pr"
     assert modules["0065_0880_0020_0020"]["kind"] == "supplier_invoice"
     assert modules["0065_0880_0030_0020"]["kind"] == "expense_invoice"
     assert state["jobs"] == []
@@ -2501,7 +2562,7 @@ def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):
         assert ("open_module_new", module_id) in fake.calls
 
 
-def test_supplier_and_expense_invoice_searches_delegate_multiple_filters(tmp_path):
+def test_finance_searches_delegate_multiple_filters(tmp_path):
     api, fake = make_api(tmp_path)
 
     assert api.search_supplier_invoice(
@@ -2509,6 +2570,9 @@ def test_supplier_and_expense_invoice_searches_delegate_multiple_filters(tmp_pat
     )["ok"] is True
     assert api.search_expense_invoice(
         " Acme ", " EI-01 ", " Alice ", " Save "
+    )["ok"] is True
+    assert api.search_advance_pr(
+        " Buyer A ", " Acme ", " INV-01 ", " ORD-01 "
     )["ok"] is True
 
     assert (
@@ -2526,6 +2590,14 @@ def test_supplier_and_expense_invoice_searches_delegate_multiple_filters(tmp_pat
         "EI-01",
         "Alice",
         "Save",
+    ) in fake.calls
+    assert (
+        "search_advance_pr",
+        constants.MODULE_BY_ID["0065_0880_0010_0020"]["xpath"],
+        "Buyer A",
+        "Acme",
+        "INV-01",
+        "ORD-01",
     ) in fake.calls
 
 

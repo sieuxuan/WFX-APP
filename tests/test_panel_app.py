@@ -21,6 +21,19 @@ def test_icon_and_ui_paths_resolve_under_resource_dir():
     assert panel_app.NOTIFICATION_INDEX.exists()
 
 
+def test_manual_exposes_official_wfx_system_manual_link():
+    html = panel_app.MANUAL_INDEX.read_text(encoding="utf-8")
+    script = (panel_app.MANUAL_INDEX.parent / "manual.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert panel_app.WFX_MANUAL_URL == (
+        "https://wfx.pro-sports.com.vn/wfx-digital-dictionary/system-manual"
+    )
+    assert "WFX System Manual" in html
+    assert "open_manual_external" in script
+
+
 def test_legacy_app_entrypoint_uses_the_same_panel_ui():
     import app
 
@@ -180,6 +193,98 @@ def test_module_results_do_not_show_external_notification_while_panel_visible():
     assert sent == []
 
 
+def test_module_result_shows_toast_when_wfx_has_foreground(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    app.window = object()
+    app._panel_visible = True
+    sent = []
+    app._show_notification = lambda result, **context: sent.append((result, context))
+    monkeypatch.setattr(module, "_foreground_process_id", lambda: 987654)
+
+    result = {"ok": True, "message": "xong"}
+    app._on_result("find_code", result, 0.4)
+
+    assert sent == [(result, {"method": "find_code", "elapsed": 0.4})]
+
+
+def test_notification_queues_latest_result_until_webview_is_ready():
+    app = panel_app.PanelApp()
+    primed = []
+
+    class FakeWindow:
+        def resize(self, width, height):
+            primed.append(("resize", width, height))
+
+        def move(self, x, y):
+            primed.append(("move", x, y))
+
+        def show(self):
+            primed.append(("show",))
+
+    app.notification_window = FakeWindow()
+    app._toast_enabled = True
+
+    app._show_notification(
+        {"ok": True, "message": "xong sớm"},
+        method="find_code",
+        elapsed=0.2,
+    )
+
+    assert app._pending_notification == (
+        {"ok": True, "message": "xong sớm"},
+        "find_code",
+        0.2,
+    )
+    assert primed[0] == (
+        "resize",
+        panel_app.NOTIFICATION_WIDTH,
+        panel_app.NOTIFICATION_HEIGHT,
+    )
+    assert primed[-1] == ("show",)
+
+
+def test_repeated_notification_loaded_event_does_not_hide_active_toast(
+    monkeypatch,
+):
+    app = panel_app.PanelApp()
+    visibility = []
+    monkeypatch.setattr(
+        panel_app,
+        "_native_notification_visibility",
+        lambda *args: visibility.append(args) or True,
+    )
+
+    app._notification_loaded()
+    app._notification_loaded()
+
+    assert visibility == [(False,)]
+
+
+def test_notification_prefers_windows_tray_toast():
+    app = panel_app.PanelApp()
+    notices = []
+
+    class FakeTray:
+        def notify(self, message, title):
+            notices.append((message, title))
+
+    app.tray = FakeTray()
+    app.notification_window = None
+    app._toast_enabled = True
+
+    shown = app._show_notification(
+        {"ok": True, "message": "Đã hoàn thành tác vụ."},
+        method="find_code",
+    )
+
+    assert shown is True
+    assert notices == [
+        ("Đã hoàn thành tác vụ.", "Tìm Article Code · Hoàn thành")
+    ]
+
+
 def test_download_result_opens_explorer_and_shows_toast(monkeypatch):
     app = panel_app.PanelApp()
     opened = []
@@ -210,10 +315,31 @@ def test_download_result_opens_explorer_and_shows_toast(monkeypatch):
     ]
 
 
-def test_reveal_downloaded_excel_opens_exact_parent_folder(tmp_path, monkeypatch):
+def test_reveal_downloaded_excel_selects_exact_file_in_explorer(tmp_path, monkeypatch):
     target = tmp_path / "Costing Report.xlsx"
     target.write_bytes(b"xlsx")
     opened = []
+    monkeypatch.setattr(
+        panel_app.subprocess,
+        "Popen",
+        lambda command: opened.append(command),
+    )
+
+    assert panel_app._reveal_downloaded_file(target) is True
+    assert opened == [
+        ["explorer.exe", "/select,", str(target.resolve())],
+    ]
+
+
+def test_reveal_downloaded_excel_falls_back_to_parent_folder(tmp_path, monkeypatch):
+    target = tmp_path / "Invoice.xlsx"
+    target.write_bytes(b"xlsx")
+    opened = []
+    monkeypatch.setattr(
+        panel_app.subprocess,
+        "Popen",
+        lambda _command: (_ for _ in ()).throw(OSError("Explorer unavailable")),
+    )
     monkeypatch.setattr(
         panel_app.os,
         "startfile",

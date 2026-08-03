@@ -171,6 +171,106 @@ def test_navigation_click_does_not_hide_unrelated_errors(monkeypatch):
         modules._click_navigation_control(object())
 
 
+def test_module_menu_fallback_opens_only_the_named_target_frame():
+    navigations = []
+    body = SimpleNamespace(
+        name="body",
+        goto=lambda href, **options: navigations.append((href, options)),
+    )
+    other = SimpleNamespace(name="left")
+    page = SimpleNamespace(frames=[other, body])
+
+    assert modules._open_menu_href_in_target_frame(
+        page,
+        "https://prosports.worldfashionexchange.com/wfx/module.aspx",
+        "body",
+    ) is True
+    assert navigations == [
+        (
+            "https://prosports.worldfashionexchange.com/wfx/module.aspx",
+            {
+                "wait_until": "domcontentloaded",
+                "timeout": modules.MODULE_DIRECT_ROUTE_TIMEOUT_MS,
+            },
+        )
+    ]
+    assert modules._open_menu_href_in_target_frame(
+        page,
+        "javascript:alert(1)",
+        "body",
+    ) is False
+
+
+def test_unresponsive_menu_route_is_cached_until_session_reset(monkeypatch):
+    navigations = []
+    clicks = []
+    href = "https://prosports.worldfashionexchange.com/wfx/module.aspx"
+
+    class BodyFrame:
+        name = "body"
+
+        @staticmethod
+        def goto(target, **_options):
+            navigations.append(target)
+
+    class LoginLocator:
+        @staticmethod
+        def is_visible(timeout=0):
+            return False
+
+    class MenuLocator:
+        @staticmethod
+        def wait_for(**_options):
+            return None
+
+        @staticmethod
+        def evaluate(_script):
+            return href
+
+        @staticmethod
+        def get_attribute(name):
+            return "body" if name == "target" else None
+
+    page = SimpleNamespace(
+        url="https://prosports.worldfashionexchange.com/wfx/default.aspx",
+        frames=[BodyFrame()],
+    )
+    page.locator = lambda selector: (
+        LoginLocator() if selector == "#txtUserID" else MenuLocator()
+    )
+    browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[page])])
+
+    class PlaywrightLease:
+        @staticmethod
+        def stop():
+            return None
+
+    class PlaywrightFactory:
+        @staticmethod
+        def start():
+            return PlaywrightLease()
+
+    modules.reset_menu_route_cache()
+    monkeypatch.setattr(modules, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(modules, "sync_playwright", lambda: PlaywrightFactory())
+    monkeypatch.setattr(modules, "_connect_to_chrome", lambda _pw: (browser, page))
+    monkeypatch.setattr(modules, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(modules, "_mark_page_documents", lambda *_args: [])
+    monkeypatch.setattr(modules, "_wait_for_module_navigation", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(modules, "_click", lambda _target: clicks.append(True))
+
+    first = modules.open_module("Org Structure", '//*[@id="0090_0001"]/a')
+    second = modules.open_module("Org Structure", '//*[@id="0090_0001"]/a')
+
+    assert first["ok"] is True and first["menu_cache_hit"] is False
+    assert second["ok"] is True and second["menu_cache_hit"] is True
+    assert len(clicks) == 1
+    assert navigations == [href, href]
+
+    modules.reset_menu_route_cache()
+    assert modules._MENU_ROUTE_CACHE == {}
+
+
 def test_attachment_url_is_parsed_and_normalized_from_wfx_onclick():
     url = catalog._attachment_url(
         {

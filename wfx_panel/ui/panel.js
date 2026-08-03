@@ -5,7 +5,7 @@
       { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Article · Season · Costing/BOM." },
       { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở/tìm OC List, tạo Upload OC New hoặc Revise OC." },
       { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
-      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tìm Sale ASN, tải bộ Documents Excel hoặc tạo ASN mới." },
+      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tạo Sale ASN nhiều PO từ Excel, tra cứu và tải Documents." },
       { name: "(GDN) Dispatch", id: "gdn_dispatch", icon: "GD", kind: "gdn_dispatch", description: "Tạo GDN Dispatch từ Invoice GRN sau thời gian chờ bắt buộc." },
       { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No." },
       { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Mở Indent List hoặc lọc kết hợp theo 4 điều kiện." },
@@ -13,7 +13,7 @@
       { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "list_new", description: "Mở QA List hoặc tạo QA Request mới." },
     ]},
     { name: "Finance", accent: "violet", modules: [
-      { name: "Advance PR List", id: "0065_0880_0010_0020", icon: "PR", kind: "list_new", description: "Mở danh sách Advance PR hoặc tạo yêu cầu mới." },
+      { name: "Advance PR List", id: "0065_0880_0010_0020", icon: "PR", kind: "advance_pr", description: "Mở, lọc Advance PR hoặc tạo yêu cầu mới." },
       { name: "Supplier Inv List", id: "0065_0880_0020_0020", icon: "SI", kind: "supplier_invoice", description: "Mở, lọc và Cancel Supplier Invoice an toàn." },
       { name: "Expense Inv List", id: "0065_0880_0030_0020", icon: "EI", kind: "expense_invoice", description: "Mở, lọc Expense Invoice hoặc tạo hóa đơn mới." },
     ]},
@@ -184,6 +184,9 @@
   let costingPlanDeleteCount = 0;
   let costingArticleResolutions = {};
   let pendingOcReview = null;
+  let saleAsnBuyers = [];
+  let saleAsnSelectedFile = null;
+  let saleAsnReviewToken = "";
   let ocSelectionRevision = 0;
   let checkedCostingFile = null;
   let catalogThemeChoice = "light";
@@ -211,11 +214,12 @@
     "open_chrome", "login", "retry_job", "open_module",
     "prepare_catalog", "scan_catalog_folders", "find_code", "find_buyer_reference",
     "open_catalog_destination", "browse_catalog", "catalog_action",
-    "open_sale_asn_new", "open_sample_new", "search_oc", "search_sample",
+    "open_sale_asn_new", "scan_sale_asn_buyers", "start_sale_asn_create",
+    "continue_sale_asn_create", "open_sample_new", "search_oc", "search_sample",
     "check_sample_files", "open_sample_file_choice",
     "search_sale_asn", "prepare_sale_asn_documents",
     "save_sale_asn_documents", "search_rmpo", "search_indent",
-    "search_supplier_invoice", "search_expense_invoice",
+    "search_advance_pr", "search_supplier_invoice", "search_expense_invoice",
     "cancel_supplier_invoice", "cancel_supplier_invoice_choice", "open_module_new",
     "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
@@ -234,6 +238,7 @@
     "COSTING_DRY_RUN_READY",
     "COSTING_ARTICLE_AMBIGUOUS",
     "STYLE_COPY_MULTIPLE_RESULTS",
+    "SALE_ASN_PO_SELECTION_REQUIRED",
   ]);
   const BUSY_MESSAGES = {
     open_chrome: "Đang mở và đăng nhập WFX…",
@@ -257,6 +262,10 @@
     prepare_catalog_style_row: "Đang chuẩn bị Style theo chế độ Save đã chọn…",
     download_style_template: "Đang tạo form Tạo Style…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
+    scan_sale_asn_buyers: "Đang quét Buyer từ WFX…",
+    start_sale_asn_create: "Đang thêm PO và điền Sale ASN…",
+    continue_sale_asn_create: "Đang tiếp tục các PO còn lại…",
+    download_sale_asn_template: "Đang tạo form Sale ASN…",
     open_sample_new: "Đang mở Sample Order mới…",
     search_oc: "Đang tìm OC…",
     open_oc_revision_report: "Đang mở report Revise OC…",
@@ -273,6 +282,7 @@
     save_sale_asn_documents: "Đang lưu file Excel Sale ASN…",
     search_rmpo: "Đang lọc RMPO List…",
     search_indent: "Đang lọc Indent List…",
+    search_advance_pr: "Đang lọc Advance PR List…",
     search_supplier_invoice: "Đang lọc Supplier Inv List…",
     search_expense_invoice: "Đang lọc Expense Inv List…",
     cancel_supplier_invoice: "Đang tìm Supplier Invoice để Cancel…",
@@ -314,6 +324,9 @@
     sync_reference_data: "Đồng bộ Article và Style",
     publish_reference_data: "Publish Article và Style",
     open_sale_asn_new: "Sale ASN mới",
+    scan_sale_asn_buyers: "Quét Buyer Sale ASN",
+    start_sale_asn_create: "Tạo Sale ASN",
+    continue_sale_asn_create: "Tiếp tục Sale ASN",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
     open_oc_revision_report: "Mở report Revise OC",
@@ -330,6 +343,7 @@
     save_sale_asn_documents: "Lưu Documents Sale ASN",
     search_rmpo: "Tìm RMPO",
     search_indent: "Tìm Indent",
+    search_advance_pr: "Tìm Advance PR",
     search_supplier_invoice: "Tìm Supplier Invoice",
     search_expense_invoice: "Tìm Expense Invoice",
     cancel_supplier_invoice: "Cancel Supplier Invoice",
@@ -484,6 +498,12 @@
       });
       syncCatalogStepButtons();
       syncGdnDispatchAction();
+      syncAllInputValidation();
+      syncSaleAsnCreate();
+      const continueButton = $('[data-module-action="sale-asn-continue"]');
+      if (continueButton) {
+        continueButton.disabled = $(".sale-asn-manual-confirm")?.checked !== true;
+      }
     }
   }
   window.wfxSetBusy = setBusy;
@@ -561,9 +581,10 @@
         oc: ".oc-query",
         gdn_dispatch: ".gdn-invoice-query",
         sample: ".sample-no-query",
+        advance_pr: ".advance-pr-buyer-query",
         supplier_invoice: ".supplier-invoice-supplier-query",
         expense_invoice: ".expense-invoice-supplier-query",
-        sale_asn: '[data-module-action="sale-asn-list"]',
+        sale_asn: ".sale-asn-buyer",
         rmpo: ".rmpo-supplier-query",
         indent: ".indent-supplier-query",
         list_new: '[data-module-action="list-new-list"]',
@@ -745,9 +766,6 @@
       first.nodeValue = first.nodeValue.slice(1);
     }
     if (followLatest) pre.scrollTop = pre.scrollHeight;
-    if (/(?:ERROR|FAILED|TIMEOUT)/i.test(line) && !$(".log-overlay").classList.contains("log-open")) {
-      $(".log-button").classList.add("has-alert");
-    }
   }
   window.wfxPushLog = pushLog;
 
@@ -829,7 +847,9 @@
   }
 
   function selectActivityTab(name) {
-    const selected = name === "log" ? "log" : "jobs";
+    const selected = ["jobs", "log"].includes(name)
+      ? name
+      : "jobs";
     $$(".activity-tabs button").forEach((button) => {
       const on = button.dataset.activityTab === selected;
       button.setAttribute("aria-selected", String(on));
@@ -1174,15 +1194,14 @@
   }
   window.wfxSetUpdateState = setUpdateState;
 
-  function renderJobs(items) {
-    jobs = Array.isArray(items) ? items : [];
-    const host = $(".job-history");
-    if (!jobs.length) {
-      host.innerHTML = '<div class="job-empty">Chưa có tác vụ.</div>';
+  function renderJobCards(host, items, emptyMessage) {
+    if (!host) return;
+    if (!items.length) {
+      host.innerHTML = `<div class="job-empty">${escapeHtml(emptyMessage)}</div>`;
       return;
     }
-    host.innerHTML = jobs.map((job) => `
-      <article class="job-card" data-ok="${job.ok === true}" data-run-id="${escapeHtml(job.run_id)}">
+    host.innerHTML = items.map((job) => `
+      <article class="job-card" data-ok="${job.ok === true}" data-attention="${escapeHtml(job.attention_kind || "")}" data-run-id="${escapeHtml(job.run_id)}">
         <span class="job-tone"></span>
         <div class="job-main">
           <div class="job-title"><strong>${escapeHtml(jobMethodLabel(job.method))}</strong><code>${escapeHtml(job.run_id)}</code></div>
@@ -1191,9 +1210,18 @@
         </div>
         <div class="job-actions">
           ${job.has_screenshot ? '<button type="button" data-job-action="screenshot">Ảnh</button>' : ""}
-          ${job.retryable ? '<button type="button" data-job-action="retry">Chạy lại</button>' : ""}
+          ${job.attention_action ? `<button type="button" data-job-action="${escapeHtml(job.attention_action)}">${escapeHtml(job.attention_action_label)}</button>` : (job.retryable ? '<button type="button" data-job-action="retry">Chạy lại</button>' : "")}
         </div>
       </article>`).join("");
+  }
+
+  function renderJobs(items) {
+    jobs = Array.isArray(items) ? items : [];
+    renderJobCards(
+      $('[data-activity-view="jobs"]'),
+      jobs,
+      "Chưa có tác vụ.",
+    );
   }
   window.wfxSetJobHistory = renderJobs;
 
@@ -1207,6 +1235,15 @@
       cancelled ? "warning" : (result.ok ? "success" : "error"),
       result.message || "",
     );
+    if (result.code?.startsWith?.("GDN_")) {
+      finishGdnProgress(result);
+    }
+    if (result.code === "SALE_ASN_BUYERS_SCANNED") {
+      renderSaleAsnBuyers(result.buyers);
+    }
+    if (["SALE_ASN_PO_SELECTION_REQUIRED", "SALE_ASN_FORM_COMPLETED"].includes(result.code)) {
+      renderSaleAsnRunResult(result);
+    }
     lastErrorCode = (!result.ok && result.code) ? result.code : "";
     $(".footer-help-button").hidden = !manualErrorCodes.has(lastErrorCode);
     if (result.user_id !== undefined) setAccount(result.user_id);
@@ -1394,9 +1431,10 @@
       oc: ".oc-query",
       gdn_dispatch: ".gdn-invoice-query",
       sample: ".sample-no-query",
+      advance_pr: ".advance-pr-buyer-query",
       supplier_invoice: ".supplier-invoice-supplier-query",
       expense_invoice: ".expense-invoice-supplier-query",
-      sale_asn: '[data-module-action="sale-asn-list"]',
+      sale_asn: ".sale-asn-buyer",
       rmpo: ".rmpo-supplier-query",
       indent: ".indent-supplier-query",
       list_new: '[data-module-action="list-new-list"]',
@@ -1421,6 +1459,9 @@
       syncCatalogKind();
       hideCatalogResults();
       syncCatalogStepButtons();
+    } else if (module.kind === "sale_asn") {
+      showSaleAsnView("lookup", { focus: false });
+      syncSaleAsnCreate();
     }
   }
 
@@ -1458,6 +1499,7 @@
       "SAMPLE_MULTIPLE_RESULTS",
       "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
       "CATALOG_FILES_SCANNED",
+      "SALE_ASN_PO_SELECTION_REQUIRED",
     ].includes(result.code)) return;
     if (result && result.ok && returnToListAfterAction) {
       closeModulePage();
@@ -1524,6 +1566,15 @@
       $(".supplier-invoice-no-query").value.trim(),
       $(".supplier-invoice-po-query").value.trim(),
       $(".supplier-invoice-asn-grn-query").value.trim(),
+    ];
+  }
+
+  function advancePrFilterValues() {
+    return [
+      $(".advance-pr-buyer-query").value.trim(),
+      $(".advance-pr-supplier-query").value.trim(),
+      $(".advance-pr-invoice-query").value.trim(),
+      $(".advance-pr-order-query").value.trim(),
     ];
   }
 
@@ -1664,6 +1715,265 @@
     return saved;
   }
 
+  function showSaleAsnView(view, { focus = true } = {}) {
+    const selected = view === "lookup" ? "lookup" : "create";
+    $$('[data-sale-asn-view]').forEach((button) => {
+      const active = button.dataset.saleAsnView === selected;
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    $$('[data-sale-asn-pane]').forEach((pane) => {
+      pane.hidden = pane.dataset.saleAsnPane !== selected;
+    });
+    if (focus) {
+      const target = selected === "create" ? ".sale-asn-buyer" : ".sale-asn-query";
+      setTimeout(() => $(target)?.focus(), 0);
+    }
+  }
+
+  function renderSaleAsnBuyers(items) {
+    saleAsnBuyers = Array.isArray(items)
+      ? items.filter((item) => String(item?.label || "").trim())
+      : [];
+    const options = $("#sale-asn-buyer-options");
+    if (options) {
+      options.innerHTML = saleAsnBuyers.map((item) =>
+        `<option value="${escapeHtml(item.label)}"></option>`).join("");
+    }
+    syncSaleAsnCreate();
+  }
+
+  function saleAsnExactBuyer() {
+    const entered = String($(".sale-asn-buyer")?.value || "").trim();
+    return saleAsnBuyers.find(
+      (item) => String(item.label || "").trim().toLocaleLowerCase("vi")
+        === entered.toLocaleLowerCase("vi"),
+    )?.label || "";
+  }
+
+  function syncSaleAsnCreate() {
+    const buyer = saleAsnExactBuyer();
+    const importButton = $('[data-module-action="sale-asn-import"]');
+    if (importButton) importButton.disabled = busy || !buyer;
+    const status = $(".sale-asn-inline-status");
+    if (!status || saleAsnReviewToken) return;
+    if (!saleAsnBuyers.length) {
+      status.textContent = "Bấm ↻ để quét Buyer lần đầu từ WFX.";
+    } else if (!buyer) {
+      status.textContent = "Gõ và chọn đúng một Buyer trong danh sách.";
+    } else {
+      status.textContent = "Buyer đã sẵn sàng. Chọn file Excel để kiểm tra.";
+    }
+  }
+
+  function resetSaleAsnReview(message = "") {
+    saleAsnSelectedFile = null;
+    saleAsnReviewToken = "";
+    $(".sale-asn-review").hidden = true;
+    $(".sale-asn-pending").hidden = true;
+    $(".sale-asn-manual-confirm").checked = false;
+    $('[data-module-action="sale-asn-continue"]').disabled = true;
+    if (message) $(".sale-asn-inline-status").textContent = message;
+    syncSaleAsnCreate();
+  }
+
+  function renderSaleAsnReview(result) {
+    saleAsnReviewToken = String(result.review_token || "");
+    $(".sale-asn-review-file").textContent = result.file_name || "File Sale ASN";
+    $(".sale-asn-review-invoice").textContent = result.invoice_no || "";
+    $(".sale-asn-review-po").textContent = String(result.po_count || 0);
+    $(".sale-asn-review-style").textContent = String(result.style_count || 0);
+    $(".sale-asn-review-destination").textContent = result.destination || "";
+    $(".sale-asn-review").hidden = false;
+    $(".sale-asn-pending").hidden = true;
+    $(".sale-asn-inline-status").textContent = result.message || "File hợp lệ.";
+  }
+
+  async function scanSaleAsnBuyers() {
+    const result = await call("scan_sale_asn_buyers");
+    if (result?.ok) {
+      renderSaleAsnBuyers(result.buyers);
+      $(".sale-asn-inline-status").textContent = result.message || "Đã cập nhật Buyer.";
+    }
+    return result;
+  }
+
+  async function chooseSaleAsnInput() {
+    const buyer = saleAsnExactBuyer();
+    if (!buyer) {
+      syncSaleAsnCreate();
+      $(".sale-asn-buyer")?.focus();
+      return null;
+    }
+    const selected = await callQuiet("choose_sale_asn_import_file");
+    if (!selected?.ok) {
+      if (selected?.code !== "SALE_ASN_FILE_DIALOG_CANCELLED") handleResult(selected);
+      return selected;
+    }
+    saleAsnSelectedFile = selected;
+    $(".sale-asn-inline-status").textContent = `Đang kiểm tra ${selected.file_name}…`;
+    const result = await call("prepare_sale_asn_create", selected.file_path, buyer);
+    if (result?.ok) {
+      renderSaleAsnReview(result);
+    } else if (result) {
+      const details = Array.isArray(result.errors) && result.errors.length
+        ? ` ${result.errors.slice(0, 3).join(" · ")}` : "";
+      $(".sale-asn-inline-status").textContent = `${result.message || "File chưa hợp lệ."}${details}`;
+    }
+    return result;
+  }
+
+  function renderSaleAsnRunResult(result) {
+    if (!result) return;
+    if (result.code === "SALE_ASN_PO_SELECTION_REQUIRED") {
+      saleAsnReviewToken = String(result.review_token || saleAsnReviewToken);
+      $(".sale-asn-review").hidden = true;
+      $(".sale-asn-pending").hidden = false;
+      $(".sale-asn-pending-message").textContent = result.message || "";
+      $(".sale-asn-manual-confirm").checked = false;
+      $('[data-module-action="sale-asn-continue"]').disabled = true;
+      showSaleAsnView("create", { focus: false });
+      return;
+    }
+    if (result.code === "SALE_ASN_FORM_COMPLETED") {
+      saleAsnReviewToken = "";
+      $(".sale-asn-review").hidden = true;
+      $(".sale-asn-pending").hidden = true;
+      $(".sale-asn-inline-status").textContent = result.message || "Đã điền xong Sale ASN.";
+    }
+  }
+
+  async function startSaleAsnCreate() {
+    if (!saleAsnReviewToken) return null;
+    const result = await call("start_sale_asn_create", saleAsnReviewToken);
+    renderSaleAsnRunResult(result);
+    dismissAfterSuccessfulModule(result);
+    return result;
+  }
+
+  async function continueSaleAsnCreate() {
+    if (!saleAsnReviewToken || !$(".sale-asn-manual-confirm").checked) return null;
+    const result = await call("continue_sale_asn_create", saleAsnReviewToken);
+    renderSaleAsnRunResult(result);
+    dismissAfterSuccessfulModule(result);
+    return result;
+  }
+
+  async function cancelSaleAsnReview() {
+    const token = saleAsnReviewToken;
+    resetSaleAsnReview("Đã hủy file đang chuẩn bị.");
+    return token ? callQuiet("cancel_sale_asn_create", token) : null;
+  }
+
+  const INPUT_VALIDATION_GROUPS = {
+    oc: [".oc-query"],
+    sample: [
+      ".sample-no-query", ".sample-style-query",
+      ".sample-created-by-query", ".sample-buyer-query",
+    ],
+    "sale-asn": [".sale-asn-query"],
+    rmpo: [".rmpo-supplier-query", ".rmpo-order-query"],
+    indent: [
+      ".indent-supplier-query", ".indent-article-query",
+      ".indent-no-query", ".indent-style-query",
+    ],
+    "advance-pr": [
+      ".advance-pr-buyer-query", ".advance-pr-supplier-query",
+      ".advance-pr-invoice-query", ".advance-pr-order-query",
+    ],
+    "supplier-invoice": [
+      ".supplier-invoice-supplier-query", ".supplier-invoice-no-query",
+      ".supplier-invoice-po-query", ".supplier-invoice-asn-grn-query",
+    ],
+    "supplier-invoice-cancel": [".supplier-invoice-cancel-query"],
+    "expense-invoice": [
+      ".expense-invoice-supplier-query", ".expense-invoice-no-query",
+      ".expense-invoice-created-by-query", ".expense-invoice-status-query",
+    ],
+    supplier: [".supplier-query"],
+    buyer: [".buyer-query"],
+  };
+
+  function syncInputValidation(group) {
+    const selectors = INPUT_VALIDATION_GROUPS[group] || [];
+    const valid = selectors.some(
+      (selector) => String($(selector)?.value || "").trim().length > 0,
+    );
+    $$(`[data-validation-group="${group}"]`).forEach((button) => {
+      button.disabled = busy || !valid;
+      button.setAttribute("aria-disabled", String(busy || !valid));
+    });
+    $$(`[data-validation-hint="${group}"]`).forEach((hint) => {
+      hint.hidden = valid;
+    });
+  }
+
+  function syncAllInputValidation() {
+    Object.keys(INPUT_VALIDATION_GROUPS).forEach(syncInputValidation);
+  }
+
+  const GDN_PROGRESS_STAGES = [
+    "report", "download", "workbook", "edi", "package", "transaction",
+  ];
+
+  function updateGdnProgress(progress) {
+    const card = $(".dispatch-progress-card");
+    if (!card || !progress) return;
+    card.hidden = false;
+    const step = Math.max(1, Math.min(6, Number(progress.step || 1)));
+    const state = String(progress.state || "active");
+    $(".dispatch-progress-count").textContent = `${step}/6`;
+    $(".dispatch-progress-message").textContent = progress.message || "";
+    GDN_PROGRESS_STAGES.forEach((stage, index) => {
+      const item = $(`[data-dispatch-stage="${stage}"]`);
+      if (!item) return;
+      item.dataset.state = index + 1 < step
+        ? "completed"
+        : (index + 1 === step ? state : "waiting");
+    });
+    const checkpoint = $(".dispatch-checkpoint");
+    checkpoint.hidden = !["failed", "pending"].includes(state)
+      || progress.stage !== "transaction";
+    if (busy && progress.message) {
+      $(".operation-progress-text").textContent = progress.message;
+    }
+  }
+  window.wfxHandleBackendProgress = updateGdnProgress;
+
+  function resetGdnProgress() {
+    updateGdnProgress({
+      stage: "report",
+      message: "Đang khởi tạo luồng GDN…",
+      step: 1,
+      state: "active",
+    });
+    $(".dispatch-checkpoint").hidden = true;
+  }
+
+  function finishGdnProgress(result) {
+    if (!result || result.code === "GDN_STATUS_READY") return;
+    if (result.code === "GDN_DISPATCH_COMPLETED") {
+      updateGdnProgress({
+        stage: "transaction",
+        message: result.message,
+        step: 6,
+        state: "completed",
+      });
+      return;
+    }
+    if (!result.failed_stage) return;
+    const step = Number(result.failed_step || (
+      GDN_PROGRESS_STAGES.indexOf(result.failed_stage) + 1
+    ));
+    updateGdnProgress({
+      stage: result.failed_stage,
+      message: result.message,
+      step,
+      state: result.checkpoint === "inspect_edi" ? "pending" : "failed",
+    });
+    $(".dispatch-checkpoint").hidden = result.checkpoint !== "inspect_edi";
+  }
+
   function syncGdnDispatchAction() {
     const invoice = String($(".gdn-invoice-query")?.value || "").trim();
     const confirmed = $(".gdn-grn-confirm-input")?.checked === true;
@@ -1686,6 +1996,7 @@
       $(".gdn-invoice-query")?.focus();
       return null;
     }
+    resetGdnProgress();
     return runSelectedModuleAction("run_gdn_dispatch", invoice, confirmed);
   }
 
@@ -1711,6 +2022,7 @@
       $(".oc-query").value.trim(),
     ),
     "gdn-dispatch-submit": submitGdnDispatch,
+    "gdn-status": () => runSelectedModuleAction("open_gdn_status"),
     "sample-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "sample-new": () => runSelectedModuleAction("open_sample_new"),
     "sample-search": () => {
@@ -1729,6 +2041,12 @@
     },
     "sale-asn-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "sale-asn-new": () => runSelectedModuleAction("open_sale_asn_new"),
+    "sale-asn-scan-buyers": scanSaleAsnBuyers,
+    "sale-asn-template": () => call("download_sale_asn_template"),
+    "sale-asn-import": chooseSaleAsnInput,
+    "sale-asn-review-cancel": cancelSaleAsnReview,
+    "sale-asn-start": startSaleAsnCreate,
+    "sale-asn-continue": continueSaleAsnCreate,
     "sale-asn-search": () => runSelectedModuleAction(
       "search_sale_asn",
       moduleFilterKinds.sale_asn,
@@ -1749,6 +2067,12 @@
       $(".indent-article-query").value.trim(),
       $(".indent-no-query").value.trim(),
       $(".indent-style-query").value.trim(),
+    ),
+    "advance-pr-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+    "advance-pr-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
+    "advance-pr-search": () => runSelectedModuleAction(
+      "search_advance_pr",
+      ...advancePrFilterValues(),
     ),
     "supplier-invoice-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "supplier-invoice-search": () => runSelectedModuleAction(
@@ -3217,6 +3541,23 @@
     bindListboxKeys($(".catalog-article-suggestions"));
     $(".gdn-invoice-query")?.addEventListener("input", syncGdnDispatchAction);
     $(".gdn-grn-confirm-input")?.addEventListener("change", syncGdnDispatchAction);
+    Object.entries(INPUT_VALIDATION_GROUPS).forEach(([group, selectors]) => {
+      selectors.forEach((selector) => {
+        $(selector)?.addEventListener("input", () => syncInputValidation(group));
+        $(selector)?.addEventListener("change", () => syncInputValidation(group));
+      });
+    });
+    syncAllInputValidation();
+    $$('[data-sale-asn-view]').forEach((button) =>
+      button.addEventListener("click", () => showSaleAsnView(button.dataset.saleAsnView)));
+    $(".sale-asn-buyer")?.addEventListener("input", () => {
+      if (saleAsnReviewToken) cancelSaleAsnReview();
+      syncSaleAsnCreate();
+    });
+    $(".sale-asn-manual-confirm")?.addEventListener("change", (event) => {
+      $('[data-module-action="sale-asn-continue"]').disabled =
+        busy || event.target.checked !== true;
+    });
     $$("[data-module-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(
@@ -3301,6 +3642,15 @@
     ].forEach((selector) =>
       $(selector).addEventListener("keydown", (event) => {
         if (event.key === "Enter") runModuleActionFromKeyboard("indent-search");
+      }));
+    [
+      ".advance-pr-buyer-query",
+      ".advance-pr-supplier-query",
+      ".advance-pr-invoice-query",
+      ".advance-pr-order-query",
+    ].forEach((selector) =>
+      $(selector).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") runModuleActionFromKeyboard("advance-pr-search");
       }));
     [
       ".supplier-invoice-supplier-query",
@@ -3408,7 +3758,10 @@
       button.addEventListener("click", () => selectSettingsTab(button.dataset.settingsTab)));
     $(".manual-button").addEventListener("click", async () => {
       const result = await callQuiet("open_wfx_manual");
-      $(".manual-button").classList.remove("has-alert");
+      const manualButton = $(".manual-button");
+      manualButton.classList.remove("has-alert");
+      manualButton.setAttribute("aria-label", "Mở hướng dẫn sử dụng WFX");
+      manualButton.dataset.tooltip = "Mở hướng dẫn sử dụng";
       $(".manual-alert").dataset.active = "false";
       if (result) handleResult(result);
     });
@@ -3456,7 +3809,10 @@
     $(".feedback-message").addEventListener("input", updateFeedbackState);
     $(".log-button").addEventListener("click", () => {
       $(".log-overlay").classList.add("log-open");
-      $(".log-button").classList.remove("has-alert");
+      const logButton = $(".log-button");
+      logButton.classList.remove("has-alert");
+      logButton.setAttribute("aria-label", "Trạng thái hoạt động");
+      logButton.dataset.tooltip = "Trạng thái hoạt động";
       refreshJobs();
     });
     $(".log-close-button").addEventListener("click", () => $(".log-overlay").classList.remove("log-open"));
@@ -3608,6 +3964,13 @@
         setStatus(result.ok ? "success" : "error", result.message || "");
       }
     });
+    $(".toast-test-button")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      const result = await callQuiet("show_test_notification");
+      button.disabled = false;
+      if (result) setStatus(result.ok ? "success" : "warning", result.message || "");
+    });
     $(".focus-chrome-input").addEventListener("change", async (event) => {
       const result = await callQuiet(
         "set_focus_chrome_on_module", event.target.checked
@@ -3698,19 +4061,24 @@
     bindTablistKeys($(".activity-tabs"), (tab) => selectActivityTab(tab.dataset.activityTab));
     bindTablistKeys($(".settings-tabs"), (tab) => selectSettingsTab(tab.dataset.settingsTab));
     $(".history-refresh-button").addEventListener("click", refreshJobs);
-    $(".job-history").addEventListener("click", async (event) => {
-      const button = event.target.closest("[data-job-action]");
-      const card = event.target.closest(".job-card");
-      if (!button || !card) return;
-      if (button.dataset.jobAction === "screenshot") {
-        const result = await callQuiet("open_job_screenshot", card.dataset.runId);
-        if (result) setStatus(result.ok ? "success" : "error", result.message || "");
-      } else {
+    $$(".job-history").forEach((history) =>
+      history.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-job-action]");
+        const card = event.target.closest(".job-card");
+        if (!button || !card) return;
+        if (button.dataset.jobAction === "screenshot") {
+          const result = await callQuiet("open_job_screenshot", card.dataset.runId);
+          if (result) setStatus(result.ok ? "success" : "error", result.message || "");
+          return;
+        }
         button.disabled = true;
-        const result = await call("retry_job", card.dataset.runId);
+        if (button.dataset.jobAction === "inspect_gdn") {
+          await call("open_gdn_status");
+        } else {
+          await call("retry_job", card.dataset.runId);
+        }
         button.disabled = false;
-      }
-    });
+      }));
     // Xóa lịch sử xóa luôn ảnh lỗi — yêu cầu bấm xác nhận hai bước để tránh mất
     // bằng chứng do lỡ tay. Bấm lần đầu hỏi lại, tự hủy sau 4 giây.
     let clearHistoryArmed = null;
@@ -3757,8 +4125,17 @@
     if (Array.isArray(state.manual_error_codes)) {
       manualErrorCodes = new Set(state.manual_error_codes);
     }
+    renderSaleAsnBuyers(state.sale_asn_buyers);
     const hasManualNews = state.manual_has_news === true;
-    $(".manual-button").classList.toggle("has-alert", hasManualNews);
+    const manualButton = $(".manual-button");
+    manualButton.classList.toggle("has-alert", hasManualNews);
+    manualButton.setAttribute(
+      "aria-label",
+      hasManualNews ? "Mở hướng dẫn sử dụng WFX · có nội dung mới" : "Mở hướng dẫn sử dụng WFX",
+    );
+    manualButton.dataset.tooltip = hasManualNews
+      ? "Hướng dẫn có nội dung mới"
+      : "Mở hướng dẫn sử dụng";
     $(".manual-alert").dataset.active = String(hasManualNews);
     setAccount(state.user_id);
     hasCredentials = state.has_credentials === true;

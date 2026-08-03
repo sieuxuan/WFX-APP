@@ -39,6 +39,44 @@ _RETRYABLE_METHODS = frozenset(
         "browse_catalog",
     }
 )
+_NON_ACTIONABLE_CODES = frozenset(
+    {
+        "ACTION_CANCELLED",
+        "ACTION_IN_PROGRESS",
+        "ADMIN_ACCESS_DENIED",
+        "BUYER_NOT_FOUND",
+        "CATALOG_RESULT_CHANGED",
+        "CATALOG_RESULT_EXPIRED",
+        "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
+        "GDN_INVOICE_INVALID",
+        "GDN_INVOICE_REQUIRED",
+        "INVALID_FILTER",
+        "JOB_NOT_FOUND",
+        "JOB_NOT_RETRYABLE",
+        "MODULE_UNKNOWN",
+        "MULTIPLE_RESULTS",
+        "NO_RESULTS",
+        "QUERY_REQUIRED",
+        "SAMPLE_MULTIPLE_RESULTS",
+        "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
+        "SUPPLIER_NOT_FOUND",
+    }
+)
+_PENDING_ATTENTION_CODES = frozenset(
+    {
+        "GDN_PENDING_NOT_FOUND",
+        "GDN_TRANSACTION_UNCONFIRMED",
+        "OC_TRANSACTION_UNCONFIRMED",
+    }
+)
+_GDN_INSPECTION_CODES = frozenset(
+    {
+        "GDN_PACKAGE_PROCESS_FAILED",
+        "GDN_PENDING_NOT_FOUND",
+        "GDN_TRANSACTION_FAILED",
+        "GDN_TRANSACTION_UNCONFIRMED",
+    }
+)
 _PERSISTED_JOB_KEYS = frozenset(
     {
         "run_id",
@@ -50,6 +88,7 @@ _PERSISTED_JOB_KEYS = frozenset(
         "started_at",
         "elapsed_ms",
         "screenshot",
+        "acknowledged",
     }
 )
 
@@ -178,6 +217,29 @@ def can_retry(job: dict[str, Any]) -> bool:
     return str(job.get("method") or "") in _RETRYABLE_METHODS
 
 
+def requires_attention(job: dict[str, Any]) -> bool:
+    """Chỉ đánh dấu lỗi mà người dùng còn phải xử lý.
+
+    Lỗi nhập liệu, không có kết quả và thao tác bị hủy vẫn ở lịch sử để đối
+    chiếu, nhưng không được làm badge cảnh báo hoặc lấp Trung tâm cần xử lý.
+    """
+    if bool(job.get("ok")):
+        return False
+    if bool(job.get("acknowledged")):
+        return False
+    code = str(job.get("code") or "")
+    return bool(code and code not in _NON_ACTIONABLE_CODES)
+
+
+def attention_action(job: dict[str, Any]) -> tuple[str, str]:
+    code = str(job.get("code") or "")
+    if code in _GDN_INSPECTION_CODES:
+        return "inspect_gdn", "Kiểm tra trên WFX"
+    if can_retry(job):
+        return "retry", "Thử lại an toàn"
+    return "", ""
+
+
 def append(base_dir: Path, job: dict[str, Any]) -> None:
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -195,8 +257,12 @@ def list_jobs(base_dir: Path, limit: int = 30) -> list[dict[str, Any]]:
         if changed:
             _write(base_dir, rows)
         rows = rows[:safe_limit]
-    return [
-        {
+    public_rows = []
+    for row in rows:
+        attention = requires_attention(row)
+        action, action_label = attention_action(row)
+        public_rows.append(
+            {
             "run_id": row.get("run_id"),
             "method": row.get("method"),
             "ok": bool(row.get("ok")),
@@ -208,9 +274,21 @@ def list_jobs(base_dir: Path, limit: int = 30) -> list[dict[str, Any]]:
                 row.get("screenshot") and Path(str(row["screenshot"])).is_file()
             ),
             "retryable": not bool(row.get("ok")) and can_retry(row),
-        }
-        for row in rows
-    ]
+            "requires_attention": attention,
+            "attention_kind": (
+                (
+                    "pending"
+                    if str(row.get("code") or "") in _PENDING_ATTENTION_CODES
+                    else "error"
+                )
+                if attention
+                else ""
+            ),
+            "attention_action": action,
+            "attention_action_label": action_label,
+            }
+        )
+    return public_rows
 
 
 def get_job(base_dir: Path, run_id: str) -> dict[str, Any] | None:
@@ -223,6 +301,24 @@ def get_job(base_dir: Path, run_id: str) -> dict[str, Any] | None:
             (row for row in rows if row.get("run_id") == run_id),
             None,
         )
+
+
+def acknowledge(base_dir: Path, run_id: str) -> bool:
+    """Đánh dấu một cảnh báo đã được user kiểm tra, giữ nguyên audit row."""
+    base_dir = Path(base_dir)
+    with _LOCK:
+        rows, changed = _prune(base_dir, _load(base_dir))
+        found = False
+        for row in rows:
+            if str(row.get("run_id") or "") != str(run_id or ""):
+                continue
+            row["acknowledged"] = True
+            found = True
+            changed = True
+            break
+        if changed:
+            _write(base_dir, rows)
+        return found
 
 
 def clear(base_dir: Path) -> None:

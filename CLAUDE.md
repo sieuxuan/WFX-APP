@@ -64,12 +64,15 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   đang mở lên trước, không tạo cửa sổ trùng. Cửa sổ Manual không tham gia logic
   tự thu của panel. Mỗi màn module có nút dấu hỏi mở đúng mục của module đó, và
   thanh trạng thái hiện nút trợ giúp khi lỗi có mục hướng dẫn. Sau khi ứng dụng
-  tự cập nhật, nút Manual hiện chấm đỏ và mở thẳng phần Có gì mới.
+  tự cập nhật, nút Manual hiện badge `Mới` có nhãn rõ ràng và mở thẳng phần Có
+  gì mới. Nút Log dùng badge cảnh báo `!` màu vàng khi có lỗi mới; không dùng
+  chấm đỏ không nhãn dễ bị hiểu là lỗi render.
 - Mặc định app nhớ đúng màn module người dùng đang làm. Setting `Trở về List
   sau khi thao tác` cho phép đổi sang hành vi quay về danh sách module.
-- Module được ghim bằng nút ngôi sao sẽ nằm trong `Yêu thích` trước ô tìm kiếm.
-  Khu vực này không có scrollbar riêng; module đã ghim không lặp lại trong nhóm
-  bên dưới và favorite cuối cùng ở hàng lẻ chiếm trọn chiều ngang.
+- Module được ghim bằng nút ngôi sao sẽ nằm trong `Yêu thích` ở đầu vùng cuộn,
+  ngay sau ô tìm kiếm cố định. Khu vực này dùng chung scrollbar với danh sách;
+  module đã ghim không lặp lại trong nhóm bên dưới và luôn giữ cùng độ rộng hai
+  cột để thao tác ghim không làm layout nhảy hoặc đẩy ô tìm kiếm xuống.
 - Tab Tài khoản ở trạng thái đã đăng nhập chỉ hiện kết nối hiện tại và nút `Đổi
   tài khoản`; form User ID/password chỉ mở khi người dùng muốn đổi hoặc cần xác
   thực lại.
@@ -86,6 +89,18 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
 - Result sink từ backend phải nhả trạng thái busy của UI độc lập với Promise
   pywebview. Nếu Promise bridge bị kẹt sau khi backend đã ghi kết quả, các nút
   workflow vẫn phải hoạt động lại ngay.
+- Các form Search/Cancel nhiều điều kiện phải disable hành động khi toàn bộ ô
+  liên quan còn trống, hiện gợi ý ngay tại form và chỉ nhận Enter khi hợp lệ;
+  backend vẫn giữ validation như lớp bảo vệ cuối.
+- `Lịch sử hoạt động` chỉ gồm `Tất cả tác vụ` và `Log kỹ thuật`; không tách thêm
+  thẻ `Cần xử lý`. Heartbeat `maintain_session` thành công không ghi `jobs.json`,
+  không thêm log RUN và không thay footer.
+- Toast hoàn tất phải hiện khi foreground đang ở WFX, kể cả panel chưa kịp đổi
+  cờ sang hidden; không hiện trùng khi panel thật sự đang foreground. Nếu
+  tray Windows đã sẵn sàng, ưu tiên notification native để không phụ thuộc
+  WebView2 hidden và vẫn lưu ở Notification Center; WebView notification là
+  fallback, giữ thông báo mới nhất nếu chưa load. Settings có nút thử toast,
+  toast không được lấy focus.
 - Updater chờ instance hiện tại tự đóng 15 giây. Nếu pywebview/WebView2 còn giữ
   process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
   process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo
@@ -388,13 +403,42 @@ Các workflow riêng hiện có:
   và trả danh sách tải trực tiếp. Nếu có nhiều dòng, panel hiển thị lựa chọn
   Sample; sau khi user chọn, app tiếp tục từ grid đang mở, không tìm lại.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
-  No., New, và tải Documents. Luồng Documents nhận Invoice No. đang nhập
+  No., New từ Excel, và tải Documents. Workspace mặc định là `Tạo từ Excel`,
+  dùng một luồng phẳng Buyer → file → review → chạy; `Tra cứu` gom Search và
+  Documents, còn nút mở List luôn ở thanh trên. Buyer được quét từ
+  `#Cell_Buyer`, cache lại để gõ tìm/chọn exact ở lần sau và có nút quét lại.
+  Thẻ thứ hai phải mang nhãn `Tra cứu & Invoice/PKL`, đặt bộ lọc Search và nút
+  xuất Buyer Invoice + Packing List trong cùng một bề mặt, không tách thêm card.
+  Form Excel có đúng 19 cột theo `template saleasn.xlsx`; mỗi file chỉ chứa một
+  Invoice No. và một FTY, xử lý PO đúng thứ tự dòng. Style No./PO No./Destination/
+  FTY bắt buộc; Season/Description/HS Code/Qty/Carton/NW/GW/CBM/FOB Price/
+  Service Price được phép trống. Invoice Date/Shipping Bill Date/Cargo Ready Date
+  trống thì kế thừa ngày đầu tiên, không có nữa mới dùng ngày hiện tại; Shipping
+  Bill No. trống thì dùng Invoice No.
+  Automation chọn Buyer, mở Add Order Details, tìm PO trước rồi fallback thêm
+  Destination/Style. Một kết quả được chọn tự động; nhiều kết quả được phân giải
+  bằng Style gần đúng rồi Dispatched Qty. Nếu vẫn mơ hồ hoặc không thấy, giữ cửa
+  sổ cho user tự chọn và bấm Add & Continue; app dùng review token để tiếp tục
+  từ dòng kế, không đọc lại hay đảo thứ tự file. Các PO trước dùng
+  `Add & Continue`, kể cả PO cuối, để WFX ghi dòng vào Order Details. Sau khi
+  Add & Continue cuối hoàn tất và vùng tìm kiếm reset, bấm `OK` để đóng popup;
+  không dùng `OK` thay cho thao tác add PO cuối. Sau khi popup đóng, điền 7 cột
+  Order Details, map Style gần đúng để điền HS Code, rồi điền Shipping Info với
+  Consignor Address
+  `BILL-ADD - PSHK`, Delivery Terms `FOB`, Factory theo FTY và Notify 1 là option
+  đầu tiên. Luồng luôn dừng trước Save để user kiểm tra trên WFX.
+  Luồng Documents nhận Invoice No. đang nhập
   hoặc đúng một dòng đang chọn; xác nhận invoice độc lập với cột Docs rồi quét
   ngang AG Grid để tìm/click Docs theo metadata vì mỗi user có thể kéo cột tới
   vị trí khác nhau; tải lần lượt Packing
   List và Buyer Invoice bằng Report Viewer `EXCELOPENXML`, ghép thành một
-  workbook gồm hai sheet `Packing List`/`Buyer Invoice`, giữ nguyên format report
-  nguồn, sau đó mới mở Save As với tên mặc định là Invoice No. thực tế.
+  workbook giữ nguyên format report nguồn; nếu mỗi report có nhiều sheet thì xếp
+  xen kẽ Invoice 1, PKL 1, Invoice 2, PKL 2 cho đến hết, Invoice luôn đứng trước
+  PKL. Sau đó mới mở Save As với tên mặc định là Invoice No. thực tế và tự mở
+  Explorer, chọn đúng file khi lưu thành công. Khi copy sheet giữa hai workbook,
+  phải tạo merged range trước rồi mới phục hồi style từng ô để không mất border/
+  khung report do WFX xuất; style của row/column dimension phải được ánh xạ lại
+  theo thuộc tính, không được mang nguyên style index từ workbook nguồn sang.
 - `(GDN) Dispatch`: UI phải cảnh báo và bắt user xác nhận GRN nhập kho thành
   phẩm đã hoàn tất ít nhất 15 phút trước khi Submit. Flow nhận một Invoice GRN,
   mở report `BuyerDispatchOrder_Invoice`, điền `Doc No.`, chờ report load thật,
@@ -406,12 +450,23 @@ Các workflow riêng hiện có:
   `Create Transaction` là ranh giới không idempotent: sau khi click không tự
   retry, phải chờ WFX xác nhận thành công/lỗi; nếu mất xác nhận trả mã
   `GDN_TRANSACTION_UNCONFIRMED` và hướng dẫn kiểm tra WFX để tránh tạo trùng.
+  Backend phải stream sáu bước `report`/`download`/`workbook`/`edi`/`package`/
+  `transaction` tới UI. Lỗi từ bước Process Package trở đi là checkpoint cần
+  kiểm tra EDI, không gợi ý Submit lại; thẻ tiến độ cung cấp hành động read-only
+  mở đúng `DecisionOne_BuyerOrderDispatch` mà không tạo transaction.
 - Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
 - Buyer List: tự mở đúng Buyer List khi cần rồi mở Edit đầu tiên.
 - Company Setup: Đổi FOC tự mở đúng List nếu cần, mở Miscellaneous Settings rồi
   mới đổi/lưu nơi áp dụng FOC.
 - Mọi flow `List` chỉ trả thành công sau khi WFX đổi page/frame/document thật;
-  một cú click menu đơn thuần không được coi là `MODULE_OPENED`.
+  một cú click menu đơn thuần không được coi là `MODULE_OPENED`. Nếu link WFX
+  có `target=body` nhưng click không navigation sau 5 giây, app được phép mở
+  chính `href` đã đọc từ menu trong đúng frame `body`, chờ tối đa 12 giây rồi
+  mới báo thành công/thất bại và phải log rõ đang ở bước fallback.
+  Nếu một module đã phải dùng fallback này, app được cache route trong bộ nhớ
+  của đúng phiên để lần sau bỏ qua 5 giây chờ click không phản hồi. Cache chỉ
+  nhận URL cùng origin, tự xóa khi login/session/Division thay đổi và phải
+  fallback về click bình thường ngay nếu route cache không còn hợp lệ.
 - RMPO List: tìm kết hợp theo Supplier và RMPO No. trên đúng grid
   `gridRMPO`.
 - Indent List/User Indent: tìm kết hợp theo Supplier, Article, Indent No. và
@@ -419,6 +474,8 @@ Các workflow riêng hiện có:
 - QA List, Advance PR List và Expense Inv List: List + New; New click trực tiếp
   menu QA Inspection Request New, Advance Payment Request New hoặc Expense
   Invoice New và phải xác nhận navigation, không phụ thuộc màn List hiện tại.
+  Advance PR hỗ trợ tìm kết hợp theo Buyer Name, Supplier, Invoice Number và
+  Order No. trên `gridAdvancePaymentRequestList`.
 - Các module generic còn lại thuộc nhóm Finance/Admin theo quyền tài khoản.
 
 ### Webhook và quyền riêng tư

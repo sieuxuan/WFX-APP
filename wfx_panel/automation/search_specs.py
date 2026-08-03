@@ -150,6 +150,48 @@ SALE_ASN_SEARCH_SPEC = ModuleSearchSpec(
     requires_floating_filter=True,
 )
 
+ADVANCE_PR_SEARCH_SPEC = ModuleSearchSpec(
+    module_name="Advance PR List",
+    fields={
+        "buyer": SearchFieldSpec(
+            "Buyer Name",
+            (
+                "#gridAdvancePaymentRequestList_tblGridHeader_trSearch_td_ColBuyer "
+                "input#txtSearchBuyer",
+                "#txtSearchBuyer",
+            ),
+        ),
+        "supplier": SearchFieldSpec(
+            "Supplier",
+            (
+                "#gridAdvancePaymentRequestList_tblGridHeader_trSearch_td_ColSupplier "
+                "input#txtSearchSupplier",
+                "#txtSearchSupplier",
+            ),
+        ),
+        "invoice_no": SearchFieldSpec(
+            "Invoice Number",
+            (
+                "#gridAdvancePaymentRequestList_tblGridHeader_trSearch_td_ColInvoiceNo "
+                "input#txtSearchInvoiceNo",
+                "#txtSearchInvoiceNo",
+            ),
+        ),
+        "order_no": SearchFieldSpec(
+            "Order No.",
+            (
+                "#gridAdvancePaymentRequestList_tblGridHeader_trSearch_td_ColOrderNo "
+                "input#txtSearchOrderNo",
+                "#txtSearchOrderNo",
+            ),
+        ),
+    },
+    context_field=SearchFieldSpec(
+        "Advance PR List",
+        ("#gridAdvancePaymentRequestList_tblGridHeader",),
+    ),
+)
+
 SUPPLIER_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
     module_name="Supplier Inv List",
     fields={

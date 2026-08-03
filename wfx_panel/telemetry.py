@@ -63,6 +63,7 @@ METHOD_LABELS = {
     "save_sale_asn_documents": "Lưu Documents Sale ASN",
     "search_rmpo": "Tìm trong RMPO List",
     "search_indent": "Tìm trong Indent List",
+    "search_advance_pr": "Tìm trong Advance PR List",
     "search_supplier_invoice": "Tìm trong Supplier Inv List",
     "search_expense_invoice": "Tìm trong Expense Inv List",
     "cancel_supplier_invoice": "Cancel Supplier Invoice",
@@ -504,6 +505,110 @@ ERROR_CODE_INFO.update(
             "Không lưu được file Documents Sale ASN",
             "Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại.",
         ),
+        "SALE_ASN_BUYER_SCAN_FAILED": (
+            "Không quét được Buyer Sale ASN",
+            "Mở lại Sale ASN New, chờ danh sách Buyer tải xong rồi quét lại.",
+        ),
+        "SALE_ASN_BUYER_REQUIRED": (
+            "Chưa chọn Buyer Sale ASN",
+            "Gõ và chọn đúng một Buyer trong danh sách trước khi chọn file.",
+        ),
+        "SALE_ASN_BUYER_NOT_FOUND": (
+            "Buyer không còn trong danh sách WFX",
+            "Quét lại Buyer rồi chọn đúng giá trị trước khi chạy.",
+        ),
+        "SALE_ASN_BUYER_NOT_CONFIRMED": (
+            "WFX chưa xác nhận Buyer Sale ASN",
+            "Kiểm tra danh sách Buyer trên form New rồi thử lại.",
+        ),
+        "SALE_ASN_CREATE_FAILED": (
+            "Không thể hoàn tất Sale ASN từ Excel",
+            "Giữ màn hình WFX, mở Log kỹ thuật và kiểm tra bước cuối cùng.",
+        ),
+        "SALE_ASN_CREATE_REVIEW_EXPIRED": (
+            "Phiên kiểm tra Sale ASN đã hết hiệu lực",
+            "Chọn lại file Excel để tạo một review mới.",
+        ),
+        "SALE_ASN_FIELD_NOT_EDITABLE": (
+            "Một ô Sale ASN không thể chỉnh sửa",
+            "Kiểm tra quyền sửa chứng từ và trạng thái form Sale ASN trên WFX.",
+        ),
+        "SALE_ASN_FILE_EMPTY": (
+            "File Sale ASN chưa có dữ liệu",
+            "Điền ít nhất một dòng PO trong form rồi chọn lại file.",
+        ),
+        "SALE_ASN_FILE_FORMULA_ERROR": (
+            "File Sale ASN có công thức",
+            "Dán dữ liệu thành giá trị trong vùng nhập rồi chọn lại file.",
+        ),
+        "SALE_ASN_FILE_HEADERS_INVALID": (
+            "Header file Sale ASN không đúng",
+            "Tải form mới và giữ nguyên đủ 19 tên cột.",
+        ),
+        "SALE_ASN_FILE_INVALID": (
+            "File Sale ASN không hợp lệ",
+            "Lưu lại file bằng định dạng XLSX rồi chọn lại.",
+        ),
+        "SALE_ASN_FILE_NOT_FOUND": (
+            "Không tìm thấy file Sale ASN",
+            "Lưu và đóng file Excel rồi chọn lại từ vị trí hiện tại.",
+        ),
+        "SALE_ASN_FILE_TOO_LARGE": (
+            "File Sale ASN quá lớn",
+            "Xóa dữ liệu thừa để file nhỏ hơn 20 MB.",
+        ),
+        "SALE_ASN_FILE_TOO_MANY_ROWS": (
+            "File Sale ASN có quá nhiều dòng",
+            "Chia file thành các Invoice nhỏ hơn, tối đa 2.000 dòng mỗi file.",
+        ),
+        "SALE_ASN_FILE_TYPE_UNSUPPORTED": (
+            "Định dạng file Sale ASN không được hỗ trợ",
+            "Chỉ chọn file XLSX được tạo từ form Sale ASN.",
+        ),
+        "SALE_ASN_FILE_UNSAFE": (
+            "File Sale ASN chứa macro",
+            "Xóa macro hoặc tải form XLSX mới rồi nhập lại dữ liệu.",
+        ),
+        "SALE_ASN_FILE_VALIDATION_FAILED": (
+            "Dữ liệu Sale ASN chưa hợp lệ",
+            "Sửa các ô và dòng được ứng dụng báo rồi chọn lại file.",
+        ),
+        "SALE_ASN_PO_SEARCH_NOT_READY": (
+            "Ô tìm PO Sale ASN chưa sẵn sàng",
+            "Chờ cửa sổ Add Order Details tải xong rồi chạy lại.",
+        ),
+        "SALE_ASN_PO_POPUP_NOT_CLOSED": (
+            "Cửa sổ chọn PO chưa đóng",
+            "Bấm OK trong Add Order Details rồi chạy lại từ form New.",
+        ),
+        "SALE_ASN_PO_SELECTION_NOT_CONFIRMED": (
+            "WFX chưa xác nhận dòng PO đã chọn",
+            "Chọn đúng dòng PO trên WFX rồi bấm Add & Continue.",
+        ),
+        "SALE_ASN_ORDER_GRID_NOT_READY": (
+            "Bảng Order Details chưa nhận đủ PO",
+            "Chờ WFX tải đủ các dòng PO rồi chạy lại.",
+        ),
+        "SALE_ASN_FIELD_VALUE_NOT_CONFIRMED": (
+            "WFX chưa giữ giá trị vừa nhập",
+            "Kiểm tra ô Order Details hoặc HS Code được báo trong Log kỹ thuật.",
+        ),
+        "SALE_ASN_SHIPPING_FIELD_FAILED": (
+            "Không điền được Shipping Info",
+            "Kiểm tra Destination, FTY và danh sách lựa chọn trên WFX.",
+        ),
+        "SALE_ASN_STYLE_HS_CODE_CONFLICT": (
+            "Một Style có nhiều HS Code trong file",
+            "Dùng cùng một HS Code cho các dòng của cùng Style.",
+        ),
+        "SALE_ASN_TABLE_MAPPING_FAILED": (
+            "Không ghép được dòng file với bảng Sale ASN",
+            "Kiểm tra PO No. và Style No., sau đó mở Log kỹ thuật.",
+        ),
+        "SALE_ASN_TEMPLATE_EXPORT_FAILED": (
+            "Không tạo được form Sale ASN",
+            "Chọn thư mục có quyền ghi và thử tải form lại.",
+        ),
         "SAMPLE_NEW_FAILED": (
             "Không thể tạo màn Sample Order mới",
             "Mở lại Sample List và kiểm tra quyền tạo mới.",
@@ -654,6 +759,7 @@ _METHOD_MODULES = {
     "prepare_sale_asn_documents": "Sale ASN",
     "save_sale_asn_documents": "Sale ASN",
     "search_rmpo": "RMPO List",
+    "search_advance_pr": "Advance PR List",
     "search_supplier_invoice": "Supplier Inv List",
     "search_expense_invoice": "Expense Inv List",
     "cancel_supplier_invoice": "Supplier Inv List",
@@ -715,6 +821,9 @@ _FILTER_LABELS = {
     "search_supplier_invoice": {
         "multiple": "Supplier / Invoice No. / PO No. / ASN-GRN No.",
     },
+    "search_advance_pr": {
+        "multiple": "Buyer Name / Supplier / Invoice Number / Order No.",
+    },
     "search_expense_invoice": {
         "multiple": "Supplier / Invoice No. / Created By / Status",
     },
@@ -725,6 +834,7 @@ _FILTER_LABELS = {
 _METHOD_DEFAULT_FILTERS = {
     "search_rmpo": "Supplier / RMPO No.",
     "search_indent": "Supplier / Article / Indent No. / Style",
+    "search_advance_pr": "Buyer Name / Supplier / Invoice Number / Order No.",
     "search_supplier_invoice": "Supplier / Invoice No. / PO No. / ASN-GRN No.",
     "search_expense_invoice": "Supplier / Invoice No. / Created By / Status",
     "cancel_supplier_invoice": "Invoice No.",
