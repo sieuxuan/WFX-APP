@@ -529,6 +529,14 @@ ERROR_CODE_INFO.update(
             "Phiên kiểm tra Sale ASN đã hết hiệu lực",
             "Chọn lại file Excel để tạo một review mới.",
         ),
+        "SALE_ASN_CREATE_STAGE_INVALID": (
+            "Checkpoint tạo Sale ASN không hợp lệ",
+            "Chọn lại file Excel để bắt đầu một phiên tạo Sale ASN mới.",
+        ),
+        "SALE_ASN_CREATE_STAGE_NOT_SKIPPABLE": (
+            "Không thể bỏ qua bước Sale ASN hiện tại",
+            "Hoàn tất bước thêm PO hoặc thử lại bước hiện tại trên WFX.",
+        ),
         "SALE_ASN_FIELD_NOT_EDITABLE": (
             "Một ô Sale ASN không thể chỉnh sửa",
             "Kiểm tra quyền sửa chứng từ và trạng thái form Sale ASN trên WFX.",

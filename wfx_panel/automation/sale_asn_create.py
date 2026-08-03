@@ -263,36 +263,6 @@ _SET_CONTROL_JS = r"""spec => {
     return {ok: true, value: clean(control.value || control.textContent), tag: control.tagName};
 }"""
 
-_MARK_TABLE_CELL_JS = r"""spec => {
-    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
-    const fold = value => clean(value).toLocaleLowerCase('en')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, ' ').trim();
-    const section = document.querySelector(spec.section);
-    if (!section) return {ok: false, reason: 'section-not-found'};
-    const rows = [...section.querySelectorAll('tr')];
-    let header = null;
-    let column = -1;
-    for (const row of rows) {
-        const cells = [...row.children];
-        const found = cells.findIndex(cell => (spec.aliases || []).some(alias =>
-            fold(cell.textContent + ' ' + (cell.id || '')) === fold(alias)
-            || fold(cell.textContent + ' ' + (cell.id || '')).includes(fold(alias))));
-        if (found >= 0) { header = row; column = found; break; }
-    }
-    if (!header || column < 0) return {ok: false, reason: 'column-not-found'};
-    const needles = (spec.needles || []).map(fold).filter(Boolean);
-    const candidates = rows.filter(row => row !== header && needles.every(needle =>
-        fold(row.textContent).includes(needle)));
-    if (candidates.length !== 1) return {ok: false, reason: 'row-ambiguous', count: candidates.length};
-    const cell = candidates[0].children[column];
-    if (!cell) return {ok: false, reason: 'cell-not-found'};
-    document.querySelectorAll('[data-wfx-sale-asn-target]').forEach(item =>
-        item.removeAttribute('data-wfx-sale-asn-target'));
-    cell.setAttribute('data-wfx-sale-asn-target', '1');
-    return {ok: true, column, row_text: clean(candidates[0].textContent)};
-}"""
-
 _MARK_ORDER_GRID_CELL_JS = r"""spec => {
     const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
     const fold = value => clean(value).toLocaleLowerCase('en')
@@ -316,6 +286,63 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
     cell.setAttribute('data-wfx-sale-asn-target', '1');
     return {ok: true, row_id: candidates[0].id, column_id: cell.id};
 }"""
+
+_MARK_STYLE_HTS_CELL_JS = r"""spec => {
+    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const fold = value => clean(value).toLocaleLowerCase('en')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ').trim();
+    const score = (wanted, actual) => {
+        if (!wanted || !actual) return 0;
+        if (wanted === actual) return 10000;
+        if (actual.includes(wanted) || wanted.includes(actual)) {
+            return 8000 + Math.min(wanted.length, actual.length);
+        }
+        const left = new Set(wanted.split(' ').filter(Boolean));
+        const right = new Set(actual.split(' ').filter(Boolean));
+        let shared = 0;
+        left.forEach(token => { if (right.has(token)) shared += 1; });
+        return shared * 100 - Math.abs(left.size - right.size);
+    };
+    const table = document.querySelector('#gridStyleDetails_tblGridContent');
+    if (!table) return {ok: false, reason: 'style-grid-not-found'};
+    const wanted = fold(spec.style);
+    const candidates = [...table.querySelectorAll('tr.trContent')]
+        .map(row => {
+            const styleCell = row.querySelector('td#colStyle');
+            const styleLabel = styleCell?.querySelector('#lblStyle');
+            const styleText = clean(
+                styleLabel?.getAttribute('title') || styleLabel?.textContent
+                || styleCell?.textContent
+            );
+            return {row, styleText, score: score(wanted, fold(styleText))};
+        })
+        .filter(item => item.score > 0);
+    const bestScore = Math.max(0, ...candidates.map(item => item.score));
+    const best = candidates.filter(item => item.score === bestScore);
+    if (best.length !== 1) {
+        return {
+            ok: false,
+            reason: 'style-row-ambiguous',
+            count: best.length,
+            styles: candidates.map(item => item.styleText),
+        };
+    }
+    const cell = best[0].row.querySelector('td#colHTSCode');
+    if (!cell) return {ok: false, reason: 'hts-cell-not-found'};
+    document.querySelectorAll('[data-wfx-sale-asn-target]').forEach(item =>
+        item.removeAttribute('data-wfx-sale-asn-target'));
+    cell.setAttribute('data-wfx-sale-asn-target', '1');
+    return {ok: true, style: best[0].styleText, column_id: cell.id};
+}"""
+
+SALE_ASN_STAGE_LABELS = {
+    "po": "Thêm PO",
+    "order_details": "Order Details",
+    "style_details": "Style Details",
+    "shipping_info": "Shipping Info",
+}
+SALE_ASN_STAGE_ORDER = tuple(SALE_ASN_STAGE_LABELS)
 
 
 def _fold(value: object) -> str:
@@ -791,22 +818,6 @@ def _edit_marked_table_cell(frame: Frame, value: str) -> str:
     raise RuntimeError(f"SALE_ASN_FIELD_VALUE_NOT_CONFIRMED:{actual}")
 
 
-def _set_table_cell(
-    frame: Frame,
-    section: str,
-    aliases: Sequence[str],
-    needles: Sequence[str],
-    value: str,
-) -> None:
-    marked = frame.evaluate(
-        _MARK_TABLE_CELL_JS,
-        {"section": section, "aliases": list(aliases), "needles": list(needles)},
-    )
-    if not marked.get("ok"):
-        raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
-    _edit_marked_table_cell(frame, value)
-
-
 def _set_order_grid_cell(frame: Frame, po_no: str, column_id: str, value: str) -> None:
     marked = frame.evaluate(
         _MARK_ORDER_GRID_CELL_JS,
@@ -815,6 +826,16 @@ def _set_order_grid_cell(frame: Frame, po_no: str, column_id: str, value: str) -
             "po_no": po_no,
             "column_id": column_id,
         },
+    )
+    if not marked.get("ok"):
+        raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
+    _edit_marked_table_cell(frame, value)
+
+
+def _set_style_hts_cell(frame: Frame, style: str, value: str) -> None:
+    marked = frame.evaluate(
+        _MARK_STYLE_HTS_CELL_JS,
+        {"style": style},
     )
     if not marked.get("ok"):
         raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
@@ -963,13 +984,7 @@ def _fill_style_details(frame: Frame, rows: Sequence[dict], log: Callable[[str],
         if old != code:
             raise RuntimeError("SALE_ASN_STYLE_HS_CODE_CONFLICT")
     for style, code in grouped.items():
-        _set_table_cell(
-            frame,
-            "#sectionStyleDetails",
-            ("h t s no", "hts no", "hs code", "lblhtscode"),
-            (style,),
-            code,
-        )
+        _set_style_hts_cell(frame, style, code)
         _write_log(log, f"[SALE ASN] Đã điền HS Code cho Style {style}.")
 
 
@@ -1000,67 +1015,96 @@ def run_sale_asn_create(
     rows: Sequence[dict],
     start_index: int = 0,
     log: Callable[[str], None] = print,
+    *,
+    stage: str = "po",
+    skip_stages: Sequence[str] = (),
 ) -> dict[str, Any]:
     playwright = None
+    current_stage = str(stage or "po")
     try:
         if not buyer.strip():
             return _result(False, "SALE_ASN_BUYER_REQUIRED", "Hãy chọn Buyer trước khi chạy.")
         if not rows:
             return _result(False, "SALE_ASN_FILE_EMPTY", "File Sale ASN chưa có dữ liệu.")
+        if current_stage not in SALE_ASN_STAGE_LABELS:
+            return _result(
+                False,
+                "SALE_ASN_CREATE_STAGE_INVALID",
+                "Checkpoint tạo Sale ASN không hợp lệ; hãy chọn file lại.",
+            )
+        skipped = {item for item in skip_stages if item in SALE_ASN_STAGE_LABELS}
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
         context = page.context
-        if start_index <= 0:
-            main_frame = _refresh_existing_new_form(page, log)
-            if main_frame is None:
-                main_frame = _open_new_form(page, xpath, log)
-            _select_buyer(main_frame, buyer)
-            add = main_frame.locator(f"xpath={ADD_ORDER_XPATH}").first
-            add.wait_for(state="visible", timeout=8_000)
-            add.click(timeout=5_000)
-            _write_log(log, "[SALE ASN] Đã chọn Buyer và mở Add Order Details.")
-        first_pending = max(0, int(start_index))
-        if first_pending < len(rows):
-            _popup_page, popup_frame = _frame_with_selector(
-                context,
-                PO_POPUP_SELECTOR,
-                timeout_s=15,
-            )
-
-        for index in range(first_pending, len(rows)):
-            row = dict(rows[index])
-            added, candidates, reason = _auto_add_po(
-                popup_frame,
-                row,
-                log,
-                final=index == len(rows) - 1,
-            )
-            if not added:
-                final_pending = index == len(rows) - 1
-                manual_action = "OK" if final_pending else "Add & Continue"
-                return _result(
-                    True,
-                    "SALE_ASN_PO_SELECTION_REQUIRED",
-                    (
-                        f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
-                        f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
-                    ),
-                    pending_index=index,
-                    next_index=index + 1,
-                    source_row=row.get("source_row"),
-                    po_no=row.get("po_no"),
-                    style_no=row.get("style_no"),
-                    reason=reason,
-                    candidates=candidates[:20],
-                    completed=index,
-                    total=len(rows),
+        if current_stage == "po":
+            if start_index <= 0:
+                main_frame = _refresh_existing_new_form(page, log)
+                if main_frame is None:
+                    main_frame = _open_new_form(page, xpath, log)
+                _select_buyer(main_frame, buyer)
+                add = main_frame.locator(f"xpath={ADD_ORDER_XPATH}").first
+                add.wait_for(state="visible", timeout=8_000)
+                add.click(timeout=5_000)
+                _write_log(log, "[SALE ASN] Đã chọn Buyer và mở Add Order Details.")
+            first_pending = max(0, int(start_index))
+            if first_pending < len(rows):
+                _popup_page, popup_frame = _frame_with_selector(
+                    context,
+                    PO_POPUP_SELECTOR,
+                    timeout_s=15,
                 )
 
-        _main_page, main_frame = _frame_with_selector(context, "#sectionOrderDetails", timeout_s=15)
-        main_frame = _ensure_order_grid_rows(context, main_frame, rows, log)
-        _fill_order_details(main_frame, rows, log)
-        _fill_style_details(main_frame, rows, log)
-        _fill_shipping(main_frame, dict(rows[0]), log)
+            for index in range(first_pending, len(rows)):
+                row = dict(rows[index])
+                added, candidates, reason = _auto_add_po(
+                    popup_frame,
+                    row,
+                    log,
+                    final=index == len(rows) - 1,
+                )
+                if not added:
+                    final_pending = index == len(rows) - 1
+                    manual_action = "OK" if final_pending else "Add & Continue"
+                    return _result(
+                        True,
+                        "SALE_ASN_PO_SELECTION_REQUIRED",
+                        (
+                            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
+                            f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
+                        ),
+                        pending_index=index,
+                        next_index=index + 1,
+                        source_row=row.get("source_row"),
+                        po_no=row.get("po_no"),
+                        style_no=row.get("style_no"),
+                        reason=reason,
+                        candidates=candidates[:20],
+                        completed=index,
+                        total=len(rows),
+                    )
+            current_stage = "order_details"
+
+        _main_page, main_frame = _frame_with_selector(
+            context,
+            "#sectionOrderDetails",
+            timeout_s=15,
+        )
+        start_stage_index = SALE_ASN_STAGE_ORDER.index(current_stage)
+        for step in SALE_ASN_STAGE_ORDER[start_stage_index:]:
+            current_stage = step
+            if step in skipped:
+                _write_log(
+                    log,
+                    f"[SALE ASN] Đã bỏ qua bước {SALE_ASN_STAGE_LABELS[step]} theo yêu cầu.",
+                )
+                continue
+            if step == "order_details":
+                main_frame = _ensure_order_grid_rows(context, main_frame, rows, log)
+                _fill_order_details(main_frame, rows, log)
+            elif step == "style_details":
+                _fill_style_details(main_frame, rows, log)
+            elif step == "shipping_info":
+                _fill_shipping(main_frame, dict(rows[0]), log)
         return _result(
             True,
             "SALE_ASN_FORM_COMPLETED",
@@ -1077,15 +1121,39 @@ def run_sale_asn_create(
         code = str(error).split(":", 1)[0] or "SALE_ASN_CREATE_FAILED"
         message = f"Không hoàn tất Sale ASN: {_first_line(error)}"
         _write_log(log, message)
-        return _result(False, code, message)
+        return _result(
+            False,
+            code,
+            message,
+            resumable=current_stage in SALE_ASN_STAGE_LABELS,
+            resume_stage=current_stage,
+            stage_label=SALE_ASN_STAGE_LABELS.get(current_stage, current_stage),
+            can_skip=current_stage != "po",
+        )
     except (PlaywrightError, PlaywrightTimeoutError) as error:
         message = f"Sale ASN chưa sẵn sàng: {_first_line(error)}"
         _write_log(log, message)
-        return _result(False, "SALE_ASN_CREATE_FAILED", message)
+        return _result(
+            False,
+            "SALE_ASN_CREATE_FAILED",
+            message,
+            resumable=current_stage in SALE_ASN_STAGE_LABELS,
+            resume_stage=current_stage,
+            stage_label=SALE_ASN_STAGE_LABELS.get(current_stage, current_stage),
+            can_skip=current_stage != "po",
+        )
     except Exception as error:
         message = f"{type(error).__name__}: {_first_line(error)}"
         _write_log(log, message)
-        return _result(False, "SALE_ASN_CREATE_FAILED", message)
+        return _result(
+            False,
+            "SALE_ASN_CREATE_FAILED",
+            message,
+            resumable=current_stage in SALE_ASN_STAGE_LABELS,
+            resume_stage=current_stage,
+            stage_label=SALE_ASN_STAGE_LABELS.get(current_stage, current_stage),
+            can_skip=current_stage != "po",
+        )
     finally:
         if playwright is not None:
             playwright.stop()

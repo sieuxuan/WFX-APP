@@ -19,6 +19,12 @@ Tìm Sale ASN cũ hoặc tạo Sale ASN mới từ một file Excel có nhiều 
 11. Đánh dấu xác nhận trong ứng dụng và bấm `Tiếp tục dòng kế`.
 12. Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm `Save`.
 
+Ứng dụng xử lý riêng từng bước `Thêm PO`, `Order Details`, `Style Details` và
+`Shipping Info`. Nếu một bước chưa hoàn tất, form WFX hiện tại được giữ nguyên:
+bấm `Thử lại bước này` sau khi đã xử lý nguyên nhân, hoặc bấm `Bỏ qua ...` để
+chuyển sang bước sau. Bỏ qua chỉ áp dụng cho ba bước điền dữ liệu; bước thêm PO
+không thể bỏ qua để tránh tạo chứng từ thiếu đơn hàng.
+
 > [!luuy]
 > Ứng dụng không tự bấm Save. Bạn luôn có bước kiểm tra cuối trên WFX.
 
@@ -68,3 +74,4 @@ Tìm Sale ASN cũ hoặc tạo Sale ASN mới từ một file Excel có nhiều 
 | Có nhiều dòng PO giống nhau | Chọn đúng Style hoặc Qty trên WFX, bấm `Add & Continue`, rồi tiếp tục trong ứng dụng. |
 | Không tìm thấy PO | Kiểm tra PO No., Destination và Style trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
 | Đã đóng cửa sổ Add PO | Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng. |
+| Order Details, Style Details hoặc Shipping Info bị lỗi | Giữ nguyên form WFX, sửa trạng thái/ô đang vướng rồi bấm `Thử lại bước này`; hoặc bấm `Bỏ qua ...` nếu muốn tự điền bước đó. |

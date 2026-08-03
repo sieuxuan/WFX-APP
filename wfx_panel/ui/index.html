@@ -511,10 +511,13 @@
             </div>
 
             <div class="sale-asn-pending" hidden>
-              <strong>Cần bạn chọn một PO trên WFX</strong>
+              <strong class="sale-asn-pending-title">Cần bạn chọn một PO trên WFX</strong>
               <p class="sale-asn-pending-message"></p>
-              <label><input class="sale-asn-manual-confirm" type="checkbox" /> <span>Tôi đã chọn đúng dòng và bấm <code>Add &amp; Continue</code> trên WFX.</span></label>
-              <button type="button" class="special-primary-button" data-module-action="sale-asn-continue" disabled>Tiếp tục dòng kế</button>
+              <label class="sale-asn-manual-check"><input class="sale-asn-manual-confirm" type="checkbox" /> <span>Tôi đã chọn đúng dòng và bấm <code>Add &amp; Continue</code> trên WFX.</span></label>
+              <div class="sale-asn-review-actions">
+                <button type="button" class="sale-asn-secondary-button sale-asn-skip-step" data-module-action="sale-asn-skip-step" hidden>Bỏ qua bước</button>
+                <button type="button" class="special-primary-button" data-module-action="sale-asn-continue" disabled>Tiếp tục dòng kế</button>
+              </div>
             </div>
           </section>
 
@@ -875,6 +878,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260803-3"></script>
+  <script src="panel.js?v=20260803-4"></script>
 </body>
 </html>

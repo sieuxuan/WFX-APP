@@ -10,6 +10,7 @@ from wfx_panel.automation.sale_asn_create import (
     _buyer_options,
     _choose_po_candidate,
     _refresh_existing_new_form,
+    _set_style_hts_cell,
     _style_similarity,
 )
 from wfx_panel.panel_api import PanelAPI
@@ -310,6 +311,32 @@ def test_sale_asn_order_grid_uses_exact_wfx_columns():
     }
 
 
+def test_sale_asn_style_details_targets_exact_hts_cell(monkeypatch):
+    captured = {}
+
+    class FakeFrame:
+        def evaluate(self, script, spec):
+            captured["script"] = script
+            captured["spec"] = spec
+            return {"ok": True, "style": "RVR-STYLE A", "column_id": "colHTSCode"}
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_edit_marked_table_cell",
+        lambda frame, value: captured.update(frame=frame, value=value),
+    )
+    frame = FakeFrame()
+
+    _set_style_hts_cell(frame, "STYLE A", "62014010")
+
+    assert captured["spec"] == {"style": "STYLE A"}
+    assert "#gridStyleDetails_tblGridContent" in captured["script"]
+    assert "td#colStyle" in captured["script"]
+    assert "td#colHTSCode" in captured["script"]
+    assert captured["frame"] is frame
+    assert captured["value"] == "62014010"
+
+
 def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatch):
     rows = [
         {"source_row": 2, "po_no": "PO005500-DE-1"},
@@ -469,8 +496,20 @@ class _FakeSaleASNLogin:
             "buyers": [{"label": "BUYER A", "value": "A"}],
         }
 
-    def run_sale_asn_create(self, xpath, buyer, rows, start_index, log=print):
-        self.calls.append(("create", xpath, buyer, len(rows), start_index))
+    def run_sale_asn_create(
+        self,
+        xpath,
+        buyer,
+        rows,
+        start_index,
+        log=print,
+        *,
+        stage="po",
+        skip_stages=(),
+    ):
+        self.calls.append(
+            ("create", xpath, buyer, len(rows), start_index, stage, tuple(skip_stages))
+        )
         if start_index == 0:
             return {
                 "ok": True,
@@ -502,4 +541,52 @@ def test_panel_api_keeps_review_across_manual_po_checkpoint(tmp_path):
     assert pending["code"] == "SALE_ASN_PO_SELECTION_REQUIRED"
     assert completed["code"] == "SALE_ASN_FORM_COMPLETED"
     assert expired["code"] == "SALE_ASN_CREATE_REVIEW_EXPIRED"
-    assert [call[-1] for call in login.calls if call[0] == "create"] == [0, 1]
+    assert [call[4] for call in login.calls if call[0] == "create"] == [0, 1]
+
+
+def test_panel_api_retries_or_skips_failed_sale_asn_stage(tmp_path):
+    source = tmp_path / "input.xlsx"
+    _input_workbook(source, _valid_rows())
+
+    class FailingStageLogin(_FakeSaleASNLogin):
+        def run_sale_asn_create(
+            self,
+            xpath,
+            buyer,
+            rows,
+            start_index,
+            log=print,
+            *,
+            stage="po",
+            skip_stages=(),
+        ):
+            self.calls.append(
+                ("create", xpath, buyer, len(rows), start_index, stage, tuple(skip_stages))
+            )
+            if "style_details" not in skip_stages:
+                return {
+                    "ok": False,
+                    "code": "SALE_ASN_FIELD_NOT_EDITABLE",
+                    "message": "style failed",
+                    "resumable": True,
+                    "resume_stage": "style_details",
+                    "stage_label": "Style Details",
+                    "can_skip": True,
+                }
+            return {
+                "ok": True,
+                "code": "SALE_ASN_FORM_COMPLETED",
+                "message": "done",
+            }
+
+    login = FailingStageLogin()
+    api = PanelAPI(login_module=login, prefs_module=prefs, base_dir=tmp_path / "data")
+    reviewed = api.prepare_sale_asn_create(str(source), "BUYER A")
+
+    failed = api.start_sale_asn_create(reviewed["review_token"])
+    completed = api.skip_sale_asn_create_step(reviewed["review_token"])
+
+    assert failed["resume_stage"] == "style_details"
+    assert failed["review_token"] == reviewed["review_token"]
+    assert completed["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert login.calls[-1][5:] == ("style_details", ("style_details",))

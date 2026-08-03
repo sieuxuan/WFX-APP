@@ -167,10 +167,14 @@ def test_sale_asn_create_flow_is_reviewed_and_resumable():
         "scan_sale_asn_buyers",
         "start_sale_asn_create",
         "continue_sale_asn_create",
+        "skip_sale_asn_create_step",
         "cancel_sale_asn_create",
     ):
         assert f'"{method}"' in JS
     assert "SALE_ASN_PO_SELECTION_REQUIRED" in JS
+    assert "result.resumable" in JS
+    assert "INTERACTIVE_RESULT_CODES.has(result.code) || result.resumable" in JS
+    assert 'continueButton.textContent = "Thử lại bước này"' in JS
     assert "saleAsnExactBuyer" in JS
     assert "saleAsnReviewToken" in JS
     assert 'showSaleAsnView("lookup", { focus: false })' in JS
