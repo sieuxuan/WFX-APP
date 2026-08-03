@@ -207,7 +207,19 @@
     status.textContent = result?.message || "";
   }
 
+  async function openSystemManual() {
+    const status = $(".manual-print-status");
+    const bridge = api();
+    if (!book?.manual_url || !bridge?.open_manual_external) {
+      status.textContent = "Không mở được WFX System Manual.";
+      return;
+    }
+    const result = await bridge.open_manual_external();
+    status.textContent = result?.message || "";
+  }
+
   document.addEventListener("click", (event) => {
+    if (event.target.closest(".manual-external")) { openSystemManual(); return; }
     if (event.target.closest(".manual-print")) { printManual(); return; }
     const errorTarget = event.target.closest("[data-error-target]");
     if (errorTarget) { showErrorTable(errorTarget.dataset.errorTarget); return; }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -36,6 +37,7 @@ from wfx_panel import (
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.oc_workbook import write_oc_input_template
 from wfx_panel.panel_api import PanelAPI
+from wfx_panel.sale_asn_workbook import write_sale_asn_template
 from wfx_panel.single_instance import SingleInstance
 from wfx_panel.style_workbook import write_style_template
 from wfx_panel.version import APP_VERSION
@@ -124,12 +126,16 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "prepare_catalog_costing_import",
         "apply_catalog_costing",
         "open_sale_asn_new",
+        "scan_sale_asn_buyers",
+        "start_sale_asn_create",
+        "continue_sale_asn_create",
         "open_sample_new",
         "search_oc",
         "open_oc_revision_report",
         "upload_oc",
         "confirm_oc_upload",
         "run_gdn_dispatch",
+        "open_gdn_status",
         "search_sample",
         "check_sample_files",
         "open_sample_file_choice",
@@ -156,12 +162,17 @@ NOTIFICATION_ACTION_LABELS = {
     "prepare_catalog_costing_import": "Kiểm tra file Costing",
     "apply_catalog_costing": "Áp dụng Costing",
     "open_sale_asn_new": "Sale ASN",
+    "scan_sale_asn_buyers": "Quét Buyer Sale ASN",
+    "start_sale_asn_create": "Tạo Sale ASN",
+    "continue_sale_asn_create": "Tiếp tục Sale ASN",
     "open_sample_new": "Sample",
     "search_oc": "Tìm OC",
     "open_oc_revision_report": "Mở report Revise OC",
     "upload_oc": "Upload OC",
     "confirm_oc_upload": "Upload OC",
     "run_gdn_dispatch": "(GDN) Dispatch",
+    "open_gdn_status": "Kiểm tra GDN",
+    "test_notification": "Thông báo thử",
     "search_sample": "Tìm Sample",
     "check_sample_files": "Check File Sample",
     "open_sample_file_choice": "File Sample",
@@ -177,17 +188,24 @@ NOTIFICATION_ACTION_LABELS = {
 
 
 def _reveal_downloaded_file(value: object) -> bool:
-    """Mở chính xác thư mục chứa file vừa tải, không phụ thuộc phần mở rộng."""
+    """Mở Explorer và chọn chính xác file vừa tải."""
     if os.name != "nt":
         return False
     try:
         target = Path(str(value or "")).resolve()
-        if not target.is_file():
-            return False
-        os.startfile(target.parent)  # type: ignore[attr-defined]
-        return True
     except (OSError, ValueError):
         return False
+    if not target.is_file():
+        return False
+    try:
+        subprocess.Popen(["explorer.exe", "/select,", str(target)])
+        return True
+    except (OSError, ValueError):
+        try:
+            os.startfile(target.parent)  # type: ignore[attr-defined]
+            return True
+        except (OSError, ValueError):
+            return False
 
 
 def _open_downloaded_file(value: object) -> bool:
@@ -514,6 +532,7 @@ class PanelApp:
         self._notification_ready = threading.Event()
         self._notification_lock = threading.Lock()
         self._notification_generation = 0
+        self._pending_notification: tuple[dict, str, float | None] | None = None
         self._quitting = False
         self._chrome_alive: bool | None = None
         self._last_update_notice = preferences["last_update_notice"]
@@ -557,6 +576,19 @@ class PanelApp:
             self.window.evaluate_js(
                 "window.wfxSetUpdateState("
                 f"{json.dumps(state, ensure_ascii=False)})"
+            )
+        except Exception:
+            pass
+
+    def _on_progress(self, progress: dict) -> None:
+        if self.window is None:
+            return
+        import json
+
+        try:
+            self.window.evaluate_js(
+                "window.wfxHandleBackendProgress("
+                f"{json.dumps(progress, ensure_ascii=False)})"
             )
         except Exception:
             pass
@@ -782,6 +814,54 @@ class PanelApp:
             "file_name": target.name,
         }
 
+    def choose_sale_asn_import_file(self) -> dict:
+        """Chọn workbook tạo Sale ASN do người dùng chủ động cung cấp."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ chọn file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ chọn file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy chọn file Sale ASN.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != ".xlsx":
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_TYPE_UNSUPPORTED",
+                "message": "Tạo Sale ASN chỉ hỗ trợ file .xlsx.",
+            }
+        return {
+            "ok": True,
+            "code": "SALE_ASN_FILE_SELECTED",
+            "message": f"Đã chọn {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
     def choose_style_import_file(self) -> dict:
         """Chọn workbook Tạo Style do người dùng chủ động cung cấp."""
         if self.window is None:
@@ -935,6 +1015,52 @@ class PanelApp:
         return {
             "ok": True,
             "code": "OC_TEMPLATE_EXPORTED",
+            "message": f"Đã tạo form {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
+    def download_sale_asn_template(self) -> dict:
+        """Tạo form 19 cột cho luồng New Sale ASN."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename="WFX-Smart-Sale-ASN.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy tải form Sale ASN.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+            target = write_sale_asn_template(target)
+            _open_downloaded_file(target)
+            _reveal_downloaded_file(target)
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_TEMPLATE_EXPORT_FAILED",
+                "message": f"Không tạo được form Sale ASN: {error}",
+            }
+        return {
+            "ok": True,
+            "code": "SALE_ASN_TEMPLATE_EXPORTED",
             "message": f"Đã tạo form {target.name}.",
             "file_path": str(target),
             "file_name": target.name,
@@ -1622,8 +1748,18 @@ class PanelApp:
         }
 
     def _notification_loaded(self) -> None:
+        first_load = not self._notification_ready.is_set()
         self._notification_ready.set()
+        # WebView2 có thể phát loaded thêm lần nữa khi một cửa sổ hidden được
+        # show. Không được ẩn toast đang hiện ở lần callback lặp đó.
+        if not first_load:
+            return
         _native_notification_visibility(False)
+        pending = self._pending_notification
+        self._pending_notification = None
+        if pending is not None:
+            result, method, elapsed = pending
+            self._show_notification(result, method=method, elapsed=elapsed)
 
     def _hide_notification(self, generation: int | None = None) -> None:
         with self._notification_lock:
@@ -1647,18 +1783,55 @@ class PanelApp:
         *,
         method: str = "",
         elapsed: float | None = None,
-    ) -> None:
-        if (
-            not self._toast_enabled
-            or self.notification_window is None
-            or not self._notification_ready.is_set()
-        ):
-            return
+    ) -> bool:
+        if not self._toast_enabled:
+            return False
+        action_label = NOTIFICATION_ACTION_LABELS.get(method, "WFX Smart")
+        status_label = "Hoàn thành" if result.get("ok") else "Cần kiểm tra"
+        # Notification native của Windows ổn định hơn cửa sổ WebView2 hidden,
+        # không lấy focus và vẫn vào Notification Center. WebView phía dưới là
+        # fallback cho giai đoạn tray chưa khởi tạo hoặc API native bị lỗi.
+        if self.tray is not None:
+            try:
+                self.tray.notify(
+                    str(result.get("message") or "Đã xong."),
+                    f"{action_label} · {status_label}",
+                )
+                return True
+            except Exception as error:
+                self.api._log(
+                    "[NOTIFICATION] Windows toast lỗi, chuyển sang WebView: "
+                    f"{type(error).__name__}: {error}"
+                )
+        if self.notification_window is None:
+            return False
+        if not self._notification_ready.is_set():
+            # WebView notification thường load sau panel. Giữ đúng thông báo
+            # mới nhất thay vì im lặng bỏ mất tác vụ hoàn tất sớm lúc startup.
+            # Với WebView2, cửa sổ tạo hidden có thể chưa phát ``loaded`` cho
+            # tới lần show đầu tiên. Show bằng API pywebview để khởi tạo phần
+            # web; callback _notification_loaded sẽ ẩn nền trống rồi render
+            # chính payload đang chờ ngay sau đó.
+            self._pending_notification = (dict(result), method, elapsed)
+            try:
+                x, y = _notification_position()
+                self.notification_window.resize(
+                    NOTIFICATION_WIDTH,
+                    NOTIFICATION_HEIGHT,
+                )
+                self.notification_window.move(x, y)
+                self.notification_window.show()
+            except Exception as error:
+                self._pending_notification = None
+                self.api._log(
+                    "[NOTIFICATION] Không thể khởi tạo toast: "
+                    f"{type(error).__name__}: {error}"
+                )
+                return False
+            return True
         import json
 
         tone = "success" if result.get("ok") else "error"
-        action_label = NOTIFICATION_ACTION_LABELS.get(method, "WFX Smart")
-        status_label = "Hoàn thành" if result.get("ok") else "Cần kiểm tra"
         details = []
         article_code = str(result.get("article_code") or "").strip()
         if article_code:
@@ -1700,21 +1873,28 @@ class PanelApp:
                 NOTIFICATION_WIDTH,
                 NOTIFICATION_HEIGHT,
             )
-            if not _native_notification_visibility(
+            # Đồng bộ trạng thái visible của cả pywebview lẫn HWND. Chỉ gọi
+            # ShowWindow native khiến pywebview vẫn coi cửa sổ là hidden và có
+            # thể ẩn ngược toast ngay sau khi API trả về.
+            self.notification_window.resize(
+                NOTIFICATION_WIDTH,
+                NOTIFICATION_HEIGHT,
+            )
+            self.notification_window.move(x, y)
+            self.notification_window.show()
+            _native_notification_visibility(
                 True,
                 x,
                 y,
                 width,
                 height,
-            ):
-                self.notification_window.resize(
-                    NOTIFICATION_WIDTH,
-                    NOTIFICATION_HEIGHT,
-                )
-                self.notification_window.move(x, y)
-                self.notification_window.show()
-        except Exception:
-            return
+            )
+        except Exception as error:
+            self.api._log(
+                "[NOTIFICATION] Không thể hiển thị toast: "
+                f"{type(error).__name__}: {error}"
+            )
+            return False
         with self._notification_lock:
             self._notification_generation += 1
             generation = self._notification_generation
@@ -1728,6 +1908,7 @@ class PanelApp:
         )
         timer.daemon = True
         timer.start()
+        return True
 
     def _apply_always_on_top(self, enabled: bool) -> None:
         self._always_on_top = bool(enabled)
@@ -1788,15 +1969,56 @@ class PanelApp:
             if preferences["open_costing_file_after_export"]:
                 _open_downloaded_file(export_path)
             _reveal_downloaded_file(export_path)
-        if method == "save_sale_asn_documents" and result.get("ok"):
-            _reveal_downloaded_file(result.get("export_path"))
+        if (
+            method == "save_sale_asn_documents"
+            and result.get("ok")
+            and not _reveal_downloaded_file(result.get("export_path"))
+        ):
+            self.api._log(
+                "[SALE ASN] Đã lưu file nhưng không mở được thư mục chứa file."
+            )
 
-        if method in MODULE_NOTIFICATION_METHODS and not self._panel_visible:
+        foreground_pid = _foreground_process_id()
+        panel_is_foreground = self._panel_visible and (
+            self.window is None
+            or foreground_pid is None
+            or foreground_pid == os.getpid()
+        )
+        if method in MODULE_NOTIFICATION_METHODS and not panel_is_foreground:
             self._show_notification(
                 result,
                 method=method,
                 elapsed=elapsed,
             )
+
+    def show_test_notification(self) -> dict:
+        if not self._toast_enabled:
+            return {
+                "ok": False,
+                "code": "TOAST_DISABLED",
+                "message": "Hãy bật Thông báo khi xong việc trước.",
+            }
+        shown = self._show_notification(
+            {
+                "ok": True,
+                "message": "Toast đang hoạt động và sẽ hiện khi bạn làm việc ở WFX.",
+            },
+            method="test_notification",
+            elapsed=0.0,
+        )
+        if not shown:
+            return {
+                "ok": False,
+                "code": "TOAST_DISPLAY_FAILED",
+                "message": (
+                    "Toast chưa hiển thị được. Đã ghi chẩn đoán vào Log kỹ thuật."
+                ),
+            }
+        return {
+            "ok": True,
+            "code": "TOAST_TESTED",
+            "message": "Đã gửi một toast thử nghiệm.",
+        }
 
     def _status_loop(self) -> None:
         next_session_maintenance = (
@@ -2219,16 +2441,20 @@ class PanelApp:
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]
         self.api.choose_oc_upload_file = self.choose_oc_upload_file  # type: ignore[attr-defined]
         self.api.choose_sale_asn_export_file = self.choose_sale_asn_export_file  # type: ignore[attr-defined]
+        self.api.choose_sale_asn_import_file = self.choose_sale_asn_import_file  # type: ignore[attr-defined]
         self.api.choose_style_import_file = self.choose_style_import_file  # type: ignore[attr-defined]
         self.api.download_style_template = self.download_style_template  # type: ignore[attr-defined]
         self.api.download_oc_template = self.download_oc_template  # type: ignore[attr-defined]
+        self.api.download_sale_asn_template = self.download_sale_asn_template  # type: ignore[attr-defined]
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
+        self.api.set_progress_sink(self._on_progress)
         self.api.set_hotkey_applier(self._apply_hotkey)
         self.api.set_update_applier(self._apply_update)
         self.api.set_window_pref_appliers(
             self._apply_always_on_top,
         )
+        self.api.show_test_notification = self.show_test_notification  # type: ignore[attr-defined]
 
         original_set_toast = self.api.set_toast_enabled
 

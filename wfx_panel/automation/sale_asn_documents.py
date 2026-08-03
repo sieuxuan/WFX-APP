@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from wfx_panel.asn_workbook import ASNWorkbookError, merge_sale_asn_reports
+from wfx_panel.asn_workbook import (
+    ASNWorkbookError,
+    merge_sale_asn_reports,
+    sale_asn_sheet_names,
+)
 from wfx_panel.automation._common import (
     Callable,
     Frame,
@@ -33,6 +37,10 @@ from wfx_panel.automation.search_specs import SALE_ASN_SEARCH_SPEC
 
 PACKING_LIST_SELECTOR = "#lnkANFPackingList"
 BUYER_INVOICE_SELECTOR = "#lnkBuyerInvoice"
+DOCUMENTS_FRAME_TIMEOUT_SECONDS = 60
+REPORT_READY_TIMEOUT_SECONDS = 180
+REPORT_EXPORT_MENU_TIMEOUT_SECONDS = 30
+REPORT_DOWNLOAD_START_TIMEOUT_SECONDS = 180
 REPORT_EXPORT_SELECTOR = (
     "#rptCustomReportViewer_ctl05_ctl04_ctl00_ButtonLink, "
     'a[title="Export drop down menu"]'
@@ -436,7 +444,7 @@ def _report_frame_is_new(
 def _wait_report_ready(
     context: Any,
     snapshots: list[tuple[Frame, str]],
-    timeout_s: float = 70,
+    timeout_s: float = REPORT_READY_TIMEOUT_SECONDS,
 ) -> tuple[Page, Frame]:
     deadline = time.monotonic() + timeout_s
     stable_since = 0.0
@@ -499,7 +507,7 @@ def _download_report_excel(
 
     export = report_frame.locator(REPORT_EXPORT_SELECTOR).first
     export.evaluate("element => element.click()")
-    deadline = time.monotonic() + 12
+    deadline = time.monotonic() + REPORT_EXPORT_MENU_TIMEOUT_SECONDS
     excel = None
     while time.monotonic() < deadline:
         try:
@@ -515,7 +523,7 @@ def _download_report_excel(
 
     _write_log(log, f"[SALE ASN DOCS] Đang export Excel: {label}...")
     excel.evaluate("element => element.click()")
-    deadline = time.monotonic() + 90
+    deadline = time.monotonic() + REPORT_DOWNLOAD_START_TIMEOUT_SECONDS
     while time.monotonic() < deadline and not downloads:
         _wait(report_frame, 100)
     if not downloads:
@@ -528,7 +536,10 @@ def _download_report_excel(
     _write_log(log, f"[SALE ASN DOCS] Đã tải {label}.")
 
 
-def _documents_frame(context: Any, timeout_s: float = 35) -> tuple[Page, Frame]:
+def _documents_frame(
+    context: Any,
+    timeout_s: float = DOCUMENTS_FRAME_TIMEOUT_SECONDS,
+) -> tuple[Page, Frame]:
     return _find_frame_with(
         context,
         (PACKING_LIST_SELECTOR, BUYER_INVOICE_SELECTOR),
@@ -557,7 +568,7 @@ def _restore_documents_screen(
                 report_page.go_back(wait_until="domcontentloaded", timeout=15_000)
             except PlaywrightError:
                 pass
-    return _documents_frame(context, timeout_s=35)
+    return _documents_frame(context, timeout_s=DOCUMENTS_FRAME_TIMEOUT_SECONDS)
 
 
 def prepare_sale_asn_documents(
@@ -664,14 +675,20 @@ def prepare_sale_asn_documents(
                     docs_url,
                 )
 
-        merge_sale_asn_reports(packing_path, buyer_path, target)
+        merge_sale_asn_reports(
+            packing_path,
+            buyer_path,
+            target,
+            invoice_no=invoice_no,
+        )
+        sheet_names = sale_asn_sheet_names(target)
         return _result(
             True,
             "SALE_ASN_DOCUMENTS_PREPARED",
             f"Đã tải và ghép Packing List + Buyer Invoice cho {invoice_no}.",
             invoice_no=invoice_no,
             prepared_path=str(target),
-            sheet_names=["Packing List", "Buyer Invoice"],
+            sheet_names=sheet_names,
         )
     except RuntimeError as exc:
         code = str(exc)

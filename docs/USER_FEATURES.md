@@ -78,7 +78,7 @@ Dùng để làm gì Theo dõi ứng dụng đang làm gì, Chrome đã mở ch�
 
 Chọn nền sáng tối và bật tắt thông báo.
 
-Dùng để làm gì Chọn cách WFX Smart hiển thị và quyết định những thông báo bạn muốn nhận. Các bước Bấm biểu tượng bánh răng ở góc trên bảng điều khiển. Chọn thẻ Giao diện. Bấm Sáng , Tối hoặc Tự động trong dòng Giao diện. Bật hoặc tắt Thông báo khi xong việc . Đóng Cài đặt để tiếp tục làm việc. Mẹo Mẹo Chọn Tự động để giao diện đi theo chế độ sáng hoặc tối của Windows. Mẹo Bật Mở file Costing sau khi tải trong thẻ Tự động hóa nếu bạn muốn file vừa xuất tự mở bằng Excel hoặc ứng dụng mặc định. Lưu ý Chế độ quản trị chỉ hiện khi tài khoản được cấp quyền. Bật mục này để xem các module Admin dành cho bạn. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy thông báo khi xong việc Mở Cài đặt, thẻ Giao diện và bật Thông báo khi xong việc . Không thấy Chế độ quản trị Tài khoản hiện tại chưa được cấp quyền quản trị hoặc ứng dụng chưa nhận lại quyền mới.
+Dùng để làm gì Chọn cách WFX Smart hiển thị và quyết định những thông báo bạn muốn nhận. Các bước Bấm biểu tượng bánh răng ở góc trên bảng điều khiển. Chọn thẻ Giao diện. Bấm Sáng , Tối hoặc Tự động trong dòng Giao diện. Bật hoặc tắt Thông báo khi xong việc . Bấm Thử thông báo để kiểm tra ngay trên màn hình hiện tại. Đóng Cài đặt để tiếp tục làm việc. Mẹo Mẹo Chọn Tự động để giao diện đi theo chế độ sáng hoặc tối của Windows. Mẹo Bật Mở file Costing sau khi tải trong thẻ Tự động hóa nếu bạn muốn file vừa xuất tự mở bằng Excel hoặc ứng dụng mặc định. Lưu ý Chế độ quản trị chỉ hiện khi tài khoản được cấp quyền. Bật mục này để xem các module Admin dành cho bạn. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy thông báo khi xong việc Bật Thông báo khi xong việc , sau đó bấm Thử thông báo . WFX Smart dùng notification native của Windows, không lấy focus và lưu trong Notification Center; kiểm tra thêm cài đặt thông báo/Không làm phiền của Windows nếu vẫn không thấy. Không thấy Chế độ quản trị Tài khoản hiện tại chưa được cấp quyền quản trị hoặc ứng dụng chưa nhận lại quyền mới.
 
 ## 3. Catalog
 
@@ -198,7 +198,7 @@ Dùng để làm gì Xuất dữ liệu OC cũ từ báo cáo WFX, sửa trong E
 
 Tạo Dispatch từ Invoice GRN sau thời gian chờ bắt buộc.
 
-Dùng để làm gì Tạo (GDN) Dispatch từ Invoice GRN sau khi hàng thành phẩm đã nhập kho trên WFX. Các bước Hoàn tất (GRN) nhập kho hàng thành phẩm trên WFX. Chờ ít nhất 15 phút để dữ liệu được đồng bộ. Mở module (GDN) Dispatch trong WFX Smart. Nhập đúng Invoice GRN . Đánh dấu xác nhận GRN đã hoàn tất ít nhất 15 phút. Bấm Submit & tạo Dispatch . Chờ thông báo kết quả ở cuối bảng điều khiển. WFX Smart sẽ tự tải report, làm mới file Excel, Process Package và chọn giao dịch Pending mới nhất theo Processed ON . Lưu ý Chờ đủ 15 phút Không Submit ngay sau khi nhập GRN. Dữ liệu chưa đồng bộ có thể làm package lỗi hoặc không tạo được Dispatch. Gặp lỗi thì sao Gặp lỗi thì sao Nếu WFX báo invoice đã được import, hãy kiểm tra GDN hiện có trước khi chạy lại. Nếu thông báo nói chưa xác nhận được kết quả, không Submit lại ngay; mở EDI Production Order và kiểm tra giao dịch mới nhất để tránh tạo trùng.
+Dùng để làm gì Tạo (GDN) Dispatch từ Invoice GRN sau khi hàng thành phẩm đã nhập kho trên WFX. Các bước Hoàn tất (GRN) nhập kho hàng thành phẩm trên WFX. Chờ ít nhất 15 phút để dữ liệu được đồng bộ. Mở module (GDN) Dispatch trong WFX Smart. Nhập đúng Invoice GRN . Đánh dấu xác nhận GRN đã hoàn tất ít nhất 15 phút. Bấm Submit & tạo Dispatch . Theo dõi sáu bước ngay trong thẻ Tiến độ GDN . WFX Smart sẽ tự tải report, làm mới file Excel, Process Package và chọn giao dịch Pending mới nhất theo Processed ON . Các bước hiển thị lần lượt là: mở báo cáo, tải Excel, chuẩn hóa XLSX, mở EDI, Process Package, rồi tạo và xác nhận transaction. Lưu ý Chờ đủ 15 phút Không Submit ngay sau khi nhập GRN. Dữ liệu chưa đồng bộ có thể làm package lỗi hoặc không tạo được Dispatch. Gặp lỗi thì sao Gặp lỗi thì sao Nếu WFX báo invoice đã được import, hãy kiểm tra GDN hiện có trước khi chạy lại. Nếu thông báo nói chưa xác nhận được kết quả, không Submit lại. Bấm Mở EDI kiểm tra trong thẻ tiến độ, rồi kiểm tra giao dịch mới nhất để tránh tạo trùng.
 
 ### Sample List
 
@@ -214,13 +214,13 @@ Dùng để làm gì Tìm một Sample Order và xem các file đính kèm có t
 
 ### Sale ASN
 
-Mở, tìm và tạo Sale ASN.
+Tạo Sale ASN nhiều PO từ Excel, hoặc mở và tìm chứng từ cũ.
 
-Dùng để làm gì Mở Sale ASN List, tìm chứng từ và tạo Sale ASN mới. Các bước Mở module Sale ASN. Bấm List để mở danh sách. Chọn Invoice No. hoặc Buyer Order Ref/OC. Nhập nội dung vào ô tìm. Bấm Tìm . Bấm New nếu bạn muốn mở màn hình tạo Sale ASN mới. Mẹo Mẹo Khi tìm theo Buyer Order Ref/OC, bạn có thể nhập Buyer Order Ref hoặc OC No. Gặp lỗi thì sao Hiện tượng Cách xử lý Màn hình New chưa sẵn sàng Chờ WFX tải xong rồi bấm New lại một lần. Không thấy chứng từ Chọn lại kiểu tìm và kiểm tra nội dung đã nhập.
+Dùng để làm gì Tìm Sale ASN cũ hoặc tạo Sale ASN mới từ một file Excel có nhiều PO. Các bước ### Tạo Sale ASN từ Excel Mở module Sale ASN . Chọn thẻ Tạo New . Bấm ↻ nếu danh sách Buyer chưa có hoặc cần cập nhật. Gõ vài chữ và chọn đúng Buyer trong danh sách. Bấm Tải form Excel nếu bạn chưa có form 19 cột. Điền dữ liệu theo thứ tự từ trên xuống dưới trong file. Bấm Chọn file & kiểm tra . Kiểm tra Invoice No., số PO, số Style và Destination trong phần review. Bấm Bắt đầu tạo Sale ASN . Khi ứng dụng báo cần chọn, chọn đúng dòng PO trên WFX rồi bấm Add & Continue . Đánh dấu xác nhận trong ứng dụng và bấm Tiếp tục dòng kế . Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm Save . Lưu ý Ứng dụng không tự bấm Save. Bạn luôn có bước kiểm tra cuối trên WFX. Mẹo Ứng dụng bấm Add & Continue cho cả PO cuối để WFX ghi đủ dòng, sau đó mới bấm OK để đóng cửa sổ Add Order Details. Quy tắc của file Excel Mỗi file chỉ chứa một Invoice No. và một FTY. Chỉ dòng có PO No mới được tính và xử lý; dòng tổng hoặc ghi chú không có PO sẽ được bỏ qua. Với mỗi dòng có PO, Style No , Destination và FTY là dữ liệu bắt buộc. SEASON , DESCRIPTION , HS CODE , Qty , Carton , NW , GW , CBM , FOB Price và Service Price có thể để trống. Nếu một ngày bị trống, ứng dụng lấy ngày có dữ liệu đầu tiên trong file. Nếu cả file không có ngày, ứng dụng dùng ngày hiện tại. Nếu Shipping Bill No. bị trống, ứng dụng dùng Invoice No. PO luôn được xử lý đúng thứ tự dòng trong file. Tìm Sale ASN và tải Documents Chọn thẻ Tra cứu & Invoice/PKL . Chọn Invoice No. hoặc Buyer Order Ref/OC . Nhập nội dung rồi bấm Tìm . Bấm Xuất Buyer Invoice + Packing List để lấy hai báo cáo trong cùng một file Excel. Lưu ý Report WFX có thể tải chậm. Ứng dụng chờ tối đa ba phút cho từng Packing List hoặc Buyer Invoice; không bấm xuất lại khi trạng thái vẫn đang chạy. Mẹo Khi gộp file, ứng dụng giữ nguyên tên sheet do WFX xuất. Chỉ khi hai report có sheet trùng tên, chúng được đổi theo dạng PKL 1083.26.PS.PSHK_7 và INVOICE 1083.26.PS.PSHK_7 để Excel chấp nhận. Nếu report có nhiều sheet, ứng dụng xếp xen kẽ Invoice 1 , PKL 1 , Invoice 2 , PKL 2 cho đến hết; Invoice luôn đứng trước PKL. Sau khi lưu thành công, Explorer sẽ tự mở và chọn đúng file vừa lưu. Khung, rich text, merged cell và định dạng gốc của cả Invoice lẫn PKL được giữ nguyên khi ghép. Gặp lỗi thì sao Hiện tượng Cách xử lý Không có Buyer để chọn Mở đúng phiên WFX rồi bấm ↻ để quét lại. File có lỗi Đọc vị trí ô hoặc dòng trong thông báo, sửa file rồi chọn lại. Có nhiều dòng PO giống nhau Chọn đúng Style hoặc Qty trên WFX, bấm Add & Continue , rồi tiếp tục trong ứng dụng. Không tìm thấy PO Kiểm tra PO No., Destination và Style trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. Đã đóng cửa sổ Add PO Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng.
 
 ### Tải Documents Sale ASN
 
-Ghép Packing List và Buyer Invoice thành một file Excel.
+Tra cứu và ghép Packing List cùng Buyer Invoice thành một file Excel.
 
 Dùng để làm gì Tải Packing List và Buyer Invoice của một Sale ASN rồi ghép thành một file Excel để gửi hoặc lưu trữ. Các bước Mở module Sale ASN. Chọn Invoice No. và nhập số Invoice. Bấm Tải Packing List + Buyer Invoice . Chờ ứng dụng mở đúng dòng Sale ASN và tải hai báo cáo. Chọn nơi lưu file Excel. Chờ thư mục chứa file tự mở. Mở file và kiểm tra hai sheet Packing List và Buyer Invoice. Mẹo Mẹo Tên file mặc định là Invoice No. thực tế đọc được trên WFX. Mẹo Hai sheet giữ nguyên cách trình bày của báo cáo nguồn. Mẹo Bạn có thể kéo cột Docs tới vị trí bất kỳ; ứng dụng sẽ tự quét ngang bảng để tìm cột, không yêu cầu đưa Docs về vị trí mặc định. Mẹo Nếu ô tìm kiếm để trống, hãy chọn đúng một dòng trên WFX. Ứng dụng đọc Invoice No. từ chính dòng đã chọn, kể cả khi cột này đang nằm ngoài màn hình. Gặp lỗi thì sao Hiện tượng Cách xử lý Không tìm thấy Invoice No. Kiểm tra số Invoice, xóa bộ lọc cũ trên WFX rồi thử lại. Có nhiều dòng phù hợp Chọn đúng một dòng trên WFX rồi bấm tải lại. Đã tìm thấy Invoice nhưng không có nút Docs Kiểm tra dòng đã chọn, trạng thái Sale ASN và quyền Documents của tài khoản trên WFX. Một báo cáo chưa sẵn sàng Chờ WFX tạo báo cáo xong rồi tải lại. Không ghép hoặc lưu được file Chọn một thư mục bạn có quyền ghi và bảo đảm file cũ không đang mở trong Excel.
 
@@ -242,9 +242,9 @@ Dùng để làm gì Mở Indent List hoặc User Indent và tìm bằng nhiều
 
 ### QA và yêu cầu tài chính
 
-Mở danh sách hoặc đi thẳng tới màn hình tạo mới.
+Mở, tìm Advance PR/Expense Invoice hoặc đi thẳng tới màn hình tạo mới.
 
-Dùng để làm gì Mở danh sách hoặc tạo mới QA Request, Advance Payment Request và Expense Invoice. Các bước Mở QA List, Advance PR List hoặc Expense Inv List. Bấm List để mở danh sách tương ứng trên WFX. Bấm New nếu bạn muốn tạo yêu cầu hoặc hóa đơn mới. Khi tạo Advance Payment Request, ứng dụng chọn sẵn Advance Type = Against RMPO . Khi tạo Expense Invoice, ứng dụng chọn sẵn Invoice Type = General Expense . Trong Expense Inv List, nhập một hoặc nhiều điều kiện Supplier, Invoice No., Created By và Status rồi bấm Tìm theo các điều kiện đã nhập . Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ. Mẹo Mẹo Nút New đi thẳng tới màn hình tạo mới. Bạn không cần bấm List trước. Mẹo Ứng dụng chỉ báo hoàn tất sau khi WFX xác nhận giá trị mặc định đã được chọn. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Bật Chế độ quản trị nếu module thuộc quyền quản trị, hoặc nhờ quản trị WFX kiểm tra quyền tài khoản. New chưa mở Chờ WFX tải xong rồi bấm New lại một lần.
+Dùng để làm gì Mở danh sách hoặc tạo mới QA Request, Advance Payment Request và Expense Invoice. Các bước Mở QA List, Advance PR List hoặc Expense Inv List. Bấm List để mở danh sách tương ứng trên WFX. Bấm New nếu bạn muốn tạo yêu cầu hoặc hóa đơn mới. Khi tạo Advance Payment Request, ứng dụng chọn sẵn Advance Type = Against RMPO . Khi tạo Expense Invoice, ứng dụng chọn sẵn Invoice Type = General Expense . Trong Advance PR List, nhập một hoặc nhiều điều kiện Buyer Name, Supplier, Invoice Number và Order No. rồi bấm Tìm theo các điều kiện đã nhập . Trong Expense Inv List, nhập một hoặc nhiều điều kiện Supplier, Invoice No., Created By và Status rồi bấm Tìm theo các điều kiện đã nhập . Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ. Mẹo Mẹo Nút New đi thẳng tới màn hình tạo mới. Bạn không cần bấm List trước. Mẹo Ứng dụng chỉ báo hoàn tất sau khi WFX xác nhận giá trị mặc định đã được chọn. Mẹo Với Advance PR và Expense Invoice, bạn có thể kết hợp nhiều điều kiện; để trống các ô không cần dùng. Gặp lỗi thì sao Hiện tượng Cách xử lý Không thấy module Bật Chế độ quản trị nếu module thuộc quyền quản trị, hoặc nhờ quản trị WFX kiểm tra quyền tài khoản. New chưa mở Chờ WFX tải xong rồi bấm New lại một lần. Search chưa chạy Nhập ít nhất một điều kiện, chờ danh sách WFX tải xong rồi thử lại.
 
 ### Buyer List
 
@@ -278,7 +278,7 @@ Xem lịch sử, gửi góp ý, cập nhật và tra mã lỗi.
 
 Xem lại tác vụ gần đây và sao chép log kỹ thuật.
 
-Dùng để làm gì Xem lại các tác vụ gần đây, đọc chi tiết kỹ thuật và sao chép thông tin khi cần nhờ hỗ trợ. Các bước Bấm biểu tượng danh sách ở góc trên bảng điều khiển. Chọn thẻ Tác vụ để xem công việc gần đây. Bấm một tác vụ để đọc trạng thái và thời gian thực hiện. Chọn thẻ Log kỹ thuật để xem thông tin chi tiết. Bôi đen phần cần gửi rồi sao chép. Mẹo Mẹo Lịch sử tác vụ được giữ trong bảy ngày rồi tự xóa. Mẹo Log chỉ tự cuộn khi bạn đang ở gần cuối và không bôi đen nội dung. Lưu ý Lịch sử không lưu nội dung bạn đã nhập vào ô tìm. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa có tác vụ trong lịch sử Thực hiện một thao tác rồi mở lại thẻ Tác vụ . Không sao chép được log Bôi đen đoạn cần dùng, nhấn Ctrl+C rồi dán vào nơi an toàn.
+Dùng để làm gì Xem lại các tác vụ gần đây, đọc chi tiết kỹ thuật và sao chép thông tin khi cần nhờ hỗ trợ. Các bước Bấm biểu tượng danh sách ở góc trên bảng điều khiển. Chọn Tất cả tác vụ để xem công việc gần đây và thời gian thực hiện. Dùng hành động phù hợp như Kiểm tra trên WFX hoặc Thử lại an toàn nếu có. Chọn thẻ Log kỹ thuật để xem, bôi đen và sao chép thông tin chi tiết. Mẹo Mẹo Lịch sử tác vụ được giữ trong bảy ngày rồi tự xóa. Mẹo Các lượt duy trì phiên WFX thành công chạy âm thầm và không chiếm chỗ trong lịch sử. Chỉ thay đổi trạng thái hoặc lỗi cần chú ý mới được hiển thị. Mẹo Log chỉ tự cuộn khi bạn đang ở gần cuối và không bôi đen nội dung. Lưu ý Lịch sử không lưu nội dung bạn đã nhập vào ô tìm. Gặp lỗi thì sao Hiện tượng Cách xử lý Chưa có tác vụ trong lịch sử Thực hiện một thao tác rồi mở lại thẻ Tất cả tác vụ . Không sao chép được log Bôi đen đoạn cần dùng, nhấn Ctrl+C rồi dán vào nơi an toàn.
 
 ### Góp ý và báo lỗi
 
@@ -394,17 +394,43 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `QUICK_SEARCH_FAILED` | Quick Search gặp lỗi | Mở module thủ công và thử lại từng bước. |
 | `QUICK_SEARCH_TIMEOUT` | Quick Search phản hồi quá chậm | Chờ WFX tải xong rồi thử lại. |
 | `RESULT_DETACHED` | Dòng kết quả đã thay đổi trước khi mở | Tìm lại để lấy dòng kết quả mới. |
+| `SALE_ASN_BUYER_NOT_CONFIRMED` | WFX chưa xác nhận Buyer Sale ASN | Kiểm tra danh sách Buyer trên form New rồi thử lại. |
+| `SALE_ASN_BUYER_NOT_FOUND` | Buyer không còn trong danh sách WFX | Quét lại Buyer rồi chọn đúng giá trị trước khi chạy. |
+| `SALE_ASN_BUYER_REQUIRED` | Chưa chọn Buyer Sale ASN | Gõ và chọn đúng một Buyer trong danh sách trước khi chọn file. |
+| `SALE_ASN_BUYER_SCAN_FAILED` | Không quét được Buyer Sale ASN | Mở lại Sale ASN New, chờ danh sách Buyer tải xong rồi quét lại. |
+| `SALE_ASN_CREATE_FAILED` | Không thể hoàn tất Sale ASN từ Excel | Giữ màn hình WFX, mở Log kỹ thuật và kiểm tra bước cuối cùng. |
+| `SALE_ASN_CREATE_REVIEW_EXPIRED` | Phiên kiểm tra Sale ASN đã hết hiệu lực | Chọn lại file Excel để tạo một review mới. |
 | `SALE_ASN_DOCS_NOT_AVAILABLE` | Invoice không có nút Docs hoặc tài khoản chưa được cấp quyền | Kiểm tra đúng dòng Sale ASN và quyền Documents trên WFX. |
 | `SALE_ASN_DOCUMENTS_SAVE_FAILED` | Không lưu được file Documents Sale ASN | Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại. |
 | `SALE_ASN_DOCUMENTS_UNSUPPORTED` | Chưa hỗ trợ tải Documents Sale ASN | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
+| `SALE_ASN_FIELD_NOT_EDITABLE` | Một ô Sale ASN không thể chỉnh sửa | Kiểm tra quyền sửa chứng từ và trạng thái form Sale ASN trên WFX. |
+| `SALE_ASN_FIELD_VALUE_NOT_CONFIRMED` | WFX chưa giữ giá trị vừa nhập | Kiểm tra ô Order Details hoặc HS Code được báo trong Log kỹ thuật. |
+| `SALE_ASN_FILE_EMPTY` | File Sale ASN chưa có dữ liệu | Điền ít nhất một dòng PO trong form rồi chọn lại file. |
+| `SALE_ASN_FILE_FORMULA_ERROR` | File Sale ASN có công thức | Dán dữ liệu thành giá trị trong vùng nhập rồi chọn lại file. |
+| `SALE_ASN_FILE_HEADERS_INVALID` | Header file Sale ASN không đúng | Tải form mới và giữ nguyên đủ 19 tên cột. |
+| `SALE_ASN_FILE_INVALID` | File Sale ASN không hợp lệ | Lưu lại file bằng định dạng XLSX rồi chọn lại. |
+| `SALE_ASN_FILE_NOT_FOUND` | Không tìm thấy file Sale ASN | Lưu và đóng file Excel rồi chọn lại từ vị trí hiện tại. |
+| `SALE_ASN_FILE_TOO_LARGE` | File Sale ASN quá lớn | Xóa dữ liệu thừa để file nhỏ hơn 20 MB. |
+| `SALE_ASN_FILE_TOO_MANY_ROWS` | File Sale ASN có quá nhiều dòng | Chia file thành các Invoice nhỏ hơn, tối đa 2.000 dòng mỗi file. |
+| `SALE_ASN_FILE_TYPE_UNSUPPORTED` | Định dạng file Sale ASN không được hỗ trợ | Chỉ chọn file XLSX được tạo từ form Sale ASN. |
+| `SALE_ASN_FILE_UNSAFE` | File Sale ASN chứa macro | Xóa macro hoặc tải form XLSX mới rồi nhập lại dữ liệu. |
+| `SALE_ASN_FILE_VALIDATION_FAILED` | Dữ liệu Sale ASN chưa hợp lệ | Sửa các ô và dòng được ứng dụng báo rồi chọn lại file. |
 | `SALE_ASN_INVOICE_NOT_FOUND` | Không tìm thấy Invoice No. trên Sale ASN List | Kiểm tra Invoice No., xóa bộ lọc cũ trên WFX rồi thử lại. |
 | `SALE_ASN_MULTIPLE_RESULTS` | Có nhiều dòng Sale ASN phù hợp | Chọn đúng một dòng trên WFX rồi bấm tải lại. |
 | `SALE_ASN_NEW_FAILED` | Không thể tạo màn Sale ASN mới | Mở lại Sale ASN và kiểm tra quyền tạo mới. |
 | `SALE_ASN_NEW_NOT_READY` | Màn Sale ASN mới chưa sẵn sàng | Chờ form tải xong rồi thử lại. |
+| `SALE_ASN_ORDER_GRID_NOT_READY` | Bảng Order Details chưa nhận đủ PO | Chờ WFX tải đủ các dòng PO rồi chạy lại. |
+| `SALE_ASN_PO_POPUP_NOT_CLOSED` | Cửa sổ chọn PO chưa đóng | Bấm OK trong Add Order Details rồi chạy lại từ form New. |
+| `SALE_ASN_PO_SEARCH_NOT_READY` | Ô tìm PO Sale ASN chưa sẵn sàng | Chờ cửa sổ Add Order Details tải xong rồi chạy lại. |
+| `SALE_ASN_PO_SELECTION_NOT_CONFIRMED` | WFX chưa xác nhận dòng PO đã chọn | Chọn đúng dòng PO trên WFX rồi bấm Add & Continue. |
 | `SALE_ASN_REPORT_DOWNLOAD_FAILED` | Không tải được report Sale ASN | Kiểm tra Packing List, Buyer Invoice và quyền export Excel. |
 | `SALE_ASN_REPORT_MERGE_FAILED` | Không ghép được hai report Sale ASN | Mở Log kỹ thuật và dùng Run ID để kiểm tra file report. |
 | `SALE_ASN_REPORT_NOT_READY` | Report Sale ASN chưa sẵn sàng | Chờ Documents/Report Viewer load xong rồi thử lại. |
 | `SALE_ASN_SELECTION_REQUIRED` | Chưa xác định được dòng Sale ASN cần tải | Nhập Invoice No. chính xác hoặc chọn đúng một dòng trên WFX. |
+| `SALE_ASN_SHIPPING_FIELD_FAILED` | Không điền được Shipping Info | Kiểm tra Destination, FTY và danh sách lựa chọn trên WFX. |
+| `SALE_ASN_STYLE_HS_CODE_CONFLICT` | Một Style có nhiều HS Code trong file | Dùng cùng một HS Code cho các dòng của cùng Style. |
+| `SALE_ASN_TABLE_MAPPING_FAILED` | Không ghép được dòng file với bảng Sale ASN | Kiểm tra PO No. và Style No., sau đó mở Log kỹ thuật. |
+| `SALE_ASN_TEMPLATE_EXPORT_FAILED` | Không tạo được form Sale ASN | Chọn thư mục có quyền ghi và thử tải form lại. |
 | `SAMPLE_FILES_UNSUPPORTED` | Phiên bản tự động hóa chưa hỗ trợ Check File Sample | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
 | `SAMPLE_FILE_OPEN_FAILED` | Không thể mở Style từ kết quả Sample | Tìm lại Sample và kiểm tra Style Code trên grid WFX. |
 | `SAMPLE_FILE_SEARCH_FAILED` | Không thể đọc kết quả Sample để kiểm tra file | Mở lại Sample List, chờ grid ổn định rồi thử lại. |

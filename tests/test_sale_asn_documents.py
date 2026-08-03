@@ -5,11 +5,22 @@ from wfx_panel.automation.sale_asn_documents import (
     _SALE_ASN_ROWS_JS,
     _SALE_ASN_SCROLL_STATE_JS,
     _SALE_ASN_SCROLL_TO_JS,
+    DOCUMENTS_FRAME_TIMEOUT_SECONDS,
+    REPORT_DOWNLOAD_START_TIMEOUT_SECONDS,
+    REPORT_EXPORT_MENU_TIMEOUT_SECONDS,
+    REPORT_READY_TIMEOUT_SECONDS,
     _click_sale_asn_docs,
     _merge_sale_asn_row_payloads,
     _sale_asn_horizontal_positions,
     _select_sale_asn_row,
 )
+
+
+def test_sale_asn_document_downloads_allow_slow_wfx_reports():
+    assert DOCUMENTS_FRAME_TIMEOUT_SECONDS == 60
+    assert REPORT_READY_TIMEOUT_SECONDS == 180
+    assert REPORT_EXPORT_MENU_TIMEOUT_SECONDS == 30
+    assert REPORT_DOWNLOAD_START_TIMEOUT_SECONDS == 180
 
 
 def test_select_exact_invoice_does_not_require_docs_column_to_be_rendered():

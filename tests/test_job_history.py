@@ -67,6 +67,36 @@ def test_failed_non_sensitive_job_can_still_be_retried(tmp_path):
     assert stored["request"] == {"module_id": "0004_0050_0020"}
 
 
+def test_action_center_classifies_and_acknowledges_gdn_pending(tmp_path):
+    job_history.append(
+        tmp_path,
+        _job(
+            method="run_gdn_dispatch",
+            code="GDN_TRANSACTION_UNCONFIRMED",
+            message="Không Submit lại; kiểm tra EDI.",
+        ),
+    )
+
+    public = job_history.list_jobs(tmp_path)[0]
+    assert public["requires_attention"] is True
+    assert public["attention_kind"] == "pending"
+    assert public["attention_action"] == "inspect_gdn"
+
+    assert job_history.acknowledge(tmp_path, "run-1") is True
+    acknowledged = job_history.list_jobs(tmp_path)[0]
+    assert acknowledged["requires_attention"] is False
+    assert acknowledged["attention_kind"] == ""
+
+
+def test_input_and_cancel_outcomes_do_not_enter_action_center(tmp_path):
+    for index, code in enumerate(("QUERY_REQUIRED", "NO_RESULTS", "ACTION_CANCELLED")):
+        job_history.append(tmp_path, _job(run_id=f"run-{index}", code=code))
+
+    assert not any(
+        row["requires_attention"] for row in job_history.list_jobs(tmp_path)
+    )
+
+
 def test_loading_legacy_history_rewrites_sensitive_and_extra_fields(tmp_path):
     legacy = _job(
         request={"module_id": "0004", "query": "LEGACY-SECRET"},

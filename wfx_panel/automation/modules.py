@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from wfx_panel.automation._common import (
     _MODULE_GRID_STATE_JS,
@@ -46,6 +47,7 @@ from wfx_panel.automation.catalog import (
 )
 from wfx_panel.automation.runtime import cancellation_deferred
 from wfx_panel.automation.search_specs import (
+    ADVANCE_PR_SEARCH_SPEC,
     EXPENSE_INVOICE_SEARCH_SPEC,
     INDENT_SEARCH_SPECS,
     OC_SEARCH_SPEC,
@@ -59,6 +61,28 @@ from wfx_panel.automation.search_specs import (
 MODULE_GRID_POLL_MS = 150
 MODULE_FILTER_VISIBLE_STABLE_SECONDS = 0.5
 MODULE_CONTEXT_PROBE_SECONDS = 0.75
+MODULE_DIRECT_ROUTE_TIMEOUT_MS = 12_000
+_MENU_ROUTE_CACHE: dict[str, tuple[str, str]] = {}
+
+
+def reset_menu_route_cache() -> None:
+    """Xóa route chỉ sống trong phiên khi login/Division thay đổi."""
+    _MENU_ROUTE_CACHE.clear()
+
+
+def _same_origin(page_url: str, target_url: str) -> bool:
+    try:
+        current = urlsplit(page_url)
+        target = urlsplit(target_url)
+    except ValueError:
+        return False
+    return bool(
+        current.scheme in {"http", "https"}
+        and target.scheme == current.scheme
+        and target.hostname
+        and target.hostname == current.hostname
+        and target.port == current.port
+    )
 
 
 def open_module(
@@ -113,14 +137,61 @@ def open_module(
                 if snapshot[0] is not None
             }
             page_count = len(browser.contexts[0].pages)
-            _click(target)
-            if not _wait_for_module_navigation(
-                browser,
-                page,
-                snapshots,
-                old_frame_ids,
-                page_count,
+            target_href = str(
+                target.evaluate("element => element.href || ''") or ""
+            )
+            target_frame_name = str(target.get_attribute("target") or "")
+            cache_hit = False
+            cached_route = _MENU_ROUTE_CACHE.get(module_name)
+            if cached_route is not None:
+                cached_href, cached_target = cached_route
+                cache_hit = _open_menu_href_in_target_frame(
+                    page,
+                    cached_href,
+                    cached_target,
+                )
+                if cache_hit:
+                    _write_log(
+                        log,
+                        f"[MODULE] Dùng route cache để mở {module_name} "
+                        "trực tiếp, bỏ qua thời gian chờ menu không phản hồi.",
+                    )
+                else:
+                    _MENU_ROUTE_CACHE.pop(module_name, None)
+
+            confirmed = cache_hit
+            if not confirmed:
+                _click(target)
+                confirmed = _wait_for_module_navigation(
+                    browser,
+                    page,
+                    snapshots,
+                    old_frame_ids,
+                    page_count,
+                    timeout_s=5,
+                )
+            if not confirmed:
+                _write_log(
+                    log,
+                    "[MODULE] Menu chưa phản hồi sau 5 giây; "
+                    "đang thử route trực tiếp...",
+                )
+            if not confirmed and _open_menu_href_in_target_frame(
+                page, target_href, target_frame_name
             ):
+                confirmed = True
+                if _same_origin(page.url, target_href):
+                    _MENU_ROUTE_CACHE[module_name] = (
+                        target_href,
+                        target_frame_name,
+                    )
+                _write_log(
+                    log,
+                    "[MODULE] Menu không phản hồi click; "
+                    f"đã mở {module_name} trực tiếp trong frame "
+                    f"{target_frame_name}.",
+                )
+            if not confirmed:
                 raise PlaywrightTimeoutError(
                     "MODULE_OPEN_NOT_CONFIRMED:"
                     f"WFX chưa xác nhận navigation tới {module_name}."
@@ -134,6 +205,7 @@ def open_module(
             message,
             module=module_name,
             url=page.url,
+            menu_cache_hit=(cache_hit if module_name != "Catalog" else False),
         )
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
@@ -219,6 +291,36 @@ def _wait_for_module_navigation(
             return True
         _wait(page, 150)
     return False
+
+
+def _open_menu_href_in_target_frame(
+    page: Page,
+    href: str,
+    target_name: str,
+) -> bool:
+    """Fallback cho menu WFX có target=body nhưng click không navigation."""
+    page_url = str(getattr(page, "url", "") or "")
+    if (
+        not href.lower().startswith(("http://", "https://"))
+        or not target_name
+        or (page_url and not _same_origin(page_url, href))
+    ):
+        return False
+    target_frame = next(
+        (frame for frame in page.frames if frame.name == target_name),
+        None,
+    )
+    if target_frame is None:
+        return False
+    try:
+        target_frame.goto(
+            href,
+            wait_until="domcontentloaded",
+            timeout=MODULE_DIRECT_ROUTE_TIMEOUT_MS,
+        )
+    except PlaywrightError:
+        return False
+    return True
 
 
 def _mark_grid_roots(page: Page) -> list[tuple[Frame, str]]:
@@ -1959,6 +2061,27 @@ def search_indent_list(
             "article": article,
             "indent_no": indent_no,
             "style": style,
+        },
+        log,
+    )
+
+
+def search_advance_pr_list(
+    xpath: str,
+    buyer: str,
+    supplier: str,
+    invoice_no: str,
+    order_no: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    return _search_module_fields(
+        ADVANCE_PR_SEARCH_SPEC,
+        xpath,
+        {
+            "buyer": buyer,
+            "supplier": supplier,
+            "invoice_no": invoice_no,
+            "order_no": order_no,
         },
         log,
     )

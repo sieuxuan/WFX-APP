@@ -112,6 +112,7 @@
             "settings": [
               "theme",
               "toast-input",
+              "toast-test-button",
               "admin-mode-input",
               "open-costing-file-input"
             ]
@@ -387,7 +388,7 @@
           "keywords": ["gdn", "dispatch", "grn", "invoice", "process package"],
           "covers": {
             "modules": ["gdn_dispatch"],
-            "actions": ["gdn-dispatch-submit"],
+            "actions": ["gdn-dispatch-submit", "gdn-status"],
             "errors": [
               "GDN_DISPATCH_FAILED",
               "GDN_DISPATCH_UNSUPPORTED",
@@ -436,19 +437,55 @@
         {
           "id": "don-hang-sale-asn",
           "title": "Sale ASN",
-          "summary": "Mở, tìm và tạo Sale ASN.",
+          "summary": "Tạo Sale ASN nhiều PO từ Excel, hoặc mở và tìm chứng từ cũ.",
           "file": "05-don-hang/sale-asn.md",
-          "keywords": ["sale asn", "invoice", "buyer order ref"],
+          "keywords": ["sale asn", "invoice", "buyer order ref", "buyer", "po", "excel", "hs code"],
           "covers": {
             "modules": ["0004_0070_0020"],
-            "actions": ["sale-asn-list", "sale-asn-search", "sale-asn-new"],
-            "errors": ["SALE_ASN_NEW_FAILED", "SALE_ASN_NEW_NOT_READY"]
+            "actions": [
+              "sale-asn-list",
+              "sale-asn-search",
+              "sale-asn-new",
+              "sale-asn-scan-buyers",
+              "sale-asn-template",
+              "sale-asn-import",
+              "sale-asn-review-cancel",
+              "sale-asn-start",
+              "sale-asn-continue"
+            ],
+            "errors": [
+              "SALE_ASN_BUYER_NOT_CONFIRMED",
+              "SALE_ASN_BUYER_NOT_FOUND",
+              "SALE_ASN_BUYER_REQUIRED",
+              "SALE_ASN_BUYER_SCAN_FAILED",
+              "SALE_ASN_CREATE_FAILED",
+              "SALE_ASN_CREATE_REVIEW_EXPIRED",
+              "SALE_ASN_FIELD_NOT_EDITABLE",
+              "SALE_ASN_FILE_EMPTY",
+              "SALE_ASN_FILE_FORMULA_ERROR",
+              "SALE_ASN_FILE_HEADERS_INVALID",
+              "SALE_ASN_FILE_INVALID",
+              "SALE_ASN_FILE_NOT_FOUND",
+              "SALE_ASN_FILE_TOO_LARGE",
+              "SALE_ASN_FILE_TOO_MANY_ROWS",
+              "SALE_ASN_FILE_TYPE_UNSUPPORTED",
+              "SALE_ASN_FILE_UNSAFE",
+              "SALE_ASN_FILE_VALIDATION_FAILED",
+              "SALE_ASN_NEW_FAILED",
+              "SALE_ASN_NEW_NOT_READY",
+              "SALE_ASN_PO_SEARCH_NOT_READY",
+              "SALE_ASN_PO_SELECTION_NOT_CONFIRMED",
+              "SALE_ASN_SHIPPING_FIELD_FAILED",
+              "SALE_ASN_STYLE_HS_CODE_CONFLICT",
+              "SALE_ASN_TABLE_MAPPING_FAILED",
+              "SALE_ASN_TEMPLATE_EXPORT_FAILED"
+            ]
           }
         },
         {
           "id": "don-hang-sale-asn-documents",
           "title": "Tải Documents Sale ASN",
-          "summary": "Ghép Packing List và Buyer Invoice thành một file Excel.",
+          "summary": "Tra cứu và ghép Packing List cùng Buyer Invoice thành một file Excel.",
           "file": "05-don-hang/sale-asn-documents.md",
           "keywords": ["documents", "packing list", "buyer invoice", "excel"],
           "covers": {
@@ -498,16 +535,16 @@
         {
           "id": "danh-sach-qa-tai-chinh",
           "title": "QA và yêu cầu tài chính",
-          "summary": "Mở danh sách hoặc đi thẳng tới màn hình tạo mới.",
+          "summary": "Mở, tìm Advance PR/Expense Invoice hoặc đi thẳng tới màn hình tạo mới.",
           "file": "06-danh-sach/qa-va-tai-chinh.md",
-          "keywords": ["qa", "advance pr", "expense invoice", "supplier", "invoice no", "created by", "status", "new"],
+          "keywords": ["qa", "advance pr", "buyer name", "supplier", "invoice number", "order no", "expense invoice", "created by", "status", "new"],
           "covers": {
             "modules": [
               "0063_0030_0020",
               "0065_0880_0010_0020",
               "0065_0880_0030_0020"
             ],
-            "actions": ["list-new-list", "list-new-new", "expense-invoice-list", "expense-invoice-new", "expense-invoice-search"]
+            "actions": ["list-new-list", "list-new-new", "advance-pr-list", "advance-pr-new", "advance-pr-search", "expense-invoice-list", "expense-invoice-new", "expense-invoice-search"]
           }
         },
         {

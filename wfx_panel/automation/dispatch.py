@@ -69,6 +69,24 @@ EDI_CREATE_SELECTOR = (
 REPORT_TIMEOUT_SECONDS = 100
 PACKAGE_TIMEOUT_SECONDS = 100
 TRANSACTION_TIMEOUT_SECONDS = 150
+GDN_PROGRESS_TOTAL = 6
+
+
+def _emit_progress(
+    progress: Callable[..., None] | None,
+    stage: str,
+    message: str,
+    step: int,
+    *,
+    state: str = "active",
+) -> None:
+    if progress is None:
+        return
+    try:
+        progress(stage, message, step, GDN_PROGRESS_TOTAL, state=state)
+    except Exception:
+        # Tiến độ là UX phụ trợ; lỗi WebView không được làm hỏng transaction.
+        pass
 
 
 _EDI_ROWS_JS = r"""() => {
@@ -301,6 +319,7 @@ def _prepare_dispatch_workbook(
     invoice: str,
     temporary: Path,
     log: Callable[[str], None],
+    progress: Callable[..., None] | None = None,
 ) -> Path:
     report_page: Page | None = None
     try:
@@ -321,9 +340,27 @@ def _prepare_dispatch_workbook(
         _write_log(log, "[GDN] Đã điền Invoice GRN vào Doc No.")
         _click(report_page.locator(REPORT_VIEW_SELECTOR))
         _write_log(log, "[GDN] Đang chờ report Buyer Dispatch load...")
+        _emit_progress(
+            progress,
+            "report",
+            "Đang tải báo cáo Buyer Dispatch…",
+            1,
+        )
         _wait_report_ready(report_page)
+        _emit_progress(
+            progress,
+            "download",
+            "Báo cáo đã sẵn sàng · đang tải Excel…",
+            2,
+        )
         raw_report = temporary / "BuyerDispatchOrder_Invoice.download.xlsx"
         _download_report(report_page, raw_report, log)
+        _emit_progress(
+            progress,
+            "workbook",
+            "Đang chuẩn hóa workbook XLSX…",
+            3,
+        )
         upload_path = temporary / "BuyerDispatchOrder_Invoice.reload.xlsx"
         reload_dispatch_workbook(raw_report, upload_path)
         _write_log(log, "[GDN] Đã reload và save report thành XLSX.")
@@ -657,6 +694,7 @@ def _wait_transaction_result(
 def run_gdn_dispatch(
     invoice: str,
     log: Callable[[str], None] = print,
+    progress: Callable[..., None] | None = None,
 ) -> dict[str, Any]:
     """Chạy trọn flow report -> XLSX -> EDI -> Create Transaction."""
     invoice = " ".join(str(invoice or "").split())
@@ -675,7 +713,37 @@ def run_gdn_dispatch(
 
     playwright: Playwright | None = None
     transaction_submitted = False
+    active_stage = "report"
+    active_step = 1
+
+    def stage(
+        name: str,
+        message: str,
+        step: int,
+        _total: int | None = None,
+        *,
+        state: str = "active",
+    ) -> None:
+        nonlocal active_stage, active_step
+        active_stage, active_step = name, step
+        _emit_progress(progress, name, message, step, state=state)
+
+    def failure_context(code: str) -> dict[str, Any]:
+        inspect_edi = transaction_submitted or active_step >= 5 or code in {
+            "GDN_PACKAGE_PROCESS_FAILED",
+            "GDN_PENDING_NOT_FOUND",
+            "GDN_TRANSACTION_FAILED",
+            "GDN_TRANSACTION_UNCONFIRMED",
+        }
+        return {
+            "failed_stage": active_stage,
+            "failed_step": active_step,
+            "checkpoint": "inspect_edi" if inspect_edi else "restart_safe",
+            "safe_to_retry": not inspect_edi,
+        }
+
     try:
+        stage("report", "Đang mở báo cáo Buyer Dispatch…", 1)
         playwright = sync_playwright().start()
         browser, page = _active_wfx_page(playwright, log)
         context = browser.contexts[0]
@@ -685,11 +753,14 @@ def run_gdn_dispatch(
                 invoice,
                 Path(temporary),
                 log,
+                stage,
             )
+            stage("edi", "Đang mở EDI Production Order…", 4)
             frame = _open_edi(page, log)
             known_ids = {
                 str(row.get("row_id") or "") for row in _edi_rows(frame)
             }
+            stage("package", "Đang upload và Process Package…", 5)
             pending = _process_package(
                 page,
                 frame,
@@ -697,6 +768,7 @@ def run_gdn_dispatch(
                 known_ids,
                 log,
             )
+            stage("transaction", "Đang tạo transaction và chờ WFX xác nhận…", 6)
             _select_transaction(frame, pending)
             create_link = _create_transaction_link(frame)
             dialog_messages: list[str] = []
@@ -729,9 +801,24 @@ def run_gdn_dispatch(
                     pass
             if not confirmed:
                 failed = any(_status_failed(value) for value in confirmations)
+                code = (
+                    "GDN_TRANSACTION_FAILED"
+                    if failed
+                    else "GDN_TRANSACTION_UNCONFIRMED"
+                )
+                stage(
+                    "transaction",
+                    (
+                        "WFX báo lỗi khi tạo transaction."
+                        if failed
+                        else "Transaction đã gửi nhưng chưa được WFX xác nhận."
+                    ),
+                    6,
+                    state="failed" if failed else "pending",
+                )
                 return _result(
                     False,
-                    "GDN_TRANSACTION_FAILED" if failed else "GDN_TRANSACTION_UNCONFIRMED",
+                    code,
                     (
                         "WFX báo lỗi khi tạo GDN Dispatch."
                         if failed
@@ -740,18 +827,28 @@ def run_gdn_dispatch(
                     ),
                     transaction_submitted=True,
                     errors=confirmations,
+                    **failure_context(code),
                 )
+            stage(
+                "transaction",
+                "WFX đã xác nhận (GDN) Dispatch hoàn tất.",
+                6,
+                state="completed",
+            )
             return _result(
                 True,
                 "GDN_DISPATCH_COMPLETED",
                 "(GDN) Dispatch đã được WFX xử lý thành công.",
                 transaction_submitted=True,
                 confirmations=confirmations,
+                failed_stage="",
+                checkpoint="completed",
+                safe_to_retry=False,
             )
     except RuntimeError as error:
         code = str(error)
         if code in {"CHROME_CLOSED", "NOT_LOGGED_IN"}:
-            return _result(
+            result = _result(
                 False,
                 code,
                 (
@@ -761,23 +858,48 @@ def run_gdn_dispatch(
                 ),
                 transaction_submitted=transaction_submitted,
             )
+            stage(
+                active_stage,
+                str(result.get("message") or "Không thể tiếp tục GDN."),
+                active_step,
+                state="failed",
+            )
+            return {**result, **failure_context(code)}
         if isinstance(error, DispatchFlowError):
+            stage(
+                active_stage,
+                error.message,
+                active_step,
+                state=(
+                    "pending"
+                    if error.code == "GDN_PENDING_NOT_FOUND"
+                    else "failed"
+                ),
+            )
             return _result(
                 False,
                 error.code,
                 error.message,
                 errors=error.errors,
                 transaction_submitted=transaction_submitted,
+                **failure_context(error.code),
             )
         raise
     except PlaywrightTimeoutError as error:
+        code = (
+            "GDN_TRANSACTION_UNCONFIRMED"
+            if transaction_submitted
+            else "GDN_EDI_NOT_READY"
+        )
+        stage(
+            active_stage,
+            "WFX chưa phản hồi trong thời gian chờ.",
+            active_step,
+            state="pending" if transaction_submitted else "failed",
+        )
         return _result(
             False,
-            (
-                "GDN_TRANSACTION_UNCONFIRMED"
-                if transaction_submitted
-                else "GDN_EDI_NOT_READY"
-            ),
+            code,
             (
                 "Đã gửi Create Transaction nhưng mất xác nhận từ WFX. "
                 "Không tự chạy lại để tránh tạo trùng."
@@ -786,15 +908,23 @@ def run_gdn_dispatch(
             ),
             errors=[_first_line(error)],
             transaction_submitted=transaction_submitted,
+            **failure_context(code),
         )
     except Exception as error:
+        code = (
+            "GDN_TRANSACTION_UNCONFIRMED"
+            if transaction_submitted
+            else "GDN_DISPATCH_FAILED"
+        )
+        stage(
+            active_stage,
+            "GDN dừng do lỗi chưa xác định.",
+            active_step,
+            state="pending" if transaction_submitted else "failed",
+        )
         return _result(
             False,
-            (
-                "GDN_TRANSACTION_UNCONFIRMED"
-                if transaction_submitted
-                else "GDN_DISPATCH_FAILED"
-            ),
+            code,
             (
                 "Đã gửi Create Transaction nhưng không đọc được kết quả WFX. "
                 "Không tự chạy lại để tránh tạo trùng."
@@ -803,6 +933,57 @@ def run_gdn_dispatch(
             ),
             errors=[f"{type(error).__name__}: {_first_line(error)}"],
             transaction_submitted=transaction_submitted,
+            **failure_context(code),
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def open_gdn_status(log: Callable[[str], None] = print) -> dict[str, Any]:
+    """Mở đúng EDI package GDN để user kiểm tra mà không ghi transaction."""
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        frame = _open_edi(page, log)
+        rows = [
+            row
+            for row in _edi_rows(frame)
+            if row.get("package_name", "").casefold() == PACKAGE_LABEL.casefold()
+        ]
+        latest = max(rows, key=_processed_sort_key) if rows else None
+        detail = str((latest or {}).get("transaction_detail") or "").strip()
+        return _result(
+            True,
+            "GDN_STATUS_READY",
+            (
+                f"Đã mở EDI Production Order. Package GDN mới nhất: {detail}."
+                if detail
+                else "Đã mở EDI Production Order để kiểm tra package GDN."
+            ),
+            package_count=len(rows),
+            latest_status=detail,
+        )
+    except RuntimeError as error:
+        code = str(error)
+        return _result(
+            False,
+            code,
+            (
+                "Trình duyệt làm việc chưa được mở."
+                if code == "CHROME_CLOSED"
+                else "Phiên WFX chưa đăng nhập hoặc đã hết hạn."
+            ),
+        )
+    except DispatchFlowError as error:
+        return _result(False, error.code, error.message, errors=error.errors)
+    except Exception as error:
+        return _result(
+            False,
+            "GDN_EDI_NOT_READY",
+            "Không mở được EDI Production Order để kiểm tra GDN.",
+            errors=[f"{type(error).__name__}: {_first_line(error)}"],
         )
     finally:
         if playwright is not None:

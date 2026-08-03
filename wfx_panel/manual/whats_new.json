@@ -1,8 +1,18 @@
 [
   {
     "version": "1.0.19",
-    "date": "2026-08-02",
+    "date": "2026-08-03",
     "highlights": [
+      {
+        "title": "Tạo Sale ASN nhiều PO từ Excel",
+        "body": "Chọn Buyer, kiểm tra form 19 cột và để ứng dụng thêm PO theo đúng thứ tự, điền Order Details, Style Details và Shipping Info trước khi bạn kiểm tra và Save.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "WFX System Manual",
+        "body": "Cửa sổ Hướng dẫn có nút mở thẳng System Manual chính thức của WFX khi cần tra cứu sâu hơn.",
+        "entry": "bat-dau-mo-panel"
+      },
       {
         "title": "Tự động hóa (GDN) Dispatch",
         "body": "Nhập Invoice GRN để tải báo cáo, chuẩn hóa XLSX, import Buyer Order Dispatch và theo dõi kết quả ngay trong WFX Smart; ứng dụng luôn nhắc chờ đủ 15 phút sau GRN.",
@@ -12,6 +22,16 @@
         "title": "Tra cứu và thao tác module đầy đủ hơn",
         "body": "Các luồng Sample List, QA, Finance và module danh sách được bổ sung tìm kiếm, thao tác và hướng dẫn sử dụng thống nhất.",
         "entry": "don-hang-sample-list"
+      },
+      {
+        "title": "Tiến độ GDN và kiểm tra EDI",
+        "body": "Theo dõi sáu bước GDN và mở EDI an toàn ngay từ thẻ tiến độ khi giao dịch chưa xác nhận.",
+        "entry": "don-hang-gdn-dispatch"
+      },
+      {
+        "title": "Thông báo và lịch sử rõ ràng hơn",
+        "body": "Toast hoạt động khi bạn đang làm việc ở WFX, có nút thử; heartbeat phiên chạy âm thầm và không làm loãng lịch sử.",
+        "entry": "su-co-lich-su"
       }
     ]
   },

@@ -128,6 +128,23 @@ def test_gdn_dispatch_requires_grn_confirmation_and_calls_one_flow():
     assert 'runSelectedModuleAction("run_gdn_dispatch", invoice, confirmed)' in JS
     assert "syncGdnDispatchAction" in JS
     assert 'method === "run_gdn_dispatch"' in JS
+    assert "window.wfxHandleBackendProgress = updateGdnProgress" in JS
+    assert '"gdn-status": () => runSelectedModuleAction("open_gdn_status")' in JS
+    assert "checkpoint === \"inspect_edi\"" in JS
+
+
+def test_search_forms_validate_before_calling_backend():
+    assert "const INPUT_VALIDATION_GROUPS" in JS
+    assert "syncAllInputValidation()" in JS
+    assert "button.disabled = busy || !valid" in JS
+    for group in (
+        "indent",
+        "advance-pr",
+        "supplier-invoice",
+        "supplier-invoice-cancel",
+        "expense-invoice",
+    ):
+        assert f'"{group}"' in JS
 
 
 def test_sale_asn_documents_two_phase_export_is_wired():
@@ -140,6 +157,24 @@ def test_sale_asn_documents_two_phase_export_is_wired():
         assert f'"{method}"' in JS
     assert 'prepared.invoice_no || "Invoice"' in JS
     assert "prepared.export_token" in JS
+
+
+def test_sale_asn_create_flow_is_reviewed_and_resumable():
+    for method in (
+        "download_sale_asn_template",
+        "choose_sale_asn_import_file",
+        "prepare_sale_asn_create",
+        "scan_sale_asn_buyers",
+        "start_sale_asn_create",
+        "continue_sale_asn_create",
+        "cancel_sale_asn_create",
+    ):
+        assert f'"{method}"' in JS
+    assert "SALE_ASN_PO_SELECTION_REQUIRED" in JS
+    assert "saleAsnExactBuyer" in JS
+    assert "saleAsnReviewToken" in JS
+    assert 'showSaleAsnView("lookup", { focus: false })' in JS
+    assert 'showSaleAsnView("create"' in JS
 
 
 def test_return_to_list_is_opt_in_and_current_module_is_preserved():
@@ -321,6 +356,7 @@ def test_special_module_workflows_are_wired():
         "search_sale_asn",
         "search_rmpo",
         "search_indent",
+        "search_advance_pr",
         "search_supplier_invoice",
         "search_expense_invoice",
         "cancel_supplier_invoice",
@@ -346,6 +382,9 @@ def test_special_module_workflows_are_wired():
         "rmpo-search",
         "indent-list",
         "indent-search",
+        "advance-pr-list",
+        "advance-pr-new",
+        "advance-pr-search",
         "supplier-invoice-list",
         "supplier-invoice-search",
         "supplier-invoice-cancel",
@@ -383,8 +422,9 @@ def test_sample_uses_combined_filters_and_group_picker_is_renderable():
     assert "result.last_success" not in JS[group_start:group_end]
 
 
-def test_supplier_and_expense_invoice_workspaces_use_combined_filters():
+def test_finance_workspaces_use_combined_filters():
     for hook in (
+        "advancePrFilterValues",
         "supplierInvoiceFilterValues",
         "expenseInvoiceFilterValues",
         "renderSupplierInvoiceCancelResults",
@@ -392,6 +432,14 @@ def test_supplier_and_expense_invoice_workspaces_use_combined_filters():
         "cancel_supplier_invoice_choice",
     ):
         assert hook in JS
+
+    for selector in (
+        "advance-pr-buyer-query",
+        "advance-pr-supplier-query",
+        "advance-pr-invoice-query",
+        "advance-pr-order-query",
+    ):
+        assert selector in JS
 
 
 def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
@@ -628,6 +676,9 @@ def test_job_history_retry_and_screenshot_are_wired():
         "clear_job_history",
     ]:
         assert method in JS
+    assert "inspect_gdn" in JS
+    assert 'data-activity-view="attention"' not in JS
+    assert '"attention", "jobs", "log"' not in JS
 
 
 def test_running_module_has_visible_progress_and_keeps_close_controls_enabled():

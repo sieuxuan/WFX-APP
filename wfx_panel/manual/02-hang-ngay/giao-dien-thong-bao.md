@@ -8,7 +8,8 @@ Chọn cách WFX Smart hiển thị và quyết định những thông báo bạ
 2. Chọn thẻ Giao diện.
 3. Bấm `Sáng`, `Tối` hoặc `Tự động` trong dòng Giao diện.
 4. Bật hoặc tắt `Thông báo khi xong việc`.
-5. Đóng Cài đặt để tiếp tục làm việc.
+5. Bấm `Thử thông báo` để kiểm tra ngay trên màn hình hiện tại.
+6. Đóng Cài đặt để tiếp tục làm việc.
 
 ## Mẹo
 
@@ -27,5 +28,5 @@ Chọn cách WFX Smart hiển thị và quyết định những thông báo bạ
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Không thấy thông báo khi xong việc | Mở Cài đặt, thẻ Giao diện và bật `Thông báo khi xong việc`. |
+| Không thấy thông báo khi xong việc | Bật `Thông báo khi xong việc`, sau đó bấm `Thử thông báo`. WFX Smart dùng notification native của Windows, không lấy focus và lưu trong Notification Center; kiểm tra thêm cài đặt thông báo/Không làm phiền của Windows nếu vẫn không thấy. |
 | Không thấy Chế độ quản trị | Tài khoản hiện tại chưa được cấp quyền quản trị hoặc ứng dụng chưa nhận lại quyền mới. |

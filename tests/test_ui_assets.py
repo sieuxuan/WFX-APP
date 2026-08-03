@@ -103,12 +103,20 @@ def test_index_html_has_contract_hooks():
         'data-module-action="oc-revise-report"',
         'data-module-action="oc-upload-revise"',
         'data-module-action="sale-asn-documents"',
+        'data-module-action="sale-asn-template"',
+        'data-module-action="sale-asn-import"',
+        'data-module-action="sale-asn-start"',
+        'data-module-action="sale-asn-continue"',
+        'class="sale-asn-buyer"',
+        'data-sale-asn-view="create"',
+        'data-sale-asn-view="lookup"',
+        'class="catalog-space-switch sale-asn-view-tabs"',
         'class="oc-upload-review"',
         'class="oc-review-identities"',
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260802-1"',
+        'src="panel.js?v=20260803-3"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -120,6 +128,20 @@ def test_index_html_has_contract_hooks():
     assert 'class="open-costing-folder-input"' not in html
     # Bubble tách thành cửa sổ/trang riêng → panel không còn nhúng launcher.
     assert 'class="compact-launcher"' not in html
+
+
+def test_sale_asn_workspace_uses_one_flat_guided_flow():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="workflow-choice-grid"' not in html[
+        html.index('data-module-view="sale_asn"') : html.index(
+            'data-module-view="rmpo"'
+        )
+    ]
+    assert ".sale-asn-toolbar" in css
+    assert ".sale-asn-step-heading" in css
+    assert ".sale-asn-review" in css
 
 
 def test_oc_workspace_uses_readable_balanced_layout():
@@ -415,12 +437,18 @@ def test_catalog_uses_compact_category_search_and_costing_actions():
     assert "grid-template-columns: repeat(3, minmax(0,1fr))" in css
 
 
-def test_favorites_are_before_module_search_and_setting_defaults_to_remember():
+def test_favorites_scroll_without_moving_module_search():
     html = (UI / "index.html").read_text(encoding="utf-8")
     css = (UI / "style.css").read_text(encoding="utf-8")
-    assert html.index('class="favorites-section"') < html.index(
-        'class="search-box"'
+    assert html.index('class="search-box"') < html.index(
+        'class="favorites-section"'
     )
+    modules_scroll = html[
+        html.index('class="modules-scroll"') : html.index(
+            'class="module-list"'
+        )
+    ]
+    assert 'class="favorites-section"' in modules_scroll
     assert 'class="module-favorite-button"' not in html
     assert 'class="return-list-input" type="checkbox"' in html
     favorite_button = css[
@@ -439,10 +467,17 @@ def test_favorites_are_before_module_search_and_setting_defaults_to_remember():
     assert "height: 34px" in favorite_button
     assert "overflow" not in favorites_list
     assert "max-height" not in favorites_list
-    assert (
-        ".favorites-list .module-card:last-child:nth-child(odd)"
-        in css
-    )
+    assert ".favorites-list .module-card:last-child:nth-child(odd)" not in css
+
+
+def test_header_alerts_are_labeled_instead_of_ambiguous_red_dots():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert '.log-alert::before { content: "!"; }' in css
+    assert '.manual-alert::before { content: "Mới"; }' in css
+    assert ".log-alert { background: var(--warn); }" in css
+    assert "Có tác vụ cần xử lý" not in (
+        UI / "panel.js"
+    ).read_text(encoding="utf-8")
 
 
 def test_external_notification_and_generic_svg_icon_are_present():
@@ -470,6 +505,7 @@ def test_rmpo_indent_invoice_and_list_new_workspaces_are_present():
     for view in (
         "rmpo",
         "indent",
+        "advance_pr",
         "supplier_invoice",
         "expense_invoice",
         "list_new",
@@ -482,6 +518,11 @@ def test_rmpo_indent_invoice_and_list_new_workspaces_are_present():
         "indent-article-query",
         "indent-no-query",
         "indent-style-query",
+        "advance-pr-buyer-query",
+        "advance-pr-supplier-query",
+        "advance-pr-invoice-query",
+        "advance-pr-order-query",
+        'data-module-action="advance-pr-search"',
         "supplier-invoice-supplier-query",
         "supplier-invoice-no-query",
         "supplier-invoice-po-query",
@@ -738,6 +779,9 @@ def test_activity_sheet_has_jobs_screenshot_and_retry_hooks():
         'class="clear-history-button"',
     ]:
         assert hook in html
+    assert 'data-activity-tab="attention"' not in html
+    assert 'data-activity-view="attention"' not in html
+    assert "Cần xử lý" not in html
 
 
 def test_desktop_webview_width_does_not_trigger_single_column_layout():

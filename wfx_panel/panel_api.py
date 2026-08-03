@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import secrets
 import shutil
@@ -29,6 +30,10 @@ from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.catalog_controller import CatalogController
 from wfx_panel.oc_workbook import OCWorkbookError, prepare_oc_workbook
+from wfx_panel.sale_asn_workbook import (
+    SaleASNWorkbookError,
+    read_sale_asn_workbook,
+)
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 
 SESSION_OK = frozenset(
@@ -68,6 +73,10 @@ SESSION_OK = frozenset(
         "SALE_ASN_NEW_READY",
         "SALE_ASN_DOCUMENTS_PREPARED",
         "SALE_ASN_DOCUMENTS_EXPORTED",
+        "SALE_ASN_BUYERS_SCANNED",
+        "SALE_ASN_CREATE_REVIEW_READY",
+        "SALE_ASN_PO_SELECTION_REQUIRED",
+        "SALE_ASN_FORM_COMPLETED",
         "STYLE_COPY_MULTIPLE_RESULTS",
         "STYLE_FORM_READY",
         "COMPANY_FOC_CHANGED",
@@ -79,6 +88,7 @@ SESSION_OK = frozenset(
         "OC_REVISION_REPORT_READY",
         "OC_TRANSACTION_CREATED",
         "GDN_DISPATCH_COMPLETED",
+        "GDN_STATUS_READY",
         "SUPPLIER_INVOICE_DELETE_SUBMITTED",
         "SUPPLIER_INVOICE_CANCEL_SUBMITTED",
     }
@@ -228,6 +238,20 @@ NON_REPORTABLE_FAILURES = frozenset(
         "SALE_ASN_SELECTION_REQUIRED",
         "SALE_ASN_DOCUMENTS_EXPIRED",
         "SALE_ASN_FILE_DIALOG_CANCELLED",
+        "SALE_ASN_FILE_TYPE_UNSUPPORTED",
+        "SALE_ASN_FILE_NOT_FOUND",
+        "SALE_ASN_FILE_TOO_LARGE",
+        "SALE_ASN_FILE_UNSAFE",
+        "SALE_ASN_FILE_INVALID",
+        "SALE_ASN_FILE_HEADERS_INVALID",
+        "SALE_ASN_FILE_FORMULA_ERROR",
+        "SALE_ASN_FILE_EMPTY",
+        "SALE_ASN_FILE_TOO_MANY_ROWS",
+        "SALE_ASN_FILE_VALIDATION_FAILED",
+        "SALE_ASN_BUYER_REQUIRED",
+        "SALE_ASN_BUYER_NOT_FOUND",
+        "SALE_ASN_CREATE_REVIEW_EXPIRED",
+        "SALE_ASN_PO_SELECTION_REQUIRED",
         "STYLE_FILE_TYPE_UNSUPPORTED",
         "STYLE_FILE_NOT_FOUND",
         "STYLE_FILE_TOO_LARGE",
@@ -269,6 +293,9 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
     {
         "open_module",
         "open_sale_asn_new",
+        "scan_sale_asn_buyers",
+        "start_sale_asn_create",
+        "continue_sale_asn_create",
         "search_oc",
         "search_sample",
         "open_sample_new",
@@ -276,6 +303,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "prepare_sale_asn_documents",
         "search_rmpo",
         "search_indent",
+        "search_advance_pr",
         "search_supplier_invoice",
         "search_expense_invoice",
         "cancel_supplier_invoice",
@@ -290,6 +318,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "upload_oc",
         "confirm_oc_upload",
         "run_gdn_dispatch",
+        "open_gdn_status",
         "prepare_catalog_style_row",
         "scan_catalog_style_options",
     }
@@ -306,6 +335,7 @@ class PanelAPI:
         self._logs: list[str] = []
         self._sink: Callable[[str], None] | None = None
         self._result_sink: Callable[[str, dict, float], None] | None = None
+        self._progress_sink: Callable[[dict], None] | None = None
         self._hotkey_applier: Callable[[str], str | None] | None = None
         self._update_applier: Callable[[dict], str | None] | None = None
         self._on_top_applier: Callable[[bool], None] | None = None
@@ -339,6 +369,11 @@ class PanelAPI:
         # Hai report Sale ASN được ghép trong file tạm trước khi UI
         # mở Save As. Token ngăn một panel cũ lưu nhầm workbook khác.
         self._sale_asn_document_exports: dict[str, dict] = {}
+        # Review tạo Sale ASN giữ snapshot workbook và vị trí PO kế tiếp. Khi
+        # WFX trả nhiều dòng, user có thể chọn thủ công rồi tiếp tục đúng dòng
+        # kế mà không đọc lại file hoặc đảo thứ tự.
+        self._sale_asn_create_reviews: dict[str, dict] = {}
+        self._sale_asn_buyers: list[dict[str, str]] = self._load_sale_asn_buyers()
         # Token hóa dòng Supplier Invoice khi Invoice No. có nhiều kết quả;
         # WebView chỉ nhận token, không nhận row key nội bộ của WFX.
         self._supplier_invoice_cancel_choices: dict[str, dict[str, str]] = {}
@@ -351,6 +386,35 @@ class PanelAPI:
         self, sink: Callable[[str, dict, float], None]
     ) -> None:
         self._result_sink = sink
+
+    def set_progress_sink(self, sink: Callable[[dict], None]) -> None:
+        self._progress_sink = sink
+
+    def _progress(
+        self,
+        stage: str,
+        message: str,
+        step: int,
+        total: int,
+        *,
+        state: str = "active",
+    ) -> None:
+        if self._progress_sink is None:
+            return
+        try:
+            self._progress_sink(
+                {
+                    "method": "run_gdn_dispatch",
+                    "stage": str(stage),
+                    "message": str(message),
+                    "step": max(1, int(step)),
+                    "total": max(1, int(total)),
+                    "state": str(state),
+                    "run_id": self._current_run_id,
+                }
+            )
+        except Exception:
+            pass
 
     def set_hotkey_applier(
         self, applier: Callable[[str], str | None]
@@ -491,6 +555,7 @@ class PanelAPI:
             "module_groups": module_controllers.manifest_groups(),
             "divisions": list(constants.DIVISIONS.values()),
             "jobs": job_history.list_jobs(self._base_dir, 20),
+            "sale_asn_buyers": list(self._sale_asn_buyers),
             "logs": list(self._logs),
             **self.get_status(),
         }
@@ -517,7 +582,14 @@ class PanelAPI:
     def refresh_status(self) -> dict:
         return self.get_status()
 
-    def _observe(self, method_name: str, result: dict, elapsed: float) -> None:
+    def _observe(
+        self,
+        method_name: str,
+        result: dict,
+        elapsed: float,
+        *,
+        emit_result: bool = True,
+    ) -> None:
         code = str(result.get("code") or "")
         if code in SESSION_OK:
             self._session_active = True
@@ -529,6 +601,17 @@ class PanelAPI:
             self._division_label = None
             self._division_name = None
             self._catalog.reset_context()
+
+        if code in SESSION_LOST or code in {
+            "DIVISION_CHANGED",
+            "LOGGED_IN",
+            "SESSION_RESTORED",
+        }:
+            reset_menu_cache = getattr(
+                self._login, "reset_menu_route_cache", None
+            )
+            if callable(reset_menu_cache):
+                reset_menu_cache()
 
         if code in {"DIVISION_CHANGED", "LOGGED_IN"}:
             self._catalog.reset_context()
@@ -544,7 +627,11 @@ class PanelAPI:
             self._division_label = str(result.get("division_label") or "")
             self._division_name = str(result.get("division_name") or "")
 
-        if self._result_sink is not None:
+        quiet_keepalive = (
+            method_name == "maintain_session"
+            and code in {"SESSION_ACTIVE", "SESSION_REUSED"}
+        )
+        if emit_result and not quiet_keepalive and self._result_sink is not None:
             try:
                 self._result_sink(method_name, result, elapsed)
             except Exception:
@@ -589,13 +676,24 @@ class PanelAPI:
         method_name: str,
         action: Callable[[], dict],
         request: dict | None = None,
+        *,
+        record_job: bool = True,
+        announce: bool = True,
+        emit_result: bool = True,
     ) -> dict:
         if not self._run_lock.acquire(blocking=False):
             return self._action_in_progress()
         self._enter_run()
         try:
             return automation_runtime.run(
-                lambda: self._run_unlocked(method_name, action, request)
+                lambda: self._run_unlocked(
+                    method_name,
+                    action,
+                    request,
+                    record_job=record_job,
+                    announce=announce,
+                    emit_result=emit_result,
+                )
             )
         finally:
             self._exit_run()
@@ -606,12 +704,17 @@ class PanelAPI:
         method_name: str,
         action: Callable[[], dict],
         request: dict | None = None,
+        *,
+        record_job: bool = True,
+        announce: bool = True,
+        emit_result: bool = True,
     ) -> dict:
         run_id = job_history.new_run_id()
         started = time.monotonic()
         started_at = time.strftime("%Y-%m-%dT%H:%M:%S")
         self._current_run_id = run_id
-        self._log(f"[RUN] Bắt đầu {method_name}")
+        if announce:
+            self._log(f"[RUN] Bắt đầu {method_name}")
         try:
             result = self._run_action_with_auto_relogin(method_name, action)
         except AutomationCancelled:
@@ -636,6 +739,8 @@ class PanelAPI:
         code = str(result.get("code") or "UNKNOWN")
         screenshot: str | None = None
         if (
+            record_job
+            and
             not result.get("ok")
             and (
                 code not in NON_REPORTABLE_FAILURES
@@ -650,6 +755,9 @@ class PanelAPI:
                 "find_code",
                 "find_buyer_reference",
                 "open_sale_asn_new",
+                "scan_sale_asn_buyers",
+                "start_sale_asn_create",
+                "continue_sale_asn_create",
                 "open_sample_new",
                 "search_oc",
                 "open_oc_revision_report",
@@ -663,6 +771,7 @@ class PanelAPI:
                 "prepare_sale_asn_documents",
                 "search_rmpo",
                 "search_indent",
+                "search_advance_pr",
                 "open_module_new",
                 "open_supplier_category",
                 "find_supplier",
@@ -687,33 +796,44 @@ class PanelAPI:
                     screenshot = str(shot)
             except Exception:
                 screenshot = None
-        result = {**result, "run_id": run_id}
-        self._log(
-            f"[RUN] Kết thúc {method_name}: {result.get('code', 'UNKNOWN')} "
-            f"({int(elapsed * 1000)} ms)"
-        )
+        result = {
+            **result,
+            "run_id": run_id,
+            "requires_attention": job_history.requires_attention(result),
+        }
+        if announce:
+            self._log(
+                f"[RUN] Kết thúc {method_name}: {result.get('code', 'UNKNOWN')} "
+                f"({int(elapsed * 1000)} ms)"
+            )
+        elif not result.get("ok"):
+            self._log(
+                "[SESSION] Kiểm tra nền cần chú ý: "
+                f"{result.get('code', 'UNKNOWN')}."
+            )
         self._current_run_id = None
         # Lịch sử và telemetry là phụ trợ. Ổ đĩa đầy, file jobs.json bị khóa
         # hoặc payload không serialize được KHÔNG được biến một flow đã chạy
         # xong thành exception bay ra bridge pywebview — khi đó UI mất kết quả
         # và các nút workflow đứng ở trạng thái busy vĩnh viễn.
-        try:
-            job_history.append(
-                self._base_dir,
-                {
-                    "run_id": run_id,
-                    "method": method_name,
-                    "request": dict(request or {}),
-                    "ok": bool(result.get("ok")),
-                    "code": str(result.get("code") or "UNKNOWN"),
-                    "message": str(result.get("message") or ""),
-                    "started_at": started_at,
-                    "elapsed_ms": int(elapsed * 1000),
-                    "screenshot": screenshot,
-                },
-            )
-        except Exception as error:
-            self._log(f"[RUN] Không ghi được lịch sử: {type(error).__name__}")
+        if record_job:
+            try:
+                job_history.append(
+                    self._base_dir,
+                    {
+                        "run_id": run_id,
+                        "method": method_name,
+                        "request": dict(request or {}),
+                        "ok": bool(result.get("ok")),
+                        "code": str(result.get("code") or "UNKNOWN"),
+                        "message": str(result.get("message") or ""),
+                        "started_at": started_at,
+                        "elapsed_ms": int(elapsed * 1000),
+                        "screenshot": screenshot,
+                    },
+                )
+            except Exception as error:
+                self._log(f"[RUN] Không ghi được lịch sử: {type(error).__name__}")
         if not result.get("ok") and code not in NON_REPORTABLE_FAILURES:
             try:
                 self._report_automation_error(
@@ -723,7 +843,12 @@ class PanelAPI:
                 self._log(
                     f"[RUN] Không xếp được báo lỗi: {type(error).__name__}"
                 )
-        self._observe(method_name, result, elapsed)
+        self._observe(
+            method_name,
+            result,
+            elapsed,
+            emit_result=emit_result,
+        )
         return {
             **result,
             **self._session_status(),
@@ -884,13 +1009,24 @@ class PanelAPI:
         """Kiểm tra nền; hết phiên thì tự login lại bằng credential đã lưu."""
 
         def action() -> dict:
-            checked = self._login.check_session(self._log)
+            buffered_logs: list[str] = []
+            checked = self._login.check_session(buffered_logs.append)
             if str(checked.get("code") or "") != "NOT_LOGGED_IN":
                 return checked
+            for line in buffered_logs:
+                self._log(line)
             restored = self._restore_expired_session()
             return restored or checked
 
-        return self._run("maintain_session", action)
+        # Heartbeat thành công không phải tác vụ người dùng: không ghi jobs.json,
+        # không thêm hai dòng RUN và không thay footer. Khi session thật sự lỗi,
+        # _run_unlocked vẫn ghi một dòng cô đọng và _observe vẫn cập nhật state.
+        return self._run(
+            "maintain_session",
+            action,
+            record_job=False,
+            announce=False,
+        )
 
     def open_chrome(self) -> dict:
         def action() -> dict:
@@ -968,6 +1104,227 @@ class PanelAPI:
             )
 
         return self._run("open_sale_asn_new", action)
+
+    def _sale_asn_buyer_cache_path(self) -> Path:
+        return self._base_dir / "sale-asn-buyers.json"
+
+    def _load_sale_asn_buyers(self) -> list[dict[str, str]]:
+        try:
+            raw = json.loads(
+                self._sale_asn_buyer_cache_path().read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError, TypeError):
+            return []
+        items = raw.get("buyers") if isinstance(raw, Mapping) else None
+        if not isinstance(items, list):
+            return []
+        buyers: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            label = str(item.get("label") or "").strip()
+            identity = label.casefold()
+            if not label or identity in seen:
+                continue
+            seen.add(identity)
+            buyers.append(
+                {"label": label, "value": str(item.get("value") or "")}
+            )
+        return buyers
+
+    def _save_sale_asn_buyers(self, buyers: list[dict[str, str]]) -> None:
+        target = self._sale_asn_buyer_cache_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "buyers": buyers,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        os.replace(temporary, target)
+
+    def scan_sale_asn_buyers(self) -> dict:
+        scanner = getattr(self._login, "scan_sale_asn_buyers", None)
+        if not callable(scanner):
+            return {
+                "ok": False,
+                "code": "SALE_ASN_BUYER_SCAN_FAILED",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ quét Buyer Sale ASN.",
+            }
+        result = self._run(
+            "scan_sale_asn_buyers",
+            lambda: scanner(constants.SALE_ASN_NEW_XPATH, self._log),
+        )
+        if result.get("ok") and isinstance(result.get("buyers"), list):
+            self._sale_asn_buyers = [
+                {
+                    "label": str(item.get("label") or "").strip(),
+                    "value": str(item.get("value") or ""),
+                }
+                for item in result["buyers"]
+                if isinstance(item, Mapping) and str(item.get("label") or "").strip()
+            ]
+            try:
+                self._save_sale_asn_buyers(self._sale_asn_buyers)
+            except OSError as error:
+                self._log(
+                    "[SALE ASN] Không lưu được cache Buyer: "
+                    f"{type(error).__name__}."
+                )
+            result["buyers"] = list(self._sale_asn_buyers)
+        return result
+
+    def _discard_sale_asn_create_review(self, review_token: str) -> bool:
+        review = self._sale_asn_create_reviews.pop(review_token, None)
+        if review is None:
+            return False
+        temporary = review.get("temporary")
+        if temporary is not None:
+            try:
+                temporary.cleanup()
+            except OSError as error:
+                self._log(
+                    "[SALE ASN] Không dọn được review tạm: "
+                    f"{type(error).__name__}."
+                )
+        return True
+
+    def prepare_sale_asn_create(self, file_path: str, buyer: str) -> dict:
+        selected_buyer = str(buyer or "").strip()
+        if not selected_buyer:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_BUYER_REQUIRED",
+                "message": "Hãy chọn Buyer trước khi kiểm tra file.",
+            }
+        source = Path(str(file_path or "")).expanduser()
+        cache_root = self._base_dir / "sale-asn-create-cache"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(
+            prefix="review-", dir=str(cache_root)
+        )
+        snapshot = Path(temporary.name) / "Sale-ASN-Input.xlsx"
+        try:
+            shutil.copy2(source, snapshot)
+            document = read_sale_asn_workbook(snapshot)
+        except SaleASNWorkbookError as error:
+            temporary.cleanup()
+            return {
+                "ok": False,
+                "code": error.code,
+                "message": error.message,
+                "errors": list(error.errors),
+            }
+        except OSError as error:
+            temporary.cleanup()
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_NOT_FOUND",
+                "message": f"Không đọc được file Sale ASN: {error}",
+            }
+
+        for old_token in tuple(self._sale_asn_create_reviews):
+            self._discard_sale_asn_create_review(old_token)
+        review_token = secrets.token_urlsafe(24)
+        self._sale_asn_create_reviews[review_token] = {
+            "temporary": temporary,
+            "document": document,
+            "buyer": selected_buyer,
+            "next_index": 0,
+        }
+        return {
+            "ok": True,
+            "code": "SALE_ASN_CREATE_REVIEW_READY",
+            "message": (
+                f"File hợp lệ: {document['po_count']} PO, "
+                f"{document['style_count']} Style. Hãy kiểm tra trước khi chạy."
+            ),
+            "review_token": review_token,
+            "buyer": selected_buyer,
+            **{
+                key: document[key]
+                for key in (
+                    "file_name",
+                    "invoice_no",
+                    "destination",
+                    "factory",
+                    "po_count",
+                    "style_count",
+                )
+            },
+        }
+
+    def _run_sale_asn_create_review(
+        self,
+        review_token: str,
+        *,
+        continue_existing: bool,
+    ) -> dict:
+        token = str(review_token or "").strip()
+        review = self._sale_asn_create_reviews.get(token)
+        if review is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_CREATE_REVIEW_EXPIRED",
+                "message": "Phiên kiểm tra Sale ASN không còn hiệu lực; hãy chọn file lại.",
+            }
+        runner = getattr(self._login, "run_sale_asn_create", None)
+        if not callable(runner):
+            return {
+                "ok": False,
+                "code": "SALE_ASN_CREATE_FAILED",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ tạo Sale ASN.",
+            }
+        document = review["document"]
+        start_index = int(review.get("next_index") or 0) if continue_existing else 0
+        result = self._run(
+            "continue_sale_asn_create" if continue_existing else "start_sale_asn_create",
+            lambda: runner(
+                constants.SALE_ASN_NEW_XPATH,
+                str(review["buyer"]),
+                list(document["rows"]),
+                start_index,
+                self._log,
+            ),
+            {
+                "invoice_no": document["invoice_no"],
+                "po_count": document["po_count"],
+                "start_index": start_index,
+            },
+        )
+        if result.get("code") == "SALE_ASN_PO_SELECTION_REQUIRED":
+            review["next_index"] = int(result.get("next_index") or start_index)
+            result["review_token"] = token
+        elif result.get("code") == "SALE_ASN_FORM_COMPLETED":
+            self._discard_sale_asn_create_review(token)
+        return result
+
+    def start_sale_asn_create(self, review_token: str) -> dict:
+        return self._run_sale_asn_create_review(
+            review_token,
+            continue_existing=False,
+        )
+
+    def continue_sale_asn_create(self, review_token: str) -> dict:
+        return self._run_sale_asn_create_review(
+            review_token,
+            continue_existing=True,
+        )
+
+    def cancel_sale_asn_create(self, review_token: str) -> dict:
+        self._discard_sale_asn_create_review(str(review_token or "").strip())
+        return {
+            "ok": True,
+            "code": "SALE_ASN_CREATE_CANCELLED",
+            "message": "Đã hủy phiên tạo Sale ASN.",
+        }
 
     def search_oc(
         self,
@@ -1130,6 +1487,7 @@ class PanelAPI:
             "temporary": temporary,
             "prepared_path": internal_path,
             "invoice_no": str(result.get("invoice_no") or "Invoice").strip(),
+            "sheet_names": list(result.get("sheet_names") or []),
         }
         return {
             **public_result,
@@ -1209,7 +1567,7 @@ class PanelAPI:
                 "invoice_no": invoice_no,
                 "export_path": str(target),
                 "file_name": target.name,
-                "sheet_names": ["Packing List", "Buyer Invoice"],
+                "sheet_names": list(prepared.get("sheet_names") or []),
             }
 
         return self._run(
@@ -1294,6 +1652,38 @@ class PanelAPI:
             ),
             {
                 "module_id": "0065_0880_0020_0020",
+                "filter_kinds": [
+                    name for name, value in values.items() if value
+                ],
+            },
+        )
+
+    def search_advance_pr(
+        self,
+        buyer: str = "",
+        supplier: str = "",
+        invoice_no: str = "",
+        order_no: str = "",
+    ) -> dict:
+        advance_pr = constants.MODULE_BY_ID["0065_0880_0010_0020"]
+        values = {
+            "buyer": str(buyer or "").strip(),
+            "supplier": str(supplier or "").strip(),
+            "invoice_no": str(invoice_no or "").strip(),
+            "order_no": str(order_no or "").strip(),
+        }
+        return self._run(
+            "search_advance_pr",
+            lambda: self._login.search_advance_pr_list(
+                advance_pr["xpath"],
+                values["buyer"],
+                values["supplier"],
+                values["invoice_no"],
+                values["order_no"],
+                self._log,
+            ),
+            {
+                "module_id": "0065_0880_0010_0020",
                 "filter_kinds": [
                     name for name, value in values.items() if value
                 ],
@@ -1712,11 +2102,30 @@ class PanelAPI:
                     "code": "GDN_DISPATCH_UNSUPPORTED",
                     "message": "Phiên bản tự động hóa chưa hỗ trợ (GDN) Dispatch.",
                 }
-            return runner(invoice_value, self._log)
+            return runner(invoice_value, self._log, self._progress)
 
         # Không lưu Invoice vào request/job history/telemetry.
         return self._run(
             "run_gdn_dispatch",
+            action,
+            {"module_id": "gdn_dispatch"},
+        )
+
+    def open_gdn_status(self) -> dict:
+        """Mở EDI BuyerOrderDispatch để kiểm tra package, không submit lại."""
+
+        def action() -> dict:
+            opener = getattr(self._login, "open_gdn_status", None)
+            if not callable(opener):
+                return {
+                    "ok": False,
+                    "code": "GDN_DISPATCH_UNSUPPORTED",
+                    "message": "Phiên bản tự động hóa chưa hỗ trợ kiểm tra GDN.",
+                }
+            return opener(self._log)
+
+        return self._run(
+            "open_gdn_status",
             action,
             {"module_id": "gdn_dispatch"},
         )
@@ -2446,6 +2855,19 @@ class PanelAPI:
             "ok": True,
             "code": "JOB_HISTORY",
             "jobs": job_history.list_jobs(self._base_dir, limit),
+        }
+
+    def acknowledge_job(self, run_id: str) -> dict:
+        acknowledged = job_history.acknowledge(self._base_dir, run_id)
+        return {
+            "ok": acknowledged,
+            "code": "JOB_ACKNOWLEDGED" if acknowledged else "JOB_NOT_FOUND",
+            "message": (
+                "Đã đánh dấu tác vụ là đã xử lý."
+                if acknowledged
+                else "Không tìm thấy lần chạy này."
+            ),
+            "jobs": job_history.list_jobs(self._base_dir, 30),
         }
 
     def retry_job(self, run_id: str) -> dict:

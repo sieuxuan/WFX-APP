@@ -176,6 +176,18 @@ def test_supplier_and_expense_invoice_support_combined_filters_and_safe_cancel()
     assert '"SUPPLIER_INVOICE_MULTIPLE_RESULTS"' in SOURCE
 
 
+def test_advance_pr_supports_combined_filters_from_real_grid_fields():
+    for selector in (
+        "#txtSearchBuyer",
+        "#txtSearchSupplier",
+        "#txtSearchInvoiceNo",
+        "#txtSearchOrderNo",
+        "#gridAdvancePaymentRequestList_tblGridHeader",
+    ):
+        assert selector in SOURCE
+    assert "def search_advance_pr_list" in SOURCE
+
+
 def test_qa_advance_pr_and_expense_new_use_direct_menu_links():
     assert "def open_module_new" in SOURCE
     new_block = SOURCE[
@@ -204,6 +216,8 @@ def test_generic_module_open_requires_real_navigation_confirmation():
     assert "_mark_page_documents" in open_block
     assert "_wait_for_module_navigation" in open_block
     assert '"MODULE_OPEN_NOT_CONFIRMED"' in open_block
+    assert "_open_menu_href_in_target_frame" in open_block
+    assert "timeout_s=5" in open_block
 
 
 def test_company_foc_auto_opens_company_setup_when_context_is_stale():
