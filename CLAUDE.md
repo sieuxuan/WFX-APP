@@ -429,8 +429,15 @@ Các workflow riêng hiện có:
   hoặc refresh hẳn form Sale ASN New trên Chrome, tức kéo user khỏi tab đang làm.
   Khi kho Buyer còn rỗng, chỉ được làm nút quét nổi bật để user tự bấm. Progress chỉ để hiển
   thị: giá trị trả về của flow vẫn là nguồn sự thật và ghi đè trạng thái dòng
-  bước. Trạng thái chờ chọn PO và lỗi từng bước phải hiện trong đúng dòng bước
-  của thẻ tiến độ, không dùng thẻ pending rời. Khi flow trả
+  bước. Vì progress đi bằng `evaluate_js` còn kết quả flow về đường khác, UI
+  phải có cờ `saleAsnRunActive` bao quanh đúng từng lời gọi và bỏ qua mọi
+  payload ngoài lúc đó; không có cờ thì một payload đến trễ sẽ xóa thẻ kết quả
+  và kéo bộ đếm lùi lại. Thẻ kết quả cũ phải bị ẩn trong `resetSaleAsnProgress`
+  để lần mở module sau không còn nút handoff trỏ vào Invoice của lượt trước.
+  Trạng thái chờ chọn PO và lỗi từng bước phải hiện trong đúng dòng bước
+  của thẻ tiến độ, không dùng thẻ pending rời. Vì bước `po` không cho `Bỏ qua`,
+  thẻ hành động luôn phải có lối thoát `Bỏ lượt này và chọn file khác`; nếu
+  không, người dùng kẹt ở trạng thái chờ chọn PO mà chỉ còn nút Tiếp tục. Khi flow trả
   `SALE_ASN_FORM_COMPLETED`, thẻ kết quả liệt kê cảnh báo Shipping Info và có nút
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
   xuất báo cáo vì user còn phải Save trên WFX.

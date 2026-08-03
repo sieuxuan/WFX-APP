@@ -189,6 +189,10 @@
   let saleAsnReviewToken = "";
   let saleAsnOrderReviewToken = "";
   let saleAsnDoneInvoice = "";
+  // Progress tới qua evaluate_js từ worker, còn kết quả flow về bằng đường khác;
+  // hai luồng không đảm bảo thứ tự. Chỉ nhận progress khi đang có lời gọi chạy,
+  // nếu không một payload đến trễ sẽ xóa thẻ kết quả và kéo lùi bộ đếm.
+  let saleAsnRunActive = false;
   const SALE_ASN_STAGES = ["po", "order_details", "style_details", "shipping_info"];
   let ocSelectionRevision = 0;
   let checkedCostingFile = null;
@@ -1886,6 +1890,8 @@
     });
     const count = $(".sale-asn-progress-count");
     if (count) count.textContent = `0/${SALE_ASN_STAGES.length}`;
+    const done = $(".sale-asn-done");
+    if (done) done.hidden = true;
     hideSaleAsnStageAction();
     const card = $(".sale-asn-progress-card");
     if (card) card.hidden = !show;
@@ -2103,7 +2109,7 @@
   // nên payload đến trễ không thể để lại trạng thái sai.
   function updateSaleAsnProgress(progress) {
     const card = $(".sale-asn-progress-card");
-    if (!card || !progress) return;
+    if (!card || !progress || !saleAsnRunActive) return;
     const stage = String(progress.stage || "");
     const index = SALE_ASN_STAGES.indexOf(stage);
     if (index < 0) return;
@@ -2219,7 +2225,9 @@
     if (!saleAsnReviewToken) return null;
     resetSaleAsnProgress({ show: true });
     $(".sale-asn-review").hidden = true;
+    saleAsnRunActive = true;
     const result = await call("start_sale_asn_create", saleAsnReviewToken);
+    saleAsnRunActive = false;
     renderSaleAsnRunResult(result);
     dismissAfterSuccessfulModule(result);
     return result;
@@ -2229,7 +2237,9 @@
     const manualCheck = $(".sale-asn-manual-check");
     if (!saleAsnReviewToken || (!manualCheck.hidden && !$(".sale-asn-manual-confirm").checked)) return null;
     hideSaleAsnStageAction();
+    saleAsnRunActive = true;
     const result = await call("continue_sale_asn_create", saleAsnReviewToken);
+    saleAsnRunActive = false;
     renderSaleAsnRunResult(result);
     dismissAfterSuccessfulModule(result);
     return result;
@@ -2238,7 +2248,9 @@
   async function skipSaleAsnCreateStep() {
     if (!saleAsnReviewToken) return null;
     hideSaleAsnStageAction();
+    saleAsnRunActive = true;
     const result = await call("skip_sale_asn_create_step", saleAsnReviewToken);
+    saleAsnRunActive = false;
     renderSaleAsnRunResult(result);
     dismissAfterSuccessfulModule(result);
     return result;
@@ -2246,6 +2258,7 @@
 
   async function cancelSaleAsnReview() {
     const token = saleAsnReviewToken;
+    saleAsnRunActive = false;
     resetSaleAsnReview("Đã hủy file đang chuẩn bị.");
     return token ? callQuiet("cancel_sale_asn_create", token) : null;
   }

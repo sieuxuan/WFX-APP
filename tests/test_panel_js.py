@@ -203,6 +203,33 @@ def test_sale_asn_progress_card_streams_four_stages():
     assert "sale-asn-pending" not in JS
 
 
+def test_sale_asn_progress_is_ignored_outside_an_active_run():
+    """Progress đi bằng evaluate_js còn kết quả flow về đường khác; không có cờ
+    thì một payload đến trễ sẽ xóa thẻ kết quả và kéo lùi bộ đếm."""
+    assert "let saleAsnRunActive = false" in JS
+    assert "if (!card || !progress || !saleAsnRunActive) return" in JS
+    # Cờ phải bao đúng từng lời gọi chạy flow.
+    for method in (
+        "start_sale_asn_create",
+        "continue_sale_asn_create",
+        "skip_sale_asn_create_step",
+    ):
+        guarded = (
+            "    saleAsnRunActive = true;\n"
+            f'    const result = await call("{method}", saleAsnReviewToken);\n'
+            "    saleAsnRunActive = false;"
+        )
+        assert guarded in JS, method
+    assert "saleAsnRunActive = false;\n    resetSaleAsnReview" in JS
+
+
+def test_sale_asn_leaves_no_stale_result_card_between_runs():
+    """Mở lại module sau một lượt xong không được còn thẻ kết quả cũ, vì nút
+    handoff trong đó trỏ vào Invoice của lượt trước."""
+    assert 'const done = $(".sale-asn-done");\n    if (done) done.hidden = true;' in JS
+    assert "function resetSaleAsnProgress(" in JS
+
+
 def test_sale_asn_hands_off_to_invoice_and_packing_list():
     assert '"sale-asn-handoff-documents": handoffSaleAsnDocuments' in JS
     assert 'setModuleFilterKind("sale_asn", "invoice_no")' in JS

@@ -127,7 +127,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260803-8"',
+        'src="panel.js?v=20260803-9"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -182,6 +182,16 @@ def test_sale_asn_workspace_uses_one_flat_guided_flow():
         assert f'data-sale-asn-progress-stage="{stage}"' in workspace
     assert 'class="sale-asn-pending"' not in workspace
     assert 'class="sale-asn-stage-action"' in workspace
+
+    # Bước Thêm PO không thể Bỏ qua, nên thẻ hành động phải có lối thoát riêng
+    # khỏi lượt đang kẹt; nếu không user chỉ còn nút Tiếp tục.
+    action = workspace[
+        workspace.index('class="sale-asn-stage-action"') : workspace.index(
+            'class="sale-asn-done"'
+        )
+    ]
+    assert 'class="sale-asn-link-button sale-asn-abandon"' in action
+    assert 'data-module-action="sale-asn-review-cancel"' in action
 
     # Chọn bước và form 8 cột nằm sau khối gấp.
     advanced = workspace[workspace.index('class="sale-asn-advanced"'):]
