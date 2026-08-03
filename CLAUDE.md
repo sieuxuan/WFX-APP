@@ -419,11 +419,17 @@ Các workflow riêng hiện có:
   Destination/Style. Một kết quả được chọn tự động; nhiều kết quả được phân giải
   bằng Style gần đúng rồi Dispatched Qty. Nếu vẫn mơ hồ hoặc không thấy, giữ cửa
   sổ cho user tự chọn và bấm Add & Continue; app dùng review token để tiếp tục
-  từ dòng kế, không đọc lại hay đảo thứ tự file. Các PO trước dùng
+  từ dòng kế, không đọc lại hay đảo thứ tự file. Trước một lượt tạo mới, nếu
+  frame Sale ASN New đang mở — kể
+  cả đang trống hoặc đã chọn Buyer — phải reload chính frame `WFXSalesASN.aspx`
+  rồi mới chọn Buyer để không dùng datasource PO stale.
+  Các PO trước dùng
   `Add & Continue`; ở PO cuối phải giữ checkbox đang chọn và click đúng link
   `OK` bên trong cell action để WFX vừa add PO cuối vừa đóng popup. Không click
   cell `td` bao ngoài, và không bấm `Add & Continue` trước `OK` vì thao tác đó
-  xóa selection khiến WFX báo `Please select a record`. Sau khi popup đóng, điền 7 cột
+  xóa selection khiến WFX báo `Please select a record`. Sau click `OK`, popup
+  có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
+  trang Sale ASN chính rồi điền 7 cột
   Order Details, map Style gần đúng để điền HS Code, rồi điền Shipping Info với
   Consignor Address
   `BILL-ADD - PSHK`, Delivery Terms `FOB`, Factory theo FTY và Notify 1 là option

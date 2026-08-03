@@ -23,6 +23,9 @@ Tìm Sale ASN cũ hoặc tạo Sale ASN mới từ một file Excel có nhiều 
 > Ứng dụng không tự bấm Save. Bạn luôn có bước kiểm tra cuối trên WFX.
 
 > [!meo]
+> Nếu Sale ASN New đã mở sẵn hoặc đã chọn Buyer, ứng dụng refresh form trước khi
+> bắt đầu để danh sách PO được tải mới.
+>
 > Ứng dụng dùng `Add & Continue` cho các PO trước. Với PO cuối, ứng dụng giữ
 > dòng đang chọn rồi bấm `OK` để vừa thêm PO cuối vừa đóng Add Order Details.
 
