@@ -1789,6 +1789,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .sale-asn-manual-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
     .sale-asn-manual-check code { color: var(--text); font: 700 11px/1.4 "Segoe UI", sans-serif; }
     .sale-asn-stage-buttons { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 7px; }
+    .sale-asn-abandon { justify-self: start; }
     .sale-asn-done { display: grid; gap: 7px; padding: 10px 11px; border-left: 3px solid var(--good); border-radius: 0 9px 9px 0; background: var(--good-soft); }
     .sale-asn-done-title { color: var(--good); font-size: 12px; }
     .sale-asn-done-message { margin: 0; color: var(--text-2); font-size: 11px; line-height: 1.42; }

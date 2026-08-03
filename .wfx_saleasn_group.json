@@ -1,0 +1,1 @@
+[{"name": "Operation", "accent": "cyan", "modules": [{"name": "Sale ASN", "id": "0004_0070_0020", "icon": "AS", "group": "Operation", "accent": "cyan", "xpath": "//*[@id=\"0004_0070_0020\"]/a", "kind": "sale_asn", "description": "Tạo Sale ASN nhiều PO từ Excel, tra cứu và tải Documents."}]}]

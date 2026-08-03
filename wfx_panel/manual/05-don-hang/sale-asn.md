@@ -49,6 +49,8 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
 - **Cần bạn chọn PO.** Dòng `Thêm PO` chuyển sang màu cảnh báo và mở ra thông
   báo. Chọn đúng dòng PO trên WFX, bấm `Add & Continue` (hoặc `OK` nếu là PO
   cuối), rồi quay lại ứng dụng, tích ô xác nhận và bấm `Tiếp tục dòng kế`.
+  Nếu muốn bỏ hẳn lượt này để làm lại từ file khác, bấm
+  `Bỏ lượt này và chọn file khác`.
 - **Một bước bị lỗi.** Dòng bước đó chuyển sang màu cảnh báo. Form WFX hiện tại
   được giữ nguyên: xử lý nguyên nhân rồi bấm `Thử lại bước này`, hoặc bấm
   `Bỏ qua ...` để chuyển sang bước sau. Bỏ qua chỉ áp dụng cho ba bước điền dữ
