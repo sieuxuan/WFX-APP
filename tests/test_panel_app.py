@@ -2238,3 +2238,72 @@ def test_webview_processes_are_capped_for_low_memory_machines():
     arguments = module.os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]
     assert "--renderer-process-limit=3" in arguments
     assert "--process-per-site" in arguments
+
+
+def test_quit_destroys_every_window_so_the_process_can_exit(monkeypatch):
+    """pywebview chỉ gọi Application.Exit khi KHÔNG còn cửa sổ nào.
+
+    winforms.BrowserView.on_close chỉ shutdown khi
+    ``len(BrowserView.instances) == 0``. Nếu quit() bỏ sót một cửa sổ thì vòng
+    lặp thông điệp không bao giờ kết thúc, ``webview.start()`` không trả về và
+    process vẫn sống sau khi user bấm Thoát ở tray.
+    """
+    app = panel_app.PanelApp()
+    destroyed = []
+
+    class FakeWindow:
+        def __init__(self, name):
+            self.name = name
+
+        def destroy(self):
+            destroyed.append(self.name)
+
+    # Đúng bộ cửa sổ mà run() tạo, cộng Manual mở theo yêu cầu người dùng.
+    app.window = FakeWindow("panel")
+    app.bubble_window = FakeWindow("bubble")
+    app.bubble_menu_window = FakeWindow("bubble_menu")
+    app.notification_window = FakeWindow("notification")
+    app.manual_window = FakeWindow("manual")
+    app.tray = None
+    app.lock = None
+    monkeypatch.setattr(panel_app.keyboard, "remove_hotkey", lambda _hotkey: None)
+
+    app.quit()
+
+    assert sorted(destroyed) == [
+        "bubble",
+        "bubble_menu",
+        "manual",
+        "notification",
+        "panel",
+    ]
+
+
+def test_quit_survives_a_window_that_fails_to_destroy(monkeypatch):
+    """Một cửa sổ lỗi không được chặn việc hủy các cửa sổ còn lại."""
+    app = panel_app.PanelApp()
+    destroyed = []
+
+    class BrokenWindow:
+        def destroy(self):
+            raise RuntimeError("WebView2 đã biến mất")
+
+    class FakeWindow:
+        def __init__(self, name):
+            self.name = name
+
+        def destroy(self):
+            destroyed.append(self.name)
+
+    app.window = FakeWindow("panel")
+    app.bubble_window = BrokenWindow()
+    app.bubble_menu_window = FakeWindow("bubble_menu")
+    app.notification_window = FakeWindow("notification")
+    app.manual_window = None
+    app.tray = None
+    app.lock = None
+    monkeypatch.setattr(panel_app.keyboard, "remove_hotkey", lambda _hotkey: None)
+
+    app.quit()
+
+    assert sorted(destroyed) == ["bubble_menu", "notification", "panel"]
