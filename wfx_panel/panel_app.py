@@ -2429,7 +2429,17 @@ class PanelApp:
             self.lock.close()
         if self.tray:
             self.tray.stop()
-        for window in (self.notification_window, self.bubble_window, self.window):
+        # pywebview (winforms) chỉ gọi Application.Exit khi BrowserView.instances
+        # rỗng. Bỏ sót BẤT KỲ cửa sổ nào — kể cả bubble menu ẩn ở -32000 và cửa
+        # sổ Manual — là vòng lặp thông điệp không bao giờ kết thúc, webview.start()
+        # không trả về và process vẫn sống sau khi user bấm Thoát.
+        for window in (
+            self.notification_window,
+            self.bubble_menu_window,
+            self.manual_window,
+            self.bubble_window,
+            self.window,
+        ):
             if window is not None:
                 try:
                     window.destroy()
