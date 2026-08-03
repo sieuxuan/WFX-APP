@@ -451,7 +451,8 @@
               "sale-asn-import",
               "sale-asn-review-cancel",
               "sale-asn-start",
-              "sale-asn-continue"
+              "sale-asn-continue",
+              "sale-asn-skip-step"
             ],
             "errors": [
               "SALE_ASN_BUYER_NOT_CONFIRMED",
@@ -460,6 +461,8 @@
               "SALE_ASN_BUYER_SCAN_FAILED",
               "SALE_ASN_CREATE_FAILED",
               "SALE_ASN_CREATE_REVIEW_EXPIRED",
+              "SALE_ASN_CREATE_STAGE_INVALID",
+              "SALE_ASN_CREATE_STAGE_NOT_SKIPPABLE",
               "SALE_ASN_FIELD_NOT_EDITABLE",
               "SALE_ASN_FILE_EMPTY",
               "SALE_ASN_FILE_FORMULA_ERROR",

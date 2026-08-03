@@ -107,6 +107,7 @@ def test_index_html_has_contract_hooks():
         'data-module-action="sale-asn-import"',
         'data-module-action="sale-asn-start"',
         'data-module-action="sale-asn-continue"',
+        'data-module-action="sale-asn-skip-step"',
         'class="sale-asn-buyer"',
         'data-sale-asn-view="create"',
         'data-sale-asn-view="lookup"',
@@ -116,7 +117,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260803-3"',
+        'src="panel.js?v=20260803-4"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html

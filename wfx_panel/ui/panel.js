@@ -215,7 +215,7 @@
     "prepare_catalog", "scan_catalog_folders", "find_code", "find_buyer_reference",
     "open_catalog_destination", "browse_catalog", "catalog_action",
     "open_sale_asn_new", "scan_sale_asn_buyers", "start_sale_asn_create",
-    "continue_sale_asn_create", "open_sample_new", "search_oc", "search_sample",
+    "continue_sale_asn_create", "skip_sale_asn_create_step", "open_sample_new", "search_oc", "search_sample",
     "check_sample_files", "open_sample_file_choice",
     "search_sale_asn", "prepare_sale_asn_documents",
     "save_sale_asn_documents", "search_rmpo", "search_indent",
@@ -265,6 +265,7 @@
     scan_sale_asn_buyers: "Đang quét Buyer từ WFX…",
     start_sale_asn_create: "Đang thêm PO và điền Sale ASN…",
     continue_sale_asn_create: "Đang tiếp tục các PO còn lại…",
+    skip_sale_asn_create_step: "Đang bỏ qua bước và tiếp tục…",
     download_sale_asn_template: "Đang tạo form Sale ASN…",
     open_sample_new: "Đang mở Sample Order mới…",
     search_oc: "Đang tìm OC…",
@@ -327,6 +328,7 @@
     scan_sale_asn_buyers: "Quét Buyer Sale ASN",
     start_sale_asn_create: "Tạo Sale ASN",
     continue_sale_asn_create: "Tiếp tục Sale ASN",
+    skip_sale_asn_create_step: "Bỏ qua bước Sale ASN",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
     open_oc_revision_report: "Mở report Revise OC",
@@ -1227,7 +1229,7 @@
 
   function handleResult(result) {
     if (!result) return;
-    if (INTERACTIVE_RESULT_CODES.has(result.code)) {
+    if (INTERACTIVE_RESULT_CODES.has(result.code) || result.resumable) {
       hidePanelWhenIdle = false;
     }
     const cancelled = result.code === "ACTION_CANCELLED";
@@ -1241,7 +1243,7 @@
     if (result.code === "SALE_ASN_BUYERS_SCANNED") {
       renderSaleAsnBuyers(result.buyers);
     }
-    if (["SALE_ASN_PO_SELECTION_REQUIRED", "SALE_ASN_FORM_COMPLETED"].includes(result.code)) {
+    if (["SALE_ASN_PO_SELECTION_REQUIRED", "SALE_ASN_FORM_COMPLETED"].includes(result.code) || result.resumable) {
       renderSaleAsnRunResult(result);
     }
     lastErrorCode = (!result.ok && result.code) ? result.code : "";
@@ -1772,6 +1774,10 @@
     $(".sale-asn-review").hidden = true;
     $(".sale-asn-pending").hidden = true;
     $(".sale-asn-manual-confirm").checked = false;
+    $(".sale-asn-manual-check").hidden = false;
+    $(".sale-asn-pending-title").textContent = "Cần bạn chọn một PO trên WFX";
+    $(".sale-asn-skip-step").hidden = true;
+    $('[data-module-action="sale-asn-continue"]').textContent = "Tiếp tục dòng kế";
     $('[data-module-action="sale-asn-continue"]').disabled = true;
     if (message) $(".sale-asn-inline-status").textContent = message;
     syncSaleAsnCreate();
@@ -1830,8 +1836,29 @@
       $(".sale-asn-review").hidden = true;
       $(".sale-asn-pending").hidden = false;
       $(".sale-asn-pending-message").textContent = result.message || "";
+      $(".sale-asn-pending-title").textContent = "Cần bạn chọn một PO trên WFX";
+      $(".sale-asn-manual-check").hidden = false;
+      $(".sale-asn-skip-step").hidden = true;
       $(".sale-asn-manual-confirm").checked = false;
-      $('[data-module-action="sale-asn-continue"]').disabled = true;
+      const continueButton = $('[data-module-action="sale-asn-continue"]');
+      continueButton.textContent = "Tiếp tục dòng kế";
+      continueButton.disabled = true;
+      showSaleAsnView("create", { focus: false });
+      return;
+    }
+    if (result.resumable) {
+      saleAsnReviewToken = String(result.review_token || saleAsnReviewToken);
+      $(".sale-asn-review").hidden = true;
+      $(".sale-asn-pending").hidden = false;
+      $(".sale-asn-pending-title").textContent = `${result.stage_label || "Bước hiện tại"} chưa hoàn tất`;
+      $(".sale-asn-pending-message").textContent = result.message || "Có lỗi trên WFX. Bạn có thể thử lại mà không tạo lại ASN.";
+      $(".sale-asn-manual-check").hidden = true;
+      const continueButton = $('[data-module-action="sale-asn-continue"]');
+      continueButton.textContent = "Thử lại bước này";
+      continueButton.disabled = false;
+      const skipButton = $(".sale-asn-skip-step");
+      skipButton.hidden = !result.can_skip;
+      skipButton.textContent = `Bỏ qua ${result.stage_label || "bước này"}`;
       showSaleAsnView("create", { focus: false });
       return;
     }
@@ -1852,8 +1879,17 @@
   }
 
   async function continueSaleAsnCreate() {
-    if (!saleAsnReviewToken || !$(".sale-asn-manual-confirm").checked) return null;
+    const manualCheck = $(".sale-asn-manual-check");
+    if (!saleAsnReviewToken || (!manualCheck.hidden && !$(".sale-asn-manual-confirm").checked)) return null;
     const result = await call("continue_sale_asn_create", saleAsnReviewToken);
+    renderSaleAsnRunResult(result);
+    dismissAfterSuccessfulModule(result);
+    return result;
+  }
+
+  async function skipSaleAsnCreateStep() {
+    if (!saleAsnReviewToken) return null;
+    const result = await call("skip_sale_asn_create_step", saleAsnReviewToken);
     renderSaleAsnRunResult(result);
     dismissAfterSuccessfulModule(result);
     return result;
@@ -2047,6 +2083,7 @@
     "sale-asn-review-cancel": cancelSaleAsnReview,
     "sale-asn-start": startSaleAsnCreate,
     "sale-asn-continue": continueSaleAsnCreate,
+    "sale-asn-skip-step": skipSaleAsnCreateStep,
     "sale-asn-search": () => runSelectedModuleAction(
       "search_sale_asn",
       moduleFilterKinds.sale_asn,

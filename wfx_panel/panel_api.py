@@ -296,6 +296,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "scan_sale_asn_buyers",
         "start_sale_asn_create",
         "continue_sale_asn_create",
+        "skip_sale_asn_create_step",
         "search_oc",
         "search_sample",
         "open_sample_new",
@@ -758,6 +759,7 @@ class PanelAPI:
                 "scan_sale_asn_buyers",
                 "start_sale_asn_create",
                 "continue_sale_asn_create",
+                "skip_sale_asn_create_step",
                 "open_sample_new",
                 "search_oc",
                 "open_oc_revision_report",
@@ -1238,6 +1240,8 @@ class PanelAPI:
             "document": document,
             "buyer": selected_buyer,
             "next_index": 0,
+            "next_stage": "po",
+            "skipped_stages": [],
         }
         return {
             "ok": True,
@@ -1284,6 +1288,8 @@ class PanelAPI:
             }
         document = review["document"]
         start_index = int(review.get("next_index") or 0) if continue_existing else 0
+        stage = str(review.get("next_stage") or "po") if continue_existing else "po"
+        skipped_stages = tuple(review.get("skipped_stages") or ())
         result = self._run(
             "continue_sale_asn_create" if continue_existing else "start_sale_asn_create",
             lambda: runner(
@@ -1292,15 +1298,22 @@ class PanelAPI:
                 list(document["rows"]),
                 start_index,
                 self._log,
+                stage=stage,
+                skip_stages=skipped_stages,
             ),
             {
                 "invoice_no": document["invoice_no"],
                 "po_count": document["po_count"],
                 "start_index": start_index,
+                "stage": stage,
             },
         )
         if result.get("code") == "SALE_ASN_PO_SELECTION_REQUIRED":
             review["next_index"] = int(result.get("next_index") or start_index)
+            review["next_stage"] = "po"
+            result["review_token"] = token
+        elif result.get("resumable"):
+            review["next_stage"] = str(result.get("resume_stage") or stage)
             result["review_token"] = token
         elif result.get("code") == "SALE_ASN_FORM_COMPLETED":
             self._discard_sale_asn_create_review(token)
@@ -1317,6 +1330,28 @@ class PanelAPI:
             review_token,
             continue_existing=True,
         )
+
+    def skip_sale_asn_create_step(self, review_token: str) -> dict:
+        token = str(review_token or "").strip()
+        review = self._sale_asn_create_reviews.get(token)
+        if review is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_CREATE_REVIEW_EXPIRED",
+                "message": "Phiên kiểm tra Sale ASN không còn hiệu lực; hãy chọn file lại.",
+            }
+        stage = str(review.get("next_stage") or "po")
+        if stage not in {"order_details", "style_details", "shipping_info"}:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_CREATE_STAGE_NOT_SKIPPABLE",
+                "message": "Bước hiện tại không thể bỏ qua.",
+            }
+        skipped = list(review.get("skipped_stages") or ())
+        if stage not in skipped:
+            skipped.append(stage)
+        review["skipped_stages"] = skipped
+        return self._run_sale_asn_create_review(token, continue_existing=True)
 
     def cancel_sale_asn_create(self, review_token: str) -> dict:
         self._discard_sale_asn_create_review(str(review_token or "").strip())
