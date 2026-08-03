@@ -23,8 +23,8 @@ Tìm Sale ASN cũ hoặc tạo Sale ASN mới từ một file Excel có nhiều 
 > Ứng dụng không tự bấm Save. Bạn luôn có bước kiểm tra cuối trên WFX.
 
 > [!meo]
-> Ứng dụng bấm `Add & Continue` cho cả PO cuối để WFX ghi đủ dòng, sau đó mới
-> bấm `OK` để đóng cửa sổ Add Order Details.
+> Ứng dụng dùng `Add & Continue` cho các PO trước. Với PO cuối, ứng dụng giữ
+> dòng đang chọn rồi bấm `OK` để vừa thêm PO cuối vừa đóng Add Order Details.
 
 ## Quy tắc của file Excel
 
