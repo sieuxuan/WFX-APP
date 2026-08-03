@@ -625,89 +625,38 @@ def _auto_add_po(
                 f"{selected.get('value')}."
             ),
         )
-        # Add & Continue là thao tác ghi PO vào Order Details. Nút OK chỉ đóng
-        # popup; nếu dùng OK thay cho Add & Continue ở dòng cuối, WFX có thể đóng
-        # cửa sổ nhưng bỏ mất chính PO cuối đó.
-        action_selector = PO_CONTINUE_SELECTOR
+        action_selector = PO_OK_SELECTOR if final else PO_CONTINUE_SELECTOR
         button = frame.locator(action_selector).first
         button.wait_for(state="visible", timeout=5_000)
         # WFX đã nhận click và add PO nhưng Playwright có thể chờ navigation
         # tới timeout khi popup Ajax tự detach. DOM click kết thúc ngay; lượt
         # kế tiếp sẽ chờ #txtOCNo visible lại trước khi điền.
-        button.evaluate("element => element.click()")
+        clicked = button.evaluate(
+            """container => {
+                const action = container.matches('a, button, input, [onclick]')
+                    ? container
+                    : container.querySelector('a, button, input, [onclick]');
+                if (!action) return {ok: false, reason: 'action-not-found'};
+                action.click();
+                return {ok: true, tag: action.tagName, id: action.id || ''};
+            }"""
+        )
+        if not clicked.get("ok"):
+            raise RuntimeError(
+                f"SALE_ASN_PO_SELECTION_NOT_CONFIRMED:{clicked.get('reason')}"
+            )
         _wait(frame, 250)
         if final:
             _write_log(
                 log,
-                "[SALE ASN] PO cuối: đã bấm Add & Continue; đang chờ đóng popup.",
+                (
+                    "[SALE ASN] PO cuối: đã bấm link OK để thêm PO và đóng "
+                    f"Add Order Details ({clicked.get('tag') or 'node'})."
+                ),
             )
         return True, last, label
     reason = "not_found" if not last else "ambiguous"
     return False, last, reason
-
-
-def _close_po_popup(
-    context: Any,
-    log: Callable[[str], None],
-    *,
-    attempts: int = 2,
-) -> None:
-    """Đóng Add Order Details sau khi Add & Continue cuối đã hoàn tất."""
-
-    for attempt in range(1, attempts + 1):
-        _popup_page, popup_frame = _frame_with_selector(
-            context,
-            PO_POPUP_SELECTOR,
-            timeout_s=8 if attempt == 1 else 3,
-        )
-        search = popup_frame.locator("#txtOCNo").first
-        search.wait_for(state="visible", timeout=5_000)
-        # Add & Continue reload/reset vùng tìm kiếm. Chờ ô PO dùng lại được để
-        # không click OK khi request ghi PO cuối vẫn đang chạy.
-        deadline = time.monotonic() + 8
-        while time.monotonic() < deadline:
-            try:
-                if search.is_enabled() and not search.input_value().strip():
-                    break
-            except PlaywrightError:
-                _popup_page, popup_frame = _frame_with_selector(
-                    context,
-                    PO_POPUP_SELECTOR,
-                    timeout_s=3,
-                )
-                search = popup_frame.locator("#txtOCNo").first
-            _wait(popup_frame, 120)
-
-        button = popup_frame.locator(PO_OK_SELECTOR).first
-        button.wait_for(state="visible", timeout=5_000)
-        clicked = button.evaluate(
-            """cell => {
-                const action = cell.matches('[onclick], a, button, input')
-                    ? cell
-                    : cell.querySelector('[onclick], a, button, input');
-                (action || cell).click();
-                return {
-                    tag: (action || cell).tagName,
-                    id: (action || cell).id || '',
-                };
-            }"""
-        )
-        _write_log(
-            log,
-            (
-                "[SALE ASN] Đã bấm OK để đóng Add Order Details"
-                f" (lần {attempt}, {clicked.get('tag') or 'node'})."
-            ),
-        )
-        try:
-            _frame_with_selector(
-                context,
-                PO_POPUP_SELECTOR,
-                timeout_s=2,
-            )
-        except PlaywrightTimeoutError:
-            return
-    raise RuntimeError("SALE_ASN_PO_POPUP_NOT_CLOSED")
 
 
 def _date_for_wfx(value: str) -> str:
@@ -943,8 +892,6 @@ def _ensure_order_grid_rows(
         if not added:
             raise RuntimeError("SALE_ASN_ORDER_GRID_NOT_READY")
 
-    _close_po_popup(context, log)
-
     _main_page, refreshed_frame = _frame_with_selector(
         context,
         "#sectionOrderDetails",
@@ -1044,9 +991,15 @@ def run_sale_asn_create(
             add.wait_for(state="visible", timeout=8_000)
             add.click(timeout=5_000)
             _write_log(log, "[SALE ASN] Đã chọn Buyer và mở Add Order Details.")
-        _popup_page, popup_frame = _frame_with_selector(context, PO_POPUP_SELECTOR, timeout_s=15)
+        first_pending = max(0, int(start_index))
+        if first_pending < len(rows):
+            _popup_page, popup_frame = _frame_with_selector(
+                context,
+                PO_POPUP_SELECTOR,
+                timeout_s=15,
+            )
 
-        for index in range(max(0, int(start_index)), len(rows)):
+        for index in range(first_pending, len(rows)):
             row = dict(rows[index])
             added, candidates, reason = _auto_add_po(
                 popup_frame,
@@ -1055,12 +1008,14 @@ def run_sale_asn_create(
                 final=index == len(rows) - 1,
             )
             if not added:
+                final_pending = index == len(rows) - 1
+                manual_action = "OK" if final_pending else "Add & Continue"
                 return _result(
                     True,
                     "SALE_ASN_PO_SELECTION_REQUIRED",
                     (
                         f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
-                        "Chọn đúng dòng rồi bấm Add & Continue; sau đó quay lại app bấm Tiếp tục."
+                        f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
                     ),
                     pending_index=index,
                     next_index=index + 1,
@@ -1073,7 +1028,6 @@ def run_sale_asn_create(
                     total=len(rows),
                 )
 
-        _close_po_popup(context, log)
         _main_page, main_frame = _frame_with_selector(context, "#sectionOrderDetails", timeout_s=15)
         main_frame = _ensure_order_grid_rows(context, main_frame, rows, log)
         _fill_order_details(main_frame, rows, log)

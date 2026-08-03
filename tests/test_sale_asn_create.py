@@ -183,7 +183,7 @@ def test_start_reuses_blank_new_form_left_by_buyer_scan(monkeypatch):
     ("final", "expected_action_selector"),
     (
         (False, sale_asn_create.PO_CONTINUE_SELECTOR),
-        (True, sale_asn_create.PO_CONTINUE_SELECTOR),
+        (True, sale_asn_create.PO_OK_SELECTOR),
     ),
 )
 def test_auto_add_po_selects_checkbox_by_exact_identity(
@@ -201,7 +201,8 @@ def test_auto_add_po_selects_checkbox_by_exact_identity(
         def evaluate(self, _script, spec=None):
             if spec is None:
                 captured["continued_dom"] = True
-                return None
+                captured["action_script"] = _script
+                return {"ok": True, "tag": "A", "id": ""}
             captured.update(spec)
             return {"ok": True, "value": spec["selection_value"]}
 
@@ -243,6 +244,7 @@ def test_auto_add_po_selects_checkbox_by_exact_identity(
     assert captured["selection_value"] == "7740025278_32043"
     assert captured["selection_order_id"] == "220106328"
     assert captured["continued_dom"] is True
+    assert "querySelector('a, button, input, [onclick]')" in captured["action_script"]
     assert captured["selectors"] == [
         sale_asn_create.PO_RESULTS_TABLE_SELECTOR,
         expected_action_selector,
@@ -260,74 +262,6 @@ def test_sale_asn_po_results_use_exact_wfx_table():
         'xpath=//*[@id="wfx_GMPOAsnSearch"]'
         "/table[1]/tbody/tr/td[3]/table/tbody/tr/td[3]"
     )
-
-
-def test_sale_asn_closes_popup_only_after_add_continue_reset(monkeypatch):
-    calls = []
-    logs = []
-
-    class FakeSearch:
-        @property
-        def first(self):
-            return self
-
-        def wait_for(self, **_kwargs):
-            return None
-
-        def is_enabled(self):
-            return True
-
-        def input_value(self):
-            return ""
-
-    class FakeButton:
-        @property
-        def first(self):
-            return self
-
-        def wait_for(self, **_kwargs):
-            return None
-
-        def evaluate(self, _script):
-            calls.append("ok")
-            return {"tag": "TD", "id": ""}
-
-    class FakePopupFrame:
-        def locator(self, selector):
-            calls.append(selector)
-            if selector == "#txtOCNo":
-                return FakeSearch()
-            assert selector == sale_asn_create.PO_OK_SELECTOR
-            return FakeButton()
-
-    popup_frame = FakePopupFrame()
-    context = object()
-    probes = 0
-
-    def fake_frame_with_selector(_context, selector, timeout_s):
-        nonlocal probes
-        assert _context is context
-        assert selector == sale_asn_create.PO_POPUP_SELECTOR
-        probes += 1
-        if probes == 1:
-            assert timeout_s == 8
-            return object(), popup_frame
-        assert timeout_s == 2
-        raise sale_asn_create.PlaywrightTimeoutError("popup closed")
-
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_frame_with_selector",
-        fake_frame_with_selector,
-    )
-
-    sale_asn_create._close_po_popup(context, logs.append)
-
-    assert calls == ["#txtOCNo", sale_asn_create.PO_OK_SELECTOR, "ok"]
-    assert probes == 2
-    assert logs == [
-        "[SALE ASN] Đã bấm OK để đóng Add Order Details (lần 1, TD)."
-    ]
 
 
 def test_sale_asn_order_grid_uses_exact_wfx_columns():
@@ -399,11 +333,6 @@ def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatc
         fake_frame_with_selector,
     )
     monkeypatch.setattr(sale_asn_create, "_auto_add_po", fake_auto_add)
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_close_po_popup",
-        lambda _context, _log: calls.setdefault("popup_closed", True),
-    )
     logs = []
 
     result = sale_asn_create._ensure_order_grid_rows(
@@ -415,7 +344,6 @@ def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatc
 
     assert result is refreshed_frame
     assert calls["add_clicked"] is True
-    assert calls["popup_closed"] is True
     assert calls["retried"] == [(popup_frame, "PO005501-DE-1", True)]
     assert calls["wait"] == [
         (main_frame, 10, True),
@@ -423,6 +351,65 @@ def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatc
     ]
     assert any("còn thiếu 1 PO" in message for message in logs)
     assert logs[-1] == "[SALE ASN] Đã xác nhận đủ PO trong Order Details."
+
+
+def test_sale_asn_resume_after_manual_final_ok_skips_closed_popup(monkeypatch):
+    rows = [
+        {"source_row": 2, "po_no": "PO-1", "invoice_no": "INV-1"},
+    ]
+    context = object()
+    page = type("FakePage", (), {"context": context})()
+    main_frame = object()
+    selectors = []
+
+    class FakePlaywright:
+        def stop(self):
+            return None
+
+    class FakePlaywrightStarter:
+        def start(self):
+            return FakePlaywright()
+
+    def fake_frame_with_selector(_context, selector, timeout_s):
+        assert _context is context
+        selectors.append((selector, timeout_s))
+        assert selector == "#sectionOrderDetails"
+        return page, main_frame
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: FakePlaywrightStarter(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (object(), page),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        fake_frame_with_selector,
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_ensure_order_grid_rows",
+        lambda _context, frame, _rows, _log: frame,
+    )
+    monkeypatch.setattr(sale_asn_create, "_fill_order_details", lambda *_args: None)
+    monkeypatch.setattr(sale_asn_create, "_fill_style_details", lambda *_args: None)
+    monkeypatch.setattr(sale_asn_create, "_fill_shipping", lambda *_args: None)
+
+    result = sale_asn_create.run_sale_asn_create(
+        "menu-xpath",
+        "BUYER A",
+        rows,
+        start_index=len(rows),
+        log=lambda _message: None,
+    )
+
+    assert result["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert selectors == [("#sectionOrderDetails", 15)]
 
 
 def test_sale_asn_table_value_confirmation_handles_wfx_formats():

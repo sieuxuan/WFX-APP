@@ -420,9 +420,10 @@ Các workflow riêng hiện có:
   bằng Style gần đúng rồi Dispatched Qty. Nếu vẫn mơ hồ hoặc không thấy, giữ cửa
   sổ cho user tự chọn và bấm Add & Continue; app dùng review token để tiếp tục
   từ dòng kế, không đọc lại hay đảo thứ tự file. Các PO trước dùng
-  `Add & Continue`, kể cả PO cuối, để WFX ghi dòng vào Order Details. Sau khi
-  Add & Continue cuối hoàn tất và vùng tìm kiếm reset, bấm `OK` để đóng popup;
-  không dùng `OK` thay cho thao tác add PO cuối. Sau khi popup đóng, điền 7 cột
+  `Add & Continue`; ở PO cuối phải giữ checkbox đang chọn và click đúng link
+  `OK` bên trong cell action để WFX vừa add PO cuối vừa đóng popup. Không click
+  cell `td` bao ngoài, và không bấm `Add & Continue` trước `OK` vì thao tác đó
+  xóa selection khiến WFX báo `Please select a record`. Sau khi popup đóng, điền 7 cột
   Order Details, map Style gần đúng để điền HS Code, rồi điền Shipping Info với
   Consignor Address
   `BILL-ADD - PSHK`, Delivery Terms `FOB`, Factory theo FTY và Notify 1 là option
