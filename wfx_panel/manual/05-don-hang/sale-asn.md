@@ -25,6 +25,11 @@ bấm `Thử lại bước này` sau khi đã xử lý nguyên nhân, hoặc b�
 chuyển sang bước sau. Bỏ qua chỉ áp dụng cho ba bước điền dữ liệu; bước thêm PO
 không thể bỏ qua để tránh tạo chứng từ thiếu đơn hàng.
 
+Riêng trong `Shipping Info`, từng trường được xử lý độc lập. Nếu file thiếu dữ
+liệu hoặc WFX không có lựa chọn tương ứng (ví dụ Factory), ứng dụng bỏ qua đúng
+trường đó, tiếp tục điền các trường còn lại và liệt kê toàn bộ cảnh báo khi hoàn
+tất để bạn bổ sung thủ công trước khi Save.
+
 > [!luuy]
 > Ứng dụng không tự bấm Save. Bạn luôn có bước kiểm tra cuối trên WFX.
 
@@ -74,4 +79,4 @@ không thể bỏ qua để tránh tạo chứng từ thiếu đơn hàng.
 | Có nhiều dòng PO giống nhau | Chọn đúng Style hoặc Qty trên WFX, bấm `Add & Continue`, rồi tiếp tục trong ứng dụng. |
 | Không tìm thấy PO | Kiểm tra PO No., Destination và Style trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
 | Đã đóng cửa sổ Add PO | Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng. |
-| Order Details, Style Details hoặc Shipping Info bị lỗi | Giữ nguyên form WFX, sửa trạng thái/ô đang vướng rồi bấm `Thử lại bước này`; hoặc bấm `Bỏ qua ...` nếu muốn tự điền bước đó. |
+| Order Details, Style Details hoặc cả tab Shipping Info bị lỗi | Giữ nguyên form WFX, sửa trạng thái/ô đang vướng rồi bấm `Thử lại bước này`; hoặc bấm `Bỏ qua ...` nếu muốn tự điền bước đó. Một field riêng lẻ trong Shipping Info sẽ tự được bỏ qua và báo lại cuối flow. |

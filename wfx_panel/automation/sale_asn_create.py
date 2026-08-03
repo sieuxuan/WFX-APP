@@ -70,6 +70,39 @@ SHIPPING_FIELDS = (
     ("#ddlNotify1", "__FIRST", "first"),
 )
 
+SHIPPING_FIELD_LABELS = {
+    "#Cell_InvoiceNo": "Invoice No.",
+    "#Cell_InvoiceDate": "Invoice Date",
+    "#Cell_ShippingBillNo": "Shipping Bill No.",
+    "#Cell_ShippingBillDate": "Shipping Bill Date",
+    "#Cell_ShipDate": "Ship Date",
+    "#Cell_DestinationCountry": "Destination Country",
+    "#Cell_FinalDestination": "Final Destination",
+    "#ddlConsignorAddress": "Consignor Address",
+    "#ddlDeliveryTerms": "Delivery Terms",
+    "#ddlFactory": "Factory",
+    "#ddlNotify1": "Notify",
+}
+
+SALE_ASN_STAGE_FRAME_SELECTORS = {
+    "order_details": "#sectionOrderDetails",
+    "style_details": "#tabStyleDetails",
+    "shipping_info": "#tabShippingInfo",
+}
+
+
+def _shipping_warning(label: str, value: str, result: dict[str, Any]) -> str:
+    reason = str(result.get("reason") or "không thể điền")
+    if reason == "option-not-found":
+        return f'{label}: WFX không có lựa chọn "{value}"'
+    if reason == "host-not-found":
+        return f"{label}: WFX không có trường này"
+    if reason == "editor-not-found":
+        return f"{label}: trường không thể chỉnh sửa"
+    if reason == "document-changed":
+        return f"{label}: trang WFX đã thay đổi khi đang điền"
+    return f"{label}: {reason}"
+
 _PO_RESULTS_JS = r"""root => {
     const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
     const fold = value => clean(value).toLocaleLowerCase('en');
@@ -988,12 +1021,18 @@ def _fill_style_details(frame: Frame, rows: Sequence[dict], log: Callable[[str],
         _write_log(log, f"[SALE ASN] Đã điền HS Code cho Style {style}.")
 
 
-def _fill_shipping(frame: Frame, first_row: dict, log: Callable[[str], None]) -> None:
+def _fill_shipping(
+    frame: Frame,
+    first_row: dict,
+    log: Callable[[str], None],
+) -> list[str]:
     tab = frame.locator("#tabShippingInfo").first
     tab.wait_for(state="visible", timeout=8_000)
     tab.click(timeout=5_000)
     _wait(frame, 500)
+    warnings: list[str] = []
     for selector, key, mode in SHIPPING_FIELDS:
+        label = SHIPPING_FIELD_LABELS.get(selector, selector)
         if key == "__FIRST":
             value = ""
         elif key.startswith("__"):
@@ -1002,11 +1041,33 @@ def _fill_shipping(frame: Frame, first_row: dict, log: Callable[[str], None]) ->
             value = str(first_row.get(key) or "")
         if key in {"invoice_date", "shipping_bill_date"}:
             value = _date_for_wfx(value)
-        result = _set_control(frame, selector, value, mode, timeout_s=6)
+        if not value.strip() and not key.startswith("__"):
+            warning = f"{label}: file không có dữ liệu"
+            warnings.append(warning)
+            _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
+            continue
+        try:
+            result = _set_control(frame, selector, value, mode, timeout_s=6)
+        except Exception as error:
+            reason = _first_line(error)
+            warning = f"{label}: {reason}"
+            warnings.append(warning)
+            _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
+            continue
         if not result.get("ok"):
-            raise RuntimeError(f"SALE_ASN_SHIPPING_FIELD_FAILED:{selector}:{result.get('reason')}")
+            warning = _shipping_warning(label, value, result)
+            warnings.append(warning)
+            _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
+            continue
         _wait(frame, 150)
-    _write_log(log, "[SALE ASN] Đã điền Shipping Info; chưa bấm Save.")
+    if warnings:
+        _write_log(
+            log,
+            f"[SALE ASN] Đã điền Shipping Info; bỏ qua {len(warnings)} trường và chưa bấm Save.",
+        )
+    else:
+        _write_log(log, "[SALE ASN] Đã điền Shipping Info; chưa bấm Save.")
+    return warnings
 
 
 def run_sale_asn_create(
@@ -1021,6 +1082,7 @@ def run_sale_asn_create(
 ) -> dict[str, Any]:
     playwright = None
     current_stage = str(stage or "po")
+    shipping_warnings: list[str] = []
     try:
         if not buyer.strip():
             return _result(False, "SALE_ASN_BUYER_REQUIRED", "Hãy chọn Buyer trước khi chạy.")
@@ -1084,9 +1146,10 @@ def run_sale_asn_create(
                     )
             current_stage = "order_details"
 
+        frame_selector = SALE_ASN_STAGE_FRAME_SELECTORS[current_stage]
         _main_page, main_frame = _frame_with_selector(
             context,
-            "#sectionOrderDetails",
+            frame_selector,
             timeout_s=15,
         )
         start_stage_index = SALE_ASN_STAGE_ORDER.index(current_stage)
@@ -1104,18 +1167,28 @@ def run_sale_asn_create(
             elif step == "style_details":
                 _fill_style_details(main_frame, rows, log)
             elif step == "shipping_info":
-                _fill_shipping(main_frame, dict(rows[0]), log)
+                shipping_warnings.extend(
+                    _fill_shipping(main_frame, dict(rows[0]), log) or ()
+                )
+        warning_message = ""
+        if shipping_warnings:
+            warning_message = (
+                f" Shipping Info đã bỏ qua {len(shipping_warnings)} trường: "
+                f"{' · '.join(shipping_warnings)}."
+            )
         return _result(
             True,
             "SALE_ASN_FORM_COMPLETED",
             (
-                f"Đã thêm {len(rows)} PO và điền Sale ASN. "
+                f"Đã thêm {len(rows)} PO và điền Sale ASN.{warning_message} "
                 "Hãy kiểm tra lại trên WFX rồi tự bấm Save."
             ),
             completed=len(rows),
             total=len(rows),
             invoice_no=rows[0].get("invoice_no"),
             save_required=True,
+            warnings=shipping_warnings,
+            warning_count=len(shipping_warnings),
         )
     except RuntimeError as error:
         code = str(error).split(":", 1)[0] or "SALE_ASN_CREATE_FAILED"
