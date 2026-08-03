@@ -320,6 +320,36 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
     return {ok: true, row_id: candidates[0].id, column_id: cell.id};
 }"""
 
+_READ_ORDER_DETAILS_JS = r"""spec => {
+    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const table = document.querySelector(spec.table);
+    if (!table) return [];
+    const readCell = cell => {
+        if (!cell) return '';
+        const editor = cell.querySelector(
+            'input:not([type="hidden"]), textarea, [contenteditable="true"]'
+        );
+        if (editor) return clean(editor.value || editor.textContent);
+        const label = cell.querySelector(
+            '.lblEditable, .lblEditDatePicker, .clsGridLabelContent, span'
+        );
+        return clean(
+            label?.getAttribute('title') || label?.textContent || cell.textContent
+        );
+    };
+    return [...table.querySelectorAll('tr.trContent')].map(row => {
+        const output = {
+            po_no: readCell(row.querySelector('td#colOrderRefNum')),
+        };
+        Object.entries(spec.columns || {}).forEach(([key, columnId]) => {
+            output[key] = readCell(
+                [...row.children].find(cell => cell.id === columnId)
+            );
+        });
+        return output;
+    }).filter(row => row.po_no);
+}"""
+
 _MARK_STYLE_HTS_CELL_JS = r"""spec => {
     const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
     const fold = value => clean(value).toLocaleLowerCase('en')
@@ -376,6 +406,28 @@ SALE_ASN_STAGE_LABELS = {
     "shipping_info": "Shipping Info",
 }
 SALE_ASN_STAGE_ORDER = tuple(SALE_ASN_STAGE_LABELS)
+
+
+def _emit_stage_progress(
+    progress: Callable[..., None] | None,
+    stage: str,
+    message: str,
+    *,
+    state: str = "active",
+) -> None:
+    """Bắn tiến độ cho UI; lỗi ở đây không được ảnh hưởng flow automation."""
+    if progress is None:
+        return
+    try:
+        progress(
+            stage,
+            message,
+            SALE_ASN_STAGE_ORDER.index(stage) + 1,
+            len(SALE_ASN_STAGE_ORDER),
+            state=state,
+        )
+    except Exception:
+        pass
 
 
 def _fold(value: object) -> str:
@@ -1003,6 +1055,128 @@ def _fill_order_details(frame: Frame, rows: Sequence[dict], log: Callable[[str],
         _write_log(log, f"[SALE ASN] Đã điền Order Details cho {row.get('po_no')}.")
 
 
+def scan_sale_asn_order_details(
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Đọc các PO và giá trị Order Details trên form Sale ASN đang mở."""
+
+    playwright = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        _main_page, frame = _frame_with_selector(
+            page.context,
+            ORDER_GRID_SELECTOR,
+            timeout_s=15,
+        )
+        rows = frame.evaluate(
+            _READ_ORDER_DETAILS_JS,
+            {"table": ORDER_GRID_SELECTOR, "columns": ORDER_FIELD_COLUMNS},
+        )
+        if not rows:
+            raise RuntimeError("SALE_ASN_ORDER_GRID_EMPTY")
+        _write_log(
+            log,
+            f"[SALE ASN] Đã đọc {len(rows)} PO từ Order Details đang mở.",
+        )
+        return _result(
+            True,
+            "SALE_ASN_ORDER_DETAILS_SCANNED",
+            f"Đã đọc {len(rows)} PO. Chọn nơi lưu form Order Details.",
+            rows=rows,
+            po_count=len(rows),
+        )
+    except RuntimeError as error:
+        code = str(error).split(":", 1)[0] or "SALE_ASN_ORDER_SCAN_FAILED"
+        message = f"Không xuất được Order Details: {_first_line(error)}"
+        _write_log(log, message)
+        return _result(False, code, message)
+    except (PlaywrightError, PlaywrightTimeoutError) as error:
+        message = f"Order Details chưa sẵn sàng: {_first_line(error)}"
+        _write_log(log, message)
+        return _result(False, "SALE_ASN_ORDER_SCAN_FAILED", message)
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def run_sale_asn_order_details(
+    rows: Sequence[dict],
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Chỉ cập nhật Order Details; không thêm PO hoặc sửa tab khác."""
+
+    playwright = None
+    try:
+        if not rows:
+            return _result(
+                False,
+                "SALE_ASN_ORDER_FILE_EMPTY",
+                "File Order Details chưa có dữ liệu.",
+            )
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        _main_page, frame = _frame_with_selector(
+            page.context,
+            ORDER_GRID_SELECTOR,
+            timeout_s=15,
+        )
+        present = _wait_order_grid(
+            frame,
+            rows,
+            timeout_s=3,
+            allow_incomplete=True,
+        )
+        missing = _missing_order_rows(rows, present)
+        if missing:
+            missing_pos = [str(row.get("po_no") or "") for row in missing]
+            return _result(
+                False,
+                "SALE_ASN_ORDER_ROWS_NOT_FOUND",
+                (
+                    "Order Details đang mở không có các PO trong file: "
+                    f"{', '.join(missing_pos[:10])}."
+                ),
+                missing_pos=missing_pos,
+                resumable=True,
+            )
+        _fill_order_details(frame, rows, log)
+        updated_fields = sum(
+            1
+            for row in rows
+            for key in ORDER_FIELD_COLUMNS
+            if str(row.get(key) or "").strip()
+        )
+        return _result(
+            True,
+            "SALE_ASN_ORDER_DETAILS_COMPLETED",
+            (
+                f"Đã điền {updated_fields} ô Order Details cho {len(rows)} PO. "
+                "Hãy kiểm tra trên WFX rồi tự bấm Save."
+            ),
+            po_count=len(rows),
+            updated_fields=updated_fields,
+            save_required=True,
+        )
+    except RuntimeError as error:
+        code = str(error).split(":", 1)[0] or "SALE_ASN_ORDER_FILL_FAILED"
+        message = f"Không điền xong Order Details: {_first_line(error)}"
+        _write_log(log, message)
+        return _result(False, code, message, resumable=True)
+    except (PlaywrightError, PlaywrightTimeoutError) as error:
+        message = f"Order Details chưa sẵn sàng: {_first_line(error)}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "SALE_ASN_ORDER_FILL_FAILED",
+            message,
+            resumable=True,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
 def _fill_style_details(frame: Frame, rows: Sequence[dict], log: Callable[[str], None]) -> None:
     tab = frame.locator("#tabStyleDetails").first
     tab.wait_for(state="visible", timeout=8_000)
@@ -1079,12 +1253,14 @@ def run_sale_asn_create(
     *,
     stage: str = "po",
     skip_stages: Sequence[str] = (),
+    progress: Callable[..., None] | None = None,
 ) -> dict[str, Any]:
     playwright = None
     current_stage = str(stage or "po")
+    add_po_selected = current_stage == "po"
     shipping_warnings: list[str] = []
     try:
-        if not buyer.strip():
+        if add_po_selected and not buyer.strip():
             return _result(False, "SALE_ASN_BUYER_REQUIRED", "Hãy chọn Buyer trước khi chạy.")
         if not rows:
             return _result(False, "SALE_ASN_FILE_EMPTY", "File Sale ASN chưa có dữ liệu.")
@@ -1099,6 +1275,11 @@ def run_sale_asn_create(
         _browser, page = _active_wfx_page(playwright, log)
         context = page.context
         if current_stage == "po":
+            _emit_stage_progress(
+                progress,
+                "po",
+                "Đang mở Add Order Details",
+            )
             if start_index <= 0:
                 main_frame = _refresh_existing_new_form(page, log)
                 if main_frame is None:
@@ -1118,6 +1299,11 @@ def run_sale_asn_create(
 
             for index in range(first_pending, len(rows)):
                 row = dict(rows[index])
+                _emit_stage_progress(
+                    progress,
+                    "po",
+                    f"Thêm PO {index + 1}/{len(rows)}",
+                )
                 added, candidates, reason = _auto_add_po(
                     popup_frame,
                     row,
@@ -1160,9 +1346,42 @@ def run_sale_asn_create(
                     log,
                     f"[SALE ASN] Đã bỏ qua bước {SALE_ASN_STAGE_LABELS[step]} theo yêu cầu.",
                 )
+                _emit_stage_progress(
+                    progress,
+                    step,
+                    f"Đã bỏ qua {SALE_ASN_STAGE_LABELS[step]}",
+                    state="skipped",
+                )
                 continue
+            _emit_stage_progress(
+                progress,
+                step,
+                f"Đang điền {SALE_ASN_STAGE_LABELS[step]}",
+            )
             if step == "order_details":
-                main_frame = _ensure_order_grid_rows(context, main_frame, rows, log)
+                if add_po_selected:
+                    main_frame = _ensure_order_grid_rows(
+                        context,
+                        main_frame,
+                        rows,
+                        log,
+                    )
+                else:
+                    present = _wait_order_grid(
+                        main_frame,
+                        rows,
+                        timeout_s=3,
+                        allow_incomplete=True,
+                    )
+                    missing = _missing_order_rows(rows, present)
+                    if missing:
+                        missing_pos = [
+                            str(row.get("po_no") or "") for row in missing
+                        ]
+                        raise RuntimeError(
+                            "SALE_ASN_ORDER_ROWS_NOT_FOUND:"
+                            + ", ".join(missing_pos[:10])
+                        )
                 _fill_order_details(main_frame, rows, log)
             elif step == "style_details":
                 _fill_style_details(main_frame, rows, log)
@@ -1176,11 +1395,16 @@ def run_sale_asn_create(
                 f" Shipping Info đã bỏ qua {len(shipping_warnings)} trường: "
                 f"{' · '.join(shipping_warnings)}."
             )
+        action_summary = (
+            f"Đã thêm {len(rows)} PO và điền các bước đã chọn."
+            if add_po_selected
+            else "Đã điền các bước đã chọn trên Sale ASN đang mở."
+        )
         return _result(
             True,
             "SALE_ASN_FORM_COMPLETED",
             (
-                f"Đã thêm {len(rows)} PO và điền Sale ASN.{warning_message} "
+                f"{action_summary}{warning_message} "
                 "Hãy kiểm tra lại trên WFX rồi tự bấm Save."
             ),
             completed=len(rows),
@@ -1189,6 +1413,7 @@ def run_sale_asn_create(
             save_required=True,
             warnings=shipping_warnings,
             warning_count=len(shipping_warnings),
+            add_po_selected=add_po_selected,
         )
     except RuntimeError as error:
         code = str(error).split(":", 1)[0] or "SALE_ASN_CREATE_FAILED"

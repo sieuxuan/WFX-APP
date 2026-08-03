@@ -537,6 +537,10 @@ ERROR_CODE_INFO.update(
             "Không thể bỏ qua bước Sale ASN hiện tại",
             "Hoàn tất bước thêm PO hoặc thử lại bước hiện tại trên WFX.",
         ),
+        "SALE_ASN_CREATE_STEPS_REQUIRED": (
+            "Chưa chọn bước Sale ASN cần thực hiện",
+            "Tích ít nhất một bước: Thêm PO, Order Details, Style Details hoặc Shipping Info.",
+        ),
         "SALE_ASN_FIELD_NOT_EDITABLE": (
             "Một ô Sale ASN không thể chỉnh sửa",
             "Kiểm tra quyền sửa chứng từ và trạng thái form Sale ASN trên WFX.",
@@ -596,6 +600,42 @@ ERROR_CODE_INFO.update(
         "SALE_ASN_ORDER_GRID_NOT_READY": (
             "Bảng Order Details chưa nhận đủ PO",
             "Chờ WFX tải đủ các dòng PO rồi chạy lại.",
+        ),
+        "SALE_ASN_ORDER_GRID_EMPTY": (
+            "Order Details đang mở chưa có PO",
+            "Mở đúng Sale ASN đã thêm PO, vào Order Details rồi xuất form lại.",
+        ),
+        "SALE_ASN_ORDER_SCAN_FAILED": (
+            "Không đọc được Order Details đang mở",
+            "Mở đúng tab Order Details của Sale ASN cần xử lý rồi thử xuất lại.",
+        ),
+        "SALE_ASN_ORDER_FILE_HEADERS_INVALID": (
+            "Header form Order Details không đúng",
+            "Xuất form mới từ WFX và giữ nguyên đủ tám tên cột.",
+        ),
+        "SALE_ASN_ORDER_FILE_EMPTY": (
+            "Form Order Details chưa có dữ liệu",
+            "Giữ PO No. và điền ít nhất một ô cần cập nhật rồi chọn lại file.",
+        ),
+        "SALE_ASN_ORDER_FILE_VALIDATION_FAILED": (
+            "Dữ liệu Order Details chưa hợp lệ",
+            "Sửa các dòng được ứng dụng báo rồi chọn lại file.",
+        ),
+        "SALE_ASN_ORDER_ROWS_NOT_FOUND": (
+            "PO trong file không có trên Sale ASN đang mở",
+            "Mở đúng chứng từ có đủ PO trong file rồi bấm Thử lại Order Details.",
+        ),
+        "SALE_ASN_ORDER_REVIEW_EXPIRED": (
+            "Phiên kiểm tra Order Details đã hết hiệu lực",
+            "Chọn lại file Order Details để tạo một phiên kiểm tra mới.",
+        ),
+        "SALE_ASN_ORDER_FILL_FAILED": (
+            "Không điền xong Order Details",
+            "Giữ đúng Sale ASN đang mở, kiểm tra tab Order Details rồi thử lại.",
+        ),
+        "SALE_ASN_ORDER_TEMPLATE_EXPORT_FAILED": (
+            "Không tạo được form Order Details",
+            "Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại.",
         ),
         "SALE_ASN_FIELD_VALUE_NOT_CONFIRMED": (
             "WFX chưa giữ giá trị vừa nhập",

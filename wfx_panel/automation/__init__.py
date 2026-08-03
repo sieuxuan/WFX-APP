@@ -149,7 +149,9 @@ from wfx_panel.automation.oc import (  # noqa: F401
 )
 from wfx_panel.automation.sale_asn_create import (  # noqa: F401
     run_sale_asn_create,
+    run_sale_asn_order_details,
     scan_sale_asn_buyers,
+    scan_sale_asn_order_details,
 )
 from wfx_panel.automation.sale_asn_documents import (  # noqa: F401
     prepare_sale_asn_documents,
@@ -279,7 +281,9 @@ __all__ = [
     'scan_catalog_style_options',
     'prepare_sale_asn_documents',
     'run_sale_asn_create',
+    'run_sale_asn_order_details',
     'scan_sale_asn_buyers',
+    'scan_sale_asn_order_details',
     'prepare_supplier_invoice_cancel',
     'quick_find_catalog',
     'run',

@@ -32,6 +32,7 @@ from wfx_panel.catalog_controller import CatalogController
 from wfx_panel.oc_workbook import OCWorkbookError, prepare_oc_workbook
 from wfx_panel.sale_asn_workbook import (
     SaleASNWorkbookError,
+    read_sale_asn_order_details_workbook,
     read_sale_asn_workbook,
 )
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
@@ -77,6 +78,9 @@ SESSION_OK = frozenset(
         "SALE_ASN_CREATE_REVIEW_READY",
         "SALE_ASN_PO_SELECTION_REQUIRED",
         "SALE_ASN_FORM_COMPLETED",
+        "SALE_ASN_ORDER_DETAILS_SCANNED",
+        "SALE_ASN_ORDER_DETAILS_REVIEW_READY",
+        "SALE_ASN_ORDER_DETAILS_COMPLETED",
         "STYLE_COPY_MULTIPLE_RESULTS",
         "STYLE_FORM_READY",
         "COMPANY_FOC_CHANGED",
@@ -251,7 +255,13 @@ NON_REPORTABLE_FAILURES = frozenset(
         "SALE_ASN_BUYER_REQUIRED",
         "SALE_ASN_BUYER_NOT_FOUND",
         "SALE_ASN_CREATE_REVIEW_EXPIRED",
+        "SALE_ASN_CREATE_STEPS_REQUIRED",
         "SALE_ASN_PO_SELECTION_REQUIRED",
+        "SALE_ASN_ORDER_FILE_HEADERS_INVALID",
+        "SALE_ASN_ORDER_FILE_EMPTY",
+        "SALE_ASN_ORDER_FILE_VALIDATION_FAILED",
+        "SALE_ASN_ORDER_ROWS_NOT_FOUND",
+        "SALE_ASN_ORDER_REVIEW_EXPIRED",
         "STYLE_FILE_TYPE_UNSUPPORTED",
         "STYLE_FILE_NOT_FOUND",
         "STYLE_FILE_TOO_LARGE",
@@ -294,9 +304,11 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "open_module",
         "open_sale_asn_new",
         "scan_sale_asn_buyers",
+        "scan_sale_asn_order_details",
         "start_sale_asn_create",
         "continue_sale_asn_create",
         "skip_sale_asn_create_step",
+        "start_sale_asn_order_details",
         "search_oc",
         "search_sample",
         "open_sample_new",
@@ -374,6 +386,7 @@ class PanelAPI:
         # WFX trả nhiều dòng, user có thể chọn thủ công rồi tiếp tục đúng dòng
         # kế mà không đọc lại file hoặc đảo thứ tự.
         self._sale_asn_create_reviews: dict[str, dict] = {}
+        self._sale_asn_order_reviews: dict[str, dict] = {}
         self._sale_asn_buyers: list[dict[str, str]] = self._load_sale_asn_buyers()
         # Token hóa dòng Supplier Invoice khi Invoice No. có nhiều kết quả;
         # WebView chỉ nhận token, không nhận row key nội bộ của WFX.
@@ -393,6 +406,7 @@ class PanelAPI:
 
     def _progress(
         self,
+        method: str,
         stage: str,
         message: str,
         step: int,
@@ -405,7 +419,7 @@ class PanelAPI:
         try:
             self._progress_sink(
                 {
-                    "method": "run_gdn_dispatch",
+                    "method": str(method),
                     "stage": str(stage),
                     "message": str(message),
                     "step": max(1, int(step)),
@@ -416,6 +430,21 @@ class PanelAPI:
             )
         except Exception:
             pass
+
+    def _progress_for(self, method: str) -> Callable[..., None]:
+        """Callback progress đã gắn sẵn method của flow đang chạy."""
+
+        def emit(
+            stage: str,
+            message: str,
+            step: int,
+            total: int,
+            *,
+            state: str = "active",
+        ) -> None:
+            self._progress(method, stage, message, step, total, state=state)
+
+        return emit
 
     def set_hotkey_applier(
         self, applier: Callable[[str], str | None]
@@ -757,9 +786,11 @@ class PanelAPI:
                 "find_buyer_reference",
                 "open_sale_asn_new",
                 "scan_sale_asn_buyers",
+                "scan_sale_asn_order_details",
                 "start_sale_asn_create",
                 "continue_sale_asn_create",
                 "skip_sale_asn_create_step",
+                "start_sale_asn_order_details",
                 "open_sample_new",
                 "search_oc",
                 "open_oc_revision_report",
@@ -1183,6 +1214,121 @@ class PanelAPI:
             result["buyers"] = list(self._sale_asn_buyers)
         return result
 
+    def scan_sale_asn_order_details(self) -> dict:
+        scanner = getattr(self._login, "scan_sale_asn_order_details", None)
+        if not callable(scanner):
+            return {
+                "ok": False,
+                "code": "SALE_ASN_ORDER_SCAN_FAILED",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ xuất Order Details.",
+            }
+        return self._run(
+            "scan_sale_asn_order_details",
+            lambda: scanner(self._log),
+        )
+
+    def _discard_sale_asn_order_review(self, review_token: str) -> bool:
+        review = self._sale_asn_order_reviews.pop(review_token, None)
+        if review is None:
+            return False
+        temporary = review.get("temporary")
+        if temporary is not None:
+            try:
+                temporary.cleanup()
+            except OSError as error:
+                self._log(
+                    "[SALE ASN] Không dọn được review Order Details tạm: "
+                    f"{type(error).__name__}."
+                )
+        return True
+
+    def prepare_sale_asn_order_details(self, file_path: str) -> dict:
+        source = Path(str(file_path or "")).expanduser()
+        cache_root = self._base_dir / "sale-asn-order-cache"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(
+            prefix="review-",
+            dir=str(cache_root),
+        )
+        snapshot = Path(temporary.name) / "Sale-ASN-Order-Details.xlsx"
+        try:
+            shutil.copy2(source, snapshot)
+            document = read_sale_asn_order_details_workbook(snapshot)
+        except SaleASNWorkbookError as error:
+            temporary.cleanup()
+            return {
+                "ok": False,
+                "code": error.code,
+                "message": error.message,
+                "errors": list(error.errors),
+            }
+        except OSError as error:
+            temporary.cleanup()
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_NOT_FOUND",
+                "message": f"Không đọc được file Order Details: {error}",
+            }
+
+        for old_token in tuple(self._sale_asn_order_reviews):
+            self._discard_sale_asn_order_review(old_token)
+        review_token = secrets.token_urlsafe(24)
+        self._sale_asn_order_reviews[review_token] = {
+            "temporary": temporary,
+            "document": document,
+        }
+        return {
+            "ok": True,
+            "code": "SALE_ASN_ORDER_DETAILS_REVIEW_READY",
+            "message": (
+                f"File hợp lệ: {document['po_count']} PO, "
+                f"{document['filled_count']} ô sẽ được điền."
+            ),
+            "review_token": review_token,
+            "file_name": document["file_name"],
+            "po_count": document["po_count"],
+            "filled_count": document["filled_count"],
+        }
+
+    def start_sale_asn_order_details(self, review_token: str) -> dict:
+        token = str(review_token or "").strip()
+        review = self._sale_asn_order_reviews.get(token)
+        if review is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_ORDER_REVIEW_EXPIRED",
+                "message": "Phiên kiểm tra Order Details đã hết hiệu lực; hãy chọn file lại.",
+            }
+        runner = getattr(self._login, "run_sale_asn_order_details", None)
+        if not callable(runner):
+            return {
+                "ok": False,
+                "code": "SALE_ASN_ORDER_FILL_FAILED",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ điền Order Details.",
+            }
+        document = review["document"]
+        result = self._run(
+            "start_sale_asn_order_details",
+            lambda: runner(list(document["rows"]), self._log),
+            {
+                "po_count": document["po_count"],
+                "filled_count": document["filled_count"],
+            },
+        )
+        if result.get("code") == "SALE_ASN_ORDER_DETAILS_COMPLETED":
+            self._discard_sale_asn_order_review(token)
+        elif result.get("resumable"):
+            result["review_token"] = token
+        return result
+
+    def cancel_sale_asn_order_details(self, review_token: str) -> dict:
+        self._discard_sale_asn_order_review(str(review_token or "").strip())
+        return {
+            "ok": True,
+            "code": "SALE_ASN_ORDER_DETAILS_CANCELLED",
+            "message": "Đã hủy file Order Details đang chuẩn bị.",
+        }
+
     def _discard_sale_asn_create_review(self, review_token: str) -> bool:
         review = self._sale_asn_create_reviews.pop(review_token, None)
         if review is None:
@@ -1198,9 +1344,28 @@ class PanelAPI:
                 )
         return True
 
-    def prepare_sale_asn_create(self, file_path: str, buyer: str) -> dict:
+    def prepare_sale_asn_create(
+        self,
+        file_path: str,
+        buyer: str,
+        selected_stages: list[str] | tuple[str, ...] | None = None,
+    ) -> dict:
+        stage_order = (
+            "po",
+            "order_details",
+            "style_details",
+            "shipping_info",
+        )
+        requested = set(selected_stages or stage_order)
+        stages = tuple(stage for stage in stage_order if stage in requested)
+        if not stages:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_CREATE_STEPS_REQUIRED",
+                "message": "Hãy chọn ít nhất một bước Sale ASN cần thực hiện.",
+            }
         selected_buyer = str(buyer or "").strip()
-        if not selected_buyer:
+        if "po" in stages and not selected_buyer:
             return {
                 "ok": False,
                 "code": "SALE_ASN_BUYER_REQUIRED",
@@ -1215,7 +1380,10 @@ class PanelAPI:
         snapshot = Path(temporary.name) / "Sale-ASN-Input.xlsx"
         try:
             shutil.copy2(source, snapshot)
-            document = read_sale_asn_workbook(snapshot)
+            document = read_sale_asn_workbook(
+                snapshot,
+                required_stages=list(stages),
+            )
         except SaleASNWorkbookError as error:
             temporary.cleanup()
             return {
@@ -1240,18 +1408,29 @@ class PanelAPI:
             "document": document,
             "buyer": selected_buyer,
             "next_index": 0,
-            "next_stage": "po",
-            "skipped_stages": [],
+            "next_stage": stages[0],
+            "selected_stages": list(stages),
+            "skipped_stages": [
+                stage for stage in stage_order if stage not in stages
+            ],
+        }
+        stage_labels = {
+            "po": "Thêm PO",
+            "order_details": "Order Details",
+            "style_details": "Style Details",
+            "shipping_info": "Shipping Info",
         }
         return {
             "ok": True,
             "code": "SALE_ASN_CREATE_REVIEW_READY",
             "message": (
                 f"File hợp lệ: {document['po_count']} PO, "
-                f"{document['style_count']} Style. Hãy kiểm tra trước khi chạy."
+                f"{document['style_count']} Style. Sẽ làm: "
+                f"{', '.join(stage_labels[stage] for stage in stages)}."
             ),
             "review_token": review_token,
             "buyer": selected_buyer,
+            "selected_stages": list(stages),
             **{
                 key: document[key]
                 for key in (
@@ -1288,10 +1467,13 @@ class PanelAPI:
             }
         document = review["document"]
         start_index = int(review.get("next_index") or 0) if continue_existing else 0
-        stage = str(review.get("next_stage") or "po") if continue_existing else "po"
+        stage = str(review.get("next_stage") or "po")
         skipped_stages = tuple(review.get("skipped_stages") or ())
+        method = (
+            "continue_sale_asn_create" if continue_existing else "start_sale_asn_create"
+        )
         result = self._run(
-            "continue_sale_asn_create" if continue_existing else "start_sale_asn_create",
+            method,
             lambda: runner(
                 constants.SALE_ASN_NEW_XPATH,
                 str(review["buyer"]),
@@ -1300,6 +1482,7 @@ class PanelAPI:
                 self._log,
                 stage=stage,
                 skip_stages=skipped_stages,
+                progress=self._progress_for(method),
             ),
             {
                 "invoice_no": document["invoice_no"],
@@ -2137,7 +2320,11 @@ class PanelAPI:
                     "code": "GDN_DISPATCH_UNSUPPORTED",
                     "message": "Phiên bản tự động hóa chưa hỗ trợ (GDN) Dispatch.",
                 }
-            return runner(invoice_value, self._log, self._progress)
+            return runner(
+                invoice_value,
+                self._log,
+                self._progress_for("run_gdn_dispatch"),
+            )
 
         # Không lưu Invoice vào request/job history/telemetry.
         return self._run(

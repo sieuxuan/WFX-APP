@@ -4,8 +4,18 @@
     "date": "2026-08-03",
     "highlights": [
       {
-        "title": "Tạo Sale ASN nhiều PO từ Excel",
-        "body": "Chọn Buyer, kiểm tra form 19 cột và để ứng dụng thêm PO theo đúng thứ tự, điền Order Details, Style Details và Shipping Info trước khi bạn kiểm tra và Save.",
+        "title": "Sale ASN gọn lại còn một luồng",
+        "body": "Màn Sale ASN mặc định mở thẳng Tạo mới với ba việc: chọn Buyer, chọn file, bấm chạy. Ô Buyer có gợi ý và dấu ✓ khi khớp đúng; chọn bước, form 8 cột và mở New trống chuyển vào Tùy chọn nâng cao; nút mở List luôn ở thanh trên.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Tiến độ bốn bước cho Sale ASN",
+        "body": "Trong lúc chạy, thẻ tiến độ hiện Thêm PO, Order Details, Style Details và Shipping Info sáng dần theo đúng bước; khi cần bạn chọn PO hoặc một bước bị lỗi, thông báo và nút xử lý nằm ngay trong dòng bước đó. Xong thì có nút sang thẳng Xuất Invoice + PKL.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Tạo Sale ASN và điền riêng Order Details",
+        "body": "Có thể mở New trống, xuất PO hiện tại ra form 19 cột rồi chọn chính xác bước cần chạy; bỏ Thêm PO để tiếp tục Order, Style hoặc Shipping trên Sale ASN đã tạo thủ công.",
         "entry": "don-hang-sale-asn"
       },
       {

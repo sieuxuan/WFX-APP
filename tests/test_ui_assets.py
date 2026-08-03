@@ -108,6 +108,16 @@ def test_index_html_has_contract_hooks():
         'data-module-action="sale-asn-start"',
         'data-module-action="sale-asn-continue"',
         'data-module-action="sale-asn-skip-step"',
+        'data-module-action="sale-asn-continue-export"',
+        'data-module-action="sale-asn-order-export"',
+        'data-module-action="sale-asn-order-import"',
+        'data-module-action="sale-asn-order-cancel"',
+        'data-module-action="sale-asn-order-start"',
+        'data-module-action="sale-asn-handoff-documents"',
+        'data-sale-asn-stage="po"',
+        'data-sale-asn-stage="order_details"',
+        'data-sale-asn-stage="style_details"',
+        'data-sale-asn-stage="shipping_info"',
         'class="sale-asn-buyer"',
         'data-sale-asn-view="create"',
         'data-sale-asn-view="lookup"',
@@ -117,7 +127,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260803-4"',
+        'src="panel.js?v=20260803-7"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -140,9 +150,49 @@ def test_sale_asn_workspace_uses_one_flat_guided_flow():
             'data-module-view="rmpo"'
         )
     ]
+    workspace = html[
+        html.index('data-module-view="sale_asn"') : html.index(
+            'data-module-view="rmpo"'
+        )
+    ]
     assert ".sale-asn-toolbar" in css
-    assert ".sale-asn-step-heading" in css
     assert ".sale-asn-review" in css
+    assert ".sale-asn-progress-card" in css
+    assert ".sale-asn-advanced" in css
+
+    # Một tầng tab duy nhất; không còn tab chế độ tạo bên trong.
+    assert workspace.count("data-sale-asn-view=") == 2
+    assert "data-sale-asn-create-mode" not in workspace
+    assert ".sale-asn-create-modes" not in css
+
+    # Nút mở List luôn nằm trên thanh trên, dùng được ở cả hai tab.
+    toolbar = workspace[
+        workspace.index('class="sale-asn-toolbar"') : workspace.index(
+            'class="sale-asn-create"'
+        )
+    ]
+    assert 'data-module-action="sale-asn-list"' in toolbar
+
+    # Tab Tạo mới là mặc định.
+    assert 'data-sale-asn-view="create" role="tab" aria-selected="true"' in workspace
+    assert 'data-sale-asn-pane="lookup" hidden' in workspace
+
+    # Trạng thái chờ/lỗi nằm trong thẻ tiến độ, không còn thẻ pending rời.
+    for stage in ("po", "order_details", "style_details", "shipping_info"):
+        assert f'data-sale-asn-progress-stage="{stage}"' in workspace
+    assert 'class="sale-asn-pending"' not in workspace
+    assert 'class="sale-asn-stage-action"' in workspace
+
+    # Chọn bước và form 8 cột nằm sau khối gấp.
+    advanced = workspace[workspace.index('class="sale-asn-advanced"'):]
+    for stage in ("po", "order_details", "style_details", "shipping_info"):
+        assert f'data-sale-asn-stage="{stage}"' in advanced
+    assert 'data-module-action="sale-asn-order-export"' in advanced
+    assert 'data-module-action="sale-asn-new"' in advanced
+
+    # Buyer dùng listbox gợi ý thay cho datalist.
+    assert "<datalist" not in workspace
+    assert 'class="sale-asn-buyer-suggestions"' in workspace
 
 
 def test_oc_workspace_uses_readable_balanced_layout():

@@ -128,7 +128,7 @@ def test_gdn_dispatch_requires_grn_confirmation_and_calls_one_flow():
     assert 'runSelectedModuleAction("run_gdn_dispatch", invoice, confirmed)' in JS
     assert "syncGdnDispatchAction" in JS
     assert 'method === "run_gdn_dispatch"' in JS
-    assert "window.wfxHandleBackendProgress = updateGdnProgress" in JS
+    assert "run_gdn_dispatch: updateGdnProgress" in JS
     assert '"gdn-status": () => runSelectedModuleAction("open_gdn_status")' in JS
     assert "checkpoint === \"inspect_edi\"" in JS
 
@@ -174,11 +174,63 @@ def test_sale_asn_create_flow_is_reviewed_and_resumable():
     assert "SALE_ASN_PO_SELECTION_REQUIRED" in JS
     assert "result.resumable" in JS
     assert "INTERACTIVE_RESULT_CODES.has(result.code) || result.resumable" in JS
-    assert 'continueButton.textContent = "Thử lại bước này"' in JS
+    assert '"Tiếp tục dòng kế" : "Thử lại bước này"' in JS
     assert "saleAsnExactBuyer" in JS
     assert "saleAsnReviewToken" in JS
     assert 'showSaleAsnView("lookup", { focus: false })' in JS
     assert 'showSaleAsnView("create"' in JS
+    # Mở module phải vào thẳng thẻ Tạo mới, không rơi về Tra cứu như bản cũ.
+    opened = JS[JS.index('module.kind === "sale_asn"') :][:500]
+    assert 'showSaleAsnView("create", { focus: false })' in opened
+    assert "showSaleAsnView(\"lookup\"" not in opened
+    assert "openSaleAsnAdvanced()" in opened
+
+
+def test_sale_asn_progress_card_streams_four_stages():
+    # Tiến độ dùng chung sink backend nhưng phải rẽ theo method, không đè GDN.
+    assert "start_sale_asn_create: updateSaleAsnProgress" in JS
+    assert "continue_sale_asn_create: updateSaleAsnProgress" in JS
+    assert "skip_sale_asn_create_step: updateSaleAsnProgress" in JS
+    assert (
+        'const SALE_ASN_STAGES = ["po", "order_details", "style_details", '
+        '"shipping_info"]' in JS
+    )
+    assert "function updateSaleAsnProgress(progress)" in JS
+    assert "function setSaleAsnStageState(stage, state, detail" in JS
+    # Trạng thái chờ/lỗi nằm trong đúng dòng bước, không còn thẻ pending rời.
+    assert "function showSaleAsnStageAction(stage" in JS
+    assert "row.appendChild(action)" in JS
+    assert "sale-asn-pending" not in JS
+
+
+def test_sale_asn_hands_off_to_invoice_and_packing_list():
+    assert '"sale-asn-handoff-documents": handoffSaleAsnDocuments' in JS
+    assert 'setModuleFilterKind("sale_asn", "invoice_no")' in JS
+    assert "query.value = saleAsnDoneInvoice" in JS
+
+
+def test_sale_asn_order_details_flow_is_isolated_from_full_creation():
+    for method in (
+        "scan_sale_asn_order_details",
+        "save_sale_asn_order_details_template",
+        "prepare_sale_asn_order_details",
+        "start_sale_asn_order_details",
+        "cancel_sale_asn_order_details",
+    ):
+        assert f'"{method}"' in JS
+    # Không còn tab chế độ; luồng 8 cột nằm trong khối Tùy chọn nâng cao.
+    assert "showSaleAsnCreateMode" not in JS
+    assert 'openSaleAsnAdvanced({ scrollTo: ".sale-asn-order-status" })' in JS
+    assert "saleAsnOrderReviewToken" in JS
+    assert 'result.code === "SALE_ASN_ORDER_DETAILS_COMPLETED"' in JS
+
+
+def test_sale_asn_existing_po_flow_passes_only_selected_stages():
+    assert "selectedSaleAsnStages()" in JS
+    assert 'stages.includes("po")' in JS
+    assert '"save_sale_asn_continue_template"' in JS
+    assert '"prepare_sale_asn_create"' in JS
+    assert "selected.file_path,\n      buyer,\n      stages," in JS
 
 
 def test_return_to_list_is_opt_in_and_current_module_is_preserved():
