@@ -70,18 +70,6 @@ SHIPPING_FIELDS = (
     ("#ddlNotify1", "__FIRST", "first"),
 )
 
-_REUSABLE_NEW_FORM_JS = r"""() => {
-    const value = selector => String(document.querySelector(selector)?.value || '');
-    const buyer = document.querySelector('#Cell_Buyer select, #ddlBuyer');
-    return {
-        reusable: value('#ddlASNType') === '1'
-            && value('#ddlASNAgainst') === 'BuyerOrderDispatch'
-            && Boolean(buyer)
-            && !String(buyer.value || '').trim(),
-        buyer: String(buyer?.value || ''),
-    };
-}"""
-
 _PO_RESULTS_JS = r"""root => {
     const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
     const fold = value => clean(value).toLocaleLowerCase('en');
@@ -400,18 +388,55 @@ def _open_new_form(page: Page, xpath: str, log: Callable[[str], None]) -> Frame:
     return frame
 
 
-def _reuse_scanned_new_form(page: Page, log: Callable[[str], None]) -> Frame | None:
-    """Tái sử dụng form New trống mà lượt scan Buyer vừa để lại."""
+def _refresh_existing_new_form(page: Page, log: Callable[[str], None]) -> Frame | None:
+    """Reload form Sale ASN New đang mở để bỏ Buyer/datasource cũ."""
 
     try:
-        _page, frame = _frame_with_selector(page.context, "#Cell_Buyer", timeout_s=1)
-        state = frame.evaluate(_REUSABLE_NEW_FORM_JS)
+        existing_page, frame = _frame_with_selector(
+            page.context,
+            "#Cell_Buyer",
+            timeout_s=1,
+        )
     except (PlaywrightError, PlaywrightTimeoutError):
         return None
-    if not state.get("reusable"):
+    if "wfxsalesasn" not in frame.url.casefold():
         return None
-    _write_log(log, "[SALE ASN] Dùng lại form New đã mở khi quét Buyer.")
-    return frame
+    try:
+        frame.goto(
+            frame.url,
+            wait_until="domcontentloaded",
+            timeout=15_000,
+        )
+        _ensure_select_value(
+            existing_page,
+            "#ddlASNType",
+            "1",
+            "ASN Type",
+            log,
+        )
+        _ensure_select_value(
+            existing_page,
+            "#ddlASNAgainst",
+            "BuyerOrderDispatch",
+            "ASN Against",
+            log,
+        )
+        _page, refreshed = _frame_with_selector(
+            page.context,
+            "#Cell_Buyer",
+            timeout_s=15,
+        )
+    except (PlaywrightError, PlaywrightTimeoutError):
+        _write_log(
+            log,
+            "[SALE ASN] Không refresh được form New đang mở; sẽ mở lại từ menu.",
+        )
+        return None
+    _write_log(
+        log,
+        "[SALE ASN] Đã refresh form New đang mở trước khi chọn Buyer.",
+    )
+    return refreshed
 
 
 def _buyer_cell(frame: Frame) -> Any:
@@ -510,7 +535,7 @@ def scan_sale_asn_buyers(
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
-        frame = _reuse_scanned_new_form(page, log)
+        frame = _refresh_existing_new_form(page, log)
         if frame is None:
             frame = _open_new_form(page, xpath, log)
         _write_log(log, "[SALE ASN] Đang chờ WFX bind danh sách Buyer...")
@@ -645,7 +670,6 @@ def _auto_add_po(
             raise RuntimeError(
                 f"SALE_ASN_PO_SELECTION_NOT_CONFIRMED:{clicked.get('reason')}"
             )
-        _wait(frame, 250)
         if final:
             _write_log(
                 log,
@@ -654,6 +678,10 @@ def _auto_add_po(
                     f"Add Order Details ({clicked.get('tag') or 'node'})."
                 ),
             )
+            # OK đóng popup/page đồng bộ ngay trong handler click. Không được
+            # wait trên frame này sau click vì target đã bị dispose hợp lệ.
+            return True, last, label
+        _wait(frame, 250)
         return True, last, label
     reason = "not_found" if not last else "ambiguous"
     return False, last, reason
@@ -983,7 +1011,7 @@ def run_sale_asn_create(
         _browser, page = _active_wfx_page(playwright, log)
         context = page.context
         if start_index <= 0:
-            main_frame = _reuse_scanned_new_form(page, log)
+            main_frame = _refresh_existing_new_form(page, log)
             if main_frame is None:
                 main_frame = _open_new_form(page, xpath, log)
             _select_buyer(main_frame, buyer)

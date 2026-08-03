@@ -9,7 +9,7 @@ from wfx_panel.automation.sale_asn_create import (
     _auto_add_po,
     _buyer_options,
     _choose_po_candidate,
-    _reuse_scanned_new_form,
+    _refresh_existing_new_form,
     _style_similarity,
 )
 from wfx_panel.panel_api import PanelAPI
@@ -161,10 +161,14 @@ def test_buyer_scan_waits_for_lazy_bound_select_options(monkeypatch):
     assert cell.calls == 2
 
 
-def test_start_reuses_blank_new_form_left_by_buyer_scan(monkeypatch):
+def test_start_refreshes_existing_new_form_before_selecting_buyer(monkeypatch):
+    calls = []
+
     class FakeFrame:
-        def evaluate(self, _script):
-            return {"reusable": True, "buyer": ""}
+        url = "https://prosports.worldfashionexchange.com/WFXBase4.0/WFXSalesASN.aspx"
+
+        def goto(self, url, **kwargs):
+            calls.append(("goto", url, kwargs))
 
     frame = FakeFrame()
     page = type("FakePage", (), {"context": object()})()
@@ -174,9 +178,32 @@ def test_start_reuses_blank_new_form_left_by_buyer_scan(monkeypatch):
         "_frame_with_selector",
         lambda _context, _selector, timeout_s: (page, frame),
     )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_ensure_select_value",
+        lambda _page, selector, value, label, _log: calls.append(
+            ("select", selector, value, label)
+        ),
+    )
 
-    assert _reuse_scanned_new_form(page, logs.append) is frame
-    assert logs == ["[SALE ASN] Dùng lại form New đã mở khi quét Buyer."]
+    assert _refresh_existing_new_form(page, logs.append) is frame
+    assert calls == [
+        (
+            "goto",
+            frame.url,
+            {"wait_until": "domcontentloaded", "timeout": 15_000},
+        ),
+        ("select", "#ddlASNType", "1", "ASN Type"),
+        (
+            "select",
+            "#ddlASNAgainst",
+            "BuyerOrderDispatch",
+            "ASN Against",
+        ),
+    ]
+    assert logs == [
+        "[SALE ASN] Đã refresh form New đang mở trước khi chọn Buyer."
+    ]
 
 
 @pytest.mark.parametrize(
@@ -229,7 +256,12 @@ def test_auto_add_po_selects_checkbox_by_exact_identity(
         "_search_po",
         lambda *_args, **_kwargs: [candidate],
     )
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    waits = []
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_wait",
+        lambda *_args: waits.append(_args),
+    )
 
     added, _candidates, _reason = _auto_add_po(
         FakeFrame(),
@@ -249,6 +281,7 @@ def test_auto_add_po_selects_checkbox_by_exact_identity(
         sale_asn_create.PO_RESULTS_TABLE_SELECTOR,
         expected_action_selector,
     ]
+    assert len(waits) == (0 if final else 1)
 
 
 def test_sale_asn_po_results_use_exact_wfx_table():
