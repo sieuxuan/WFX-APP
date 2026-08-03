@@ -127,7 +127,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260803-7"',
+        'src="panel.js?v=20260803-8"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html

@@ -22,7 +22,8 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 8. Bấm `Bắt đầu tạo Sale ASN`.
 9. Theo dõi thẻ `Tiến độ Sale ASN`: bốn bước `Thêm PO`, `Order Details`,
    `Style Details` và `Shipping Info` sáng dần theo đúng bước ứng dụng đang làm.
-   Riêng bước `Thêm PO` hiện thêm số dòng đang xử lý.
+   Ba bước đầu hiện thêm số dòng đang xử lý, ví dụ `Order Details 5/12`, nên bạn
+   biết ứng dụng đang chạy tới đâu chứ không phải đứng im.
 10. Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm
     `Save`.
 11. Sau khi đã Save, bấm `Xuất Invoice + PKL` trong thẻ kết quả để sang thẳng thẻ
@@ -76,9 +77,11 @@ trên chứng từ đang mở, app dừng đúng bước Order Details để b�
 ASN rồi thử tiếp.
 
 > [!meo]
-> Nếu còn bước nào đang bỏ tích, lần sau mở module ứng dụng tự bung
-> `Tùy chọn nâng cao` để bạn không bị bất ngờ vì app chạy thiếu bước. Trong thẻ
-> tiến độ, bước không chạy hiện dạng gạch ngang.
+> Ứng dụng nhớ các bước bạn đã tích, kể cả sau khi đóng và mở lại app. Nếu còn
+> bước nào đang bỏ tích, lần sau mở module ứng dụng tự bung `Tùy chọn nâng cao`
+> để bạn không bị bất ngờ vì app chạy thiếu bước. Trong thẻ tiến độ, bước không
+> chạy hiện dạng gạch ngang. Bỏ tích cả bốn bước là không hợp lệ; ứng dụng sẽ
+> đưa về đủ bốn bước.
 
 ### Chỉ điền Order Details cho Sale ASN đã tạo thủ công
 
@@ -144,7 +147,7 @@ liệu.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Không có Buyer để chọn | Mở đúng phiên WFX rồi bấm `↻` để quét lại. |
+| Không có Buyer để chọn | Nút `↻` sẽ nhấp nháy màu vàng khi kho Buyer còn rỗng. Mở đúng phiên WFX rồi bấm `↻`. Ứng dụng không tự quét vì thao tác này mở hẳn form Sale ASN New trên Chrome. |
 | Ô Buyer viền vàng, không có dấu ✓ | Tên đang gõ chưa khớp Buyer nào. Gõ lại và chọn đúng dòng trong danh sách gợi ý. |
 | File có lỗi | Đọc vị trí ô hoặc dòng trong thông báo, sửa file rồi chọn lại. |
 | Có nhiều dòng PO giống nhau | Chọn đúng Style hoặc Qty trên WFX, bấm `Add & Continue`, rồi tiếp tục trong ứng dụng. |

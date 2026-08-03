@@ -417,7 +417,17 @@ Các workflow riêng hiện có:
   Trong lúc chạy, panel hiện thẻ tiến độ bốn bước theo `SALE_ASN_STAGE_ORDER`;
   `run_sale_asn_create` bắn progress qua callback tùy chọn `progress` và
   `PanelAPI._progress` phải mang `method` của flow đang chạy để
-  `wfxHandleBackendProgress` rẽ đúng thẻ, không đè thẻ GDN. Progress chỉ để hiển
+  `wfxHandleBackendProgress` rẽ đúng thẻ, không đè thẻ GDN. Mọi bước chạy theo
+  vòng lặp từng dòng (`po`, `order_details`, `style_details`) phải kết thúc
+  message bằng `n/m`; UI đọc đúng hậu tố đó để hiện bộ đếm, nên không được đổi
+  định dạng này khi thêm bước mới.
+  Lựa chọn bước được nhớ qua `prefs.sale_asn_stages`; `_clean_sale_asn_stages`
+  luôn trả về đủ bốn bước khi danh sách rỗng hoặc hỏng, vì lưu trạng thái rỗng
+  sẽ khiến user mở app ra mà không chạy được gì. Hộp thoại chọn file nhớ thư mục
+  gần nhất qua `prefs.sale_asn_import_dir`.
+  Tuyệt đối KHÔNG tự chạy `scan_sale_asn_buyers` khi user mở module: hàm này mở
+  hoặc refresh hẳn form Sale ASN New trên Chrome, tức kéo user khỏi tab đang làm.
+  Khi kho Buyer còn rỗng, chỉ được làm nút quét nổi bật để user tự bấm. Progress chỉ để hiển
   thị: giá trị trả về của flow vẫn là nguồn sự thật và ghi đè trạng thái dòng
   bước. Trạng thái chờ chọn PO và lỗi từng bước phải hiện trong đúng dòng bước
   của thẻ tiến độ, không dùng thẻ pending rời. Khi flow trả

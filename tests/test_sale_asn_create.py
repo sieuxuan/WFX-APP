@@ -720,7 +720,7 @@ def test_sale_asn_can_skip_add_po_and_start_from_existing_order_grid(monkeypatch
     monkeypatch.setattr(
         sale_asn_create,
         "_fill_order_details",
-        lambda frame, selected_rows, _log: calls.append(
+        lambda frame, selected_rows, _log, _progress=None: calls.append(
             ("fill-order", frame, list(selected_rows))
         ),
     )
@@ -1141,3 +1141,80 @@ def test_panel_api_streams_sale_asn_progress_with_its_own_method(tmp_path):
     assert payloads[0]["step"] == 2
     assert payloads[0]["total"] == 4
     assert payloads[0]["state"] == "active"
+
+
+def test_order_and_style_stages_report_row_counters(monkeypatch):
+    """Hai bước điền chạy vòng lặp từng dòng nên phải có bộ đếm như bước PO."""
+    seen = []
+
+    def sink(stage, message, step, total, *, state="active"):
+        seen.append((stage, message))
+
+    rows = [
+        {"po_no": "PO-1", "style_no": "S1", "hs_code": "6109", "carton": "2"},
+        {"po_no": "PO-2", "style_no": "S2", "hs_code": "6110", "carton": "3"},
+        {"po_no": "PO-3", "style_no": "S1", "hs_code": "6109", "carton": "4"},
+    ]
+
+    class FakeLocator:
+        first = property(lambda self: self)
+
+        def wait_for(self, **_kwargs):
+            return None
+
+        def click(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, _selector):
+            return FakeLocator()
+
+    monkeypatch.setattr(
+        sale_asn_create, "_set_order_grid_cell", lambda *a, **k: {"ok": True}
+    )
+    monkeypatch.setattr(
+        sale_asn_create, "_set_style_hts_cell", lambda *a, **k: {"ok": True}
+    )
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *a, **k: None)
+
+    frame = FakeFrame()
+    sale_asn_create._fill_order_details(frame, rows, lambda _m: None, sink)
+    sale_asn_create._fill_style_details(frame, rows, lambda _m: None, sink)
+
+    order = [message for stage, message in seen if stage == "order_details"]
+    style = [message for stage, message in seen if stage == "style_details"]
+    assert order == ["Order Details 1/3", "Order Details 2/3", "Order Details 3/3"]
+    # Style gom theo Style No. nên chỉ có 2 lượt cho 3 dòng.
+    assert style == ["Style Details 1/2", "Style Details 2/2"]
+
+
+def test_panel_api_remembers_selected_sale_asn_stages(tmp_path):
+    base = tmp_path / "data"
+    base.mkdir(parents=True, exist_ok=True)
+    api = PanelAPI(
+        login_module=_FakeSaleASNLogin(),
+        prefs_module=prefs,
+        base_dir=base,
+    )
+
+    assert api.get_initial_state()["sale_asn_stages"] == [
+        "po",
+        "order_details",
+        "style_details",
+        "shipping_info",
+    ]
+
+    saved = api.set_sale_asn_stages(["order_details", "shipping_info"])
+    assert saved["sale_asn_stages"] == ["order_details", "shipping_info"]
+    assert api.get_initial_state()["sale_asn_stages"] == [
+        "order_details",
+        "shipping_info",
+    ]
+
+    # Bỏ hết bước sẽ khiến user mở app ra mà không chạy được gì → quay về đủ bốn.
+    assert api.set_sale_asn_stages([])["sale_asn_stages"] == [
+        "po",
+        "order_details",
+        "style_details",
+        "shipping_info",
+    ]

@@ -1820,6 +1820,16 @@
     return $$('[data-sale-asn-stage]:checked').map((input) => input.dataset.saleAsnStage);
   }
 
+  function applySaleAsnStages(stages) {
+    // prefs không bao giờ trả về danh sách rỗng; nếu thiếu thì giữ mặc định đủ bước.
+    if (!Array.isArray(stages) || !stages.length) return;
+    $$('[data-sale-asn-stage]').forEach((input) => {
+      input.checked = stages.includes(input.dataset.saleAsnStage);
+    });
+    resetSaleAsnProgress();
+    syncSaleAsnCreate();
+  }
+
   function syncSaleAsnCreate() {
     const buyer = saleAsnExactBuyer();
     const stages = selectedSaleAsnStages();
@@ -1834,6 +1844,12 @@
     if (box) {
       const entered = String(buyerInput?.value || "").trim();
       box.dataset.match = buyer ? "exact" : (entered ? "none" : "");
+    }
+    // Quét Buyer mở hẳn form New trên Chrome nên không tự chạy; thay vào đó làm
+    // nút ↻ nổi bật khi kho Buyer còn rỗng.
+    const scanButton = $('[data-module-action="sale-asn-scan-buyers"]');
+    if (scanButton) {
+      scanButton.dataset.needsScan = String(needsBuyer && !saleAsnBuyers.length);
     }
     const status = $(".sale-asn-inline-status");
     if (!status || saleAsnReviewToken) return;
@@ -2104,10 +2120,9 @@
     if (state === "skipped") {
       setSaleAsnStageState(stage, "skipped", "đã bỏ qua");
     } else {
-      const detail = String(progress.message || "");
-      setSaleAsnStageState(stage, "active", detail.startsWith("Thêm PO ")
-        ? detail.slice("Thêm PO ".length)
-        : "");
+      // Backend kết thúc message bằng "n/m" khi bước đó chạy theo từng dòng.
+      const counter = /(\d+\/\d+)\s*$/.exec(String(progress.message || ""));
+      setSaleAsnStageState(stage, "active", counter ? counter[1] : "");
     }
     const count = $(".sale-asn-progress-count");
     if (count) {
@@ -3943,6 +3958,7 @@
         if (saleAsnReviewToken) cancelSaleAsnReview();
         resetSaleAsnProgress();
         syncSaleAsnCreate();
+        callQuiet("set_sale_asn_stages", selectedSaleAsnStages());
       }));
     $(".sale-asn-buyer")?.addEventListener("input", () => {
       if (saleAsnReviewToken) cancelSaleAsnReview();
@@ -4551,6 +4567,7 @@
     if (Array.isArray(state.manual_error_codes)) {
       manualErrorCodes = new Set(state.manual_error_codes);
     }
+    applySaleAsnStages(state.sale_asn_stages);
     renderSaleAsnBuyers(state.sale_asn_buyers);
     const hasManualNews = state.manual_has_news === true;
     const manualButton = $(".manual-button");
