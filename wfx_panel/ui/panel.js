@@ -1905,18 +1905,42 @@
     $(".sale-asn-manual-check").hidden = false;
     $(".sale-asn-skip-step").hidden = true;
     $(".sale-asn-stage-message").textContent = "";
+    renderSaleAsnCandidates([]);
     $(".sale-asn-progress-card")?.appendChild(action);
+  }
+
+  // Backend đã trả sẵn các dòng WFX tìm được. Hiện luôn tại chỗ để user biết
+  // phải chọn dòng nào trước khi chuyển sang cửa sổ Chrome.
+  function renderSaleAsnCandidates(candidates) {
+    const box = $(".sale-asn-candidates");
+    const list = $(".sale-asn-candidate-list");
+    if (!box || !list) return;
+    const items = Array.isArray(candidates) ? candidates.slice(0, 20) : [];
+    list.innerHTML = items
+      .map((item) => {
+        const cell = (value) => String(value ?? "").trim();
+        const po = escapeHtml(cell(item?.po_no) || "—");
+        const style = escapeHtml(cell(item?.style_no));
+        const qty = escapeHtml(cell(item?.dispatched_qty));
+        return `<li><b>${po}</b>`
+          + (style ? `<span>${style}</span>` : "")
+          + (qty ? `<em>${qty}</em>` : "")
+          + "</li>";
+      })
+      .join("");
+    box.hidden = !items.length;
   }
 
   // Thẻ hành động là duy nhất trong DOM và được chuyển vào đúng dòng bước đang
   // vướng, để trạng thái chờ/lỗi không rời khỏi ngữ cảnh bước.
-  function showSaleAsnStageAction(stage, { message, manual, canSkip, stageLabel }) {
+  function showSaleAsnStageAction(stage, { message, manual, canSkip, stageLabel, candidates = [] }) {
     const row = saleAsnStageRow(stage);
     const action = $(".sale-asn-stage-action");
     if (!row || !action) return;
     row.appendChild(action);
     action.hidden = false;
     $(".sale-asn-stage-message").textContent = message || "";
+    renderSaleAsnCandidates(candidates);
     const manualCheck = $(".sale-asn-manual-check");
     manualCheck.hidden = !manual;
     $(".sale-asn-manual-confirm").checked = false;
@@ -2139,9 +2163,27 @@
     }
   }
 
+  // Stop, ACTION_IN_PROGRESS, review hết hiệu lực hay watchdog đều dừng lượt
+  // chạy mà không có checkpoint để tiếp tục. Thẻ review là nơi duy nhất chứa
+  // nút Bắt đầu, nên phải trả nó lại; nếu không user kẹt với thẻ tiến độ trống.
+  function haltSaleAsnRun(result) {
+    hideSaleAsnStageAction();
+    SALE_ASN_STAGES.forEach((stage) => {
+      if (saleAsnStageRow(stage)?.dataset.state === "active") {
+        setSaleAsnStageState(stage, "warn", "đã dừng");
+      }
+    });
+    if (saleAsnReviewToken) $(".sale-asn-review").hidden = false;
+    $(".sale-asn-inline-status").textContent = result?.message
+      || "Tác vụ đã dừng. Bấm Bắt đầu để chạy lại, không cần chọn lại file.";
+  }
+
   function renderSaleAsnRunResult(result) {
-    if (!result) return;
     const stageOf = (value) => (SALE_ASN_STAGES.includes(value) ? value : "");
+    if (!result) {
+      haltSaleAsnRun(null);
+      return;
+    }
     if (result.code === "SALE_ASN_PO_SELECTION_REQUIRED") {
       saleAsnReviewToken = String(result.review_token || saleAsnReviewToken);
       showSaleAsnView("create", { focus: false });
@@ -2152,6 +2194,7 @@
         manual: true,
         canSkip: false,
         stageLabel: "Thêm PO",
+        candidates: result.candidates,
       });
       return;
     }
@@ -2184,7 +2227,9 @@
       if (count) count.textContent = `${SALE_ASN_STAGES.length}/${SALE_ASN_STAGES.length}`;
       $(".sale-asn-inline-status").textContent = result.message || "Đã điền xong Sale ASN.";
       renderSaleAsnDone(result);
+      return;
     }
+    haltSaleAsnRun(result);
   }
 
   function renderSaleAsnDone(result) {

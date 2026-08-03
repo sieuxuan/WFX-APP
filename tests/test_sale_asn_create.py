@@ -84,6 +84,7 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert sheet.freeze_panes == "A2"
     assert sheet.sheet_view.showGridLines is False
     assert sheet.tables["SaleASNInput"].ref == "A1:S21"
+    assert sheet.auto_filter.ref is None
     assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
     assert sheet["G1"].fill.fgColor.rgb == "00DBEAFE"
     assert sheet["B2"].number_format == "dd/mm/yyyy"
@@ -215,6 +216,7 @@ def test_order_details_template_round_trip_keeps_only_editable_schema(tmp_path):
     sheet = workbook["ORDER DETAILS"]
     assert tuple(cell.value for cell in sheet[1]) == SALE_ASN_ORDER_DETAILS_COLUMNS
     assert sheet.tables["SaleASNOrderDetailsInput"].ref == "A1:H21"
+    assert sheet.auto_filter.ref is None
     assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
     assert sheet["B1"].fill.fgColor.rgb == "00DBEAFE"
     assert sheet["B2"].number_format == "#,##0"
@@ -1218,3 +1220,196 @@ def test_panel_api_remembers_selected_sale_asn_stages(tmp_path):
         "style_details",
         "shipping_info",
     ]
+
+
+def test_number_out_of_decimal_range_is_a_file_error_not_an_automation_crash(
+    tmp_path,
+):
+    """Ô số quá lớn phải chặn ở bước kiểm tra file.
+
+    Nếu để lọt, ``_number_for_wfx`` gọi ``quantize()`` vượt precision của
+    Decimal context và ném ``InvalidOperation`` lúc đang điền lên WFX — lỗi
+    nhập liệu của user biến thành lỗi automation có gửi telemetry.
+    """
+    rows = _valid_rows()
+    rows[0]["Carton"] = "1E+50"
+    source = tmp_path / "input.xlsx"
+    _input_workbook(source, rows)
+
+    with pytest.raises(SaleASNWorkbookError) as error:
+        read_sale_asn_workbook(source)
+
+    assert error.value.code == "SALE_ASN_FILE_VALIDATION_FAILED"
+    assert any("quá lớn" in item for item in error.value.errors)
+
+
+def test_number_for_wfx_never_raises_on_out_of_range_input():
+    assert sale_asn_create._number_for_wfx("1E+50", integer=True) == "1E+50"
+    assert sale_asn_create._number_for_wfx("2", integer=True) == "2"
+    assert sale_asn_create._number_for_wfx("9.50") == "9.5"
+
+
+def test_skipped_stage_never_waits_for_its_own_tab(monkeypatch):
+    """Bỏ qua một bước không được bắt user chờ đúng tab đang hỏng.
+
+    Người dùng bấm Bỏ qua chính vì tab đó không dùng được; resolve frame trước
+    vòng lặp làm nút Bỏ qua vô dụng.
+    """
+    rows = [{"source_row": 2, "po_no": "PO-1", "invoice_no": "INV-1"}]
+    context = object()
+    page = type("FakePage", (), {"context": context})()
+
+    class FakePlaywright:
+        def stop(self):
+            return None
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (object(), page),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        lambda *_args, **_kwargs: pytest.fail(
+            "Không được resolve frame của bước đã bỏ qua"
+        ),
+    )
+
+    result = sale_asn_create.run_sale_asn_create(
+        "menu-xpath",
+        "",
+        rows,
+        start_index=len(rows),
+        stage="shipping_info",
+        skip_stages=("shipping_info",),
+        log=lambda _message: None,
+    )
+
+    assert result["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert result["warnings"] == []
+
+
+def test_recovering_missing_po_asks_the_user_instead_of_failing(monkeypatch):
+    """Popup đang mở chờ user chọn dòng thì không được trả lỗi kỹ thuật."""
+    rows = [
+        {"source_row": 2, "po_no": "PO-1", "style_no": "STYLE A"},
+        {"source_row": 3, "po_no": "PO-2", "style_no": "STYLE B"},
+    ]
+    context = object()
+    page = type("FakePage", (), {"context": context})()
+    candidates = [
+        {"po_no": "PO-2", "style_no": "STYLE B1", "dispatched_qty": "10"},
+        {"po_no": "PO-2", "style_no": "STYLE B2", "dispatched_qty": "20"},
+    ]
+
+    class FakePlaywright:
+        def stop(self):
+            return None
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (object(), page),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        lambda _context, _selector, timeout_s=15: (page, object()),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_wait_order_grid",
+        lambda _frame, _rows, timeout_s=10, **_kwargs: {
+            sale_asn_create._fold("PO-1")
+        },
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_auto_add_po",
+        lambda _frame, _row, _log, *, final: (False, candidates, "ambiguous"),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_order_details",
+        lambda *_args: pytest.fail("Chưa đủ PO thì không được điền"),
+    )
+
+    result = sale_asn_create.run_sale_asn_create(
+        "menu-xpath",
+        "BUYER A",
+        rows,
+        start_index=len(rows),
+        stage="po",
+        log=lambda _message: None,
+    )
+
+    assert result["code"] == "SALE_ASN_PO_SELECTION_REQUIRED"
+    assert result["po_no"] == "PO-2"
+    assert result["candidates"] == candidates
+    # Lượt Tiếp tục phải bỏ qua vòng thêm PO và để _ensure_order_grid_rows dò
+    # lại, nếu không các PO đã vào grid sẽ bị thêm trùng.
+    assert result["next_index"] == len(rows)
+
+
+def test_auto_add_po_stops_narrowing_once_wfx_returns_nothing(monkeypatch):
+    """Ba lượt thử là thu hẹp dần nên 0 kết quả ở lượt đầu là 0 ở mọi lượt."""
+    searches = []
+
+    def fake_search(_frame, _row, *, destination, style):
+        searches.append((destination, style))
+        return []
+
+    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
+
+    added, candidates, reason = _auto_add_po(
+        object(),
+        {"source_row": 2, "po_no": "PO-1"},
+        lambda _message: None,
+    )
+
+    assert added is False
+    assert candidates == []
+    assert reason == "not_found"
+    assert searches == [(False, False)]
+
+
+def test_order_details_runner_keeps_retry_affordance_on_unexpected_errors(
+    monkeypatch,
+):
+    """Lỗi ngoài dự kiến vẫn phải giữ resumable để UI còn nút thử lại."""
+
+    class FakePlaywright:
+        def stop(self):
+            return None
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (_ for _ in ()).throw(TypeError("bridge hỏng")),
+    )
+
+    result = sale_asn_create.run_sale_asn_order_details(
+        [{"po_no": "PO-1", "carton": "2"}],
+        log=lambda _message: None,
+    )
+
+    assert result["ok"] is False
+    assert result["code"] == "SALE_ASN_ORDER_FILL_FAILED"
+    assert result["resumable"] is True
+    assert "TypeError" in result["message"]

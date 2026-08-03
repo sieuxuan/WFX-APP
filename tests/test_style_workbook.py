@@ -20,6 +20,7 @@ def test_style_template_has_two_user_facing_sheets_and_hidden_lists(tmp_path):
     sheet = workbook[STYLE_SHEET]
     assert tuple(cell.value for cell in sheet[1]) == STYLE_COLUMNS
     assert sheet.freeze_panes == "A2"
+    assert sheet.auto_filter.ref is None
     validations = list(sheet.data_validations.dataValidation)
     assert any(item.formula1 == '"New,Copy"' for item in validations)
     assert any(item.formula1 == "=StyleMaterialType" for item in validations)

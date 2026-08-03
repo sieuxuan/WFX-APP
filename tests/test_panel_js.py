@@ -902,3 +902,51 @@ def test_cham_bao_tin_moi_tren_nut_manual():
 def test_badge_phien_ban_lay_tu_state():
     assert ".app-version" in JS
     assert "state.version" in JS
+
+
+def _sale_asn_run_result_body():
+    start = JS.index("function renderSaleAsnRunResult(result) {")
+    return JS[start : JS.index("\n  function renderSaleAsnDone", start)]
+
+
+def test_halted_sale_asn_run_gives_the_start_button_back():
+    """Stop/ACTION_IN_PROGRESS/watchdog không có checkpoint để tiếp tục.
+
+    ``startSaleAsnCreate`` đã ẩn thẻ review — nơi duy nhất chứa nút Bắt đầu —
+    nên nếu các mã này rơi ra khỏi mọi nhánh thì user kẹt với thẻ tiến độ trống
+    và chỉ còn cách chọn lại file.
+    """
+    body = _sale_asn_run_result_body()
+
+    # Mọi nhánh nhận diện được đều phải return, phần còn lại rơi vào haltSaleAsnRun.
+    assert body.rstrip().endswith("haltSaleAsnRun(result);\n  }")
+    # Kết quả null (watchdog thắng race trong call()) cũng phải hồi phục UI.
+    assert "if (!result) {\n      haltSaleAsnRun(null);" in body
+
+    halt = JS[JS.index("function haltSaleAsnRun(result) {") : body and JS.index(
+        "function renderSaleAsnRunResult(result) {"
+    )]
+    assert 'if (saleAsnReviewToken) $(".sale-asn-review").hidden = false;' in halt
+    assert 'setSaleAsnStageState(stage, "warn", "đã dừng")' in halt
+
+
+def test_manual_po_checkpoint_renders_backend_candidates():
+    body = _sale_asn_run_result_body()
+
+    assert "candidates: result.candidates," in body
+    render = JS[
+        JS.index("function renderSaleAsnCandidates(candidates) {") : JS.index(
+            "function showSaleAsnStageAction("
+        )
+    ]
+    # Dữ liệu từ WFX phải được escape trước khi ghép vào innerHTML.
+    for field in ("po_no", "style_no", "dispatched_qty"):
+        assert f"escapeHtml(cell(item?.{field})" in render
+    assert "candidates.slice(0, 20)" in render
+    # Thẻ hành động ẩn đi thì danh sách của lượt cũ không được ở lại.
+    hide = JS[
+        JS.index("function hideSaleAsnStageAction() {") : JS.index(
+            "function renderSaleAsnCandidates("
+        )
+    ]
+    assert "renderSaleAsnCandidates([]);" in hide

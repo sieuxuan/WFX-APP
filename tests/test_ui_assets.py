@@ -182,6 +182,11 @@ def test_sale_asn_workspace_uses_one_flat_guided_flow():
         assert f'data-sale-asn-progress-stage="{stage}"' in workspace
     assert 'class="sale-asn-pending"' not in workspace
     assert 'class="sale-asn-stage-action"' in workspace
+    assert "var(--line)" not in css
+    assert ".sale-asn-progress-row i {" in css
+    assert "@keyframes sale-asn-row-spin" in css
+    assert 'li[data-state="active"] i {' in css
+    assert 'li[data-state="done"] i::after' in css
 
     # Bước Thêm PO không thể Bỏ qua, nên thẻ hành động phải có lối thoát riêng
     # khỏi lượt đang kẹt; nếu không user chỉ còn nút Tiếp tục.
@@ -1016,3 +1021,23 @@ def test_badge_phien_ban_khong_hardcode():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert '<span class="app-version"></span>' in html
     assert "Phiên bản 1.0<" not in html
+
+
+def test_manual_po_checkpoint_shows_the_rows_wfx_returned():
+    """Backend đã gửi kèm candidates; thẻ chờ phải hiện ngay tại chỗ.
+
+    Nếu không, user chỉ đọc được "cần bạn chọn trên WFX" rồi phải alt-tab sang
+    Chrome dò thủ công xem dòng nào mới đúng.
+    """
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    action = html[
+        html.index('class="sale-asn-stage-action"') : html.index(
+            'class="sale-asn-done"'
+        )
+    ]
+
+    assert 'class="sale-asn-candidates"' in action
+    assert 'class="sale-asn-candidate-list"' in action
+    assert ".sale-asn-candidates[hidden] { display: none !important; }" in css
+    assert ".sale-asn-candidate-list li {" in css

@@ -55,6 +55,9 @@ _ORDER_DETAILS_NUMBER_COLUMNS = frozenset(
 
 MAX_SALE_ASN_ROWS = 2_000
 MAX_SALE_ASN_BYTES = 20 * 1024 * 1024
+# Số mũ tối đa của chữ số đầu; 15 tương đương 16 chữ số phần nguyên, thừa sức
+# cho Qty/Carton/NW/GW/CBM/giá và vẫn an toàn cho quantize() ở lớp automation.
+MAX_SALE_ASN_NUMBER_EXPONENT = 15
 
 _OPTIONAL_COLUMNS = frozenset(
     {
@@ -149,6 +152,11 @@ def _number(value: object, *, cell: str, integer: bool = False) -> str:
         raise ValueError(f"{cell}: phải là số.") from error
     if not number.is_finite() or number < 0:
         raise ValueError(f"{cell}: phải là số không âm.")
+    # Decimal context chỉ giữ 28 chữ số. Một ô dán nhầm kiểu 1E+50 vẫn "hợp lệ"
+    # ở đây nhưng sẽ làm quantize() lúc điền lên WFX ném InvalidOperation, biến
+    # lỗi nhập liệu thành lỗi automation có gửi telemetry. Chặn ngay tại file.
+    if number != 0 and number.adjusted() > MAX_SALE_ASN_NUMBER_EXPONENT:
+        raise ValueError(f"{cell}: giá trị quá lớn, hãy kiểm tra lại ô này.")
     if integer and number != number.to_integral_value():
         raise ValueError(f"{cell}: phải là số nguyên.")
     normalized = format(number.normalize(), "f")
@@ -528,7 +536,6 @@ def write_sale_asn_template(
         showColumnStripes=False,
     )
     sheet.add_table(table)
-    sheet.auto_filter.ref = table_ref
     workbook.save(target)
     workbook.close()
     return target
@@ -772,7 +779,6 @@ def write_sale_asn_order_details_template(
         showColumnStripes=False,
     )
     sheet.add_table(table)
-    sheet.auto_filter.ref = table.ref
     workbook.save(target)
     workbook.close()
     return target
