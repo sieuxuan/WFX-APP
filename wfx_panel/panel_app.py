@@ -37,7 +37,10 @@ from wfx_panel import (
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.oc_workbook import write_oc_input_template
 from wfx_panel.panel_api import PanelAPI
-from wfx_panel.sale_asn_workbook import write_sale_asn_template
+from wfx_panel.sale_asn_workbook import (
+    write_sale_asn_order_details_template,
+    write_sale_asn_template,
+)
 from wfx_panel.single_instance import SingleInstance
 from wfx_panel.style_workbook import write_style_template
 from wfx_panel.version import APP_VERSION
@@ -127,9 +130,11 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "apply_catalog_costing",
         "open_sale_asn_new",
         "scan_sale_asn_buyers",
+        "scan_sale_asn_order_details",
         "start_sale_asn_create",
         "continue_sale_asn_create",
         "skip_sale_asn_create_step",
+        "start_sale_asn_order_details",
         "open_sample_new",
         "search_oc",
         "open_oc_revision_report",
@@ -164,9 +169,11 @@ NOTIFICATION_ACTION_LABELS = {
     "apply_catalog_costing": "Áp dụng Costing",
     "open_sale_asn_new": "Sale ASN",
     "scan_sale_asn_buyers": "Quét Buyer Sale ASN",
+    "scan_sale_asn_order_details": "Xuất Order Details",
     "start_sale_asn_create": "Tạo Sale ASN",
     "continue_sale_asn_create": "Tiếp tục Sale ASN",
     "skip_sale_asn_create_step": "Bỏ qua bước Sale ASN",
+    "start_sale_asn_order_details": "Điền Order Details",
     "open_sample_new": "Sample",
     "search_oc": "Tìm OC",
     "open_oc_revision_report": "Mở report Revise OC",
@@ -1064,6 +1071,100 @@ class PanelApp:
             "ok": True,
             "code": "SALE_ASN_TEMPLATE_EXPORTED",
             "message": f"Đã tạo form {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
+    def save_sale_asn_order_details_template(self, rows: list[dict]) -> dict:
+        """Lưu form Order Details đã lấy PO/giá trị từ WFX đang mở."""
+
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename="WFX-Smart-Sale-ASN-Order-Details.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy xuất form Order Details.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+            target = write_sale_asn_order_details_template(target, rows or [])
+            _open_downloaded_file(target)
+            _reveal_downloaded_file(target)
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_ORDER_TEMPLATE_EXPORT_FAILED",
+                "message": f"Không tạo được form Order Details: {error}",
+            }
+        return {
+            "ok": True,
+            "code": "SALE_ASN_ORDER_TEMPLATE_EXPORTED",
+            "message": f"Đã xuất {len(rows or [])} PO vào form {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
+    def save_sale_asn_continue_template(self, rows: list[dict]) -> dict:
+        """Xuất form 19 cột có sẵn PO/Order Details của Sale ASN đang mở."""
+
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename="WFX-Smart-Sale-ASN-Continue.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy xuất form tiếp tục Sale ASN.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+            target = write_sale_asn_template(target, rows or [])
+            _open_downloaded_file(target)
+            _reveal_downloaded_file(target)
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_TEMPLATE_EXPORT_FAILED",
+                "message": f"Không tạo được form tiếp tục Sale ASN: {error}",
+            }
+        return {
+            "ok": True,
+            "code": "SALE_ASN_TEMPLATE_EXPORTED",
+            "message": f"Đã xuất {len(rows or [])} PO vào form {target.name}.",
             "file_path": str(target),
             "file_name": target.name,
         }
@@ -2448,6 +2549,12 @@ class PanelApp:
         self.api.download_style_template = self.download_style_template  # type: ignore[attr-defined]
         self.api.download_oc_template = self.download_oc_template  # type: ignore[attr-defined]
         self.api.download_sale_asn_template = self.download_sale_asn_template  # type: ignore[attr-defined]
+        self.api.save_sale_asn_order_details_template = (  # type: ignore[attr-defined]
+            self.save_sale_asn_order_details_template
+        )
+        self.api.save_sale_asn_continue_template = (  # type: ignore[attr-defined]
+            self.save_sale_asn_continue_template
+        )
         self.api.set_log_sink(self._push_log)
         self.api.set_result_sink(self._on_result)
         self.api.set_progress_sink(self._on_progress)

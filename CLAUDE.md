@@ -403,12 +403,27 @@ Các workflow riêng hiện có:
   và trả danh sách tải trực tiếp. Nếu có nhiều dòng, panel hiển thị lựa chọn
   Sample; sau khi user chọn, app tiếp tục từ grid đang mở, không tìm lại.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
-  No., New từ Excel, và tải Documents. Workspace mặc định là `Tạo từ Excel`,
-  dùng một luồng phẳng Buyer → file → review → chạy; `Tra cứu` gom Search và
-  Documents, còn nút mở List luôn ở thanh trên. Buyer được quét từ
-  `#Cell_Buyer`, cache lại để gõ tìm/chọn exact ở lần sau và có nút quét lại.
-  Thẻ thứ hai phải mang nhãn `Tra cứu & Invoice/PKL`, đặt bộ lọc Search và nút
-  xuất Buyer Invoice + Packing List trong cùng một bề mặt, không tách thêm card.
+  No., New từ Excel, và tải Documents. Workspace có đúng MỘT tầng tab gồm
+  `Tạo mới` (mặc định) và `Tra cứu`; nút mở `Sale ASN List` là icon nằm trên
+  thanh trên nên dùng được ở cả hai thẻ. Không được thêm tầng tab thứ hai bên
+  trong thẻ Tạo mới. Thẻ `Tạo mới` là một cột dọc Buyer → file → review → chạy.
+  Buyer được quét từ `#Cell_Buyer`, cache lại, và dùng listbox gợi ý (không dùng
+  `<datalist>`): gõ từ 2 ký tự, tối đa 20 kết quả, khớp exact thì hiện dấu ✓ và
+  chưa khớp thì viền cảnh báo ngay tại ô. Chọn bước chạy, luồng `Chỉ điền Order
+  Details` 8 cột và nút `Mở Sale ASN New trống` nằm trong khối gấp
+  `Tùy chọn nâng cao`, mặc định đóng và tự bung khi có bước đang bỏ tích hoặc khi
+  một thao tác 8 cột trả kết quả. Thẻ `Tra cứu` gom bộ lọc Search và nút xuất
+  Buyer Invoice + Packing List trong cùng một bề mặt, không tách thêm card.
+  Trong lúc chạy, panel hiện thẻ tiến độ bốn bước theo `SALE_ASN_STAGE_ORDER`;
+  `run_sale_asn_create` bắn progress qua callback tùy chọn `progress` và
+  `PanelAPI._progress` phải mang `method` của flow đang chạy để
+  `wfxHandleBackendProgress` rẽ đúng thẻ, không đè thẻ GDN. Progress chỉ để hiển
+  thị: giá trị trả về của flow vẫn là nguồn sự thật và ghi đè trạng thái dòng
+  bước. Trạng thái chờ chọn PO và lỗi từng bước phải hiện trong đúng dòng bước
+  của thẻ tiến độ, không dùng thẻ pending rời. Khi flow trả
+  `SALE_ASN_FORM_COMPLETED`, thẻ kết quả liệt kê cảnh báo Shipping Info và có nút
+  chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
+  xuất báo cáo vì user còn phải Save trên WFX.
   Form Excel có đúng 19 cột theo `template saleasn.xlsx`; mỗi file chỉ chứa một
   Invoice No. và một FTY, xử lý PO đúng thứ tự dòng. Style No./PO No./Destination/
   FTY bắt buộc; Season/Description/HS Code/Qty/Carton/NW/GW/CBM/FOB Price/

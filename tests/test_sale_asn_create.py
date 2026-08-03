@@ -16,8 +16,11 @@ from wfx_panel.automation.sale_asn_create import (
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.sale_asn_workbook import (
     SALE_ASN_COLUMNS,
+    SALE_ASN_ORDER_DETAILS_COLUMNS,
     SaleASNWorkbookError,
+    read_sale_asn_order_details_workbook,
     read_sale_asn_workbook,
+    write_sale_asn_order_details_template,
     write_sale_asn_template,
 )
 
@@ -59,6 +62,17 @@ def _valid_rows():
             "FTY": "",
         },
     ]
+
+
+def _order_details_workbook(path, rows):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "ORDER DETAILS"
+    sheet.append(SALE_ASN_ORDER_DETAILS_COLUMNS)
+    for row in rows:
+        sheet.append([row.get(column) for column in SALE_ASN_ORDER_DETAILS_COLUMNS])
+    workbook.save(path)
+    workbook.close()
 
 
 def test_template_keeps_reference_schema_and_readable_format(tmp_path):
@@ -127,6 +141,122 @@ def test_reader_reports_duplicate_po_and_required_cells(tmp_path):
     assert raised.value.code == "SALE_ASN_FILE_VALIDATION_FAILED"
     assert any("PO No bị trùng" in error for error in raised.value.errors)
     assert any("Style No bắt buộc" in error for error in raised.value.errors)
+
+
+def test_reader_relaxes_fields_when_continuing_only_order_details(tmp_path):
+    source = tmp_path / "continue-order.xlsx"
+    _input_workbook(
+        source,
+        [{"PO No": "PO-001", "Carton": 2, "NW": 9.5}],
+    )
+
+    document = read_sale_asn_workbook(
+        source,
+        required_stages=["order_details"],
+    )
+
+    assert document["po_count"] == 1
+    assert document["style_count"] == 0
+    assert document["rows"][0]["po_no"] == "PO-001"
+    assert document["rows"][0]["carton"] == "2"
+    assert document["rows"][0]["cargo_ready_date"] == ""
+
+    with pytest.raises(SaleASNWorkbookError) as raised:
+        read_sale_asn_workbook(source, required_stages=["style_details"])
+    assert any("Style No bắt buộc" in error for error in raised.value.errors)
+
+
+def test_full_template_can_prefill_current_order_details(tmp_path):
+    target = write_sale_asn_template(
+        tmp_path / "continue.xlsx",
+        [
+            {
+                "po_no": "PO-001",
+                "carton": "2",
+                "nw": "9.5",
+                "gw": "10.5",
+                "cbm": "1.25",
+                "fob_price": "12.75",
+                "service_price": "0.5",
+                "cargo_ready_date": "03 Aug 2026",
+            }
+        ],
+    )
+
+    workbook = load_workbook(target)
+    sheet = workbook["SALE ASN"]
+    assert sheet["F2"].value == "PO-001"
+    assert sheet["K2"].value == 2
+    assert sheet["L2"].value == 9.5
+    assert sheet["Q2"].value == 12.75
+    assert sheet["S2"].value.date() == date(2026, 8, 3)
+    assert sheet.tables["SaleASNInput"].ref == "A1:S21"
+    workbook.close()
+
+
+def test_order_details_template_round_trip_keeps_only_editable_schema(tmp_path):
+    target = write_sale_asn_order_details_template(
+        tmp_path / "order-details.xlsx",
+        [
+            {
+                "po_no": "PO-001",
+                "carton": "2",
+                "nw": "9.5",
+                "gw": "10.5",
+                "cbm": "1.25",
+                "fob_price": "12.75",
+                "service_price": "0.5",
+                "cargo_ready_date": "03 Aug 2026",
+            }
+        ],
+    )
+
+    workbook = load_workbook(target)
+    sheet = workbook["ORDER DETAILS"]
+    assert tuple(cell.value for cell in sheet[1]) == SALE_ASN_ORDER_DETAILS_COLUMNS
+    assert sheet.tables["SaleASNOrderDetailsInput"].ref == "A1:H21"
+    assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
+    assert sheet["B1"].fill.fgColor.rgb == "00DBEAFE"
+    assert sheet["B2"].number_format == "#,##0"
+    assert sheet["H2"].number_format == "dd/mm/yyyy"
+    assert sheet["B2"].value == 2
+    assert sheet["H2"].value.date() == date(2026, 8, 3)
+    workbook.close()
+
+    document = read_sale_asn_order_details_workbook(target)
+    assert document["po_count"] == 1
+    assert document["filled_count"] == 7
+    assert document["rows"] == [
+        {
+            "source_row": 2,
+            "po_no": "PO-001",
+            "carton": "2",
+            "nw": "9.5",
+            "gw": "10.5",
+            "cbm": "1.25",
+            "fob_price": "12.75",
+            "service_price": "0.5",
+            "cargo_ready_date": "2026-08-03",
+        }
+    ]
+
+
+def test_order_details_reader_requires_a_value_and_unique_po(tmp_path):
+    source = tmp_path / "invalid-order-details.xlsx"
+    _order_details_workbook(
+        source,
+        [
+            {"PO No": "PO-001"},
+            {"PO No": "PO-001", "Carton": "=1+1"},
+        ],
+    )
+
+    with pytest.raises(SaleASNWorkbookError) as raised:
+        read_sale_asn_order_details_workbook(source)
+
+    assert raised.value.code == "SALE_ASN_ORDER_FILE_VALIDATION_FAILED"
+    assert any("công thức" in error for error in raised.value.errors)
+    assert any("PO No bị trùng" in error for error in raised.value.errors)
 
 
 def test_candidate_selection_prefers_style_then_dispatched_qty():
@@ -541,6 +671,75 @@ def test_sale_asn_resume_shipping_uses_visible_shipping_tab_only(monkeypatch):
     assert calls == []
 
 
+def test_sale_asn_can_skip_add_po_and_start_from_existing_order_grid(monkeypatch):
+    rows = [{"source_row": 2, "po_no": "PO-1", "carton": "2"}]
+    context = object()
+    page = type("FakePage", (), {"context": context})()
+    order_frame = object()
+    calls = []
+
+    class FakePlaywright:
+        def stop(self):
+            return None
+
+    class FakePlaywrightStarter:
+        def start(self):
+            return FakePlaywright()
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: FakePlaywrightStarter(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (object(), page),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        lambda selected_context, selector, timeout_s: (
+            calls.append(("frame", selected_context, selector, timeout_s))
+            or (page, order_frame)
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_wait_order_grid",
+        lambda frame, selected_rows, **kwargs: (
+            calls.append(("wait", frame, list(selected_rows), kwargs))
+            or {sale_asn_create._fold("PO-1")}
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_ensure_order_grid_rows",
+        lambda *_args: pytest.fail("Không được mở hoặc thêm lại PO"),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_order_details",
+        lambda frame, selected_rows, _log: calls.append(
+            ("fill-order", frame, list(selected_rows))
+        ),
+    )
+
+    result = sale_asn_create.run_sale_asn_create(
+        "menu-xpath",
+        "",
+        rows,
+        stage="order_details",
+        skip_stages=("style_details", "shipping_info"),
+        log=lambda _message: None,
+    )
+
+    assert result["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert result["add_po_selected"] is False
+    assert ("fill-order", order_frame, rows) in calls
+    assert calls[0][2] == "#sectionOrderDetails"
+
+
 def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
     calls = []
     logs = []
@@ -601,6 +800,71 @@ def test_sale_asn_table_value_confirmation_handles_wfx_formats():
     assert not sale_asn_create._table_value_matches("110", "0")
 
 
+def test_order_details_only_runner_never_enters_other_sale_asn_steps(monkeypatch):
+    rows = [{"po_no": "PO-001", "carton": "2", "nw": "9.5"}]
+    frame = object()
+    page = type("FakePage", (), {"context": object()})()
+    calls = []
+
+    class FakePlaywright:
+        def stop(self):
+            calls.append("stop")
+
+    class FakePlaywrightStarter:
+        def start(self):
+            return FakePlaywright()
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: FakePlaywrightStarter(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (object(), page),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        lambda context, selector, timeout_s: (
+            calls.append((context, selector, timeout_s)) or (page, frame)
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_wait_order_grid",
+        lambda selected_frame, selected_rows, **_kwargs: (
+            calls.append(("wait", selected_frame, list(selected_rows)))
+            or {sale_asn_create._fold("PO-001")}
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_order_details",
+        lambda selected_frame, selected_rows, _log: calls.append(
+            ("fill-order", selected_frame, list(selected_rows))
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_style_details",
+        lambda *_args: pytest.fail("Không được chạy Style Details"),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_shipping",
+        lambda *_args: pytest.fail("Không được chạy Shipping Info"),
+    )
+
+    result = sale_asn_create.run_sale_asn_order_details(rows, lambda _message: None)
+
+    assert result["code"] == "SALE_ASN_ORDER_DETAILS_COMPLETED"
+    assert result["updated_fields"] == 2
+    assert (page.context, sale_asn_create.ORDER_GRID_SELECTOR, 15) in calls
+    assert any(call[0] == "fill-order" for call in calls if isinstance(call, tuple))
+
+
 class _FakeSaleASNLogin:
     COMPANY_ID = "psh"
     CATALOG_XPATH = "catalog"
@@ -627,6 +891,7 @@ class _FakeSaleASNLogin:
         *,
         stage="po",
         skip_stages=(),
+        progress=None,
     ):
         self.calls.append(
             ("create", xpath, buyer, len(rows), start_index, stage, tuple(skip_stages))
@@ -680,6 +945,7 @@ def test_panel_api_retries_or_skips_failed_sale_asn_stage(tmp_path):
             *,
             stage="po",
             skip_stages=(),
+            progress=None,
         ):
             self.calls.append(
                 ("create", xpath, buyer, len(rows), start_index, stage, tuple(skip_stages))
@@ -711,3 +977,167 @@ def test_panel_api_retries_or_skips_failed_sale_asn_stage(tmp_path):
     assert failed["review_token"] == reviewed["review_token"]
     assert completed["code"] == "SALE_ASN_FORM_COMPLETED"
     assert login.calls[-1][5:] == ("style_details", ("style_details",))
+
+
+def test_panel_api_retries_only_order_details_with_same_review(tmp_path):
+    source = tmp_path / "order-details.xlsx"
+    _order_details_workbook(
+        source,
+        [{"PO No": "PO-001", "Carton": 2, "NW": 9.5}],
+    )
+
+    class OrderDetailsLogin(_FakeSaleASNLogin):
+        def run_sale_asn_order_details(self, rows, log=print):
+            self.calls.append(("order-details", list(rows)))
+            if len(self.calls) == 1:
+                return {
+                    "ok": False,
+                    "code": "SALE_ASN_ORDER_ROWS_NOT_FOUND",
+                    "message": "wrong Sale ASN",
+                    "resumable": True,
+                }
+            return {
+                "ok": True,
+                "code": "SALE_ASN_ORDER_DETAILS_COMPLETED",
+                "message": "done",
+            }
+
+    login = OrderDetailsLogin()
+    api = PanelAPI(login_module=login, prefs_module=prefs, base_dir=tmp_path / "data")
+
+    reviewed = api.prepare_sale_asn_order_details(str(source))
+    pending = api.start_sale_asn_order_details(reviewed["review_token"])
+    completed = api.start_sale_asn_order_details(reviewed["review_token"])
+    expired = api.start_sale_asn_order_details(reviewed["review_token"])
+
+    assert reviewed["code"] == "SALE_ASN_ORDER_DETAILS_REVIEW_READY"
+    assert reviewed["po_count"] == 1
+    assert reviewed["filled_count"] == 2
+    assert pending["review_token"] == reviewed["review_token"]
+    assert completed["code"] == "SALE_ASN_ORDER_DETAILS_COMPLETED"
+    assert expired["code"] == "SALE_ASN_ORDER_REVIEW_EXPIRED"
+    assert [call[0] for call in login.calls] == ["order-details", "order-details"]
+
+
+def test_panel_api_starts_at_first_selected_stage_without_buyer(tmp_path):
+    source = tmp_path / "continue.xlsx"
+    _input_workbook(source, [{"PO No": "PO-001", "Carton": 2}])
+
+    class ContinueLogin(_FakeSaleASNLogin):
+        def run_sale_asn_create(
+            self,
+            xpath,
+            buyer,
+            rows,
+            start_index,
+            log=print,
+            *,
+            stage="po",
+            skip_stages=(),
+            progress=None,
+        ):
+            self.calls.append(
+                (
+                    "continue-selected",
+                    xpath,
+                    buyer,
+                    list(rows),
+                    start_index,
+                    stage,
+                    tuple(skip_stages),
+                )
+            )
+            return {
+                "ok": True,
+                "code": "SALE_ASN_FORM_COMPLETED",
+                "message": "done",
+            }
+
+    login = ContinueLogin()
+    api = PanelAPI(login_module=login, prefs_module=prefs, base_dir=tmp_path / "data")
+
+    reviewed = api.prepare_sale_asn_create(
+        str(source),
+        "",
+        ["order_details"],
+    )
+    completed = api.start_sale_asn_create(reviewed["review_token"])
+
+    assert reviewed["selected_stages"] == ["order_details"]
+    assert completed["code"] == "SALE_ASN_FORM_COMPLETED"
+    call = login.calls[0]
+    assert call[2] == ""
+    assert call[5] == "order_details"
+    assert call[6] == ("po", "style_details", "shipping_info")
+
+
+def test_stage_progress_numbers_follow_the_four_fixed_stages():
+    seen = []
+
+    def sink(stage, message, step, total, *, state="active"):
+        seen.append((stage, message, step, total, state))
+
+    for stage in sale_asn_create.SALE_ASN_STAGE_ORDER:
+        sale_asn_create._emit_stage_progress(sink, stage, f"Đang điền {stage}")
+    sale_asn_create._emit_stage_progress(sink, "style_details", "bỏ", state="skipped")
+
+    # Bộ đếm luôn tính trên bốn bước cố định, không theo số bước user chọn.
+    assert [(item[0], item[2], item[3]) for item in seen] == [
+        ("po", 1, 4),
+        ("order_details", 2, 4),
+        ("style_details", 3, 4),
+        ("shipping_info", 4, 4),
+        ("style_details", 3, 4),
+    ]
+    assert seen[-1][4] == "skipped"
+
+
+def test_stage_progress_is_optional_and_never_breaks_the_flow():
+    def broken(*_args, **_kwargs):
+        raise ValueError("callback hỏng")
+
+    # Không có callback, và callback lỗi, đều không được ném ra ngoài.
+    sale_asn_create._emit_stage_progress(None, "po", "x")
+    sale_asn_create._emit_stage_progress(broken, "po", "x")
+
+
+def test_panel_api_streams_sale_asn_progress_with_its_own_method(tmp_path):
+    source = tmp_path / "input.xlsx"
+    _input_workbook(source, _valid_rows())
+    payloads = []
+
+    class ProgressLogin(_FakeSaleASNLogin):
+        def run_sale_asn_create(
+            self,
+            xpath,
+            buyer,
+            rows,
+            start_index,
+            log=print,
+            *,
+            stage="po",
+            skip_stages=(),
+            progress=None,
+        ):
+            progress("order_details", "Đang điền Order Details", 2, 4)
+            return {
+                "ok": True,
+                "code": "SALE_ASN_FORM_COMPLETED",
+                "message": "done",
+            }
+
+    api = PanelAPI(
+        login_module=ProgressLogin(),
+        prefs_module=prefs,
+        base_dir=tmp_path / "data",
+    )
+    api.set_progress_sink(payloads.append)
+    reviewed = api.prepare_sale_asn_create(str(source), "BUYER A")
+    api.start_sale_asn_create(reviewed["review_token"])
+
+    # Payload phải mang method của chính flow Sale ASN để UI không đè thẻ GDN.
+    assert [item["method"] for item in payloads] == ["start_sale_asn_create"]
+    assert payloads[0]["stage"] == "order_details"
+    assert payloads[0]["step"] == 2
+    assert payloads[0]["total"] == 4
+    assert payloads[0]["state"] == "active"

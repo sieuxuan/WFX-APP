@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260803-2">
+  <link rel="stylesheet" href="style.css?v=20260803-3">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -470,31 +470,43 @@
         <div class="special-module-workspace" data-module-view="sale_asn" hidden>
           <div class="sale-asn-toolbar">
             <div class="catalog-space-switch sale-asn-view-tabs" role="tablist" aria-label="Chức năng Sale ASN">
-              <button type="button" data-sale-asn-view="lookup" role="tab" aria-selected="true" tabindex="0">
+              <button type="button" data-sale-asn-view="create" role="tab" aria-selected="true" tabindex="0">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M12 8v8M8 12h8"/></svg>
+                <span><strong>Tạo mới</strong><small>Từ file Excel</small></span>
+              </button>
+              <button type="button" data-sale-asn-view="lookup" role="tab" aria-selected="false" tabindex="-1">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg>
                 <span><strong>Tra cứu</strong><small>Invoice &amp; PKL</small></span>
               </button>
-              <button type="button" data-sale-asn-view="create" role="tab" aria-selected="false" tabindex="-1">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M12 8v8M8 12h8"/></svg>
-                <span><strong>Tạo New</strong><small>Excel · nhiều PO</small></span>
-              </button>
             </div>
+            <button type="button" class="sale-asn-icon-button sale-asn-list-button" data-module-action="sale-asn-list" data-tooltip="Mở Sale ASN List" aria-label="Mở Sale ASN List">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+            </button>
           </div>
 
-          <section class="sale-asn-create" data-sale-asn-pane="create" hidden>
-            <div class="sale-asn-step-heading"><span>1</span><div><strong>Buyer</strong><small>Gõ để tìm trong danh sách đã quét từ WFX.</small></div></div>
-            <div class="sale-asn-buyer-row">
-              <input class="sale-asn-buyer" type="search" list="sale-asn-buyer-options" autocomplete="off" placeholder="Chọn Buyer…" aria-label="Buyer Sale ASN" />
-              <datalist id="sale-asn-buyer-options"></datalist>
-              <button type="button" class="sale-asn-icon-button" data-module-action="sale-asn-scan-buyers" data-tooltip="Quét lại Buyer từ WFX" aria-label="Quét lại Buyer từ WFX">↻</button>
+          <section class="sale-asn-create" data-sale-asn-pane="create">
+            <div class="sale-asn-field">
+              <label class="sale-asn-field-label" for="sale-asn-buyer-input">Buyer</label>
+              <div class="sale-asn-buyer-row">
+                <span class="sale-asn-buyer-box">
+                  <input id="sale-asn-buyer-input" class="sale-asn-buyer" type="text" autocomplete="off" placeholder="Gõ 2 ký tự để tìm Buyer" aria-label="Buyer Sale ASN" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sale-asn-buyer-suggestions" />
+                  <span class="sale-asn-buyer-mark" aria-hidden="true"></span>
+                </span>
+                <button type="button" class="sale-asn-icon-button" data-module-action="sale-asn-scan-buyers" data-tooltip="Quét lại Buyer từ WFX" aria-label="Quét lại Buyer từ WFX">↻</button>
+              </div>
+              <div class="sale-asn-buyer-suggestions" id="sale-asn-buyer-suggestions" role="listbox" aria-label="Gợi ý Buyer" hidden></div>
             </div>
 
-            <div class="sale-asn-step-heading"><span>2</span><div><strong>File dữ liệu</strong><small>Dùng form 19 cột; app kiểm tra trước khi mở WFX.</small></div></div>
-            <div class="sale-asn-file-actions">
-              <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-template">Tải form Excel</button>
+            <div class="sale-asn-field">
+              <span class="sale-asn-field-label">File 19 cột</span>
               <button type="button" class="special-primary-button" data-module-action="sale-asn-import" disabled>Chọn file &amp; kiểm tra</button>
+              <p class="sale-asn-file-links">
+                <button type="button" class="sale-asn-link-button" data-module-action="sale-asn-template">Tải form trống</button>
+                <span aria-hidden="true">·</span>
+                <button type="button" class="sale-asn-link-button" data-module-action="sale-asn-continue-export">Xuất PO đang mở</button>
+              </p>
             </div>
-            <button type="button" class="sale-asn-blank-new" data-module-action="sale-asn-new">Hoặc mở New trống để nhập tay trên WFX</button>
+
             <p class="sale-asn-inline-status" aria-live="polite">Chọn Buyer để bắt đầu.</p>
 
             <div class="sale-asn-review" hidden>
@@ -510,18 +522,72 @@
               </div>
             </div>
 
-            <div class="sale-asn-pending" hidden>
-              <strong class="sale-asn-pending-title">Cần bạn chọn một PO trên WFX</strong>
-              <p class="sale-asn-pending-message"></p>
-              <label class="sale-asn-manual-check"><input class="sale-asn-manual-confirm" type="checkbox" /> <span>Tôi đã chọn đúng dòng và bấm <code>Add &amp; Continue</code> trên WFX.</span></label>
-              <div class="sale-asn-review-actions">
-                <button type="button" class="sale-asn-secondary-button sale-asn-skip-step" data-module-action="sale-asn-skip-step" hidden>Bỏ qua bước</button>
-                <button type="button" class="special-primary-button" data-module-action="sale-asn-continue" disabled>Tiếp tục dòng kế</button>
+            <section class="sale-asn-progress-card" aria-live="polite" hidden>
+              <div class="sale-asn-progress-heading"><strong>Tiến độ Sale ASN</strong><span class="sale-asn-progress-count">0/4</span></div>
+              <ol class="sale-asn-progress-steps">
+                <li data-sale-asn-progress-stage="po" data-state="pending"><span class="sale-asn-progress-row"><i aria-hidden="true"></i><span>Thêm PO</span><small></small></span></li>
+                <li data-sale-asn-progress-stage="order_details" data-state="pending"><span class="sale-asn-progress-row"><i aria-hidden="true"></i><span>Order Details</span><small></small></span></li>
+                <li data-sale-asn-progress-stage="style_details" data-state="pending"><span class="sale-asn-progress-row"><i aria-hidden="true"></i><span>Style Details</span><small></small></span></li>
+                <li data-sale-asn-progress-stage="shipping_info" data-state="pending"><span class="sale-asn-progress-row"><i aria-hidden="true"></i><span>Shipping Info</span><small></small></span></li>
+              </ol>
+              <div class="sale-asn-stage-action" hidden>
+                <p class="sale-asn-stage-message"></p>
+                <label class="sale-asn-manual-check"><input class="sale-asn-manual-confirm" type="checkbox" /> <span>Tôi đã chọn đúng dòng và bấm <code>Add &amp; Continue</code> hoặc <code>OK</code> trên WFX.</span></label>
+                <div class="sale-asn-stage-buttons">
+                  <button type="button" class="sale-asn-secondary-button sale-asn-skip-step" data-module-action="sale-asn-skip-step" hidden>Bỏ qua bước</button>
+                  <button type="button" class="special-primary-button" data-module-action="sale-asn-continue" disabled>Tiếp tục dòng kế</button>
+                </div>
               </div>
+            </section>
+
+            <div class="sale-asn-done" hidden>
+              <strong class="sale-asn-done-title">Đã điền xong Sale ASN</strong>
+              <p class="sale-asn-done-message">Kiểm tra lại toàn bộ chứng từ rồi tự bấm Save trên WFX.</p>
+              <ul class="sale-asn-done-warnings" hidden></ul>
+              <button type="button" class="special-primary-button" data-module-action="sale-asn-handoff-documents">Xuất Invoice + PKL</button>
             </div>
+
+            <details class="sale-asn-advanced">
+              <summary><span>Tùy chọn nâng cao</span></summary>
+              <div class="sale-asn-advanced-body">
+                <div class="sale-asn-advanced-group">
+                  <strong>Các bước app sẽ làm</strong>
+                  <small>Bỏ <b>Thêm PO</b> nếu PO đã có sẵn trên Sale ASN đang mở.</small>
+                  <div class="sale-asn-stage-options" role="group" aria-label="Các bước tạo Sale ASN">
+                    <label><input type="checkbox" data-sale-asn-stage="po" checked /> <span>Thêm PO</span></label>
+                    <label><input type="checkbox" data-sale-asn-stage="order_details" checked /> <span>Order Details</span></label>
+                    <label><input type="checkbox" data-sale-asn-stage="style_details" checked /> <span>Style Details</span></label>
+                    <label><input type="checkbox" data-sale-asn-stage="shipping_info" checked /> <span>Shipping Info</span></label>
+                  </div>
+                </div>
+
+                <div class="sale-asn-advanced-group sale-asn-order-flow">
+                  <strong>Chỉ điền Order Details</strong>
+                  <small>Chứng từ đã có đủ PO; app chỉ cập nhật 8 cột và map theo PO No.</small>
+                  <div class="sale-asn-order-actions">
+                    <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-order-export">Xuất form từ WFX</button>
+                    <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-order-import">Chọn file 8 cột</button>
+                  </div>
+                  <p class="sale-asn-order-status sale-asn-inline-status" aria-live="polite">Mở đúng Sale ASN trên WFX để xuất hoặc import.</p>
+                  <div class="sale-asn-order-review sale-asn-review" hidden>
+                    <div class="sale-asn-review-title"><strong class="sale-asn-order-review-file"></strong><span>Order Details</span></div>
+                    <div class="sale-asn-review-stats">
+                      <span><b class="sale-asn-order-review-po">0</b> PO</span>
+                      <span><b class="sale-asn-order-review-fields">0</b> ô sẽ điền</span>
+                    </div>
+                    <div class="sale-asn-review-actions">
+                      <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-order-cancel">Chọn lại</button>
+                      <button type="button" class="special-primary-button" data-module-action="sale-asn-order-start">Điền Order Details trên WFX</button>
+                    </div>
+                  </div>
+                </div>
+
+                <button type="button" class="sale-asn-link-button" data-module-action="sale-asn-new">Mở Sale ASN New trống trên WFX</button>
+              </div>
+            </details>
           </section>
 
-          <section class="sale-asn-lookup" data-sale-asn-pane="lookup">
+          <section class="sale-asn-lookup" data-sale-asn-pane="lookup" hidden>
             <div class="segmented module-filter-kind" role="group" aria-label="Tìm Sale ASN theo">
               <button type="button" class="seg-button module-filter-button" data-filter-group="sale_asn" data-filter-kind="invoice_no" aria-pressed="true">Invoice No.</button>
               <button type="button" class="seg-button module-filter-button" data-filter-group="sale_asn" data-filter-kind="buyer_order_ref" aria-pressed="false">Buyer Order Ref/OC</button>
@@ -530,10 +596,7 @@
               <input class="sale-asn-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Nội dung tìm Sale ASN" aria-describedby="sale-asn-documents-hint" />
               <button type="button" class="special-primary-button" data-module-action="sale-asn-search" data-validation-group="sale-asn" disabled>Tìm</button>
             </div>
-            <div class="sale-asn-lookup-actions">
-              <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-list">Mở Sale ASN List</button>
-              <button type="button" class="special-primary-button" data-module-action="sale-asn-documents">Xuất Buyer Invoice + Packing List</button>
-            </div>
+            <button type="button" class="special-primary-button sale-asn-documents-button" data-module-action="sale-asn-documents">Xuất Buyer Invoice + Packing List</button>
             <small class="module-action-hint" id="sale-asn-documents-hint">Nhập Invoice No. chính xác, hoặc để trống nếu đã chọn đúng một dòng trên WFX. Không cần kéo cột Docs.</small>
           </section>
         </div>
@@ -878,6 +941,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260803-4"></script>
+  <script src="panel.js?v=20260803-7"></script>
 </body>
 </html>
