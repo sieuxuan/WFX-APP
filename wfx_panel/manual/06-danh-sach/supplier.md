@@ -6,12 +6,15 @@ Category.
 ## Các bước
 
 1. Mở module Supplier List.
-2. Bấm `Mở List`.
-3. Chọn Category nếu bạn biết nhóm của Supplier.
-4. Bấm `Đổi Category · mở Master`.
-5. Nhập tên hoặc một phần tên công ty nếu bạn muốn tìm rộng hơn.
-6. Bấm `Tìm tất cả Category`.
-7. Đọc tổng kết kết quả trên bảng điều khiển.
+2. Chọn Category nếu bạn biết nhóm của Supplier, rồi bấm
+   `Đổi Category · mở Master`.
+3. Hoặc nhập tên/một phần tên công ty rồi bấm `Tìm tất cả Category` nếu muốn
+   tìm rộng hơn.
+4. Đọc tổng kết kết quả trên bảng điều khiển.
+
+Bạn không cần bấm `Supplier List` trước. Cả đổi Category lẫn tìm đều tự mở
+danh sách khi WFX chưa mở. Nút `Supplier List` chỉ là lối tắt khi bạn muốn xem
+danh sách hiện tại.
 
 ## Mẹo
 
