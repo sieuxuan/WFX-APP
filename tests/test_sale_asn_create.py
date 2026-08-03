@@ -472,6 +472,127 @@ def test_sale_asn_resume_after_manual_final_ok_skips_closed_popup(monkeypatch):
     assert selectors == [("#sectionOrderDetails", 15)]
 
 
+def test_sale_asn_resume_shipping_uses_visible_shipping_tab_only(monkeypatch):
+    rows = [{"source_row": 2, "po_no": "PO-1", "invoice_no": "INV-1"}]
+    context = object()
+    page = type("FakePage", (), {"context": context})()
+    shipping_frame = object()
+    selectors = []
+    calls = []
+
+    class FakePlaywright:
+        def stop(self):
+            return None
+
+    class FakePlaywrightStarter:
+        def start(self):
+            return FakePlaywright()
+
+    def fake_frame_with_selector(_context, selector, timeout_s):
+        assert _context is context
+        selectors.append((selector, timeout_s))
+        return page, shipping_frame
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: FakePlaywrightStarter(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (object(), page),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        fake_frame_with_selector,
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_order_details",
+        lambda *_args: calls.append("order"),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_style_details",
+        lambda *_args: calls.append("style"),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_fill_shipping",
+        lambda *_args: ["Factory: option-not-found"],
+    )
+
+    result = sale_asn_create.run_sale_asn_create(
+        "menu-xpath",
+        "BUYER A",
+        rows,
+        start_index=len(rows),
+        stage="shipping_info",
+        log=lambda _message: None,
+    )
+
+    assert result["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert result["warning_count"] == 1
+    assert result["warnings"] == ["Factory: option-not-found"]
+    assert "Shipping Info đã bỏ qua 1 trường" in result["message"]
+    assert selectors == [("#tabShippingInfo", 15)]
+    assert calls == []
+
+
+def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
+    calls = []
+    logs = []
+
+    class FakeTab:
+        @property
+        def first(self):
+            return self
+
+        def wait_for(self, **_kwargs):
+            return None
+
+        def click(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, selector):
+            assert selector == "#tabShippingInfo"
+            return FakeTab()
+
+    def fake_set_control(_frame, selector, value, mode, timeout_s):
+        calls.append((selector, value, mode, timeout_s))
+        if selector == "#ddlFactory":
+            return {"ok": False, "reason": "option-not-found"}
+        return {"ok": True}
+
+    monkeypatch.setattr(sale_asn_create, "_set_control", fake_set_control)
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+
+    warnings = sale_asn_create._fill_shipping(
+        FakeFrame(),
+        {
+            "invoice_no": "INV-1",
+            "invoice_date": "2026-08-01",
+            "shipping_bill_no": "SB-1",
+            "shipping_bill_date": "2026-08-02",
+            "destination": "Germany",
+            "factory": "PRO SPORTS GIAO THUY JSC",
+        },
+        logs.append,
+    )
+
+    assert warnings == [
+        'Factory: WFX không có lựa chọn "PRO SPORTS GIAO THUY JSC"'
+    ]
+    assert calls[-1][0] == "#ddlNotify1"
+    assert any("Shipping Info bỏ qua Factory: WFX không có lựa chọn" in item for item in logs)
+    assert logs[-1] == (
+        "[SALE ASN] Đã điền Shipping Info; bỏ qua 1 trường và chưa bấm Save."
+    )
+
+
 def test_sale_asn_table_value_confirmation_handles_wfx_formats():
     assert sale_asn_create._number_for_wfx("110", integer=True) == "110"
     assert sale_asn_create._number_for_wfx("498.99999999999994") == "499"
