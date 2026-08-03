@@ -91,6 +91,60 @@ SALE_ASN_STAGE_FRAME_SELECTORS = {
 }
 
 
+class _POSelectionRequired(Exception):
+    """PO cần user tự chọn trên WFX.
+
+    Dùng cho các nhánh nằm sâu trong flow (ví dụ khi thêm lại PO bị rơi lúc
+    đóng popup). Nếu chỉ raise ``RuntimeError`` thì user nhận một lỗi kỹ thuật
+    trong khi popup vẫn đang mở chờ họ chọn dòng.
+    """
+
+    def __init__(
+        self,
+        row: dict,
+        candidates: Sequence[dict],
+        reason: str,
+        *,
+        final: bool,
+    ) -> None:
+        super().__init__("SALE_ASN_PO_SELECTION_REQUIRED")
+        self.row = dict(row)
+        self.candidates = list(candidates)
+        self.reason = reason
+        self.final = final
+
+
+def _po_selection_result(
+    row: dict,
+    candidates: Sequence[dict],
+    reason: str,
+    *,
+    final: bool,
+    pending_index: int,
+    next_index: int,
+    completed: int,
+    total: int,
+) -> dict[str, Any]:
+    manual_action = "OK" if final else "Add & Continue"
+    return _result(
+        True,
+        "SALE_ASN_PO_SELECTION_REQUIRED",
+        (
+            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
+            f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
+        ),
+        pending_index=pending_index,
+        next_index=next_index,
+        source_row=row.get("source_row"),
+        po_no=row.get("po_no"),
+        style_no=row.get("style_no"),
+        reason=reason,
+        candidates=list(candidates[:20]),
+        completed=completed,
+        total=total,
+    )
+
+
 def _shipping_warning(label: str, value: str, result: dict[str, Any]) -> str:
     reason = str(result.get("reason") or "không thể điền")
     if reason == "option-not-found":
@@ -738,8 +792,11 @@ def _auto_add_po(
         chosen = _choose_po_candidate(row, last)
         _write_log(log, f"[SALE ASN] Dòng {row.get('source_row')}: {label} → {len(last)} kết quả.")
         if chosen is None:
-            if len(last) <= 1:
-                continue
+            if not last:
+                # Các lượt sau chỉ thêm điều kiện (Destination, rồi Style) nên
+                # kết quả luôn là tập con. Đã 0 kết quả thì thử tiếp chắc chắn
+                # vẫn 0, chỉ tốn thêm hai lượt search đầy đủ.
+                break
             continue
         selected = frame.locator(PO_RESULTS_TABLE_SELECTOR).first.evaluate(
             _SELECT_PO_ROW_JS,
@@ -807,14 +864,13 @@ def _date_for_wfx(value: str) -> str:
 
 
 def _number_for_wfx(value: str, *, integer: bool = False) -> str:
+    # quantize() cũng ném InvalidOperation khi phần nguyên vượt precision của
+    # Decimal context, nên nó phải nằm trong cùng try với việc dựng Decimal.
     try:
         number = Decimal(value.replace(",", "").strip())
+        number = number.quantize(Decimal("1") if integer else Decimal("0.0001"))
     except InvalidOperation:
         return value
-    if integer:
-        number = number.quantize(Decimal("1"))
-    else:
-        number = number.quantize(Decimal("0.0001"))
     rendered = format(number, "f")
     if "." in rendered:
         rendered = rendered.rstrip("0").rstrip(".")
@@ -1017,14 +1073,17 @@ def _ensure_order_grid_rows(
         )
 
     for index, row in enumerate(missing):
-        added, _candidates, _reason = _auto_add_po(
+        final = index == len(missing) - 1
+        added, candidates, reason = _auto_add_po(
             popup_frame,
             row,
             log,
-            final=index == len(missing) - 1,
+            final=final,
         )
         if not added:
-            raise RuntimeError("SALE_ASN_ORDER_GRID_NOT_READY")
+            # Popup vẫn đang mở và đang chờ user chọn dòng. Trả đúng trạng thái
+            # chờ thay vì lỗi kỹ thuật; lượt Tiếp tục sẽ tự dò lại PO còn thiếu.
+            raise _POSelectionRequired(row, candidates, reason, final=final)
 
     _main_page, refreshed_frame = _frame_with_selector(
         context,
@@ -1182,6 +1241,17 @@ def run_sale_asn_order_details(
             message,
             resumable=True,
         )
+    except Exception as error:
+        # Không có nhánh này thì mọi lỗi ngoài dự kiến rơi lên PANEL_ERROR và
+        # mất cờ resumable, khiến UI không còn nút thử lại cho đúng file đó.
+        message = f"{type(error).__name__}: {_first_line(error)}"
+        _write_log(log, message)
+        return _result(
+            False,
+            "SALE_ASN_ORDER_FILL_FAILED",
+            message,
+            resumable=True,
+        )
     finally:
         if playwright is not None:
             playwright.stop()
@@ -1242,7 +1312,7 @@ def _fill_shipping(
             continue
         try:
             result = _set_control(frame, selector, value, mode, timeout_s=6)
-        except Exception as error:
+        except (PlaywrightError, PlaywrightTimeoutError) as error:
             reason = _first_line(error)
             warning = f"{label}: {reason}"
             warnings.append(warning)
@@ -1310,55 +1380,46 @@ def run_sale_asn_create(
                 add.click(timeout=5_000)
                 _write_log(log, "[SALE ASN] Đã chọn Buyer và mở Add Order Details.")
             first_pending = max(0, int(start_index))
+            # Vòng lặp nằm hẳn trong guard: ngoài guard thì popup chưa được mở
+            # nên không có tên nào để tham chiếu nhầm.
             if first_pending < len(rows):
                 _popup_page, popup_frame = _frame_with_selector(
                     context,
                     PO_POPUP_SELECTOR,
                     timeout_s=15,
                 )
-
-            for index in range(first_pending, len(rows)):
-                row = dict(rows[index])
-                _emit_stage_progress(
-                    progress,
-                    "po",
-                    f"Thêm PO {index + 1}/{len(rows)}",
-                )
-                added, candidates, reason = _auto_add_po(
-                    popup_frame,
-                    row,
-                    log,
-                    final=index == len(rows) - 1,
-                )
-                if not added:
-                    final_pending = index == len(rows) - 1
-                    manual_action = "OK" if final_pending else "Add & Continue"
-                    return _result(
-                        True,
-                        "SALE_ASN_PO_SELECTION_REQUIRED",
-                        (
-                            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
-                            f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
-                        ),
-                        pending_index=index,
-                        next_index=index + 1,
-                        source_row=row.get("source_row"),
-                        po_no=row.get("po_no"),
-                        style_no=row.get("style_no"),
-                        reason=reason,
-                        candidates=candidates[:20],
-                        completed=index,
-                        total=len(rows),
+                for index in range(first_pending, len(rows)):
+                    row = dict(rows[index])
+                    _emit_stage_progress(
+                        progress,
+                        "po",
+                        f"Thêm PO {index + 1}/{len(rows)}",
                     )
+                    final_pending = index == len(rows) - 1
+                    added, candidates, reason = _auto_add_po(
+                        popup_frame,
+                        row,
+                        log,
+                        final=final_pending,
+                    )
+                    if not added:
+                        return _po_selection_result(
+                            row,
+                            candidates,
+                            reason,
+                            final=final_pending,
+                            pending_index=index,
+                            next_index=index + 1,
+                            completed=index,
+                            total=len(rows),
+                        )
             current_stage = "order_details"
 
-        frame_selector = SALE_ASN_STAGE_FRAME_SELECTORS[current_stage]
-        _main_page, main_frame = _frame_with_selector(
-            context,
-            frame_selector,
-            timeout_s=15,
-        )
         start_stage_index = SALE_ASN_STAGE_ORDER.index(current_stage)
+        # Frame chỉ được resolve khi tới bước thật sự chạy. Nếu resolve trước
+        # vòng lặp thì một bước đang bị bỏ qua vì tab của nó không hiện vẫn bắt
+        # user chờ hết timeout của đúng tab đó — nút Bỏ qua thành vô dụng.
+        main_frame = None
         for step in SALE_ASN_STAGE_ORDER[start_stage_index:]:
             current_stage = step
             if step in skipped:
@@ -1373,6 +1434,12 @@ def run_sale_asn_create(
                     state="skipped",
                 )
                 continue
+            if main_frame is None:
+                _main_page, main_frame = _frame_with_selector(
+                    context,
+                    SALE_ASN_STAGE_FRAME_SELECTORS[step],
+                    timeout_s=15,
+                )
             _emit_stage_progress(
                 progress,
                 step,
@@ -1434,6 +1501,20 @@ def run_sale_asn_create(
             warnings=shipping_warnings,
             warning_count=len(shipping_warnings),
             add_po_selected=add_po_selected,
+        )
+    except _POSelectionRequired as pending:
+        # Lượt Tiếp tục quay lại bước Thêm PO với start_index = hết danh sách:
+        # vòng lặp PO bị bỏ qua, còn _ensure_order_grid_rows tự dò lại đúng các
+        # PO còn thiếu nên không thêm trùng dòng đã vào grid.
+        return _po_selection_result(
+            pending.row,
+            pending.candidates,
+            pending.reason,
+            final=pending.final,
+            pending_index=len(rows),
+            next_index=len(rows),
+            completed=len(rows),
+            total=len(rows),
         )
     except RuntimeError as error:
         code = str(error).split(":", 1)[0] or "SALE_ASN_CREATE_FAILED"

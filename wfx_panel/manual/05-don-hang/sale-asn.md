@@ -47,7 +47,9 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
 độ, nên bạn luôn thấy đã chạy được tới đâu.
 
 - **Cần bạn chọn PO.** Dòng `Thêm PO` chuyển sang màu cảnh báo và mở ra thông
-  báo. Chọn đúng dòng PO trên WFX, bấm `Add & Continue` (hoặc `OK` nếu là PO
+  báo, kèm danh sách các dòng WFX đang hiện (PO No., Style và Dispatched Qty).
+  Đối chiếu danh sách này để biết cần chọn dòng nào trước khi chuyển sang cửa sổ
+  WFX. Chọn đúng dòng PO trên WFX, bấm `Add & Continue` (hoặc `OK` nếu là PO
   cuối), rồi quay lại ứng dụng, tích ô xác nhận và bấm `Tiếp tục dòng kế`.
   Nếu muốn bỏ hẳn lượt này để làm lại từ file khác, bấm
   `Bỏ lượt này và chọn file khác`.
@@ -55,6 +57,11 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
   được giữ nguyên: xử lý nguyên nhân rồi bấm `Thử lại bước này`, hoặc bấm
   `Bỏ qua ...` để chuyển sang bước sau. Bỏ qua chỉ áp dụng cho ba bước điền dữ
   liệu; bước thêm PO không thể bỏ qua để tránh tạo chứng từ thiếu đơn hàng.
+  Khi bỏ qua, ứng dụng đi thẳng sang bước kế tiếp và không chờ tab của bước vừa
+  bỏ, nên bạn dùng được nút này cả khi tab đó đang không mở lên được.
+- **Bạn bấm `Stop`, hoặc ứng dụng đang bận việc khác.** Lượt chạy dừng lại và
+  thẻ file quay lại với nút `Bắt đầu tạo Sale ASN`. Bấm lại để chạy tiếp cùng
+  file đó; không cần chọn file lại từ đầu.
 
 Riêng trong `Shipping Info`, từng trường được xử lý độc lập. Nếu file thiếu dữ
 liệu hoặc WFX không có lựa chọn tương ứng (ví dụ Factory), ứng dụng bỏ qua đúng
@@ -152,7 +159,8 @@ liệu.
 | Không có Buyer để chọn | Nút `↻` sẽ nhấp nháy màu vàng khi kho Buyer còn rỗng. Mở đúng phiên WFX rồi bấm `↻`. Ứng dụng không tự quét vì thao tác này mở hẳn form Sale ASN New trên Chrome. |
 | Ô Buyer viền vàng, không có dấu ✓ | Tên đang gõ chưa khớp Buyer nào. Gõ lại và chọn đúng dòng trong danh sách gợi ý. |
 | File có lỗi | Đọc vị trí ô hoặc dòng trong thông báo, sửa file rồi chọn lại. |
-| Có nhiều dòng PO giống nhau | Chọn đúng Style hoặc Qty trên WFX, bấm `Add & Continue`, rồi tiếp tục trong ứng dụng. |
+| Báo một ô số `quá lớn` | Ô Qty, Carton, NW, GW, CBM hoặc giá đang chứa giá trị vượt ngoài phạm vi thực tế (thường do dán nhầm hoặc Excel đổi sang dạng `1E+...`). Nhập lại đúng số rồi chọn file lại. |
+| Có nhiều dòng PO giống nhau | Đối chiếu danh sách dòng ngay trong thẻ bước `Thêm PO`, chọn đúng Style hoặc Qty trên WFX, bấm `Add & Continue`, rồi tiếp tục trong ứng dụng. |
 | Không tìm thấy PO | Kiểm tra PO No., Destination và Style trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
 | Đã đóng cửa sổ Add PO | Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng. |
 | Không xuất được form Order Details | Mở đúng chứng từ có PO và vào tab Order Details rồi bấm xuất lại. |

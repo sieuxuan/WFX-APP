@@ -235,7 +235,6 @@ def write_style_template(
         cell.alignment = Alignment(horizontal="center", vertical="center")
     sheet.row_dimensions[1].height = 24
     sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:L{MAX_STYLE_ROWS + 1}"
     table = Table(displayName="StyleUpload", ref="A1:L101")
     table.tableStyleInfo = TableStyleInfo(
         name="TableStyleMedium2",
