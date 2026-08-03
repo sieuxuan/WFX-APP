@@ -9,7 +9,7 @@ xác nhận.
 2. Bấm `Tải file mẫu` trong thẻ Upload OC New.
 3. Mở file và chỉ nhập dữ liệu trong sheet OC INPUT.
 4. Lưu file Excel.
-5. Bấm `Chọn file` trong thẻ Upload OC New.
+5. Bấm `Chọn file OC mới` trong thẻ Upload OC New.
 6. Đọc bảng Review trước khi Upload.
 7. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng.
 8. Bấm `Xác nhận Upload` để bắt đầu tạo OC trên WFX.

@@ -493,7 +493,14 @@ Các workflow riêng hiện có:
   `transaction` tới UI. Lỗi từ bước Process Package trở đi là checkpoint cần
   kiểm tra EDI, không gợi ý Submit lại; thẻ tiến độ cung cấp hành động read-only
   mở đúng `DecisionOne_BuyerOrderDispatch` mà không tạo transaction.
-- Supplier List: đổi Category, mở Master, tìm trong tất cả Category.
+- Supplier List: đổi Category, mở Master, tìm trong tất cả Category. Cả hai thao
+  tác đều tự mở Supplier List khi WFX chưa mở, nên UI không được đánh số bước hay
+  bắt người dùng bấm List trước; nút List chỉ là lối tắt và chỉ có một nút chính
+  duy nhất trong màn.
+- Trong cùng một màn module, không được có hai nút trùng nhãn. Riêng OC, hai nút
+  chọn file phải ghi rõ `Chọn file OC mới` và `Chọn file Revise`: chúng đi vào
+  hai tab EDI khác nhau và `Create Transaction` không idempotent, nên bấm nhầm
+  là tạo sai chứng từ.
 - Buyer List: tự mở đúng Buyer List khi cần rồi mở Edit đầu tiên.
 - Company Setup: Đổi FOC tự mở đúng List nếu cần, mở Miscellaneous Settings rồi
   mới đổi/lưu nơi áp dụng FOC.

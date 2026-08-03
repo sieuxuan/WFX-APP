@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260803-5">
+  <link rel="stylesheet" href="style.css?v=20260803-6">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -353,7 +353,7 @@
               </div>
               <div class="oc-upload-card-actions oc-upload-card-actions-even">
                 <button type="button" data-module-action="oc-template">Tải file mẫu</button>
-                <button type="button" class="special-primary-button" data-module-action="oc-upload-new">Chọn file</button>
+                <button type="button" class="special-primary-button" data-module-action="oc-upload-new">Chọn file OC mới</button>
               </div>
             </section>
             <section class="oc-upload-card oc-flow-card">
@@ -366,7 +366,7 @@
               </div>
               <div class="oc-upload-card-actions oc-upload-card-actions-even">
                 <button type="button" data-module-action="oc-revise-report">Mở report</button>
-                <button type="button" class="special-primary-button" data-module-action="oc-upload-revise">Chọn file</button>
+                <button type="button" class="special-primary-button" data-module-action="oc-upload-revise">Chọn file Revise</button>
               </div>
             </section>
           </div>
@@ -724,12 +724,12 @@
         </div>
 
         <div class="special-module-workspace" data-module-view="supplier" hidden>
-          <div class="special-section supplier-list-step">
-            <span class="supplier-step-copy"><strong>1. Mở Supplier List</strong><small>Chỉ cần mở một lần trước khi đổi Category.</small></span>
-            <button type="button" class="special-primary-button" data-module-action="supplier-list">Mở List</button>
-          </div>
+          <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="supplier-list">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+            <span><strong>Supplier List</strong><small>Mở danh sách Supplier hiện tại</small></span>
+          </button>
           <div class="special-section">
-            <label><span>2. Category</span>
+            <label><span>Category</span>
               <select class="supplier-category">
                 <option value="Apparel">Apparel</option>
                 <option value="Fixed Asset">Fixed Asset</option>
@@ -739,12 +739,12 @@
                 <option value="Trims">Trims</option>
               </select>
             </label>
-            <button type="button" class="special-primary-button" data-module-action="supplier-open">Đổi Category · mở Master</button>
+            <button type="button" class="module-secondary-button" data-module-action="supplier-open">Đổi Category · mở Master</button>
           </div>
           <div class="special-section special-search-section">
-            <label><span>3. Tìm tên công ty</span><input class="supplier-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
+            <label><span>Tìm tên công ty</span><input class="supplier-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
             <button type="button" class="special-primary-button" data-module-action="supplier-find" data-validation-group="supplier" disabled>Tìm tất cả Category</button>
-            <small class="module-validation-hint" data-validation-hint="supplier">Nhập tên Supplier để tìm.</small>
+            <small class="module-validation-hint" data-validation-hint="supplier">Nhập tên Supplier để tìm. Không cần mở List trước; app tự mở nếu chưa có.</small>
           </div>
         </div>
 
@@ -942,6 +942,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260803-9"></script>
+  <script src="panel.js?v=20260803-10"></script>
 </body>
 </html>

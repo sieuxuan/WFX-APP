@@ -127,7 +127,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260803-9"',
+        'src="panel.js?v=20260803-10"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -203,6 +203,37 @@ def test_sale_asn_workspace_uses_one_flat_guided_flow():
     # Buyer dùng listbox gợi ý thay cho datalist.
     assert "<datalist" not in workspace
     assert 'class="sale-asn-buyer-suggestions"' in workspace
+
+
+def test_no_module_screen_repeats_a_button_label():
+    """Hai nút trùng nhãn trong cùng màn là bẫy bấm nhầm. Với OC, hai nút chọn
+    file đi vào hai tab EDI khác nhau và Create Transaction không idempotent."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert '>Chọn file OC mới<' in html
+    assert '>Chọn file Revise<' in html
+    assert re.search(r">Chọn file<", html) is None
+
+
+def test_supplier_screen_has_no_stale_numbered_steps():
+    """Đổi Category và Tìm đều tự mở Supplier List, nên UI không được đánh số
+    bước hay bắt bấm List trước."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    workspace = html[
+        html.index('data-module-view="supplier"') : html.index(
+            'data-module-view="buyer"'
+        )
+    ]
+    assert "1. Mở Supplier List" not in workspace
+    assert "supplier-step-copy" not in workspace
+    assert "Chỉ cần mở một lần" not in workspace
+    # Chỉ còn đúng một nút chính trong màn.
+    assert workspace.count("special-primary-button") == 1
+    assert 'data-module-action="supplier-find"' in workspace
+    assert 'class="module-secondary-button"' in workspace
+
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert ".module-secondary-button" in css
+    assert "supplier-step-copy" not in css
 
 
 def test_oc_workspace_uses_readable_balanced_layout():

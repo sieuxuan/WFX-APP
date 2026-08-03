@@ -11,7 +11,7 @@ WFX.
 4. Xuất báo cáo thành file Excel.
 5. Sửa dữ liệu cần thay đổi trong file.
 6. Giữ nguyên các cột nhận dạng của OC gốc.
-7. Bấm `Chọn file` trong thẻ Revise OC.
+7. Bấm `Chọn file Revise` trong thẻ Revise OC.
 8. Kiểm tra bảng Review rồi bấm `Xác nhận Upload`.
 
 ## Mẹo
