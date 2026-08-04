@@ -444,16 +444,16 @@ Các workflow riêng hiện có:
   `SALE_ASN_FORM_COMPLETED`, thẻ kết quả liệt kê cảnh báo Shipping Info và có nút
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
   xuất báo cáo vì user còn phải Save trên WFX.
-  Form Excel có đúng 20 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Carton`,
+  Form Excel có đúng 21 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Carton`,
   `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
-  `HS CODE`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
+  `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
   `Destination`, `FTY`, `Consignee Address`, `Ship To`, `Shipping Mode`; bỏ
-  `SEASON`/`DESCRIPTION`. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
+  `SEASON`/cột `DESCRIPTION` cũ. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
   đúng thứ tự dòng. Một PO có thể có nhiều Style; chỉ cặp PO No. + Style No. trùng
   hoàn toàn là lỗi. Style No./PO No./Destination/FTY bắt buộc; Shipping Mode chỉ
   bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
   nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;
-  HS Code/Qty/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
+  HS Code/Goods Description/Qty/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
   Consignee Address/Ship To được phép trống. Nếu cả file không có Cargo Ready
   Date thì giữ trống và không dùng ngày hiện tại; nếu có ngày ở một dòng thì
   dùng ngày có dữ liệu đầu tiên để điền mọi dòng còn trống. Ba cột Cargo
@@ -508,7 +508,19 @@ Các workflow riêng hiện có:
   workbook giữ nguyên format report nguồn; nếu mỗi report có nhiều sheet thì xếp
   xen kẽ Invoice 1, PKL 1, Invoice 2, PKL 2 cho đến hết, Invoice luôn đứng trước
   PKL. Sau đó mới mở Save As với tên mặc định là Invoice No. thực tế và tự mở
-  Explorer, chọn đúng file khi lưu thành công. Khi copy sheet giữa hai workbook,
+  Explorer, chọn đúng file khi lưu thành công. Sau khi lưu, tự đóng mọi popup
+  Docs/report được tạo từ lượt này nhưng giữ nguyên các Page đã có trước khi bấm
+  Docs. Khi ghép, tăng chiều cao các hàng wrap text theo nội dung và độ rộng cột
+  để không cắt dòng trong Excel; mọi sheet đặt A4, giữ hướng dọc/ngang từ report
+  WFX, fit vừa một trang theo chiều ngang và tự phân trang theo chiều dọc. Khi copy sheet giữa hai workbook,
+  Với Packing List J.Lindeberg (nhận diện bằng header `JL PO#`), gộp dọc Net Wt,
+  Gross Wt, No of Carton và CBM cho các dòng liền nhau có cùng JL PO# + Style No;
+  chỉ gộp khi giá trị cột đó giống nhau để không làm mất số liệu.
+  Với Packing List CORPORATE OFFICE - TRUEWERK, các cặp dòng liền nhau cùng Style
+  và PO gốc/PO hậu tố `ADD` tự gộp dọc Net-Weight, Gross-Weight, Qty Cartons và
+  CBM nếu dòng `ADD` chỉ có số 0/trống; Qty/Unit vẫn giữ riêng.
+  Nếu file đích cùng tên đang mở/khóa trong Excel, không báo lỗi hoặc bắt tải lại:
+  tự lưu sibling kế tiếp theo dạng `Invoice (2).xlsx` và trả đúng tên đã lưu.
   phải tạo merged range trước rồi mới phục hồi style từng ô để không mất border/
   khung report do WFX xuất; style của row/column dimension phải được ánh xạ lại
   theo thuộc tính, không được mang nguyên style index từ workbook nguồn sang.

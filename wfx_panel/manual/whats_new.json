@@ -67,7 +67,7 @@
     "highlights": [
       {
         "title": "Form Sale ASN có đầy đủ thông tin giao hàng",
-        "body": "Form mới sắp xếp lại 20 cột, thêm date validation cho ba cột ngày và chỉ yêu cầu Shipping Mode ở dòng dữ liệu đầu tiên. App tự điền Port of Loading cùng Delivery Terms theo AIR, SEA hoặc COURIER; Cargo Ready Date trống được giữ nguyên để bạn tự điền.",
+        "body": "Form mới có 21 cột, thêm Goods Description tùy chọn sau HS CODE, date validation cho ba cột ngày và chỉ yêu cầu Shipping Mode ở dòng dữ liệu đầu tiên. App tự điền Port of Loading cùng Delivery Terms theo AIR, SEA hoặc COURIER; Cargo Ready Date trống được giữ nguyên để bạn tự điền.",
         "entry": "don-hang-sale-asn"
       },
       {

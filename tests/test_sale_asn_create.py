@@ -10,6 +10,7 @@ from wfx_panel.automation.sale_asn_create import (
     _auto_add_po,
     _buyer_options,
     _refresh_existing_new_form,
+    _set_style_goods_description_cell,
     _set_style_hts_cell,
 )
 from wfx_panel.panel_api import PanelAPI
@@ -45,6 +46,7 @@ def _valid_rows():
             "Style No": "STYLE A MEN",
             "PO No": "PO-001",
             "HS CODE": 62014010,
+            "Goods Description": "Men's jacket",
             "Qty": 10,
             "Carton": 2,
             "NW": 9.5,
@@ -85,11 +87,11 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert tuple(cell.value for cell in sheet[1]) == SALE_ASN_COLUMNS
     assert sheet.freeze_panes == "A2"
     assert sheet.sheet_view.showGridLines is False
-    assert sheet.tables["SaleASNInput"].ref == "A1:T21"
+    assert sheet.tables["SaleASNInput"].ref == "A1:U21"
     assert sheet.auto_filter.ref is None
     assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
     assert sheet["G1"].fill.fgColor.rgb == "00DBEAFE"
-    assert sheet["T1"].fill.fgColor.rgb == "00FDE68A"
+    assert sheet["U1"].fill.fgColor.rgb == "00FDE68A"
     assert SALE_ASN_COLUMNS == (
         "Style No",
         "PO No",
@@ -102,6 +104,7 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "Service Price",
         "Cargo Ready Date",
         "HS CODE",
+        "Goods Description",
         "Invoice No",
         "Invoice Date",
         "Shipping Bill No",
@@ -113,8 +116,8 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "Shipping Mode",
     )
     assert sheet["J2"].number_format == "dd/mm/yyyy"
-    assert sheet["M2"].number_format == "dd/mm/yyyy"
-    assert sheet["O2"].number_format == "dd/mm/yyyy"
+    assert sheet["N2"].number_format == "dd/mm/yyyy"
+    assert sheet["P2"].number_format == "dd/mm/yyyy"
     assert "SEASON" not in SALE_ASN_COLUMNS
     assert "DESCRIPTION" not in SALE_ASN_COLUMNS
     assert SALE_ASN_COLUMNS[-3:] == (
@@ -126,13 +129,13 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert len(validations) == 4
     shipping_validation = next(item for item in validations if item.type == "list")
     assert shipping_validation.formula1 == '"AIR,SEA,COURIER"'
-    assert str(shipping_validation.sqref) == "T2"
+    assert str(shipping_validation.sqref) == "U2"
     assert shipping_validation.allow_blank is False
     date_validations = [item for item in validations if item.type == "date"]
     assert {str(item.sqref) for item in date_validations} == {
         "J2:J2001",
-        "M2:M2001",
-        "O2:O2001",
+        "N2:N2001",
+        "P2:P2001",
     }
     assert all(item.allow_blank is True for item in date_validations)
     workbook.close()
@@ -154,6 +157,7 @@ def test_reader_preserves_row_order_and_applies_business_fallbacks(tmp_path):
     assert document["rows"][1]["cargo_ready_date"] == "2026-08-03"
     assert document["rows"][1]["destination"] == "Germany"
     assert document["rows"][0]["hs_code"] == "62014010"
+    assert document["rows"][0]["goods_description"] == "Men's jacket"
     assert document["rows"][0]["shipping_mode"] == "AIR"
     assert document["rows"][1]["shipping_mode"] == "AIR"
     assert document["rows"][1]["consignee_address"] == "PUMA EUROPE GMBH"
@@ -284,7 +288,7 @@ def test_full_template_can_prefill_current_order_details(tmp_path):
     assert sheet["E2"].value == 9.5
     assert sheet["H2"].value == 12.75
     assert sheet["J2"].value.date() == date(2026, 8, 3)
-    assert sheet.tables["SaleASNInput"].ref == "A1:T21"
+    assert sheet.tables["SaleASNInput"].ref == "A1:U21"
     workbook.close()
 
 
@@ -718,6 +722,34 @@ def test_sale_asn_style_details_targets_exact_hts_cell(monkeypatch):
     assert "td#colHTSCode" in captured["script"]
     assert captured["frame"] is frame
     assert captured["value"] == "62014010"
+
+
+def test_sale_asn_style_details_targets_exact_goods_description_cell(monkeypatch):
+    captured = {}
+
+    class FakeFrame:
+        def evaluate(self, script, spec):
+            captured["script"] = script
+            captured["spec"] = spec
+            return {
+                "ok": True,
+                "style": "RVR-STYLE A",
+                "column_id": "colGoodsDescription",
+            }
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_edit_marked_table_cell",
+        lambda frame, value: captured.update(frame=frame, value=value),
+    )
+    frame = FakeFrame()
+
+    _set_style_goods_description_cell(frame, "STYLE A", "Men's jacket")
+
+    assert captured["spec"] == {"style": "STYLE A"}
+    assert "td#colGoodsDescription" in captured["script"]
+    assert captured["frame"] is frame
+    assert captured["value"] == "Men's jacket"
 
 
 def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatch):

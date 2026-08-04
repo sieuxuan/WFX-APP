@@ -29,6 +29,7 @@ SALE_ASN_COLUMNS = (
     "Service Price",
     "Cargo Ready Date",
     "HS CODE",
+    "Goods Description",
     "Invoice No",
     "Invoice Date",
     "Shipping Bill No",
@@ -66,6 +67,7 @@ MAX_SALE_ASN_NUMBER_EXPONENT = 15
 _OPTIONAL_COLUMNS = frozenset(
     {
         "HS CODE",
+        "Goods Description",
         "Qty",
         "Carton",
         "NW",
@@ -109,6 +111,7 @@ class SaleASNRow:
     style_no: str
     po_no: str
     hs_code: str
+    goods_description: str
     qty: str
     carton: str
     nw: str
@@ -242,14 +245,20 @@ def _header_identity(value: object) -> str:
 
 
 def _find_input_sheet(workbook) -> object:
-    expected = {_header_identity(value) for value in SALE_ASN_COLUMNS}
+    # Giữ đọc được form 20 cột trước đây; cột Goods Description mới là tùy chọn
+    # cả về dữ liệu lẫn tương thích với file người dùng đã tải trước khi nâng cấp.
+    expected = {
+        _header_identity(value)
+        for value in SALE_ASN_COLUMNS
+        if value != "Goods Description"
+    }
     for sheet in workbook.worksheets:
         actual = {_header_identity(cell.value) for cell in sheet[1] if cell.value}
         if expected <= actual:
             return sheet
     raise SaleASNWorkbookError(
         "SALE_ASN_FILE_HEADERS_INVALID",
-        "Không tìm thấy hàng tiêu đề Sale ASN gồm đủ 20 cột chuẩn.",
+        "Không tìm thấy hàng tiêu đề Sale ASN gồm đủ các cột chuẩn.",
     )
 
 
@@ -292,9 +301,11 @@ def read_sale_asn_workbook(
         raw_rows: list[dict[str, object]] = []
         for source_row in range(2, sheet.max_row + 1):
             values = {
-                column: sheet.cell(
-                    source_row, header_map[_header_identity(column)]
-                ).value
+                column: (
+                    sheet.cell(source_row, header_map[identity]).value
+                    if (identity := _header_identity(column)) in header_map
+                    else None
+                )
                 for column in SALE_ASN_COLUMNS
             }
             # PO No quyết định một dòng có phải dữ liệu ASN hay không. Dòng
@@ -304,7 +315,11 @@ def read_sale_asn_workbook(
             formula_cells = [
                 f"{sheet.cell(source_row, header_map[_header_identity(column)]).coordinate}"
                 for column, value in values.items()
-                if isinstance(value, str) and value.startswith("=")
+                if (
+                    _header_identity(column) in header_map
+                    and isinstance(value, str)
+                    and value.startswith("=")
+                )
             ]
             if formula_cells:
                 raise SaleASNWorkbookError(
@@ -444,6 +459,7 @@ def read_sale_asn_workbook(
                 style_no=style_no,
                 po_no=po_no,
                 hs_code=_identifier(raw["HS CODE"]),
+                goods_description=_text(raw["Goods Description"]),
                 qty=numbers["Qty"],
                 carton=numbers["Carton"],
                 nw=numbers["NW"],
@@ -512,6 +528,7 @@ def write_sale_asn_template(
         "Style No": "style_no",
         "PO No": "po_no",
         "HS CODE": "hs_code",
+        "Goods Description": "goods_description",
         "Qty": "qty",
         "Carton": "carton",
         "NW": "nw",
@@ -539,7 +556,7 @@ def write_sale_asn_template(
 
     widths = (
         34, 22, 12, 12, 12, 12, 12, 14, 14, 18,
-        15, 20, 14, 20, 18, 20, 34, 34, 34, 16,
+        15, 34, 20, 14, 20, 18, 20, 34, 34, 34, 16,
     )
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
@@ -559,12 +576,12 @@ def write_sale_asn_template(
     sheet.row_dimensions[1].height = 34
 
     for row in range(2, reserved_rows + 2):
-        for column in (10, 13, 15):
+        for column in (10, 14, 16):
             sheet.cell(row, column).number_format = "dd/mm/yyyy"
         for column in (3, 4, 5, 6, 7, 8, 9):
             sheet.cell(row, column).number_format = "#,##0.00"
 
-    for cell_range in ("J2:J2001", "M2:M2001", "O2:O2001"):
+    for cell_range in ("J2:J2001", "N2:N2001", "P2:P2001"):
         date_validation = DataValidation(
             type="date",
             operator="between",
@@ -589,8 +606,8 @@ def write_sale_asn_template(
     shipping_mode_validation.prompt = "Chọn AIR, SEA hoặc COURIER."
     shipping_mode_validation.promptTitle = "Shipping Mode"
     sheet.add_data_validation(shipping_mode_validation)
-    shipping_mode_validation.add("T2")
-    table_ref = f"A1:T{reserved_rows + 1}"
+    shipping_mode_validation.add("U2")
+    table_ref = f"A1:U{reserved_rows + 1}"
     table = Table(displayName="SaleASNInput", ref=table_ref)
     table.tableStyleInfo = TableStyleInfo(
         name="TableStyleMedium2",

@@ -546,6 +546,14 @@ _MARK_STYLE_HTS_CELL_JS = r"""spec => {
     return {ok: true, style: best[0].styleText, column_id: cell.id};
 }"""
 
+# WFX dùng cùng cấu trúc bảng cho hai field Style Details. Giữ selector HTS
+# riêng ở trên để các integration test cũ vẫn kiểm tra đúng cell hiện hữu;
+# cột mô tả hàng hóa dùng chính selector WFX được cung cấp.
+_MARK_STYLE_GOODS_DESCRIPTION_CELL_JS = _MARK_STYLE_HTS_CELL_JS.replace(
+    "td#colHTSCode",
+    "td#colGoodsDescription",
+)
+
 SALE_ASN_STAGE_LABELS = {
     "po": "Thêm PO",
     "order_details": "Order Details",
@@ -1162,6 +1170,21 @@ def _set_style_hts_cell(frame: Frame, style: str, value: str) -> None:
     _edit_marked_table_cell(frame, value)
 
 
+def _set_style_goods_description_cell(
+    frame: Frame,
+    style: str,
+    value: str,
+) -> None:
+    """Điền Goods Description vào đúng dòng Style Details trên WFX."""
+    marked = frame.evaluate(
+        _MARK_STYLE_GOODS_DESCRIPTION_CELL_JS,
+        {"style": style},
+    )
+    if not marked.get("ok"):
+        raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
+    _edit_marked_table_cell(frame, value)
+
+
 def _order_row_identity(row: dict) -> tuple[str, str]:
     return _fold(row.get("po_no")), _fold(row.get("style_no"))
 
@@ -1536,22 +1559,39 @@ def _fill_style_details(
     tab.wait_for(state="visible", timeout=8_000)
     tab.click(timeout=5_000)
     _wait(frame, 500)
-    grouped: dict[str, str] = {}
+    grouped: dict[str, dict[str, str]] = {}
     for row in rows:
-        style, code = str(row.get("style_no") or ""), str(row.get("hs_code") or "")
-        if not code:
+        style = str(row.get("style_no") or "")
+        values = {
+            "hs_code": str(row.get("hs_code") or ""),
+            "goods_description": str(row.get("goods_description") or ""),
+        }
+        if not any(values.values()):
             continue
-        old = grouped.setdefault(style, code)
-        if old != code:
-            raise RuntimeError("SALE_ASN_STYLE_HS_CODE_CONFLICT")
-    for index, (style, code) in enumerate(grouped.items(), 1):
+        detail = grouped.setdefault(style, {})
+        for field, value in values.items():
+            if not value:
+                continue
+            old = detail.setdefault(field, value)
+            if old != value:
+                code = (
+                    "SALE_ASN_STYLE_HS_CODE_CONFLICT"
+                    if field == "hs_code"
+                    else "SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT"
+                )
+                raise RuntimeError(code)
+    for index, (style, values) in enumerate(grouped.items(), 1):
         _emit_stage_progress(
             progress,
             "style_details",
             f"Style Details {index}/{len(grouped)}",
         )
-        _set_style_hts_cell(frame, style, code)
-        _write_log(log, f"[SALE ASN] Đã điền HS Code cho Style {style}.")
+        if code := values.get("hs_code"):
+            _set_style_hts_cell(frame, style, code)
+            _write_log(log, f"[SALE ASN] Đã điền HS Code cho Style {style}.")
+        if description := values.get("goods_description"):
+            _set_style_goods_description_cell(frame, style, description)
+            _write_log(log, f"[SALE ASN] Đã điền Goods Description cho Style {style}.")
 
 
 def _fill_shipping(

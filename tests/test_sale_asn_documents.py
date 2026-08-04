@@ -10,6 +10,7 @@ from wfx_panel.automation.sale_asn_documents import (
     REPORT_EXPORT_MENU_TIMEOUT_SECONDS,
     REPORT_READY_TIMEOUT_SECONDS,
     _click_sale_asn_docs,
+    _close_sale_asn_document_popups,
     _merge_sale_asn_row_payloads,
     _sale_asn_horizontal_positions,
     _select_sale_asn_row,
@@ -159,3 +160,30 @@ def test_click_docs_sweeps_horizontally_until_reordered_column_is_rendered():
     assert clicked is True
     assert root.visited == [0, 300, 600]
     assert frame.waited == 450
+
+
+def test_document_cleanup_closes_only_popups_opened_by_docs():
+    class FakePage:
+        def __init__(self):
+            self.closed = False
+
+        def is_closed(self):
+            return self.closed
+
+        def close(self, **_kwargs):
+            self.closed = True
+
+    list_page = FakePage()
+    docs_page = FakePage()
+    report_page = FakePage()
+    context = type(
+        "FakeContext",
+        (),
+        {"pages": [list_page, docs_page, report_page]},
+    )()
+
+    _close_sale_asn_document_popups(context, {id(list_page)}, lambda _message: None)
+
+    assert list_page.closed is False
+    assert docs_page.closed is True
+    assert report_page.closed is True

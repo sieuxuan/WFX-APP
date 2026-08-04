@@ -571,6 +571,31 @@ def _restore_documents_screen(
     return _documents_frame(context, timeout_s=DOCUMENTS_FRAME_TIMEOUT_SECONDS)
 
 
+def _close_sale_asn_document_popups(
+    context: Any,
+    existing_page_ids: set[int],
+    log: Callable[[str], None],
+) -> None:
+    """Đóng các popup sinh từ Docs sau khi đã lưu xong file ghép.
+
+    Chỉ đóng Page không có trước lúc click Docs để không đụng cửa sổ WFX mà
+    người dùng đã mở sẵn. Khi WFX tái sử dụng tab List hiện tại, tab đó cũng
+    được giữ nguyên.
+    """
+    closed = 0
+    for page in reversed(context.pages):
+        if id(page) in existing_page_ids:
+            continue
+        try:
+            if not page.is_closed():
+                page.close(run_before_unload=False)
+                closed += 1
+        except PlaywrightError:
+            continue
+    if closed:
+        _write_log(log, f"[SALE ASN DOCS] Đã đóng {closed} cửa sổ Docs/report.")
+
+
 def prepare_sale_asn_documents(
     xpath: str,
     filter_kind: str,
@@ -617,6 +642,7 @@ def prepare_sale_asn_documents(
         )
         row = _select_sale_asn_row(payload, filter_kind, query)
         invoice_no = str(row.get("invoice_no") or query or "Invoice").strip()
+        existing_page_ids = {id(item) for item in context.pages}
         clicked = _click_sale_asn_docs(
             frame,
             root,
@@ -681,6 +707,7 @@ def prepare_sale_asn_documents(
             target,
             invoice_no=invoice_no,
         )
+        _close_sale_asn_document_popups(context, existing_page_ids, log)
         sheet_names = sale_asn_sheet_names(target)
         return _result(
             True,
