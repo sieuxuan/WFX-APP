@@ -261,9 +261,8 @@ def test_helper_trich_dung_so_luong_hien_co():
     assert surface.settings_controls() == {
         "return-list-input",
         "focus-chrome-input",
-            "open-costing-file-input",
-            "sale-asn-po-search-input",
-            "autostart-input",
+        "open-costing-file-input",
+        "autostart-input",
         "start-hidden-input",
         "admin-mode-input",
         "always-on-top-input",

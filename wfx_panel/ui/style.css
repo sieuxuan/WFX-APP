@@ -799,7 +799,6 @@ body.compact-mode .compact-launcher .compact-mark {
     .setting-row strong, .setting-row span { display: block; }
     .setting-row strong { color: var(--text); font-size: 11.5px; font-weight: 650; }
     .setting-row span { margin-top: 2px; color: var(--text-3); font-size: 11px; line-height: 1.35; }
-    .sale-asn-po-search-setting { align-items: flex-start; flex-direction: column; }
     .sale-asn-po-search-options { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
     .sale-asn-po-search-options label { position: relative; cursor: pointer; }
     .sale-asn-po-search-options input { position: absolute; opacity: 0; pointer-events: none; }
@@ -1815,20 +1814,23 @@ body.compact-mode .compact-launcher .compact-mark {
     .sale-asn-done-message { margin: 0; color: var(--text-2); font-size: 11px; line-height: 1.42; }
     .sale-asn-done-warnings { display: grid; gap: 3px; margin: 0; padding-left: 16px; color: var(--text-2); font-size: 11px; line-height: 1.4; }
     .sale-asn-done-warnings[hidden] { display: none !important; }
-    .sale-asn-advanced { border-top: 1px solid var(--border); }
-    .sale-asn-advanced > summary { display: flex; align-items: center; gap: 6px; padding: 8px 2px 0; color: var(--text-3); font-size: 11px; font-weight: 750; cursor: pointer; list-style: none; }
+    .sale-asn-advanced { margin-top: 2px; }
+    .sale-asn-advanced > summary { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 7px 10px; color: var(--text-2); font-size: 11.5px; font-weight: 750; cursor: pointer; list-style: none; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); transition: color .15s ease, border-color .15s ease, background .15s ease; }
     .sale-asn-advanced > summary::-webkit-details-marker { display: none; }
-    .sale-asn-advanced > summary::before { content: "\203A"; display: inline-block; font-size: 13px; line-height: 1; transition: transform .15s ease; }
+    .sale-asn-advanced > summary::before { content: "\203A"; display: inline-grid; width: 18px; height: 18px; place-items: center; color: var(--accent-strong); font-size: 15px; line-height: 1; border-radius: 6px; background: var(--accent-soft); transition: transform .15s ease; }
+    .sale-asn-advanced[open] > summary { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
     .sale-asn-advanced[open] > summary::before { transform: rotate(90deg); }
     @media (prefers-reduced-motion: reduce) { .sale-asn-advanced > summary::before { transition: none; } }
-    .sale-asn-advanced-body { display: grid; gap: 10px; padding-top: 9px; }
-    .sale-asn-advanced-group { display: grid; gap: 5px; }
-    .sale-asn-advanced-group > strong { color: var(--text); font-size: 11.5px; }
+    .sale-asn-advanced-body { display: grid; gap: 8px; padding-top: 8px; }
+    .sale-asn-advanced-group { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+    .sale-asn-advanced-group > strong { color: var(--text); font-size: 11.5px; line-height: 1.25; }
     .sale-asn-advanced-group > small { color: var(--text-3); font-size: 10.8px; line-height: 1.35; }
     .sale-asn-stage-options { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; margin-top: 2px; }
-    .sale-asn-stage-options label { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 5px 8px; color: var(--text-2); font-size: 11.5px; cursor: pointer; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+    .sale-asn-stage-options label { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 8px; color: var(--text-2); font-size: 11.5px; cursor: pointer; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); transition: border-color .15s ease, background .15s ease; }
     .sale-asn-stage-options input { accent-color: var(--accent); }
     .sale-asn-stage-options label:has(input:checked) { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
+    .sale-asn-advanced .sale-asn-po-search-options { gap: 6px; margin-top: 2px; }
+    .sale-asn-advanced .sale-asn-po-search-options span { min-height: 34px; border-radius: 8px; background: var(--surface); }
     .sale-asn-order-actions { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; margin-top: 2px; }
     .sale-asn-lookup { padding-top: 9px; }
     .sale-asn-documents-button { width: 100%; }
