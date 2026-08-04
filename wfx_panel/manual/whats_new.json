@@ -1,5 +1,36 @@
 [
   {
+    "version": "1.0.21",
+    "date": "2026-08-04",
+    "highlights": [
+      {
+        "title": "Thấy ngay cần chọn dòng PO nào",
+        "body": "Khi Sale ASN cần bạn tự chọn PO, thẻ bước Thêm PO liệt kê luôn các dòng WFX đang hiện kèm PO No., Style và Dispatched Qty. Bạn đối chiếu ngay trong ứng dụng thay vì phải chuyển sang Chrome dò thủ công.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Dừng tác vụ Sale ASN không còn kẹt màn hình",
+        "body": "Bấm Stop, hoặc gặp lúc ứng dụng đang bận việc khác, thẻ file sẽ quay lại cùng nút Bắt đầu để bạn chạy tiếp đúng file đó. Trước đây màn hình chỉ còn thẻ tiến độ trống và bạn phải chọn lại file từ đầu.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Nút Bỏ qua bước dùng được cả khi tab đang lỗi",
+        "body": "Bỏ qua một bước giờ chuyển thẳng sang bước kế tiếp, không chờ tab của bước vừa bỏ. Đây đúng là lúc bạn cần bỏ qua nhất, vì thường tab đó đang không mở lên được.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Ô số sai được báo ngay từ bước kiểm tra file",
+        "body": "Giá trị vượt ngoài phạm vi thực tế ở Qty, Carton, NW, GW, CBM hoặc giá — thường do dán nhầm hoặc Excel đổi sang dạng 1E+... — nay báo lỗi kèm tên ô ngay khi kiểm tra file, thay vì dừng giữa chừng lúc đang điền lên WFX.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Tìm PO không còn chờ thừa",
+        "body": "Khi WFX không trả về dòng nào cho một PO, ứng dụng dừng ngay thay vì thử thêm hai lượt tìm kiếm chắc chắn cũng không có kết quả.",
+        "entry": "don-hang-sale-asn"
+      }
+    ]
+  },
+  {
     "version": "1.0.20",
     "date": "2026-08-04",
     "highlights": [
