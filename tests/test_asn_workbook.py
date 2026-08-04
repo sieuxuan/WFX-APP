@@ -105,12 +105,14 @@ def _truewerk_packing_report(path):
         for reference in (f"C{row}:E{row}", f"F{row}:G{row}", f"H{row}:I{row}", f"J{row}:K{row}", f"L{row}:M{row}"):
             sheet.merge_cells(reference)
 
-    add_line(4, "S22-0001", "P00003739", 2700, 1221.6, 1333.2, 93, 7.79)
-    add_line(5, "S22-0001", "P00003739 ADD", 90, 0, 0, 0, 0)
+    add_line(4, "S22-0001", "P00003738", 3240, 0, 0, 0, 0)
+    add_line(5, "S22-0001", "P00003738 ADD", 150, 1485.2, 1620.8, 113, 9.46)
     add_line(6, "S22-0001", "P00003740", 2850, 1284.4, 1402, 98, 8.21)
     add_line(7, "S22-0001", "P00003740 - ADD", 90, 3, 0, 0, 0)
     add_line(8, "S22-0001", "P00009999 ADD", 90, 0, 0, 0, 0)
     add_line(9, "S22-0001", "P00009999", 2850, 500, 550, 40, 4.2)
+    add_line(10, "S22-0001", "P00008888", 2850, 500, 550, 40, 4.2)
+    add_line(11, "S22-0001", "P00008888 ADD", 90, 3, 0, 0, 0)
     workbook.save(path)
     workbook.close()
 
@@ -306,12 +308,19 @@ def test_merge_sale_asn_reports_merges_truewerk_measurements_from_po_to_add_row(
     sheet = workbook["TRUEWERK Packing"]
     merged = {str(item) for item in sheet.merged_cells.ranges}
     assert {"J4:K5", "L4:M5", "N4:N5", "O4:O5"} <= merged
-    assert "J6:K7" not in merged
-    assert "J8:K9" not in merged
+    assert {"L6:M7", "N6:N7", "O6:O7"} <= merged
+    assert {"J8:K9", "L8:M9", "N8:N9", "O8:O9"} <= merged
+    assert "J10:K11" not in merged
+    assert sheet["J4"].value == 1485.2
+    assert sheet["L4"].value == 1620.8
+    assert sheet["N4"].value == 113
+    assert sheet["O4"].value == 9.46
     assert sheet["J5"].value is None
     assert sheet["L5"].value is None
     assert sheet["N5"].value is None
     assert sheet["O5"].value is None
+    assert sheet["J6"].value == 1284.4
     assert sheet["J7"].value == 3
-    assert sheet["J9"].value == 500
+    assert sheet["J8"].value == 500
+    assert sheet["J11"].value == 3
     workbook.close()

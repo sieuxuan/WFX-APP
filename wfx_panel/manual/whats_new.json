@@ -10,7 +10,7 @@
       },
       {
         "title": "Packing List tự gộp số liệu theo buyer",
-        "body": "J.Lindeberg tự gộp Net Wt, Gross Wt, Carton và CBM theo JL PO# + Style. CORPORATE OFFICE - TRUEWERK tự gộp bốn cột tương ứng từ PO gốc xuống dòng ADD khi hai dòng đứng liền nhau.",
+        "body": "J.Lindeberg tự gộp Net Wt, Gross Wt, Carton và CBM theo JL PO# + Style. CORPORATE OFFICE - TRUEWERK tự gộp bốn cột tương ứng của PO và ADD liền nhau, đồng thời lấy đúng giá trị khác 0 dù số đó nằm ở dòng nào.",
         "entry": "don-hang-sale-asn-documents"
       },
       {
