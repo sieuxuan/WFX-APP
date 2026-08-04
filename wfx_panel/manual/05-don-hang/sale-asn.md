@@ -44,9 +44,9 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 Ứng dụng mặc định tìm PO theo thứ tự `PO` → `Style` → `Destination`. Nếu một
 bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu dùng hết các tiêu chí mà
 vẫn còn nhiều dòng, ứng dụng chọn tất cả các dòng đó rồi tiếp tục. Bạn có thể mở
-`Cài đặt` > `Tự động hóa` > `Tìm PO khi tạo Sale ASN` để tắt từng tiêu chí không
-muốn dùng. Ứng dụng nhớ lựa chọn cho những lần sau; khi bỏ tích cả ba, ứng dụng
-tự bật lại cả ba để tránh chạy không có điều kiện tìm.
+`Tùy chọn nâng cao` > `Tiêu chí tìm PO` ngay trong module Sale ASN để tắt từng
+tiêu chí không muốn dùng. Ứng dụng nhớ lựa chọn cho những lần sau; khi bỏ tích
+cả ba, ứng dụng tự bật lại cả ba để tránh chạy không có điều kiện tìm.
 
 ### Khi ứng dụng dừng giữa chừng
 
@@ -179,8 +179,8 @@ liệu.
 | Ô Buyer viền vàng, không có dấu ✓ | Tên đang gõ chưa khớp Buyer nào. Gõ lại và chọn đúng dòng trong danh sách gợi ý. |
 | File có lỗi | Đọc vị trí ô hoặc dòng trong thông báo, sửa file rồi chọn lại. |
 | Báo một ô số `quá lớn` | Ô Qty, Carton, NW, GW, CBM hoặc giá đang chứa giá trị vượt ngoài phạm vi thực tế (thường do dán nhầm hoặc Excel đổi sang dạng `1E+...`). Nhập lại đúng số rồi chọn file lại. |
-| Có nhiều dòng sau tiêu chí cuối | Ứng dụng chọn tất cả dòng còn lại và tiếp tục. Nếu không muốn vậy, mở Cài đặt và bật thêm tiêu chí Style hoặc Destination trước lượt chạy kế tiếp. |
-| Không tìm thấy PO | Kiểm tra các tiêu chí đang bật trong Cài đặt cùng PO No., Style và Destination trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
+| Có nhiều dòng sau tiêu chí cuối | Ứng dụng chọn tất cả dòng còn lại và tiếp tục. Nếu không muốn vậy, mở `Tùy chọn nâng cao` và bật thêm tiêu chí Style hoặc Destination trước lượt chạy kế tiếp. |
+| Không tìm thấy PO | Kiểm tra `Tiêu chí tìm PO` trong `Tùy chọn nâng cao` cùng PO No., Style và Destination trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
 | Đã đóng cửa sổ Add PO | Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng. |
 | Không xuất được form Order Details | Mở đúng chứng từ có PO và vào tab Order Details rồi bấm xuất lại. |
 | PO trong form Order Details hoặc form 20 cột không có trên trang | Mở đúng Sale ASN có đủ PO rồi bấm thử lại; app không tự thêm PO khi bước Thêm PO đã được bỏ chọn. |
