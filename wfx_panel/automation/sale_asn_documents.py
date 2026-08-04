@@ -612,6 +612,8 @@ def prepare_sale_asn_documents(
     packing_path = target.with_name("packing-list-source.xlsx")
     buyer_path = target.with_name("buyer-invoice-source.xlsx")
     playwright: Playwright | None = None
+    context: Any | None = None
+    existing_page_ids: set[int] | None = None
     try:
         playwright = sync_playwright().start()
         browser, page = _active_wfx_page(playwright, log)
@@ -707,7 +709,6 @@ def prepare_sale_asn_documents(
             target,
             invoice_no=invoice_no,
         )
-        _close_sale_asn_document_popups(context, existing_page_ids, log)
         sheet_names = sale_asn_sheet_names(target)
         return _result(
             True,
@@ -748,5 +749,7 @@ def prepare_sale_asn_documents(
         _write_log(log, message)
         return _result(False, "SALE_ASN_REPORT_DOWNLOAD_FAILED", message)
     finally:
+        if context is not None and existing_page_ids is not None:
+            _close_sale_asn_document_popups(context, existing_page_ids, log)
         if playwright is not None:
             playwright.stop()

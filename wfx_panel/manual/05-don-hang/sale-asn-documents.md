@@ -26,6 +26,11 @@ Excel để gửi hoặc lưu trữ.
 > cắt chữ khi mở file trong Excel.
 
 > [!meo]
+> Các cột `No of Pcs`, `Net Wt`, `Gross Wt`, `No of Carton` và `CBM` tự được nới
+> đủ để thấy hết header và số liệu. Khổ in A4 cùng hướng dọc/ngang của report vẫn
+> được giữ nguyên.
+
+> [!meo]
 > Mọi sheet đã ghép dùng khổ A4, giữ đúng hướng dọc/ngang từ report WFX và vừa
 > một trang theo chiều ngang khi in.
 
@@ -62,3 +67,4 @@ Excel để gửi hoặc lưu trữ.
 | Đã tìm thấy Invoice nhưng không có nút Docs | Kiểm tra dòng đã chọn, trạng thái Sale ASN và quyền Documents của tài khoản trên WFX. |
 | Một báo cáo chưa sẵn sàng | Chờ WFX tạo báo cáo xong rồi tải lại. |
 | Không ghép hoặc lưu được file | Chọn một thư mục bạn có quyền ghi và bảo đảm file cũ không đang mở trong Excel. |
+| Lượt tải bị lỗi nhưng còn popup Docs/report | App tự đóng các popup được mở từ lượt bấm Docs đó; các tab WFX đã mở sẵn vẫn được giữ. |

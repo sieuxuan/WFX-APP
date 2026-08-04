@@ -70,6 +70,18 @@ def _jl_packing_report(path):
     workbook.close()
 
 
+def _narrow_packing_measurement_report(path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Narrow Packing"
+    sheet.append(["No of Pcs", "Net Wt", "Gross Wt", "No of Carton", "CBM"])
+    sheet.append([12345, 1485.2, 1620.8, 113, 9.46])
+    for column in "ABCDE":
+        sheet.column_dimensions[column].width = 4
+    workbook.save(path)
+    workbook.close()
+
+
 def _truewerk_packing_report(path):
     workbook = Workbook()
     sheet = workbook.active
@@ -292,6 +304,25 @@ def test_merge_sale_asn_reports_merges_jl_packing_measurements_by_po_and_style(t
     assert {str(item) for item in workbook["Buyer Invoice"].merged_cells.ranges} == {
         "A3:C3"
     }
+    workbook.close()
+
+
+def test_merge_sale_asn_reports_widens_packing_measurement_columns(tmp_path):
+    packing = tmp_path / "narrow-packing.xlsx"
+    buyer = tmp_path / "buyer.xlsx"
+    target = tmp_path / "NARROW-001.xlsx"
+    _narrow_packing_measurement_report(packing)
+    _report(buyer, "Buyer Invoice", "Invoice data")
+
+    merge_sale_asn_reports(packing, buyer, target, invoice_no="NARROW-001")
+
+    workbook = load_workbook(target, data_only=False)
+    sheet = workbook["Narrow Packing"]
+    assert sheet.column_dimensions["A"].width >= 11
+    assert sheet.column_dimensions["B"].width >= 11
+    assert sheet.column_dimensions["C"].width >= 12
+    assert sheet.column_dimensions["D"].width >= 13
+    assert sheet.column_dimensions["E"].width >= 8
     workbook.close()
 
 

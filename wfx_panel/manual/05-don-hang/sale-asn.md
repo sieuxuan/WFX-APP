@@ -196,8 +196,10 @@ Delivery Terms theo mode đó:
 > cửa sổ WFX đã có từ trước vẫn được giữ nguyên. Khung, rich text, merged cell
 > và định dạng gốc của cả Invoice lẫn PKL được giữ nguyên khi ghép. Hàng có nội
 > dung xuống dòng sẽ được tăng chiều cao khi ghép để không bị cắt lúc mở Excel.
-> Mỗi sheet cũng được đặt A4, giữ đúng hướng dọc/ngang từ report WFX và fit vừa
-> một trang theo chiều ngang khi in.
+> Các cột No of Pcs, Net Wt, Gross Wt, No of Carton và CBM cũng được nới để thấy
+> trọn header/số liệu. Mỗi sheet vẫn đặt A4, giữ đúng hướng dọc/ngang từ report
+> WFX và fit vừa một trang theo chiều ngang khi in. Popup Docs/report do lượt
+> bấm Docs mở sẽ luôn tự đóng sau lượt tải, kể cả khi có lỗi; tab WFX có sẵn được giữ.
 
 > [!meo]
 > Packing List J.Lindeberg có header `JL PO#` tự gộp dọc Net Wt, Gross Wt, No of
