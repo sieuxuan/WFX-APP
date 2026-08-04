@@ -1667,7 +1667,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .oc-flow-card .oc-upload-card-copy small { min-height: 50px; font-size: 12px; }
     .oc-flow-badge { min-width: 39px; padding: 5px 6px; color: var(--accent-strong); font-size: 11px; font-weight: 850; text-align: center; letter-spacing: .05em; border: 1px solid var(--accent-border); border-radius: 7px; background: var(--accent-soft); }
     .oc-flow-badge-revise { color: var(--warn); border-color: var(--border-strong); background: var(--warn-soft); }
-    .oc-flow-card .oc-upload-card-actions { gap: 6px; }
+    .oc-flow-card .oc-upload-card-actions { grid-template-columns: 1fr; gap: 6px; }
     .oc-flow-card .oc-upload-card-actions > button { height: 38px; min-width: 0; padding: 0 7px; font-size: 12px; }
     .oc-upload-review {
       display: grid;

@@ -72,9 +72,11 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
 Riêng trong `Shipping Info`, từng trường được xử lý độc lập. `Consignee Address`
 và `Ship To` có thể nhập gần đúng với nội dung trong danh sách WFX; ứng dụng chọn
 dòng gần nhất duy nhất. Nếu không có dòng phù hợp, ứng dụng bỏ qua để bạn tự điền.
-Nếu file thiếu dữ liệu hoặc WFX không có lựa chọn tương ứng (ví dụ Factory), ứng
-dụng cũng bỏ qua đúng trường đó, tiếp tục điền các trường còn lại và liệt kê toàn
-bộ cảnh báo trong thẻ kết quả để bạn bổ sung thủ công trước khi Save.
+Với `FTY`, bạn có thể nhập phần tên gần đúng, ví dụ `GIAO THUY`. Ứng dụng chọn
+giá trị liên quan đầu tiên trong danh sách Factory và bỏ qua các lựa chọn có dấu
+chấm ở cuối. Nếu file thiếu dữ liệu hoặc WFX không có lựa chọn tương ứng, ứng
+dụng bỏ qua đúng trường đó, tiếp tục điền các trường còn lại và liệt kê toàn bộ
+cảnh báo trong thẻ kết quả để bạn bổ sung thủ công trước khi Save.
 
 ### Bỏ Add PO và làm tiếp từ chứng từ đang mở
 
@@ -135,9 +137,17 @@ liệu.
 - Mỗi file chỉ chứa một Invoice No. và một FTY.
 - Chỉ dòng có `PO No` mới được tính và xử lý; dòng tổng hoặc ghi chú không có PO sẽ được bỏ qua.
 - Với mỗi dòng có PO, `Style No`, `Destination` và `FTY` là dữ liệu bắt buộc.
-- Form có 20 cột và không còn `SEASON` hoặc `DESCRIPTION`.
-- `Shipping Mode` bắt buộc khi chạy bước Shipping Info. Chọn `AIR`, `SEA` hoặc `COURIER` trong danh sách của Excel.
+- Form có 20 cột và không còn `SEASON` hoặc `DESCRIPTION`. Thứ tự cột là:
+  `Style No`, `PO No`, `HS CODE`, `Qty`, `Carton`, `NW`, `GW`, `CBM`,
+  `FOB Price`, `Service Price`, `Cargo Ready Date`, `Invoice No`, `Invoice Date`,
+  `Shipping Bill No`, `Shipping Bill Date`, `Destination`, `FTY`,
+  `Consignee Address`, `Ship To`, `Shipping Mode`.
+- Chỉ điền `Shipping Mode` tại dòng dữ liệu đầu tiên. Ô này bắt buộc khi chạy
+  bước Shipping Info và chỉ nhận `AIR`, `SEA` hoặc `COURIER`; các dòng sau có thể
+  để trống vì ứng dụng dùng mode của dòng đầu cho toàn bộ chứng từ.
 - `HS CODE`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address` và `Ship To` có thể để trống.
+- Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
+  ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
 - `Cargo Ready Date` trống sẽ được giữ trống để bạn tự điền; ứng dụng không lấy ngày hiện tại và không sao chép ngày từ dòng khác.
 - `Invoice Date` và `Shipping Bill Date` trống vẫn lấy ngày có dữ liệu đầu tiên trong file; nếu cả file không có thì dùng ngày hiện tại.
 - Nếu Shipping Bill No. bị trống, ứng dụng dùng Invoice No.

@@ -89,7 +89,31 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
     assert sheet["G1"].fill.fgColor.rgb == "00DBEAFE"
     assert sheet["T1"].fill.fgColor.rgb == "00FDE68A"
-    assert sheet["B2"].number_format == "dd/mm/yyyy"
+    assert SALE_ASN_COLUMNS == (
+        "Style No",
+        "PO No",
+        "HS CODE",
+        "Qty",
+        "Carton",
+        "NW",
+        "GW",
+        "CBM",
+        "FOB Price",
+        "Service Price",
+        "Cargo Ready Date",
+        "Invoice No",
+        "Invoice Date",
+        "Shipping Bill No",
+        "Shipping Bill Date",
+        "Destination",
+        "FTY",
+        "Consignee Address",
+        "Ship To",
+        "Shipping Mode",
+    )
+    assert sheet["K2"].number_format == "dd/mm/yyyy"
+    assert sheet["M2"].number_format == "dd/mm/yyyy"
+    assert sheet["O2"].number_format == "dd/mm/yyyy"
     assert "SEASON" not in SALE_ASN_COLUMNS
     assert "DESCRIPTION" not in SALE_ASN_COLUMNS
     assert SALE_ASN_COLUMNS[-3:] == (
@@ -98,9 +122,18 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "Shipping Mode",
     )
     validations = list(sheet.data_validations.dataValidation)
-    assert len(validations) == 1
-    assert validations[0].formula1 == '"AIR,SEA,COURIER"'
-    assert str(validations[0].sqref) == "T2:T2001"
+    assert len(validations) == 4
+    shipping_validation = next(item for item in validations if item.type == "list")
+    assert shipping_validation.formula1 == '"AIR,SEA,COURIER"'
+    assert str(shipping_validation.sqref) == "T2"
+    assert shipping_validation.allow_blank is False
+    date_validations = [item for item in validations if item.type == "date"]
+    assert {str(item.sqref) for item in date_validations} == {
+        "K2:K2001",
+        "M2:M2001",
+        "O2:O2001",
+    }
+    assert all(item.allow_blank is True for item in date_validations)
     workbook.close()
 
 
@@ -124,6 +157,17 @@ def test_reader_preserves_row_order_and_applies_business_fallbacks(tmp_path):
     assert document["rows"][1]["shipping_mode"] == "AIR"
     assert document["rows"][1]["consignee_address"] == "PUMA EUROPE GMBH"
     assert document["rows"][1]["ship_to"] == "PUMA CENTRAL WAREHOUSE"
+
+
+def test_reader_uses_shipping_mode_only_from_first_data_row(tmp_path):
+    rows = _valid_rows()
+    rows[1]["Shipping Mode"] = "TRUCK"
+    source = tmp_path / "first-row-shipping-mode.xlsx"
+    _input_workbook(source, rows)
+
+    document = read_sale_asn_workbook(source)
+
+    assert [row["shipping_mode"] for row in document["rows"]] == ["AIR", "AIR"]
 
 
 @pytest.mark.parametrize("shipping_mode", ["", "TRUCK"])
@@ -220,11 +264,11 @@ def test_full_template_can_prefill_current_order_details(tmp_path):
 
     workbook = load_workbook(target)
     sheet = workbook["SALE ASN"]
-    assert sheet["F2"].value == "PO-001"
-    assert sheet["I2"].value == 2
-    assert sheet["J2"].value == 9.5
-    assert sheet["O2"].value == 12.75
-    assert sheet["Q2"].value.date() == date(2026, 8, 3)
+    assert sheet["B2"].value == "PO-001"
+    assert sheet["E2"].value == 2
+    assert sheet["F2"].value == 9.5
+    assert sheet["I2"].value == 12.75
+    assert sheet["K2"].value.date() == date(2026, 8, 3)
     assert sheet.tables["SaleASNInput"].ref == "A1:T21"
     workbook.close()
 
@@ -944,6 +988,12 @@ def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
         "exact",
         6,
     ) in calls
+    assert (
+        "#ddlFactory",
+        "PRO SPORTS GIAO THUY JSC",
+        "factory_first",
+        6,
+    ) in calls
     assert calls[-1][0] == "#ddlNotify1"
     assert any("Shipping Info bỏ qua Factory: WFX không có lựa chọn" in item for item in logs)
     assert logs[-1] == (
@@ -978,6 +1028,21 @@ def test_fuzzy_dropdown_requires_one_unique_best_match():
         "alpha",
     ) is None
     assert sale_asn_create._best_dropdown_label(["OTHER"], "missing") is None
+
+
+def test_factory_dropdown_uses_first_relative_match_and_skips_dotted_rows():
+    assert sale_asn_create._best_factory_label(
+        [
+            "PRO SPORTS GIAO THUY JSC.",
+            "PRO SPORTS GIAO THUY JSC",
+            "GIAO THUY GARMENT FACTORY",
+        ],
+        "GIAO THUY",
+    ) == "PRO SPORTS GIAO THUY JSC"
+    assert sale_asn_create._best_factory_label(
+        ["PRO SPORTS NAM DINH", "OTHER FACTORY"],
+        "GIAO THUY",
+    ) is None
 
 
 def test_sale_asn_table_value_confirmation_handles_wfx_formats():
