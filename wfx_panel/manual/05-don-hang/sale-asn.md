@@ -13,7 +13,8 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 
 1. Mở module `Sale ASN`. Ứng dụng vào sẵn thẻ `Tạo mới`.
 2. Bấm `↻` nếu danh sách Buyer chưa có hoặc cần cập nhật.
-3. Gõ ít nhất hai ký tự vào ô Buyer rồi chọn đúng Buyer trong danh sách gợi ý.
+3. Bấm mũi tên trong ô để mở toàn bộ danh sách Buyer, hoặc gõ ít nhất hai ký tự
+   để lọc nhanh, rồi chọn đúng Buyer.
    Khi đã khớp chính xác, ô Buyer hiện dấu ✓ ở bên phải.
 4. Bấm `Tải form trống` nếu bạn chưa có form 20 cột.
 5. Điền dữ liệu theo thứ tự từ trên xuống dưới trong file rồi lưu lại.
@@ -40,6 +41,10 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 >
 > Ứng dụng dùng `Add & Continue` cho các PO trước. Với PO cuối, ứng dụng giữ
 > dòng đang chọn rồi bấm `OK` để vừa thêm PO cuối vừa đóng Add Order Details.
+> Nếu WFX tự đóng Add Order Details giữa danh sách, ứng dụng xác nhận các dòng
+> đã thêm, mở lại popup và tiếp tục từ dòng kế tiếp. Bạn có thể chuyển sang phần
+> mềm khác trong lúc chạy; task không phụ thuộc Chrome đang ở foreground và
+> không phụ thuộc vị trí scroll hiện tại của WFX.
 
 Ứng dụng mặc định tìm PO theo thứ tự `PO` → `Style` → `Destination`. Nếu một
 bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu dùng hết các tiêu chí mà
@@ -72,11 +77,15 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
 Riêng trong `Shipping Info`, từng trường được xử lý độc lập. `Consignee Address`
 và `Ship To` có thể nhập gần đúng với nội dung trong danh sách WFX; ứng dụng chọn
 dòng gần nhất duy nhất. Nếu không có dòng phù hợp, ứng dụng bỏ qua để bạn tự điền.
-Với `FTY`, bạn có thể nhập phần tên gần đúng, ví dụ `GIAO THUY`. Ứng dụng chọn
-giá trị liên quan đầu tiên trong danh sách Factory và bỏ qua các lựa chọn có dấu
-chấm ở cuối. Nếu file thiếu dữ liệu hoặc WFX không có lựa chọn tương ứng, ứng
+Với `FTY`, bạn có thể nhập phần tên gần đúng, ví dụ `giao thuy`. Ứng dụng tìm
+không phân biệt hoa/thường, chọn giá trị gần nhất trong danh sách Factory và bỏ
+qua các lựa chọn có dấu chấm ở cuối. Nếu file thiếu dữ liệu hoặc WFX không có lựa chọn tương ứng, ứng
 dụng bỏ qua đúng trường đó, tiếp tục điền các trường còn lại và liệt kê toàn bộ
-cảnh báo trong thẻ kết quả để bạn bổ sung thủ công trước khi Save.
+cảnh báo trong thẻ kết quả để bạn bổ sung thủ công trước khi Save. Ứng dụng điền
+`Shipment Mode` trước, sau đó điền Port of Loading vào cả trường WFX có sẵn:
+`AWB Loading Port` và `BL Mother Loading Port`. Chỉ cần một trường tồn tại và
+nhận giá trị là bước này thành công. `Notify 1` được giữ nguyên để bạn tự chọn
+khi cần.
 
 ### Bỏ Add PO và làm tiếp từ chứng từ đang mở
 
@@ -137,9 +146,11 @@ liệu.
 - Mỗi file chỉ chứa một Invoice No. và một FTY.
 - Chỉ dòng có `PO No` mới được tính và xử lý; dòng tổng hoặc ghi chú không có PO sẽ được bỏ qua.
 - Với mỗi dòng có PO, `Style No`, `Destination` và `FTY` là dữ liệu bắt buộc.
+- `Style No` được dùng như từ khóa tìm gần đúng. Ví dụ `M Acel Jacket` có thể khớp với Style `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX.
+- Một `PO No` có thể xuất hiện ở nhiều dòng khi mỗi dòng là một `Style No` khác nhau. Chỉ cặp `PO No` + `Style No` trùng hoàn toàn mới bị báo lỗi.
 - Form có 20 cột và không còn `SEASON` hoặc `DESCRIPTION`. Thứ tự cột là:
-  `Style No`, `PO No`, `HS CODE`, `Qty`, `Carton`, `NW`, `GW`, `CBM`,
-  `FOB Price`, `Service Price`, `Cargo Ready Date`, `Invoice No`, `Invoice Date`,
+  `Style No`, `PO No`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`,
+  `Service Price`, `Cargo Ready Date`, `HS CODE`, `Invoice No`, `Invoice Date`,
   `Shipping Bill No`, `Shipping Bill Date`, `Destination`, `FTY`,
   `Consignee Address`, `Ship To`, `Shipping Mode`.
 - Chỉ điền `Shipping Mode` tại dòng dữ liệu đầu tiên. Ô này bắt buộc khi chạy
@@ -148,18 +159,21 @@ liệu.
 - `HS CODE`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address` và `Ship To` có thể để trống.
 - Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
-- `Cargo Ready Date` trống sẽ được giữ trống để bạn tự điền; ứng dụng không lấy ngày hiện tại và không sao chép ngày từ dòng khác.
+- Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không
+  lấy ngày hiện tại. Nếu bạn nhập ngày ở một dòng, ứng dụng dùng ngày có dữ liệu
+  đầu tiên để điền tất cả dòng còn trống.
 - `Invoice Date` và `Shipping Bill Date` trống vẫn lấy ngày có dữ liệu đầu tiên trong file; nếu cả file không có thì dùng ngày hiện tại.
 - Nếu Shipping Bill No. bị trống, ứng dụng dùng Invoice No.
 - PO luôn được xử lý đúng thứ tự dòng trong file.
 
-Ứng dụng tự điền Port of Loading và Delivery Terms theo Shipping Mode:
+Ứng dụng chọn chính Shipping Mode trên WFX, rồi tự điền Port of Loading và
+Delivery Terms theo mode đó:
 
 | Shipping Mode | Port of Loading | Delivery Terms |
 |---|---|---|
-| `AIR` | `HAN- Hanoi` | `FCA HANOI, VIETNAM` |
-| `SEA` | `HPH- Haiphong` | `FOB HAIPHONG, VIETNAM` |
-| `COURIER` | `HAN- Hanoi` | `EXW` |
+| `AIR` | `HAN - Hanoi` | `FCA HANOI, VIETNAM` |
+| `SEA` | `HPH - Haiphong` | `FOB HAIPHONG, VIETNAM` |
+| `COURIER` | `HAN - Hanoi` | `EXW` |
 
 ## Tìm Sale ASN và tải Documents
 

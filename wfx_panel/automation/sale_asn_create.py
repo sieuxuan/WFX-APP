@@ -55,19 +55,24 @@ CONSIGNEE_ADDRESS_SELECTOR = (
     "#ddlConsigneeAddress, #Cell_ConsigneeAddress, #Cell_Consignee"
 )
 SHIP_TO_SELECTOR = "#ddlShipTo, #Cell_ShipTo"
-PORT_OF_LOADING_SELECTOR = "#ddlPortOfLoading, #Cell_PortOfLoading"
+PORT_OF_LOADING_SELECTORS = (
+    "#Cell_AWBLoadingPort",
+    "#Cell_BLMotherLoadingPort",
+)
+PORT_OF_LOADING_SELECTOR = ", ".join(PORT_OF_LOADING_SELECTORS)
+SHIPMENT_MODE_SELECTOR = "#ddlShipmentMode"
 
 SHIPPING_MODE_VALUES = {
     "AIR": {
-        "port_of_loading": "HAN- Hanoi",
+        "port_of_loading": "HAN - Hanoi",
         "delivery_terms": "FCA HANOI, VIETNAM",
     },
     "SEA": {
-        "port_of_loading": "HPH- Haiphong",
+        "port_of_loading": "HPH - Haiphong",
         "delivery_terms": "FOB HAIPHONG, VIETNAM",
     },
     "COURIER": {
-        "port_of_loading": "HAN- Hanoi",
+        "port_of_loading": "HAN - Hanoi",
         "delivery_terms": "EXW",
     },
 }
@@ -109,10 +114,10 @@ SHIPPING_FIELDS = (
     ("#ddlConsignorAddress", "__BILL-ADD - PSHK", "exact"),
     (CONSIGNEE_ADDRESS_SELECTOR, "consignee_address", "closest"),
     (SHIP_TO_SELECTOR, "ship_to", "closest"),
+    (SHIPMENT_MODE_SELECTOR, "shipping_mode", "exact"),
     (PORT_OF_LOADING_SELECTOR, "port_of_loading", "exact"),
     ("#ddlDeliveryTerms", "delivery_terms", "exact"),
     ("#ddlFactory", "factory", "factory_first"),
-    ("#ddlNotify1", "__FIRST", "first"),
 )
 
 SHIPPING_FIELD_LABELS = {
@@ -126,10 +131,10 @@ SHIPPING_FIELD_LABELS = {
     "#ddlConsignorAddress": "Consignor Address",
     CONSIGNEE_ADDRESS_SELECTOR: "Consignee Address",
     SHIP_TO_SELECTOR: "Ship To",
+    SHIPMENT_MODE_SELECTOR: "Shipment Mode",
     PORT_OF_LOADING_SELECTOR: "Port of Loading",
     "#ddlDeliveryTerms": "Delivery Terms",
     "#ddlFactory": "Factory",
-    "#ddlNotify1": "Notify",
 }
 
 SALE_ASN_STAGE_FRAME_SELECTORS = {
@@ -335,7 +340,8 @@ _SET_CONTROL_JS = r"""spec => {
         return style.display !== 'none' && style.visibility !== 'hidden'
             && rect.width > 0 && rect.height > 0;
     };
-    const host = document.querySelector(spec.selector);
+    const hosts = [...document.querySelectorAll(spec.selector)];
+    const host = hosts.find(shown) || hosts[0] || null;
     if (!host) return {ok: false, reason: 'host-not-found'};
     let control = ['INPUT', 'SELECT', 'TEXTAREA'].includes(host.tagName) ? host : null;
     control = control || [...host.querySelectorAll('input, select, textarea')]
@@ -355,7 +361,7 @@ _SET_CONTROL_JS = r"""spec => {
                 return {
                     ok: false,
                     reason: 'option-not-found',
-                    options: choices.map(item => clean(item.textContent)).slice(0, 50),
+                    options: choices.map(item => clean(item.textContent)).slice(0, 500),
                 };
             }
             const chosen = spec.mode === 'first'
@@ -382,7 +388,7 @@ _SET_CONTROL_JS = r"""spec => {
             return {
                 ok: false,
                 reason: 'option-not-found',
-                options: choices.map(item => clean(item.textContent)).slice(0, 50),
+                options: choices.map(item => clean(item.textContent)).slice(0, 500),
             };
         }
         let option = null;
@@ -424,11 +430,31 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
         .replace(/[^a-z0-9]+/g, ' ').trim();
     const table = document.querySelector(spec.table);
     if (!table) return {ok: false, reason: 'order-grid-not-found'};
+    const cellText = cell => clean(
+        cell?.querySelector('.clsGridLabelContent, span')?.getAttribute('title')
+        || cell?.getAttribute('title')
+        || cell?.textContent
+    );
+    const matchesStyle = (wantedStyle, actualStyle) => {
+        if (!wantedStyle || !actualStyle) return false;
+        if (wantedStyle === actualStyle) return true;
+        return (` ${actualStyle} `).includes(` ${wantedStyle} `)
+            || (` ${wantedStyle} `).includes(` ${actualStyle} `);
+    };
     const wanted = fold(spec.po_no);
+    const wantedStyle = fold(spec.style_no);
     const rows = [...table.querySelectorAll('tr.trContent')];
-    const candidates = rows.filter(row =>
+    const poCandidates = rows.filter(row =>
         fold(row.querySelector('#colOrderRefNum')?.textContent) === wanted
     );
+    const candidates = poCandidates.length > 1 && wantedStyle
+        ? poCandidates.filter(row => {
+            const styleCell = row.querySelector(
+                'td#colStyle, td#colStyleNo, td#colBuyerStyleRef, td[id*="Style"]'
+            );
+            return matchesStyle(wantedStyle, fold(cellText(styleCell)));
+        })
+        : poCandidates;
     if (candidates.length !== 1) {
         return {ok: false, reason: 'row-ambiguous', count: candidates.length};
     }
@@ -581,18 +607,19 @@ def _best_dropdown_label(options: Sequence[str], query: str) -> str | None:
 
 
 def _best_factory_label(options: Sequence[str], query: str) -> str | None:
-    """Lấy option FTY liên quan đầu tiên, bỏ qua nhãn kết thúc bằng dấu chấm."""
+    """Lấy option FTY gần nhất, không phân biệt hoa/thường và bỏ dòng có dấu chấm."""
 
-    query_tokens = set(_fold(query).split())
-    if not query_tokens:
+    eligible = [
+        cleaned
+        for option in options
+        if (cleaned := " ".join(str(option or "").split()))
+        and not cleaned.endswith(".")
+    ]
+    scored = [(_style_similarity(query, option), option) for option in eligible]
+    best_score = max((score for score, _option in scored), default=0)
+    if best_score <= 0:
         return None
-    for option in options:
-        cleaned = " ".join(str(option or "").split())
-        if not cleaned or cleaned.endswith("."):
-            continue
-        if query_tokens <= set(_fold(cleaned).split()):
-            return cleaned
-    return None
+    return next(option for score, option in scored if score == best_score)
 
 
 def _frame_with_selector(context: Any, selector: str, timeout_s: float = 20) -> tuple[Page, Frame]:
@@ -860,12 +887,34 @@ def _select_popup_destination(frame: Frame, destination: str) -> bool:
     return True
 
 
+def _click_dom_action(locator: Any, *, timeout: int = 8_000) -> dict[str, Any]:
+    """Click action WFX mà không phụ thuộc scroll hoặc foreground của Chrome."""
+
+    locator.wait_for(state="visible", timeout=timeout)
+    result = locator.evaluate(
+        r"""node => {
+            const action = node.matches('a, button, input, [onclick]')
+                ? node
+                : node.querySelector('a, button, input, [onclick]') || node;
+            if (action.disabled || action.getAttribute('aria-disabled') === 'true') {
+                return {ok: false, reason: 'action-disabled'};
+            }
+            action.click();
+            return {ok: true, tag: action.tagName, id: action.id || ''};
+        }"""
+    )
+    if not result.get("ok"):
+        raise RuntimeError(
+            f"SALE_ASN_ACTION_NOT_READY:{result.get('reason') or 'unknown'}"
+        )
+    return result
+
+
 def _click_search(frame: Frame) -> None:
     search = frame.locator(PO_SEARCH_SELECTOR).first
     if not search.count():
         search = frame.locator("xpath=//*[@id='wfx_GMPOAsnSearch']/table[3]/tbody/tr/td[2]/input").first
-    search.wait_for(state="visible", timeout=5_000)
-    search.click(timeout=5_000)
+    _click_dom_action(search)
     _wait(frame, 700)
 
 
@@ -1082,12 +1131,19 @@ def _edit_marked_table_cell(frame: Frame, value: str) -> str:
     raise RuntimeError(f"SALE_ASN_FIELD_VALUE_NOT_CONFIRMED:{actual}")
 
 
-def _set_order_grid_cell(frame: Frame, po_no: str, column_id: str, value: str) -> None:
+def _set_order_grid_cell(
+    frame: Frame,
+    po_no: str,
+    style_no: str,
+    column_id: str,
+    value: str,
+) -> None:
     marked = frame.evaluate(
         _MARK_ORDER_GRID_CELL_JS,
         {
             "table": ORDER_GRID_SELECTOR,
             "po_no": po_no,
+            "style_no": style_no,
             "column_id": column_id,
         },
     )
@@ -1106,11 +1162,46 @@ def _set_style_hts_cell(frame: Frame, style: str, value: str) -> None:
     _edit_marked_table_cell(frame, value)
 
 
-def _missing_order_rows(rows: Sequence[dict], present: set[str]) -> list[dict]:
+def _order_row_identity(row: dict) -> tuple[str, str]:
+    return _fold(row.get("po_no")), _fold(row.get("style_no"))
+
+
+def _order_style_matches(wanted: str, actual: str) -> bool:
+    if not wanted or not actual:
+        return False
+    if wanted == actual:
+        return True
+    return f" {wanted} " in f" {actual} " or f" {actual} " in f" {wanted} "
+
+
+def _order_row_is_present(
+    row: dict,
+    present: set[str | tuple[str, str]],
+) -> bool:
+    po_key, style_key = _order_row_identity(row)
+    if (po_key, style_key) in present or po_key in present:
+        return True
+    if not style_key:
+        return any(
+            isinstance(item, tuple) and item[0] == po_key
+            for item in present
+        )
+    return any(
+        isinstance(item, tuple)
+        and item[0] == po_key
+        and _order_style_matches(style_key, item[1])
+        for item in present
+    )
+
+
+def _missing_order_rows(
+    rows: Sequence[dict],
+    present: set[str | tuple[str, str]],
+) -> list[dict]:
     return [
         dict(row)
         for row in rows
-        if _fold(row.get("po_no")) and _fold(row.get("po_no")) not in present
+        if _fold(row.get("po_no")) and not _order_row_is_present(row, present)
     ]
 
 
@@ -1120,38 +1211,91 @@ def _wait_order_grid(
     timeout_s: float = 10,
     *,
     allow_incomplete: bool = False,
-) -> set[str]:
+) -> set[tuple[str, str]]:
     table = frame.locator(ORDER_GRID_SELECTOR).first
     table.wait_for(state="visible", timeout=int(timeout_s * 1_000))
-    expected = {_fold(row.get("po_no")) for row in rows if _fold(row.get("po_no"))}
+    expected = [dict(row) for row in rows if _fold(row.get("po_no"))]
     deadline = time.monotonic() + timeout_s
-    present: set[str] = set()
+    present: set[tuple[str, str]] = set()
     while time.monotonic() < deadline:
         try:
             present = {
-                _fold(item)
+                _order_row_identity(item)
                 for item in (
                     table.evaluate(
-                        """root => [...root.querySelectorAll(
-                                'tr.trContent [id="colOrderRefNum"]'
-                            )].map(cell => String(
-                                cell.getAttribute('title') || cell.textContent || ''
-                            ).trim())"""
+                        """root => [...root.querySelectorAll('tr.trContent')]
+                            .map(row => {
+                                const read = cell => String(
+                                    cell?.querySelector('.clsGridLabelContent, span')
+                                        ?.getAttribute('title')
+                                    || cell?.getAttribute('title')
+                                    || cell?.textContent || ''
+                                ).trim();
+                                return {
+                                    po_no: read(row.querySelector('#colOrderRefNum')),
+                                    style_no: read(row.querySelector(
+                                        'td#colStyle, td#colStyleNo, '
+                                        + 'td#colBuyerStyleRef, td[id*="Style"]'
+                                    )),
+                                };
+                            })"""
                     )
                     or []
                 )
-                if _fold(item)
+                if _fold(item.get("po_no"))
             }
         except PlaywrightError:
             # Grid WFX có thể thay tbody khi request Add Order hoàn tất. Locator
             # vẫn resolve lại được ở vòng poll kế tiếp.
             present = set()
-        if expected and expected.issubset(present):
+        if expected and not _missing_order_rows(expected, present):
             return present
         _wait(frame, 120)
     if allow_incomplete:
         return present
     raise RuntimeError("SALE_ASN_ORDER_GRID_NOT_READY")
+
+
+def _ensure_po_popup_for_next_row(
+    context: Any,
+    added_rows: Sequence[dict],
+    log: Callable[[str], None],
+) -> Frame:
+    """Giữ flow chạy tiếp nếu WFX tự đóng popup sau Add & Continue."""
+
+    try:
+        _popup_page, popup_frame = _frame_with_selector(
+            context,
+            PO_POPUP_SELECTOR,
+            timeout_s=2,
+        )
+        return popup_frame
+    except PlaywrightTimeoutError:
+        pass
+
+    _main_page, main_frame = _frame_with_selector(
+        context,
+        "#sectionOrderDetails",
+        timeout_s=15,
+    )
+    # Chỉ mở lại sau khi các dòng vừa chọn đã thật sự vào grid; nếu request WFX
+    # còn chạy thì bước chờ này ngăn click Add chồng lên postback cũ.
+    _wait_order_grid(main_frame, added_rows, timeout_s=15)
+    add = main_frame.locator(f"xpath={ADD_ORDER_XPATH}").first
+    _click_dom_action(add)
+    _popup_page, popup_frame = _frame_with_selector(
+        context,
+        PO_POPUP_SELECTOR,
+        timeout_s=15,
+    )
+    _write_log(
+        log,
+        (
+            "[SALE ASN] WFX đã đóng popup sau Add & Continue; đã xác nhận "
+            f"{len(added_rows)} dòng và đã mở lại Add Order Details."
+        ),
+    )
+    return popup_frame
 
 
 def _ensure_order_grid_rows(
@@ -1188,8 +1332,7 @@ def _ensure_order_grid_rows(
         )
     except PlaywrightTimeoutError:
         add = main_frame.locator(f"xpath={ADD_ORDER_XPATH}").first
-        add.wait_for(state="visible", timeout=5_000)
-        add.click(timeout=5_000)
+        _click_dom_action(add)
         _popup_page, popup_frame = _frame_with_selector(
             context,
             PO_POPUP_SELECTOR,
@@ -1243,6 +1386,7 @@ def _fill_order_details(
             _set_order_grid_cell(
                 frame,
                 str(row.get("po_no") or ""),
+                str(row.get("style_no") or ""),
                 column_id,
                 value,
             )
@@ -1443,20 +1587,32 @@ def _fill_shipping(
             warnings.append(warning)
             _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
             continue
-        try:
-            result = _set_control(frame, selector, value, mode, timeout_s=6)
-        except (PlaywrightError, PlaywrightTimeoutError) as error:
-            reason = _first_line(error)
-            warning = f"{label}: {reason}"
+        targets = (
+            PORT_OF_LOADING_SELECTORS
+            if selector == PORT_OF_LOADING_SELECTOR
+            else (selector,)
+        )
+        results: list[dict[str, Any]] = []
+        exception_reason = ""
+        for target in targets:
+            try:
+                result = _set_control(frame, target, value, mode, timeout_s=6)
+            except (PlaywrightError, PlaywrightTimeoutError) as error:
+                exception_reason = _first_line(error)
+                continue
+            results.append(result)
+            if result.get("ok"):
+                _wait(frame, 150)
+        if any(result.get("ok") for result in results):
+            continue
+        if exception_reason:
+            warning = f"{label}: {exception_reason}"
+        else:
+            failure = results[-1] if results else {"reason": "not-found"}
+            warning = _shipping_warning(label, value, failure)
+        if warning:
             warnings.append(warning)
             _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
-            continue
-        if not result.get("ok"):
-            warning = _shipping_warning(label, value, result)
-            warnings.append(warning)
-            _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
-            continue
-        _wait(frame, 150)
     if warnings:
         _write_log(
             log,
@@ -1510,8 +1666,7 @@ def run_sale_asn_create(
                     main_frame = _open_new_form(page, xpath, log)
                 _select_buyer(main_frame, buyer)
                 add = main_frame.locator(f"xpath={ADD_ORDER_XPATH}").first
-                add.wait_for(state="visible", timeout=8_000)
-                add.click(timeout=5_000)
+                _click_dom_action(add)
                 _write_log(log, "[SALE ASN] Đã chọn Buyer và mở Add Order Details.")
             first_pending = max(0, int(start_index))
             # Vòng lặp nằm hẳn trong guard: ngoài guard thì popup chưa được mở
@@ -1547,6 +1702,12 @@ def run_sale_asn_create(
                             next_index=index + 1,
                             completed=index,
                             total=len(rows),
+                        )
+                    if not final_pending:
+                        popup_frame = _ensure_po_popup_for_next_row(
+                            context,
+                            rows[: index + 1],
+                            log,
                         )
             current_stage = "order_details"
 

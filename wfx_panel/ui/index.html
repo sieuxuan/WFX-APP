@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260803-6">
+  <link rel="stylesheet" href="style.css?v=20260804-1">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -491,6 +491,9 @@
                 <span class="sale-asn-buyer-box">
                   <input id="sale-asn-buyer-input" class="sale-asn-buyer" type="text" autocomplete="off" placeholder="Gõ 2 ký tự để tìm Buyer" aria-label="Buyer Sale ASN" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="sale-asn-buyer-suggestions" />
                   <span class="sale-asn-buyer-mark" aria-hidden="true"></span>
+                  <button type="button" class="sale-asn-buyer-dropdown" aria-label="Mở danh sách Buyer" aria-controls="sale-asn-buyer-suggestions" aria-expanded="false">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+                  </button>
                 </span>
                 <button type="button" class="sale-asn-icon-button" data-module-action="sale-asn-scan-buyers" data-tooltip="Quét lại Buyer từ WFX" aria-label="Quét lại Buyer từ WFX">↻</button>
               </div>
@@ -956,6 +959,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260804-1"></script>
+  <script src="panel.js?v=20260804-3"></script>
 </body>
 </html>

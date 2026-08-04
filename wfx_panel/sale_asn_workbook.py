@@ -20,7 +20,6 @@ SALE_ASN_SHEET = "SALE ASN"
 SALE_ASN_COLUMNS = (
     "Style No",
     "PO No",
-    "HS CODE",
     "Qty",
     "Carton",
     "NW",
@@ -29,6 +28,7 @@ SALE_ASN_COLUMNS = (
     "FOB Price",
     "Service Price",
     "Cargo Ready Date",
+    "HS CODE",
     "Invoice No",
     "Invoice Date",
     "Shipping Bill No",
@@ -376,7 +376,7 @@ def read_sale_asn_workbook(
         first_values["Shipping Bill No"] = first_values["Invoice No"]
 
     rows: list[SaleASNRow] = []
-    seen_pos: set[str] = set()
+    seen_po_styles: set[tuple[str, str]] = set()
     invoice_values: set[str] = set()
     for raw in raw_rows:
         source_row = int(raw["source_row"])
@@ -395,10 +395,14 @@ def read_sale_asn_workbook(
         shipping_mode = first_values["Shipping Mode"]
         if require_style and not style_no:
             errors.append(f"A{source_row}: Style No bắt buộc.")
-        if po_no.casefold() in seen_pos:
-            errors.append(f"B{source_row}: PO No bị trùng ({po_no}).")
+        po_style_key = (po_no.casefold(), style_no.casefold())
+        if po_style_key in seen_po_styles:
+            errors.append(
+                f"A{source_row}: PO No + Style No bị trùng "
+                f"({po_no} + {style_no})."
+            )
         else:
-            seen_pos.add(po_no.casefold())
+            seen_po_styles.add(po_style_key)
         if require_destination and not destination:
             errors.append(f"P{source_row}: Destination bắt buộc.")
         if require_factory and not factory:
@@ -421,16 +425,10 @@ def read_sale_asn_workbook(
                 parsed_date = _date_text(
                     raw[column], cell=f"{column} dòng {source_row}"
                 )
-                dates[column] = (
-                    parsed_date
-                    if column == "Cargo Ready Date"
-                    else parsed_date or first_values[column]
-                )
+                dates[column] = parsed_date or first_values[column]
             except ValueError as error:
                 errors.append(str(error))
-                dates[column] = (
-                    "" if column == "Cargo Ready Date" else first_values[column]
-                )
+                dates[column] = first_values[column]
 
         rows.append(
             SaleASNRow(
@@ -540,8 +538,8 @@ def write_sale_asn_template(
         sheet.append([None] * len(SALE_ASN_COLUMNS))
 
     widths = (
-        34, 22, 15, 12, 12, 12, 12, 12, 14, 14,
-        18, 20, 14, 20, 18, 20, 34, 34, 34, 16,
+        34, 22, 12, 12, 12, 12, 12, 14, 14, 18,
+        15, 20, 14, 20, 18, 20, 34, 34, 34, 16,
     )
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
@@ -561,12 +559,12 @@ def write_sale_asn_template(
     sheet.row_dimensions[1].height = 34
 
     for row in range(2, reserved_rows + 2):
-        for column in (11, 13, 15):
+        for column in (10, 13, 15):
             sheet.cell(row, column).number_format = "dd/mm/yyyy"
-        for column in (4, 5, 6, 7, 8, 9, 10):
+        for column in (3, 4, 5, 6, 7, 8, 9):
             sheet.cell(row, column).number_format = "#,##0.00"
 
-    for cell_range in ("K2:K2001", "M2:M2001", "O2:O2001"):
+    for cell_range in ("J2:J2001", "M2:M2001", "O2:O2001"):
         date_validation = DataValidation(
             type="date",
             operator="between",
@@ -749,6 +747,18 @@ def read_sale_asn_order_details_workbook(input_path: str | Path) -> dict:
         "service_price",
         "cargo_ready_date",
     )
+    cargo_ready_date = next(
+        (
+            str(row.get("cargo_ready_date") or "").strip()
+            for row in rows
+            if str(row.get("cargo_ready_date") or "").strip()
+        ),
+        "",
+    )
+    if cargo_ready_date:
+        for row in rows:
+            if not str(row.get("cargo_ready_date") or "").strip():
+                row["cargo_ready_date"] = cargo_ready_date
     filled_count = sum(
         1 for row in rows for key in editable_keys if str(row.get(key) or "").strip()
     )

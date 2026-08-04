@@ -1,5 +1,36 @@
 [
   {
+    "version": "1.0.22",
+    "date": "2026-08-04",
+    "highlights": [
+      {
+        "title": "Sale ASN nhiều PO và Style chạy ổn định hơn",
+        "body": "Một PO có thể đi cùng nhiều Style; Style được tìm gần đúng không phân biệt hoa thường. Nếu WFX tự đóng Add Order Details giữa danh sách, ứng dụng xác nhận các dòng đã thêm, mở lại popup và tiếp tục đúng dòng kế tiếp.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Shipping Info điền đúng theo Shipment Mode",
+        "body": "Ứng dụng chọn Shipment Mode, điền cả AWB Loading Port và BL Mother Loading Port theo AIR, SEA hoặc COURIER, tìm Factory gần đúng và giữ nguyên Notify 1 để người dùng tự chọn.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Cargo Ready Date nhập một lần cho toàn bộ dòng",
+        "body": "Chỉ cần nhập Cargo Ready Date ở một dòng, ứng dụng bổ sung ngày đó cho mọi dòng còn trống. Nếu cả file không có ngày, các ô trên WFX vẫn được giữ trống.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Theo dõi WFX trong khi task đang chạy",
+        "body": "Panel có thể tự thu khi bạn chuyển sang Chrome hoặc phần mềm khác mà không dừng task. Nút Search/Add của Sale ASN không còn phụ thuộc vị trí scroll hoặc Chrome đang ở foreground.",
+        "entry": "bat-dau-mo-panel"
+      },
+      {
+        "title": "Buyer có dropdown và giao diện giữ đúng vị trí",
+        "body": "Ô Buyer có nút mở toàn bộ danh sách đã quét bên cạnh khả năng gõ để lọc; nút ngôi sao module cũng không còn lệch sau khi quay lại màn hình chính.",
+        "entry": "don-hang-sale-asn"
+      }
+    ]
+  },
+  {
     "version": "1.0.21",
     "date": "2026-08-04",
     "highlights": [

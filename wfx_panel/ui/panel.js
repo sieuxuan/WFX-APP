@@ -154,7 +154,6 @@
   const CALL_WATCHDOG_MS = 180000;
   const LONG_CALL_WATCHDOG_MS = 360000;
   let busy = false;
-  let hidePanelWhenIdle = false;
   let pointerInsidePanel = false;
   let returnToListAfterAction = false;
   let favoriteModuleIds = new Set();
@@ -239,16 +238,6 @@
     "clear_catalog_costing_dependencies",
     "review_catalog_style_import", "prepare_catalog_style_row",
     "download_style_template",
-  ]);
-  const INTERACTIVE_RESULT_CODES = new Set([
-    "MULTIPLE_RESULTS",
-    "SAMPLE_MULTIPLE_RESULTS",
-    "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
-    "CATALOG_FILES_SCANNED",
-    "COSTING_DRY_RUN_READY",
-    "COSTING_ARTICLE_AMBIGUOUS",
-    "STYLE_COPY_MULTIPLE_RESULTS",
-    "SALE_ASN_PO_SELECTION_REQUIRED",
   ]);
   const BUSY_MESSAGES = {
     open_chrome: "Đang mở và đăng nhập WFX…",
@@ -531,12 +520,6 @@
 
   function settleBusyUi() {
     setBusy(false);
-    if (hidePanelWhenIdle && !pointerInsidePanel) {
-      hidePanelWhenIdle = false;
-      window.setTimeout(() => api()?.request_panel_hide?.(), 60);
-    } else if (pointerInsidePanel) {
-      hidePanelWhenIdle = false;
-    }
   }
 
   const OVERLAY_SPECS = [
@@ -1248,9 +1231,6 @@
 
   function handleResult(result) {
     if (!result) return;
-    if (INTERACTIVE_RESULT_CODES.has(result.code) || result.resumable) {
-      hidePanelWhenIdle = false;
-    }
     const cancelled = result.code === "ACTION_CANCELLED";
     setStatus(
       cancelled ? "warning" : (result.ok ? "success" : "error"),
@@ -1794,21 +1774,24 @@
     host.innerHTML = "";
     host.hidden = true;
     $(".sale-asn-buyer")?.setAttribute("aria-expanded", "false");
+    $(".sale-asn-buyer-dropdown")?.setAttribute("aria-expanded", "false");
   }
 
-  function renderSaleAsnBuyerSuggestions() {
+  function renderSaleAsnBuyerSuggestions({ showAll = false } = {}) {
     const host = $(".sale-asn-buyer-suggestions");
     const input = $(".sale-asn-buyer");
     if (!host || !input) return;
     const entered = String(input.value || "").trim();
-    if (entered.length < 2 || saleAsnExactBuyer()) {
+    if (!showAll && (entered.length < 2 || saleAsnExactBuyer())) {
       hideSaleAsnBuyerSuggestions();
       return;
     }
     const folded = entered.toLocaleLowerCase("vi");
-    const matches = saleAsnBuyers
-      .filter((item) => String(item.label || "").toLocaleLowerCase("vi").includes(folded))
-      .slice(0, 20);
+    const matches = showAll
+      ? saleAsnBuyers
+      : saleAsnBuyers
+        .filter((item) => String(item.label || "").toLocaleLowerCase("vi").includes(folded))
+        .slice(0, 20);
     if (!matches.length) {
       hideSaleAsnBuyerSuggestions();
       return;
@@ -1819,6 +1802,7 @@
       >${escapeHtml(item.label)}</button>`).join("");
     host.hidden = false;
     input.setAttribute("aria-expanded", "true");
+    $(".sale-asn-buyer-dropdown")?.setAttribute("aria-expanded", "true");
   }
 
   function selectedSaleAsnStages() {
@@ -4056,8 +4040,12 @@
       }
       if (event.key !== "ArrowDown") return;
       // Từ ô nhập đi thẳng xuống danh sách; trong danh sách thì bindListboxKeys lo.
-      const first = $(".sale-asn-buyer-suggestions")
+      let first = $(".sale-asn-buyer-suggestions")
         ?.querySelector('[role="option"]');
+      if (!first) {
+        renderSaleAsnBuyerSuggestions({ showAll: true });
+        first = $(".sale-asn-buyer-suggestions")?.querySelector('[role="option"]');
+      }
       if (!first) return;
       event.preventDefault();
       first.focus();
@@ -4065,10 +4053,19 @@
     $(".sale-asn-buyer")?.addEventListener("blur", () => {
       // Chờ click chọn gợi ý xong mới đóng danh sách.
       setTimeout(() => {
-        if (!$(".sale-asn-buyer-suggestions")?.contains(document.activeElement)) {
+        if (!$(".sale-asn-buyer-box")?.contains(document.activeElement)
+            && !$(".sale-asn-buyer-suggestions")?.contains(document.activeElement)) {
           hideSaleAsnBuyerSuggestions();
         }
       }, 120);
+    });
+    $(".sale-asn-buyer-dropdown")?.addEventListener("click", () => {
+      const host = $(".sale-asn-buyer-suggestions");
+      if (!host?.hidden) {
+        hideSaleAsnBuyerSuggestions();
+        return;
+      }
+      renderSaleAsnBuyerSuggestions({ showAll: true });
     });
     $(".sale-asn-buyer-suggestions")?.addEventListener("click", (event) => {
       const option = event.target.closest("[data-buyer-value]");
@@ -4201,12 +4198,11 @@
       }));
     $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("supplier-find"); });
     $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("buyer-find"); });
-    // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble.
-    // Bỏ qua khi đang chạy module (busy) để panel không biến mất giữa chừng;
-    // backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.
+    // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble,
+    // kể cả khi automation đang chạy, để user có thể theo dõi trực tiếp trên WFX.
+    // Backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.
     document.documentElement.addEventListener("pointerenter", () => {
       pointerInsidePanel = true;
-      hidePanelWhenIdle = false;
       api()?.set_panel_pointer_inside?.(true);
     });
     document.documentElement.addEventListener("pointerleave", () => {
@@ -4215,19 +4211,9 @@
     });
     window.addEventListener("blur", () => {
       if (pointerInsidePanel) {
-        hidePanelWhenIdle = false;
-        return;
-      }
-      if (busy) {
-        hidePanelWhenIdle = true;
         return;
       }
       window.setTimeout(() => api()?.request_panel_hide?.(), 130);
-    });
-    // Nếu người dùng quay lại panel trước khi automation kết thúc thì ý định
-    // hiện tại là tiếp tục dùng panel; hủy yêu cầu thu đã ghi nhận lúc blur.
-    window.addEventListener("focus", () => {
-      hidePanelWhenIdle = false;
     });
     window.addEventListener("keydown", trapOverlayFocus, true);
     $(".generic-module-open").addEventListener("click", openModule);

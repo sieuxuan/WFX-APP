@@ -1351,10 +1351,6 @@ class PanelApp:
         foreground = _foreground_process_id()
         if foreground is not None and foreground == os.getpid():
             return {"ok": True, "code": "PANEL_FOCUS_KEPT"}
-        if self.api.is_action_running():
-            self._panel_hide_pending = True
-            self._panel_focus_lost_since = time.monotonic()
-            return {"ok": True, "code": "PANEL_HIDE_DEFERRED"}
         self.hide_panel()
         return {"ok": True, "code": "PANEL_HIDDEN_ON_BLUR"}
 
@@ -1374,11 +1370,6 @@ class PanelApp:
             return
 
         now = time.monotonic()
-        if self.api.is_action_running():
-            self._panel_hide_pending = True
-            if self._panel_focus_lost_since <= 0:
-                self._panel_focus_lost_since = now
-            return
         if self._panel_hide_pending or (
             self._panel_focus_lost_since > 0
             and now - self._panel_focus_lost_since >= PANEL_BLUR_GRACE_SECONDS
