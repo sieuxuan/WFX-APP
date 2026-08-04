@@ -28,12 +28,43 @@ def test_installer_closes_running_app_and_creates_windows_shortcuts():
     assert "ewWaitUntilTerminated" in source
     assert "exit 1" in source
     assert "RestartApplications=no" in source
-    assert 'Name: "desktopicon"' in source
     assert "Flags: unchecked" not in source
+    # Hai shortcut luôn được tạo, không qua trang tác vụ để người dùng tick.
     assert 'Name: "{group}\\WFX Smart"' in source
     assert 'Name: "{autodesktop}\\WFX Smart"' in source
+    assert "[Tasks]" not in source
+    assert "Tasks: desktopicon" not in source
     assert 'Filename: "{app}\\{#MyAppExeName}"' in source
-    assert "postinstall" in source
+
+
+def test_installer_runs_without_any_next_click():
+    """Bộ cài phải chạy một chạm: bấm đúp là cài xong và tự mở ứng dụng.
+
+    Mỗi trang wizard dưới đây là một lần người dùng phải bấm Next. Bản cập
+    nhật trong app đã im lặng nhờ /VERYSILENT, nhưng người tải bộ cài từ
+    GitHub thì đi qua wizard đầy đủ nếu không tắt các trang này.
+    """
+    source = INSTALLER.read_text(encoding="utf-8")
+
+    for page in (
+        "DisableWelcomePage=yes",
+        "DisableDirPage=yes",
+        "DisableProgramGroupPage=yes",
+        "DisableReadyPage=yes",
+        "DisableFinishedPage=yes",
+    ):
+        assert page in source, page
+    # Trang Finished đã tắt nên cờ postinstall không còn ô tick để kích hoạt;
+    # entry phải chạy thẳng trong bước kết thúc cài đặt. Chỉ soi đúng dòng
+    # [Run] chứ không quét cả file, vì phần chú thích có nhắc tên cờ này.
+    run_line = next(
+        line for line in source.splitlines()
+        if line.startswith("Filename:") and "Flags:" in line
+    )
+    assert "postinstall" not in run_line
+    # Nhưng vẫn phải bỏ qua khi chạy silent, nếu không bản cập nhật trong app
+    # sẽ mở ứng dụng hai lần (updater tự Start-Process sau khi cài).
+    assert "skipifsilent" in run_line
 
 
 def test_installer_contains_complete_pyinstaller_onedir_build():
