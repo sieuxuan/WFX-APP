@@ -3,26 +3,26 @@
   let MODULE_GROUPS = [
     { name: "Operation", accent: "cyan", modules: [
       { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Article · Season · Costing/BOM." },
-      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở/tìm OC List, tạo Upload OC New hoặc Revise OC." },
-      { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm Sample hoặc tạo Sample Order mới." },
-      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tạo Sale ASN nhiều PO từ Excel, tra cứu và tải Documents." },
-      { name: "(GDN) Dispatch", id: "gdn_dispatch", icon: "GD", kind: "gdn_dispatch", description: "Tạo GDN Dispatch từ Invoice GRN sau thời gian chờ bắt buộc." },
-      { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No." },
-      { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Mở Indent List hoặc lọc kết hợp theo 4 điều kiện." },
-      { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "indent", description: "Mở User Indent List hoặc lọc kết hợp theo 4 điều kiện." },
+      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở OC List, Upload OC New hoặc Revise OC." },
+      { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm hoặc tạo Sample Order." },
+      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tạo Sale ASN từ Excel, tra cứu, tải Documents." },
+      { name: "(GDN) Dispatch", id: "gdn_dispatch", icon: "GD", kind: "gdn_dispatch", description: "Tạo GDN Dispatch từ Invoice GRN." },
+      { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc theo Supplier, RMPO No." },
+      { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Mở Indent List hoặc lọc theo 4 điều kiện." },
+      { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "indent", description: "Mở User Indent List hoặc lọc theo 4 điều kiện." },
       { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "list_new", description: "Mở QA List hoặc tạo QA Request mới." },
     ]},
     { name: "Finance", accent: "violet", modules: [
       { name: "Advance PR List", id: "0065_0880_0010_0020", icon: "PR", kind: "advance_pr", description: "Mở, lọc Advance PR hoặc tạo yêu cầu mới." },
-      { name: "Supplier Inv List", id: "0065_0880_0020_0020", icon: "SI", kind: "supplier_invoice", description: "Mở, lọc và Cancel Supplier Invoice an toàn." },
+      { name: "Supplier Inv List", id: "0065_0880_0020_0020", icon: "SI", kind: "supplier_invoice", description: "Mở, lọc hoặc Cancel Supplier Invoice." },
       { name: "Expense Inv List", id: "0065_0880_0030_0020", icon: "EI", kind: "expense_invoice", description: "Mở, lọc Expense Invoice hoặc tạo hóa đơn mới." },
     ]},
     { name: "Admin", accent: "amber", modules: [
       { name: "Org Structure", id: "0090_0001", icon: "OR", kind: "generic", description: "Mở cấu trúc tổ chức." },
       { name: "System Coding", id: "0090_0250", icon: "SC", kind: "generic", description: "Mở cấu hình mã hệ thống." },
-      { name: "Company Setup", id: "0090_0007", icon: "CO", kind: "company_setup", description: "Mở thiết lập công ty hoặc đổi nơi áp dụng FOC." },
-      { name: "Buyer List", id: "0004_0010_1720", icon: "BU", kind: "buyer", description: "Mở Buyers List hoặc tìm và mở Buyer đầu tiên phù hợp." },
-      { name: "Supplier List", id: "0005_0010_1290", icon: "SU", kind: "supplier", description: "Mở Supplier theo Category hoặc tìm Supplier trên mọi Category." },
+      { name: "Company Setup", id: "0090_0007", icon: "CO", kind: "company_setup", description: "Mở Company Setup hoặc đổi nơi áp dụng FOC." },
+      { name: "Buyer List", id: "0004_0010_1720", icon: "BU", kind: "buyer", description: "Mở Buyers List hoặc tìm và mở Buyer." },
+      { name: "Supplier List", id: "0005_0010_1290", icon: "SU", kind: "supplier", description: "Mở Supplier theo Category hoặc tìm mọi Category." },
     ]},
   ];
 
@@ -619,14 +619,14 @@
       health.dataset.state = alive ? "ok" : "bad";
       health.dataset.tooltip = alive
         ? `${name || "Chromium"} · trình duyệt làm việc`
-        : "Chưa kết nối trình duyệt làm việc";
+        : "Chưa kết nối trình duyệt";
     }
     const banner = $(".browser-banner");
     if (banner) {
       banner.hidden = alive === true;
       $(".browser-banner-message").textContent = available === false
-        ? "Không tìm thấy Chrome/Edge/Brave/Chromium. Hãy cài hoặc đặt WFX_CHROME_PATH."
-        : `Có thể dùng ${name || "Chrome, Edge, Brave hoặc Chromium"}.`;
+        ? "Chưa cài Chrome, Edge, Brave hoặc Chromium."
+        : `Dùng ${name || "Chrome, Edge, Brave hoặc Chromium"}.`;
       $(".open-chrome-button").textContent = available === false ? "Kiểm tra lại" : "Mở trình duyệt";
     }
   }
@@ -641,22 +641,29 @@
         String(Boolean(currentDivision) && button.dataset.division === currentDivision)
       );
     });
-    const current = $(".division-current");
-    if (current) {
-      current.textContent = label
-        ? `${label}${name ? ` · ${name}` : ""}`
-        : (sessionActive ? "Chưa nhận diện được Division" : "Đăng nhập để nhận diện");
-      current.dataset.tooltip = name || "";
-    }
+    syncDivisionHint();
   }
   window.wfxSetDivisionState = setDivisionState;
+
+  // Ba nút Division bị disable khi chưa có phiên WFX. Nếu không nói lý do thì
+  // người dùng chỉ thấy chúng mờ đi mà không biết phải làm gì. Dòng này chỉ
+  // hiện khi thật sự có việc cần làm nên không tốn chiều cao lúc bình thường.
+  function syncDivisionHint() {
+    const hint = $(".division-hint");
+    if (!hint) return;
+    let message = "";
+    if (!currentDivision) {
+      if (sessionActive === true) message = "Chưa nhận ra Division của tài khoản.";
+      else if (sessionActive === false) message = "Đăng nhập để chọn Division.";
+    }
+    hint.textContent = message;
+    hint.hidden = !message;
+  }
 
   function setSessionStatus(active) {
     sessionActive = active == null ? null : Boolean(active);
     const node = $(".health-session");
     if (node) node.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
-    const divisionLive = $(".division-live");
-    if (divisionLive) divisionLive.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
     $$(".division-button").forEach((button) => {
       button.disabled = active !== true;
     });
@@ -669,12 +676,8 @@
         : (active ? "Đã đăng nhập" : "Chưa đăng nhập");
     }
     syncAccountView();
-    const ready = $(".workspace-ready");
-    if (ready) {
-      ready.dataset.state = active === true ? "ok" : "setup";
-      ready.textContent = active === true ? "ONLINE" : "SETUP";
-    }
     if (active !== true) setDivisionState(null, null, null);
+    else syncDivisionHint();
   }
   window.wfxSetSessionStatus = setSessionStatus;
 
@@ -708,7 +711,7 @@
     }
     if (statusNode) {
       if (!referenceSyncState.configured) {
-        statusNode.textContent = "Bản app chưa có cấu hình đọc server";
+        statusNode.textContent = "Bản này chưa bật đồng bộ";
       } else if (lastSuccess > 0) {
         const when = new Date(lastSuccess * 1000).toLocaleString("vi-VN", {
           day: "2-digit", month: "2-digit", year: "numeric",
@@ -716,14 +719,14 @@
         });
         statusNode.textContent = `${referenceSyncState.fresh ? "Đã cập nhật" : "Cần cập nhật"} · ${when}`;
       } else {
-        statusNode.textContent = "Sẵn sàng đồng bộ lần đầu";
+        statusNode.textContent = "Chưa đồng bộ lần nào";
       }
     }
     const publishButton = $(".reference-sync-publish");
     if (publishButton) {
       publishButton.textContent = referenceSyncState.admin_configured
-        ? "Publish dữ liệu hiện tại"
-        : "Lưu key trước khi publish";
+        ? "Đẩy lên server"
+        : "Lưu key trước đã";
       publishButton.disabled = !referenceSyncState.admin_configured;
     }
   }
@@ -1174,26 +1177,25 @@
     banner.classList.toggle("update-installing", scheduled);
     banner.classList.toggle("update-failed", failed);
     if (scheduled) {
-      title.textContent = "Đang cập nhật WFX Smart";
+      title.textContent = "Đang cập nhật";
       $(".update-banner-message").textContent =
-        "Ứng dụng sẽ đóng trong giây lát và tự mở lại ngay khi cài đặt xong.";
+        "App sẽ đóng rồi tự mở lại.";
       button.disabled = true;
-      button.textContent = "Đang cài đặt…";
+      button.textContent = "Đang cài…";
     } else if (failed) {
-      title.textContent = "Chưa thể cập nhật";
+      title.textContent = "Chưa cập nhật được";
       $(".update-banner-message").textContent =
-        state.message || "Vui lòng kiểm tra kết nối và thử lại.";
+        state.message || "Kiểm tra kết nối mạng rồi thử lại.";
       button.disabled = false;
-      button.textContent = "Thử cập nhật lại";
+      button.textContent = "Thử lại";
     } else if (state.can_update) {
       title.textContent = state.version
-        ? `Bản cập nhật ${state.version} đã sẵn sàng`
+        ? `Đã có bản ${state.version}`
         : "Có bản cập nhật mới";
-      $(".update-banner-message").textContent = state.version
-        ? "Chỉ cần bấm một lần. WFX Smart sẽ tự tải, cài đặt rồi mở lại."
-        : "Một lần bấm để tải, cài đặt và tự mở lại ứng dụng.";
+      $(".update-banner-message").textContent =
+        "Tải, cài rồi tự mở lại. Không mất dữ liệu.";
       button.disabled = false;
-      button.textContent = "Cập nhật phần mềm mới";
+      button.textContent = "Cập nhật ngay";
     }
   }
   window.wfxSetUpdateState = setUpdateState;
@@ -1316,7 +1318,6 @@
       catalogDefaultFolder = result.default_folder;
       const folderLabel =
         catalogDefaultFolder?.path_label || "Mặc định (Master)";
-      $(".catalog-folder-current").textContent = folderLabel;
       $(".catalog-folder-summary").dataset.tooltip =
         `Sửa vị trí mặc định: ${folderLabel}`;
     }
@@ -2175,7 +2176,7 @@
     });
     if (saleAsnReviewToken) $(".sale-asn-review").hidden = false;
     $(".sale-asn-inline-status").textContent = result?.message
-      || "Tác vụ đã dừng. Bấm Bắt đầu để chạy lại, không cần chọn lại file.";
+      || "Đã dừng. Bấm Bắt đầu để chạy lại.";
   }
 
   function renderSaleAsnRunResult(result) {
@@ -2441,7 +2442,7 @@
     if (!confirmed) {
       setStatus(
         "warning",
-        "Chỉ Submit sau khi GRN nhập kho thành phẩm đã hoàn tất ít nhất 15 phút.",
+        "Chỉ Submit sau khi GRN xong ít nhất 15 phút.",
       );
       return null;
     }
@@ -2696,8 +2697,6 @@
     const selectedFolder = folders.find(
       (folder) => String(folder.node_id || "") === catalogSelectedNodeId,
     );
-    $(".catalog-folder-current").textContent = selectedFolder?.path_label
-      || "Mặc định (Master)";
     $(".catalog-folder-summary").dataset.tooltip =
       `Sửa vị trí mặc định: ${
         selectedFolder?.path_label || "Mặc định (Master)"
@@ -2873,8 +2872,8 @@
           row.internal_style_ref ? `Internal Ref: ${row.internal_style_ref}` : "",
         ].filter(Boolean).join(" · ")
       : (catalogStyleAutoSave
-        ? "Danh sách đã hoàn tất và các Style đã được Save tự động."
-        : "Danh sách đã hoàn tất. Các Style chỉ được lưu khi bạn tự bấm Save trên WFX.");
+        ? "Đã xong. Các Style được Save tự động."
+        : "Đã xong. Tự bấm Save trên WFX để lưu.");
     const button = $(".catalog-style-prepare");
     if (!row) {
       button.textContent = "Đã hoàn tất";
@@ -3224,7 +3223,7 @@
     const saved = Number(state?.saved_at || 0);
     host.dataset.tooltip = state?.available === true && saved > 0
       ? `Đang dùng cache tuần từ ${new Date(saved * 1000).toLocaleDateString("vi-VN")}`
-      : "CM · Production · Indirect sẽ quét ở lần Costing kế tiếp";
+      : "Quét lại CM, Production, Indirect ở lần sau.";
   }
   window.wfxSetCostingSpecialOptionsState = setCostingSpecialOptionsState;
 
@@ -3351,7 +3350,7 @@
           </button>`;
         }).join("")
         : '<div class="catalog-results-empty">'
-          + 'Không có file đính kèm trong bốn mục đã kiểm tra.</div>';
+          + 'Không có file đính kèm trong 4 mục đã kiểm tra.</div>';
       list.querySelectorAll(".catalog-file-row").forEach((row) => {
         row.addEventListener("click", () => downloadCatalogFile(row));
       });
@@ -3359,8 +3358,8 @@
     } else if (result.code === "NO_RESULTS") {
       $(".catalog-results-title").textContent = "Kết quả";
       $(".catalog-results-count").textContent = "";
-      list.innerHTML = '<div class="catalog-results-empty">Không tìm thấy kết quả.'
-        + ' Kiểm tra lại nội dung hoặc đổi kiểu tìm kiếm.</div>';
+      list.innerHTML = '<div class="catalog-results-empty">Không tìm thấy.'
+        + ' Thử đổi nội dung hoặc kiểu tìm.</div>';
       wrap.hidden = false;
     } else {
       hideCatalogResults();
@@ -3445,7 +3444,7 @@
             </span>
           </button>`;
         }).join("")
-        : '<div class="catalog-results-empty">Không có file đính kèm trong bốn mục đã kiểm tra.</div>';
+        : '<div class="catalog-results-empty">Không có file đính kèm trong 4 mục đã kiểm tra.</div>';
       wrap.hidden = false;
       return;
     }
@@ -3585,7 +3584,7 @@
     const warning = $(".catalog-costing-warnings");
     warning.hidden = warningCount === 0;
     warning.textContent = warningCount
-      ? `${warningCount} mục sẽ không được ghi. Xem Log kỹ thuật trước khi áp dụng.`
+      ? `${warningCount} mục sẽ không được ghi. Xem Log kỹ thuật trước.`
       : "";
     $(".catalog-costing-apply").disabled =
       !costingPlanToken
@@ -3852,9 +3851,9 @@
     button.disabled = true;
     button.textContent = "Đang chuẩn bị…";
     $(".update-banner").classList.add("update-installing");
-    $(".update-banner-title").textContent = "Đang chuẩn bị cập nhật";
+    $(".update-banner-title").textContent = "Đang chuẩn bị";
     $(".update-banner-message").textContent =
-      "Đang kiểm tra gói cài đặt an toàn. Vui lòng không đóng ứng dụng.";
+      "Đang kiểm tra gói cài. Đừng đóng app.";
     const result = await callQuiet("install_update");
     if (result) {
       setUpdateState(result);
@@ -3863,7 +3862,7 @@
     if (!result || result.code !== "UPDATE_SCHEDULED") {
       $(".update-banner").classList.remove("update-installing");
       button.disabled = false;
-      button.textContent = "Thử cập nhật lại";
+      button.textContent = "Thử lại";
     }
   }
 
@@ -3926,8 +3925,8 @@
         ? "Chuẩn bị từng dòng và tự Save sau khi điền"
         : "Chuẩn bị từng dòng và dừng trước Save";
       $(".catalog-style-save-reminder").textContent = catalogStyleAutoSave
-        ? "App sẽ bấm Save sau khi điền xong. Hãy chỉ bật khi dữ liệu Excel đã được kiểm tra."
-        : "Sau khi app điền xong, kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.";
+        ? "App tự bấm Save. Chỉ bật khi đã kiểm tra file Excel."
+        : "Kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.";
       renderCatalogStyleReview();
     });
     $(".catalog-style-copy-choices")?.addEventListener("click", (event) => {
@@ -4302,7 +4301,7 @@
       if (message.length < 5 || feedbackSubmitting) return;
       feedbackSubmitting = true;
       updateFeedbackState();
-      button.textContent = "Đang gửi...";
+      button.textContent = "Đang gửi…";
       const result = await callQuiet(
         "submit_feedback",
         $(".feedback-kind").value,
@@ -4364,7 +4363,7 @@
       const formStatus = $(".account-form-status");
       button.disabled = true;
       formStatus.dataset.tone = "neutral";
-      formStatus.textContent = "Đang lưu an toàn trên máy...";
+      formStatus.textContent = "Đang lưu…";
       const saved = await callQuiet(
         "save_account",
         $(".user-input").value.trim(),
@@ -4378,7 +4377,7 @@
         return;
       }
       handleResult(saved);
-      formStatus.textContent = "Đang kiểm tra đăng nhập WFX...";
+      formStatus.textContent = "Đang đăng nhập…";
       const loggedIn = await call("login");
       if (loggedIn && loggedIn.ok) {
         formStatus.dataset.tone = "success";
@@ -4431,7 +4430,7 @@
     const hotkeyButton = $(".hotkey-button");
     hotkeyButton.addEventListener("click", () => {
       hotkeyButton.dataset.capturing = "true";
-      hotkeyButton.textContent = "Đang chờ tổ hợp...";
+      hotkeyButton.textContent = "Đang chờ tổ hợp phím…";
       hotkeyButton.focus();
     });
     hotkeyButton.addEventListener("blur", () => {
@@ -4679,7 +4678,6 @@
     catalogDefaultFolder = state.catalog_default_folder || null;
     const folderLabel =
       catalogDefaultFolder?.path_label || "Mặc định (Master)";
-    $(".catalog-folder-current").textContent = folderLabel;
     $(".catalog-folder-summary").dataset.tooltip =
       `Sửa vị trí mặc định: ${folderLabel}`;
     setArticleLibraryStatus(state.article_library || {});
@@ -4710,7 +4708,7 @@
     if (!hasCredentials) {
       showCredentialPrompt(
         "MISSING_CREDENTIALS",
-        "Đây là lần đầu sử dụng hoặc chưa có tài khoản đã lưu. Nhập thông tin WFX để tiếp tục."
+        "Nhập User ID và mật khẩu WFX để bắt đầu."
       );
     }
   };

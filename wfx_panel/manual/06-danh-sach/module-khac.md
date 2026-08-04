@@ -7,7 +7,7 @@ Bạn cũng có thể mở Org Structure và System Coding trên WFX.
 
 1. Mở Supplier Inv List trong nhóm Finance và bấm `List`.
 2. Nhập một hoặc nhiều điều kiện: Supplier, Invoice No., PO No. và ASN/GRN No.
-3. Bấm `Tìm theo các điều kiện đã nhập`.
+3. Bấm `Tìm`.
 4. Để Cancel, nhập đúng Invoice No. vào phần `Cancel Supplier Invoice` rồi bấm
    nút Cancel.
 5. Nếu chỉ có một dòng, ứng dụng chọn dòng đó rồi bấm `Delete` khi Status là

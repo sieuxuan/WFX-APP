@@ -10,7 +10,7 @@ Mở Indent List hoặc User Indent và tìm bằng nhiều thông tin trong m�
 4. Nhập Article nếu cần lọc theo nguyên phụ liệu.
 5. Nhập Indent No. nếu bạn biết số Indent.
 6. Nhập Style nếu cần lọc theo Style.
-7. Bấm `Tìm theo các điều kiện đã nhập`.
+7. Bấm `Tìm`.
 
 ## Mẹo
 

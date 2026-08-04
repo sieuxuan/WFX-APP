@@ -129,7 +129,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260804-3"',
+        'src="panel.js?v=20260804-4"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -304,7 +304,12 @@ def test_catalog_folder_picker_is_searchable_and_hides_technical_copy():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert 'placeholder="Tìm folder, group hoặc đường dẫn…"' in html
     assert 'role="listbox"' in html
-    assert 'class="catalog-folder-current"' in html
+    # Vị trí mặc định đến với người dùng qua tooltip của nút, không qua một
+    # <strong> luôn hidden: panel.js chỉ ghi textContent mà không bao giờ bỏ
+    # thuộc tính hidden, nên element đó là markup chết.
+    assert 'class="catalog-folder-current"' not in html
+    assert 'class="catalog-folder-summary"' in html
+    assert 'Sửa vị trí mặc định' in (UI / "panel.js").read_text(encoding="utf-8")
     assert "Duyệt Catalog" not in html
     assert "WFX Smart tự quét" not in html
 
@@ -858,7 +863,7 @@ def test_update_is_only_exposed_as_automatic_outside_banner():
     assert 'class="update-apply-button"' not in html
     assert 'class="update-channel-input"' not in html
     assert "Có bản cập nhật mới" in html
-    assert "Cập nhật phần mềm mới" in html
+    assert "Cập nhật ngay" in html
     assert 'class="app-version"' in html
 
 
@@ -1063,7 +1068,7 @@ def test_manual_tim_kiem_khong_dau_va_tim_duoc_noi_dung_ma_loi():
 def test_nhan_giao_dien_dung_tieng_viet_thong_nhat():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert "Phím tắt mở bảng điều khiển" in html
-    assert "Mở ẩn trong khay hệ thống" in html
+    assert "Mở ẩn ở khay hệ thống" in html
     assert "Chưa có trình duyệt làm việc" in html
     for phrase in ("Hotkey mở panel", "Mở ẩn trong tray", "trình duyệt automation"):
         assert phrase not in html

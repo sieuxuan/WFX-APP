@@ -27,7 +27,7 @@ Hai cách gọi khác:
 > khiển`.
 
 > [!luuy]
-> Bật `Mở ẩn trong khay hệ thống` nếu bạn muốn ứng dụng khởi động yên lặng cùng
+> Bật `Mở ẩn ở khay hệ thống` nếu bạn muốn ứng dụng khởi động yên lặng cùng
 > Windows và chỉ hiện khi được gọi.
 
 > [!meo]

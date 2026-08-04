@@ -13,11 +13,11 @@ hay không.
 ## Mẹo
 
 > [!meo]
-> Bật `Trở về List sau khi thao tác` trong Cài đặt, thẻ Tự động hóa, nếu bạn
+> Bật `Quay về danh sách khi xong` trong Cài đặt, thẻ Tự động hóa, nếu bạn
 > muốn bảng điều khiển quay về danh sách module sau mỗi tác vụ.
 
 > [!meo]
-> Bật `Đưa Chrome lên khi chạy module` nếu bạn muốn chuyển ngay sang cửa sổ WFX
+> Bật `Tự chuyển sang Chrome` nếu bạn muốn chuyển ngay sang cửa sổ WFX
 > khi bấm một nút thao tác.
 
 ## Gặp lỗi thì sao
