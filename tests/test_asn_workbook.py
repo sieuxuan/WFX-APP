@@ -1,5 +1,5 @@
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from wfx_panel.asn_workbook import merge_sale_asn_reports
 
@@ -40,6 +40,81 @@ def _reports(path, titles, prefix):
     workbook.close()
 
 
+def _wrapped_report(path, title):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = title
+    sheet.column_dimensions["A"].width = 8
+    sheet["A2"] = "Goods description with enough words to require several lines"
+    sheet["A2"].alignment = Alignment(wrap_text=True, vertical="top")
+    sheet.row_dimensions[2].height = 15
+    workbook.save(path)
+    workbook.close()
+
+
+def _jl_packing_report(path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "JL Packing"
+    sheet.append(
+        [
+            "JL PO#", "Style No", "Color Code", "Net Wt", "Gross Wt",
+            "No of Carton", "CBM",
+        ]
+    )
+    sheet.append(["PO129761", "SWOW18336", "9999 BLACK", 581.5, 683.5, 68, 6.97])
+    sheet.append(["PO129761", "SWOW18336", "Q142 GRAPE", 581.5, 683.5, 68, 6.97])
+    sheet.append(["PO129761", "SWPA18338", "9999 BLACK", 358.7, 408.2, 33, 3.38])
+    sheet.append(["PO129761", "SWPA18338", "Q142 GRAPE", 358.7, 408.2, 33, 3.38])
+    workbook.save(path)
+    workbook.close()
+
+
+def _truewerk_packing_report(path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "TRUEWERK Packing"
+    for reference, value in {
+        "C1": "⑫ Description of Goods",
+        "H1": "⑬ Qty/Unit",
+        "J1": "⑭ Net-Weight",
+        "L1": "⑭ Gross-Weight",
+        "N1": "⑮Qty Cartons",
+        "O1": "CBM",
+        "C2": "Style",
+        "F2": "PO No.",
+        "C3": "MEN PANTS",
+    }.items():
+        sheet[reference] = value
+    for reference in (
+        "C1:G1", "H1:I1", "J1:K1", "L1:M1", "C2:E2", "F2:G2", "C3:G3"
+    ):
+        sheet.merge_cells(reference)
+
+    def add_line(row, style, po, quantity, net_weight, gross_weight, cartons, cbm):
+        for column, value in {
+            "C": style,
+            "F": po,
+            "H": quantity,
+            "J": net_weight,
+            "L": gross_weight,
+            "N": cartons,
+            "O": cbm,
+        }.items():
+            sheet[f"{column}{row}"] = value
+        for reference in (f"C{row}:E{row}", f"F{row}:G{row}", f"H{row}:I{row}", f"J{row}:K{row}", f"L{row}:M{row}"):
+            sheet.merge_cells(reference)
+
+    add_line(4, "S22-0001", "P00003739", 2700, 1221.6, 1333.2, 93, 7.79)
+    add_line(5, "S22-0001", "P00003739 ADD", 90, 0, 0, 0, 0)
+    add_line(6, "S22-0001", "P00003740", 2850, 1284.4, 1402, 98, 8.21)
+    add_line(7, "S22-0001", "P00003740 - ADD", 90, 3, 0, 0, 0)
+    add_line(8, "S22-0001", "P00009999 ADD", 90, 0, 0, 0, 0)
+    add_line(9, "S22-0001", "P00009999", 2850, 500, 550, 40, 4.2)
+    workbook.save(path)
+    workbook.close()
+
+
 def test_merge_sale_asn_reports_renames_only_colliding_sheet_titles(tmp_path):
     packing = tmp_path / "packing.xlsx"
     buyer = tmp_path / "buyer.xlsx"
@@ -73,6 +148,9 @@ def test_merge_sale_asn_reports_renames_only_colliding_sheet_titles(tmp_path):
         assert sheet.sheet_view.showGridLines is False
         assert sheet.page_setup.orientation == "landscape"
         assert sheet.page_setup.fitToWidth == 1
+        assert sheet.page_setup.paperSize == 9
+        assert sheet.page_setup.fitToHeight == 0
+        assert sheet.sheet_properties.pageSetUpPr.fitToPage is True
         assert str(sheet.print_area).endswith("!$A$1:$C$3")
     assert workbook["PKL INV-001"].oddHeader.center.text == "Packing data header"
     assert workbook["INVOICE INV-001"].oddHeader.center.text == "Buyer data header"
@@ -153,4 +231,87 @@ def test_merge_sale_asn_reports_keeps_interleaving_when_counts_differ(tmp_path):
         "Packing 2",
         "Packing 3",
     ]
+    workbook.close()
+
+
+def test_merge_sale_asn_reports_expands_wrapped_rows_that_would_be_cut_off(tmp_path):
+    packing = tmp_path / "packing-wrapped.xlsx"
+    buyer = tmp_path / "buyer-wrapped.xlsx"
+    target = tmp_path / "INV-005.xlsx"
+    _wrapped_report(packing, "Packing")
+    _wrapped_report(buyer, "Invoice")
+
+    merge_sale_asn_reports(packing, buyer, target, invoice_no="INV-005")
+
+    workbook = load_workbook(target, data_only=False)
+    assert workbook["Invoice"].row_dimensions[2].height > 15
+    assert workbook["Packing"].row_dimensions[2].height > 15
+    workbook.close()
+
+
+def test_merge_sale_asn_reports_keeps_portrait_reports_portrait_on_a4(tmp_path):
+    packing = tmp_path / "packing-portrait.xlsx"
+    buyer = tmp_path / "buyer-portrait.xlsx"
+    target = tmp_path / "INV-006.xlsx"
+    _report(packing, "Packing", "Packing data")
+    _report(buyer, "Invoice", "Invoice data")
+    for source in (packing, buyer):
+        workbook = load_workbook(source)
+        workbook.active.page_setup.orientation = "portrait"
+        workbook.save(source)
+        workbook.close()
+
+    merge_sale_asn_reports(packing, buyer, target, invoice_no="INV-006")
+
+    workbook = load_workbook(target, data_only=False)
+    for sheet in workbook.worksheets:
+        assert sheet.page_setup.paperSize == 9
+        assert sheet.page_setup.orientation == "portrait"
+        assert sheet.page_setup.fitToWidth == 1
+    workbook.close()
+
+
+def test_merge_sale_asn_reports_merges_jl_packing_measurements_by_po_and_style(tmp_path):
+    packing = tmp_path / "jl-packing.xlsx"
+    buyer = tmp_path / "buyer.xlsx"
+    target = tmp_path / "1105.JLSKI.26.xlsx"
+    _jl_packing_report(packing)
+    _report(buyer, "Buyer Invoice", "Invoice data")
+
+    merge_sale_asn_reports(packing, buyer, target, invoice_no="1105.JLSKI.26")
+
+    workbook = load_workbook(target, data_only=False)
+    sheet = workbook["JL Packing"]
+    merged = {str(item) for item in sheet.merged_cells.ranges}
+    assert {"D2:D3", "E2:E3", "F2:F3", "G2:G3"} <= merged
+    assert {"D4:D5", "E4:E5", "F4:F5", "G4:G5"} <= merged
+    assert sheet["D3"].value is None
+    assert sheet["E5"].value is None
+    assert {str(item) for item in workbook["Buyer Invoice"].merged_cells.ranges} == {
+        "A3:C3"
+    }
+    workbook.close()
+
+
+def test_merge_sale_asn_reports_merges_truewerk_measurements_from_po_to_add_row(tmp_path):
+    packing = tmp_path / "truewerk-packing.xlsx"
+    buyer = tmp_path / "buyer.xlsx"
+    target = tmp_path / "TRUEWERK-001.xlsx"
+    _truewerk_packing_report(packing)
+    _report(buyer, "Buyer Invoice", "Invoice data")
+
+    merge_sale_asn_reports(packing, buyer, target, invoice_no="TRUEWERK-001")
+
+    workbook = load_workbook(target, data_only=False)
+    sheet = workbook["TRUEWERK Packing"]
+    merged = {str(item) for item in sheet.merged_cells.ranges}
+    assert {"J4:K5", "L4:M5", "N4:N5", "O4:O5"} <= merged
+    assert "J6:K7" not in merged
+    assert "J8:K9" not in merged
+    assert sheet["J5"].value is None
+    assert sheet["L5"].value is None
+    assert sheet["N5"].value is None
+    assert sheet["O5"].value is None
+    assert sheet["J7"].value == 3
+    assert sheet["J9"].value == 500
     workbook.close()

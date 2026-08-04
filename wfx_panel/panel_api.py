@@ -1753,6 +1753,29 @@ class PanelAPI:
         if target.suffix.casefold() != ".xlsx":
             target = target.with_suffix(".xlsx")
 
+        def next_available_target(current: Path) -> Path:
+            """Tránh ghi đè file đang mở bằng một tên sibling chưa tồn tại."""
+            suffix = current.suffix or ".xlsx"
+            for index in range(2, 10_000):
+                candidate = current.with_name(f"{current.stem} ({index}){suffix}")
+                if not candidate.exists():
+                    return candidate
+            raise OSError("Không tìm được tên file trống để lưu Documents Sale ASN.")
+
+        def copy_to_target(source: Path, destination: Path) -> None:
+            staging = destination.with_name(
+                f".{destination.name}.{secrets.token_hex(4)}.tmp"
+            )
+            try:
+                shutil.copyfile(source, staging)
+                os.replace(staging, destination)
+            except OSError:
+                try:
+                    staging.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
+
         def action() -> dict:
             prepared = self._sale_asn_document_exports.get(token)
             if prepared is None:
@@ -1771,18 +1794,17 @@ class PanelAPI:
                     "code": "SALE_ASN_DOCUMENTS_EXPIRED",
                     "message": "File Sale ASN tạm đã bị xóa; hãy tải lại.",
                 }
-            staging: Path | None = None
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                staging = target.with_name(f".{target.name}.{secrets.token_hex(4)}.tmp")
-                shutil.copyfile(source, staging)
-                os.replace(staging, target)
-            except OSError as error:
+                actual_target = target
+                renamed_for_open_file = False
                 try:
-                    if staging is not None:
-                        staging.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                    copy_to_target(source, actual_target)
+                except PermissionError:
+                    actual_target = next_available_target(target)
+                    copy_to_target(source, actual_target)
+                    renamed_for_open_file = True
+            except OSError as error:
                 return {
                     "ok": False,
                     "code": "SALE_ASN_DOCUMENTS_SAVE_FAILED",
@@ -1790,16 +1812,22 @@ class PanelAPI:
                 }
             invoice_no = str(prepared.get("invoice_no") or "Invoice")
             self._discard_sale_asn_document_export(token)
+            suffix_message = (
+                " File cùng tên đang mở nên đã tự lưu bằng tên mới."
+                if renamed_for_open_file
+                else ""
+            )
             return {
                 "ok": True,
                 "code": "SALE_ASN_DOCUMENTS_EXPORTED",
                 "message": (
                     f"Đã lưu Packing List + Buyer Invoice của "
-                    f"{invoice_no} thành {target.name}."
+                    f"{invoice_no} thành {actual_target.name}.{suffix_message}"
                 ),
                 "invoice_no": invoice_no,
-                "export_path": str(target),
-                "file_name": target.name,
+                "export_path": str(actual_target),
+                "file_name": actual_target.name,
+                "renamed_for_open_file": renamed_for_open_file,
                 "sheet_names": list(prepared.get("sheet_names") or []),
             }
 

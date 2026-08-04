@@ -10,6 +10,7 @@ from wfx_panel import (
     constants,
     costing_workbook,
     oc_workbook,
+    panel_api,
     prefs,
     telemetry,
 )
@@ -2506,6 +2507,35 @@ def test_sale_asn_documents_are_prepared_then_saved_by_token(tmp_path):
         str(tmp_path / "again.xlsx"),
     )
     assert expired["code"] == "SALE_ASN_DOCUMENTS_EXPIRED"
+
+
+def test_sale_asn_documents_use_next_name_when_selected_file_is_open(
+    tmp_path,
+    monkeypatch,
+):
+    api, _fake = make_api(tmp_path)
+    prepared = api.prepare_sale_asn_documents("invoice_no", "INV-9")
+    target = tmp_path / "exports" / "INV-9.xlsx"
+    target.parent.mkdir()
+    target.touch()
+
+    real_replace = panel_api.os.replace
+
+    def reject_open_file(source, destination):
+        if Path(destination).resolve() == target.resolve():
+            raise PermissionError("File is open in Excel")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(panel_api.os, "replace", reject_open_file)
+
+    saved = api.save_sale_asn_documents(prepared["export_token"], str(target))
+
+    expected = target.with_name("INV-9 (2).xlsx")
+    assert saved["code"] == "SALE_ASN_DOCUMENTS_EXPORTED"
+    assert Path(saved["export_path"]) == expected.resolve()
+    assert saved["renamed_for_open_file"] is True
+    assert target.is_file()
+    assert load_workbook(expected).sheetnames == ["Packing List", "Buyer Invoice"]
 
 
 def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):

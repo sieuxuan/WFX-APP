@@ -16,7 +16,7 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 3. Bấm mũi tên trong ô để mở toàn bộ danh sách Buyer, hoặc gõ ít nhất hai ký tự
    để lọc nhanh, rồi chọn đúng Buyer.
    Khi đã khớp chính xác, ô Buyer hiện dấu ✓ ở bên phải.
-4. Bấm `Tải form trống` nếu bạn chưa có form 20 cột.
+4. Bấm `Tải form trống` nếu bạn chưa có form 21 cột.
 5. Điền dữ liệu theo thứ tự từ trên xuống dưới trong file rồi lưu lại.
 6. Bấm `Chọn file & kiểm tra`.
 7. Kiểm tra Invoice No., số PO, số Style và Destination trong thẻ review.
@@ -93,9 +93,9 @@ khi cần.
 2. Mở `Tùy chọn nâng cao` ở cuối thẻ `Tạo mới`.
 3. Trong `Các bước app sẽ làm`, bỏ tích `Thêm PO`. Chỉ giữ các bước cần app làm:
    `Order Details`, `Style Details` và/hoặc `Shipping Info`.
-4. Bấm `Xuất PO đang mở`. App tạo form 20 cột có sẵn PO No. và toàn bộ giá trị
+4. Bấm `Xuất PO đang mở`. App tạo form 21 cột có sẵn PO No. và toàn bộ giá trị
    Order Details đang có trên WFX.
-5. Bổ sung Style/HS Code hoặc Shipping Info trong form nếu các bước đó được
+5. Bổ sung Style/HS Code/Goods Description hoặc Shipping Info trong form nếu các bước đó được
    chọn, lưu file rồi bấm `Chọn file & kiểm tra`.
 6. Bấm `Chạy các bước đã chọn`.
 
@@ -148,15 +148,15 @@ liệu.
 - Với mỗi dòng có PO, `Style No`, `Destination` và `FTY` là dữ liệu bắt buộc.
 - `Style No` được dùng như từ khóa tìm gần đúng. Ví dụ `M Acel Jacket` có thể khớp với Style `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX.
 - Một `PO No` có thể xuất hiện ở nhiều dòng khi mỗi dòng là một `Style No` khác nhau. Chỉ cặp `PO No` + `Style No` trùng hoàn toàn mới bị báo lỗi.
-- Form có 20 cột và không còn `SEASON` hoặc `DESCRIPTION`. Thứ tự cột là:
+- Form có 21 cột và không còn `SEASON` hoặc cột `DESCRIPTION` cũ. Thứ tự cột là:
   `Style No`, `PO No`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`,
-  `Service Price`, `Cargo Ready Date`, `HS CODE`, `Invoice No`, `Invoice Date`,
+  `Service Price`, `Cargo Ready Date`, `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`,
   `Shipping Bill No`, `Shipping Bill Date`, `Destination`, `FTY`,
   `Consignee Address`, `Ship To`, `Shipping Mode`.
 - Chỉ điền `Shipping Mode` tại dòng dữ liệu đầu tiên. Ô này bắt buộc khi chạy
   bước Shipping Info và chỉ nhận `AIR`, `SEA` hoặc `COURIER`; các dòng sau có thể
   để trống vì ứng dụng dùng mode của dòng đầu cho toàn bộ chứng từ.
-- `HS CODE`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address` và `Ship To` có thể để trống.
+- `HS CODE`, `Goods Description`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address` và `Ship To` có thể để trống. Khi có Goods Description, app điền vào đúng dòng Style Details trên WFX.
 - Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
 - Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không
@@ -192,8 +192,16 @@ Delivery Terms theo mode đó:
 > `INVOICE 1083.26.PS.PSHK_7` để Excel chấp nhận. Nếu report có nhiều sheet,
 > ứng dụng xếp xen kẽ `Invoice 1`, `PKL 1`, `Invoice 2`, `PKL 2` cho đến hết;
 > Invoice luôn đứng trước PKL. Sau khi lưu thành công, Explorer sẽ tự mở và chọn
-> đúng file vừa lưu. Khung, rich text, merged cell và định dạng gốc của cả
-> Invoice lẫn PKL được giữ nguyên khi ghép.
+> đúng file vừa lưu. Các cửa sổ Docs/report do chính lượt tải mở sẽ tự đóng; các
+> cửa sổ WFX đã có từ trước vẫn được giữ nguyên. Khung, rich text, merged cell
+> và định dạng gốc của cả Invoice lẫn PKL được giữ nguyên khi ghép. Hàng có nội
+> dung xuống dòng sẽ được tăng chiều cao khi ghép để không bị cắt lúc mở Excel.
+> Mỗi sheet cũng được đặt A4, giữ đúng hướng dọc/ngang từ report WFX và fit vừa
+> một trang theo chiều ngang khi in.
+
+> [!meo]
+> Nếu file cùng tên đang mở trong Excel, app tự lưu tên kế tiếp, ví dụ
+> `INV-001 (2).xlsx`; không cần tải lại hai report.
 
 ## Gặp lỗi thì sao
 
@@ -207,5 +215,5 @@ Delivery Terms theo mode đó:
 | Không tìm thấy PO | Kiểm tra `Tiêu chí tìm PO` trong `Tùy chọn nâng cao` cùng PO No., Style và Destination trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
 | Đã đóng cửa sổ Add PO | Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng. |
 | Không xuất được form Order Details | Mở đúng chứng từ có PO và vào tab Order Details rồi bấm xuất lại. |
-| PO trong form Order Details hoặc form 20 cột không có trên trang | Mở đúng Sale ASN có đủ PO rồi bấm thử lại; app không tự thêm PO khi bước Thêm PO đã được bỏ chọn. |
+| PO trong form Order Details hoặc form 21 cột không có trên trang | Mở đúng Sale ASN có đủ PO rồi bấm thử lại; app không tự thêm PO khi bước Thêm PO đã được bỏ chọn. |
 | Order Details, Style Details hoặc cả tab Shipping Info bị lỗi | Giữ nguyên form WFX, sửa trạng thái/ô đang vướng rồi bấm `Thử lại bước này` ngay trong dòng bước đó; hoặc bấm `Bỏ qua ...` nếu muốn tự điền bước đó. Một field riêng lẻ trong Shipping Info sẽ tự được bỏ qua và báo lại trong thẻ kết quả. |
