@@ -18,10 +18,6 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 
 SALE_ASN_SHEET = "SALE ASN"
 SALE_ASN_COLUMNS = (
-    "Invoice No",
-    "Invoice Date",
-    "Shipping Bill No",
-    "Shipping Bill Date",
     "Style No",
     "PO No",
     "HS CODE",
@@ -30,11 +26,15 @@ SALE_ASN_COLUMNS = (
     "NW",
     "GW",
     "CBM",
-    "Destination",
-    "FTY",
     "FOB Price",
     "Service Price",
     "Cargo Ready Date",
+    "Invoice No",
+    "Invoice Date",
+    "Shipping Bill No",
+    "Shipping Bill Date",
+    "Destination",
+    "FTY",
     "Consignee Address",
     "Ship To",
     "Shipping Mode",
@@ -334,7 +334,6 @@ def read_sale_asn_workbook(
         "Cargo Ready Date",
         "Consignee Address",
         "Ship To",
-        "Shipping Mode",
     ):
         raw = next((row[column] for row in raw_rows if _text(row[column])), None)
         try:
@@ -346,6 +345,19 @@ def read_sale_asn_workbook(
         except ValueError as error:
             errors.append(str(error))
             first_values[column] = ""
+
+    first_shipping_row = int(raw_rows[0]["source_row"])
+    first_values["Shipping Mode"] = _text(
+        raw_rows[0]["Shipping Mode"]
+    ).upper()
+    if (
+        require_shipping
+        and first_values["Shipping Mode"] not in SHIPPING_MODES
+    ):
+        errors.append(
+            f"T{first_shipping_row}: Shipping Mode ở dòng dữ liệu đầu tiên "
+            "bắt buộc chọn AIR, SEA hoặc COURIER."
+        )
 
     # Form tạo mới giữ fallback ngày cũ. Khi tiếp tục một ASN đã có PO, ô ngày
     # trống phải thật sự được bỏ qua thay vì vô tình ghi ngày hôm nay lên WFX.
@@ -380,23 +392,17 @@ def read_sale_asn_workbook(
             or first_values["Consignee Address"]
         )
         ship_to = _text(raw["Ship To"]) or first_values["Ship To"]
-        shipping_mode = (
-            _text(raw["Shipping Mode"]) or first_values["Shipping Mode"]
-        ).upper()
+        shipping_mode = first_values["Shipping Mode"]
         if require_style and not style_no:
-            errors.append(f"E{source_row}: Style No bắt buộc.")
+            errors.append(f"A{source_row}: Style No bắt buộc.")
         if po_no.casefold() in seen_pos:
-            errors.append(f"F{source_row}: PO No bị trùng ({po_no}).")
+            errors.append(f"B{source_row}: PO No bị trùng ({po_no}).")
         else:
             seen_pos.add(po_no.casefold())
         if require_destination and not destination:
-            errors.append(f"M{source_row}: Destination bắt buộc.")
+            errors.append(f"P{source_row}: Destination bắt buộc.")
         if require_factory and not factory:
-            errors.append(f"N{source_row}: FTY bắt buộc.")
-        if require_shipping and shipping_mode not in SHIPPING_MODES:
-            errors.append(
-                f"T{source_row}: Shipping Mode bắt buộc chọn AIR, SEA hoặc COURIER."
-            )
+            errors.append(f"Q{source_row}: FTY bắt buộc.")
 
         numbers: dict[str, str] = {}
         for column in _NUMBER_COLUMNS:
@@ -534,8 +540,8 @@ def write_sale_asn_template(
         sheet.append([None] * len(SALE_ASN_COLUMNS))
 
     widths = (
-        20, 14, 20, 18, 34, 22, 15, 12, 12, 12,
-        12, 12, 20, 34, 14, 14, 18, 34, 34, 16,
+        34, 22, 15, 12, 12, 12, 12, 12, 14, 14,
+        18, 20, 14, 20, 18, 20, 34, 34, 34, 16,
     )
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
@@ -555,10 +561,26 @@ def write_sale_asn_template(
     sheet.row_dimensions[1].height = 34
 
     for row in range(2, reserved_rows + 2):
-        for column in (2, 4, 17):
+        for column in (11, 13, 15):
             sheet.cell(row, column).number_format = "dd/mm/yyyy"
-        for column in (8, 9, 10, 11, 12, 15, 16):
+        for column in (4, 5, 6, 7, 8, 9, 10):
             sheet.cell(row, column).number_format = "#,##0.00"
+
+    for cell_range in ("K2:K2001", "M2:M2001", "O2:O2001"):
+        date_validation = DataValidation(
+            type="date",
+            operator="between",
+            formula1="DATE(1900,1,1)",
+            formula2="DATE(2100,12,31)",
+            allow_blank=True,
+        )
+        date_validation.error = "Nhập ngày hợp lệ trong khoảng 01/01/1900–31/12/2100."
+        date_validation.errorTitle = "Ngày không hợp lệ"
+        date_validation.prompt = "Chọn hoặc nhập ngày theo định dạng dd/mm/yyyy."
+        date_validation.promptTitle = "Ngày"
+        sheet.add_data_validation(date_validation)
+        date_validation.add(cell_range)
+
     shipping_mode_validation = DataValidation(
         type="list",
         formula1='"AIR,SEA,COURIER"',
@@ -569,7 +591,7 @@ def write_sale_asn_template(
     shipping_mode_validation.prompt = "Chọn AIR, SEA hoặc COURIER."
     shipping_mode_validation.promptTitle = "Shipping Mode"
     sheet.add_data_validation(shipping_mode_validation)
-    shipping_mode_validation.add(f"T2:T{MAX_SALE_ASN_ROWS + 1}")
+    shipping_mode_validation.add("T2")
     table_ref = f"A1:T{reserved_rows + 1}"
     table = Table(displayName="SaleASNInput", ref=table_ref)
     table.tableStyleInfo = TableStyleInfo(

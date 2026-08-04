@@ -352,6 +352,7 @@ Các workflow riêng hiện có:
   No./Style, ô nhập và nút Tìm nằm trên một hàng gọn. Hai card `Upload OC New`
   và `Revise OC` cân bằng hai cột, chữ/nút không nhỏ hơn phần thao tác chính của
   panel; New giữ cặp tải mẫu/chọn file và Revise giữ cặp mở report/chọn file.
+  Hai nút action trong mỗi card xếp dọc để nhãn không tràn ở chiều rộng panel.
 - Form OC mới chỉ để user nhập trên sheet visible `OC INPUT`; sheet
   `REFERENCES` phải `veryHidden`, chỉ chứa nguồn dropdown. App phải tự sinh
   workbook tạm chỉ có `Sheet1` với đúng 51 header EDI, không công thức, không
@@ -441,15 +442,21 @@ Các workflow riêng hiện có:
   `SALE_ASN_FORM_COMPLETED`, thẻ kết quả liệt kê cảnh báo Shipping Info và có nút
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
   xuất báo cáo vì user còn phải Save trên WFX.
-  Form Excel có đúng 20 cột; bỏ `SEASON`/`DESCRIPTION` và thêm `Consignee
-  Address`/`Ship To`/`Shipping Mode`. Mỗi file chỉ chứa một Invoice No. và một
-  FTY, xử lý PO đúng thứ tự dòng. Style No./PO No./Destination/FTY bắt buộc;
-  Shipping Mode bắt buộc khi chạy Shipping Info và chỉ nhận AIR/SEA/COURIER;
+  Form Excel có đúng 20 cột theo thứ tự `Style No`, `PO No`, `HS CODE`, `Qty`,
+  `Carton`, `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
+  `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
+  `Destination`, `FTY`, `Consignee Address`, `Ship To`, `Shipping Mode`; bỏ
+  `SEASON`/`DESCRIPTION`. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
+  đúng thứ tự dòng. Style No./PO No./Destination/FTY bắt buộc; Shipping Mode chỉ
+  bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
+  nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;
   HS Code/Qty/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
   Consignee Address/Ship To được phép trống. Cargo Ready Date trống phải giữ
-  trống theo từng dòng, không kế thừa và không dùng ngày hiện tại. Invoice Date/
-  Shipping Bill Date vẫn kế thừa ngày đầu tiên, không có nữa mới dùng ngày hiện
-  tại; Shipping Bill No. trống thì dùng Invoice No.
+  trống theo từng dòng, không kế thừa và không dùng ngày hiện tại. Ba cột Cargo
+  Ready Date/Invoice Date/Shipping Bill Date phải có date validation trong form
+  Excel và cho phép để trống. Invoice Date/Shipping Bill Date vẫn kế thừa ngày
+  đầu tiên, không có nữa mới dùng ngày hiện tại; Shipping Bill No. trống thì dùng
+  Invoice No.
   Automation chọn Buyer, mở Add Order Details và tìm tuần tự theo các tiêu chí
   đang bật trong `prefs.sale_asn_po_search_fields`, thứ tự cố định PO → Style →
   Destination. Mặc định bật đủ ba; dữ liệu hỏng hoặc danh sách rỗng phải quay về
@@ -471,7 +478,8 @@ Các workflow riêng hiện có:
   có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
   trang Sale ASN chính rồi điền 7 cột Order Details, map Style gần đúng để điền
   HS Code, rồi điền Shipping Info với Consignor Address `BILL-ADD - PSHK`,
-  Factory theo FTY và Notify 1 là option đầu tiên. Consignee Address và Ship To
+  Factory theo FTY bằng option đầu tiên chứa đủ các từ user nhập, bỏ qua mọi
+  option Factory có dấu chấm ở cuối; Notify 1 là option đầu tiên. Consignee Address và Ship To
   lấy option gần đúng tốt nhất duy nhất trong dropdown; không có hoặc đồng hạng
   thì bỏ qua có warning. Shipping Mode sinh Port of Loading/Delivery Terms:
   AIR → `HAN- Hanoi`/`FCA HANOI, VIETNAM`; SEA → `HPH- Haiphong`/

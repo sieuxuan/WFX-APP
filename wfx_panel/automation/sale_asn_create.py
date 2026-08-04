@@ -111,7 +111,7 @@ SHIPPING_FIELDS = (
     (SHIP_TO_SELECTOR, "ship_to", "closest"),
     (PORT_OF_LOADING_SELECTOR, "port_of_loading", "exact"),
     ("#ddlDeliveryTerms", "delivery_terms", "exact"),
-    ("#ddlFactory", "factory", "exact"),
+    ("#ddlFactory", "factory", "factory_first"),
     ("#ddlNotify1", "__FIRST", "first"),
 )
 
@@ -580,6 +580,21 @@ def _best_dropdown_label(options: Sequence[str], query: str) -> str | None:
     return best[0] if len(best) == 1 else None
 
 
+def _best_factory_label(options: Sequence[str], query: str) -> str | None:
+    """Lấy option FTY liên quan đầu tiên, bỏ qua nhãn kết thúc bằng dấu chấm."""
+
+    query_tokens = set(_fold(query).split())
+    if not query_tokens:
+        return None
+    for option in options:
+        cleaned = " ".join(str(option or "").split())
+        if not cleaned or cleaned.endswith("."):
+            continue
+        if query_tokens <= set(_fold(cleaned).split()):
+            return cleaned
+    return None
+
+
 def _frame_with_selector(context: Any, selector: str, timeout_s: float = 20) -> tuple[Page, Frame]:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -731,7 +746,11 @@ def _set_control(
     last: dict[str, Any] = {"ok": False, "reason": "not-found"}
     requested_mode = mode
     selected_value = value
-    selected_mode = "options" if requested_mode == "closest" else requested_mode
+    selected_mode = (
+        "options"
+        if requested_mode in {"closest", "factory_first"}
+        else requested_mode
+    )
     while time.monotonic() < deadline:
         try:
             last = frame.evaluate(
@@ -744,11 +763,16 @@ def _set_control(
             )
             if last.get("ok"):
                 return last
-            if requested_mode == "closest" and selected_mode == "options":
-                matched = _best_dropdown_label(
-                    last.get("options") or (),
-                    value,
+            if selected_mode == "options" and requested_mode in {
+                "closest",
+                "factory_first",
+            }:
+                matcher = (
+                    _best_factory_label
+                    if requested_mode == "factory_first"
+                    else _best_dropdown_label
                 )
+                matched = matcher(last.get("options") or (), value)
                 if matched:
                     selected_value = matched
                     selected_mode = "exact"
