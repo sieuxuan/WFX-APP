@@ -517,8 +517,10 @@ Các workflow riêng hiện có:
   Gross Wt, No of Carton và CBM cho các dòng liền nhau có cùng JL PO# + Style No;
   chỉ gộp khi giá trị cột đó giống nhau để không làm mất số liệu.
   Với Packing List CORPORATE OFFICE - TRUEWERK, các cặp dòng liền nhau cùng Style
-  và PO gốc/PO hậu tố `ADD` tự gộp dọc Net-Weight, Gross-Weight, Qty Cartons và
-  CBM nếu dòng `ADD` chỉ có số 0/trống; Qty/Unit vẫn giữ riêng.
+  và PO gốc/PO hậu tố `ADD` hoặc `- ADD` tự gộp dọc Net-Weight, Gross-Weight,
+  Qty Cartons và CBM nếu dòng `ADD` chỉ có số 0/trống; Qty/Unit vẫn giữ riêng.
+  Chỉ gộp từ PO gốc xuống dòng `ADD` ngay sau nó; nếu report xếp ngược hoặc tách
+  hai dòng ra xa nhau thì giữ nguyên để không đổi thứ tự/làm mất số liệu.
   Nếu file đích cùng tên đang mở/khóa trong Excel, không báo lỗi hoặc bắt tải lại:
   tự lưu sibling kế tiếp theo dạng `Invoice (2).xlsx` và trả đúng tên đã lưu.
   phải tạo merged range trước rồi mới phục hồi style từng ô để không mất border/

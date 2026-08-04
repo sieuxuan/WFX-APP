@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.0.23",
+    "date": "2026-08-04",
+    "highlights": [
+      {
+        "title": "Xuất Invoice + Packing List gọn và an toàn hơn",
+        "body": "Sau khi tải xong, các popup Docs/report do lượt xuất mở sẽ tự đóng. File ghép tăng chiều cao hàng bị wrap, giữ hướng dọc/ngang của report trên A4 và tự dùng tên mới nếu file cùng tên đang mở trong Excel.",
+        "entry": "don-hang-sale-asn-documents"
+      },
+      {
+        "title": "Packing List tự gộp số liệu theo buyer",
+        "body": "J.Lindeberg tự gộp Net Wt, Gross Wt, Carton và CBM theo JL PO# + Style. CORPORATE OFFICE - TRUEWERK tự gộp bốn cột tương ứng từ PO gốc xuống dòng ADD khi hai dòng đứng liền nhau.",
+        "entry": "don-hang-sale-asn-documents"
+      },
+      {
+        "title": "Thêm Goods Description vào form Sale ASN",
+        "body": "Form 21 cột có Goods Description tùy chọn ngay sau HS CODE; khi có dữ liệu, ứng dụng tự điền vào Style Details trên WFX.",
+        "entry": "don-hang-sale-asn"
+      }
+    ]
+  },
+  {
     "version": "1.0.22",
     "date": "2026-08-04",
     "highlights": [
