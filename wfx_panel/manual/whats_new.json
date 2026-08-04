@@ -5,7 +5,7 @@
     "highlights": [
       {
         "title": "Xuất Invoice + Packing List gọn và an toàn hơn",
-        "body": "Sau khi tải xong, các popup Docs/report do lượt xuất mở sẽ tự đóng. File ghép tăng chiều cao hàng bị wrap, giữ hướng dọc/ngang của report trên A4 và tự dùng tên mới nếu file cùng tên đang mở trong Excel.",
+        "body": "Popup Docs/report do lượt xuất mở luôn tự đóng, kể cả khi lượt tải bị lỗi. File ghép tăng chiều cao hàng bị wrap, nới cột số Packing List để đọc đủ, giữ hướng dọc/ngang của report trên A4 và tự dùng tên mới nếu file cùng tên đang mở trong Excel.",
         "entry": "don-hang-sale-asn-documents"
       },
       {

@@ -652,6 +652,114 @@ def _fit_wrapped_report_rows(target: Path) -> None:
     temp_target.replace(target)
 
 
+_PACKING_COLUMN_MINIMUM_WIDTHS = {
+    "no of pcs": 11.0,
+    "qty unit": 11.0,
+    "net wt": 11.0,
+    "net weight": 11.0,
+    "gross wt": 12.0,
+    "gross weight": 12.0,
+    "no of carton": 13.0,
+    "qty cartons": 13.0,
+    "cbm": 8.0,
+}
+
+
+def _set_column_minimum_width(
+    root: ET.Element,
+    column: int,
+    minimum_width: float,
+) -> bool:
+    default_width, width_ranges = _sheet_column_widths(root)
+    if _column_width(column, default_width, width_ranges) >= minimum_width:
+        return False
+    columns = root.find(_tag(MAIN_NS, "cols"))
+    if columns is None:
+        columns = ET.Element(_tag(MAIN_NS, "cols"))
+        sheet_data = root.find(_tag(MAIN_NS, "sheetData"))
+        root.insert(
+            list(root).index(sheet_data) if sheet_data is not None else len(root),
+            columns,
+        )
+    for index, item in enumerate(list(columns)):
+        try:
+            start = int(item.get("min", "0"))
+            end = int(item.get("max", "0"))
+        except ValueError:
+            continue
+        if not start <= column <= end:
+            continue
+        attributes = dict(item.attrib)
+        replacements: list[ET.Element] = []
+        if start < column:
+            before = ET.Element(_tag(MAIN_NS, "col"), attributes | {"max": str(column - 1)})
+            replacements.append(before)
+        adjusted = ET.Element(
+            _tag(MAIN_NS, "col"),
+            attributes
+            | {
+                "min": str(column),
+                "max": str(column),
+                "width": f"{minimum_width:g}",
+                "customWidth": "1",
+            },
+        )
+        replacements.append(adjusted)
+        if column < end:
+            after = ET.Element(_tag(MAIN_NS, "col"), attributes | {"min": str(column + 1)})
+            replacements.append(after)
+        columns.remove(item)
+        for offset, replacement in enumerate(replacements):
+            columns.insert(index + offset, replacement)
+        return True
+    columns.append(
+        ET.Element(
+            _tag(MAIN_NS, "col"),
+            {
+                "min": str(column),
+                "max": str(column),
+                "width": f"{minimum_width:g}",
+                "customWidth": "1",
+            },
+        )
+    )
+    return True
+
+
+def _fit_packing_measurement_columns(target: Path) -> None:
+    """Nới cột số PKL để header và số liệu luôn đọc đủ khi mở Excel."""
+    with ZipFile(target, "r") as source:
+        shared_strings = _shared_strings(source)
+        replacements: dict[str, bytes] = {}
+        for info in source.infolist():
+            if not re.fullmatch(r"xl/worksheets/sheet\d+\.xml", info.filename):
+                continue
+            root = _xml(source.read(info.filename))
+            changed = False
+            for row in root.findall(f".//{_tag(MAIN_NS, 'row')}"):
+                for column, cell in _cell_map(row).items():
+                    label = _report_header_text(_cell_text(cell, shared_strings))
+                    minimum_width = _PACKING_COLUMN_MINIMUM_WIDTHS.get(label)
+                    if minimum_width is not None:
+                        changed = _set_column_minimum_width(
+                            root,
+                            column,
+                            minimum_width,
+                        ) or changed
+            if changed:
+                replacements[info.filename] = _xml_bytes(root)
+        if not replacements:
+            return
+        temp_target = target.with_suffix(".packing-width-adjusting.xlsx")
+        with ZipFile(temp_target, "w", compression=ZIP_DEFLATED) as output:
+            for info in source.infolist():
+                output.writestr(
+                    info,
+                    replacements.get(info.filename, source.read(info.filename)),
+                )
+    temp_target.replace(target)
+
+
 def _set_a4_page_setup(root: ET.Element) -> bool:
     """Đặt khổ A4, giữ hướng in gốc và cho phép phân trang theo chiều dọc."""
     changed = False
@@ -1169,6 +1277,7 @@ def merge_sale_asn_reports(
         _merge_packages(packing_path, buyer_path, target, invoice_label)
         _merge_jl_packing_measurements(target)
         _merge_truewerk_packing_measurements(target)
+        _fit_packing_measurement_columns(target)
         _fit_wrapped_report_rows(target)
         _fit_reports_to_a4(target)
         verified = load_workbook(target, read_only=True, data_only=False)

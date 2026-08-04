@@ -508,11 +508,13 @@ Các workflow riêng hiện có:
   workbook giữ nguyên format report nguồn; nếu mỗi report có nhiều sheet thì xếp
   xen kẽ Invoice 1, PKL 1, Invoice 2, PKL 2 cho đến hết, Invoice luôn đứng trước
   PKL. Sau đó mới mở Save As với tên mặc định là Invoice No. thực tế và tự mở
-  Explorer, chọn đúng file khi lưu thành công. Sau khi lưu, tự đóng mọi popup
-  Docs/report được tạo từ lượt này nhưng giữ nguyên các Page đã có trước khi bấm
-  Docs. Khi ghép, tăng chiều cao các hàng wrap text theo nội dung và độ rộng cột
-  để không cắt dòng trong Excel; mọi sheet đặt A4, giữ hướng dọc/ngang từ report
-  WFX, fit vừa một trang theo chiều ngang và tự phân trang theo chiều dọc. Khi copy sheet giữa hai workbook,
+  Explorer, chọn đúng file khi lưu thành công. Sau khi bấm Docs, luôn tự đóng mọi
+  popup Docs/report được tạo từ lượt này, kể cả khi download/ghép gặp lỗi, nhưng
+  giữ nguyên các Page đã có trước đó. Khi ghép, tăng chiều cao các hàng wrap text
+  theo nội dung và độ rộng cột để không cắt dòng trong Excel; riêng No of Pcs,
+  Net Wt, Gross Wt, No of Carton và CBM được nới đủ để thấy trọn header/số liệu.
+  Mọi sheet đặt A4, giữ hướng dọc/ngang từ report WFX, fit vừa một trang theo
+  chiều ngang và tự phân trang theo chiều dọc. Khi copy sheet giữa hai workbook,
   Với Packing List J.Lindeberg (nhận diện bằng header `JL PO#`), gộp dọc Net Wt,
   Gross Wt, No of Carton và CBM cho các dòng liền nhau có cùng JL PO# + Style No;
   chỉ gộp khi giá trị cột đó giống nhau để không làm mất số liệu.
