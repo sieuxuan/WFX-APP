@@ -802,6 +802,52 @@ def test_sale_asn_table_value_confirmation_handles_wfx_formats():
     assert not sale_asn_create._table_value_matches("110", "0")
 
 
+def test_sale_asn_dates_use_english_wfx_format_independent_of_system_locale(monkeypatch):
+    real_datetime = sale_asn_create.datetime
+
+    class LocalizedDate:
+        day = 3
+        month = 8
+        year = 2026
+
+        def strftime(self, _pattern):
+            return "03 thg 8 2026"
+
+    class LocalizedDatetime:
+        @classmethod
+        def strptime(cls, value, pattern):
+            assert (value, pattern) == ("2026-08-03", "%Y-%m-%d")
+            return LocalizedDate()
+
+    monkeypatch.setattr(sale_asn_create, "datetime", LocalizedDatetime)
+
+    assert sale_asn_create._date_for_wfx("2026-08-03") == "03 Aug 2026"
+
+    monkeypatch.setattr(sale_asn_create, "datetime", real_datetime)
+
+
+def test_sale_asn_dates_support_every_english_wfx_month():
+    expected = (
+        "02 Jan 2026",
+        "02 Feb 2026",
+        "02 Mar 2026",
+        "02 Apr 2026",
+        "02 May 2026",
+        "02 Jun 2026",
+        "02 Jul 2026",
+        "02 Aug 2026",
+        "02 Sep 2026",
+        "02 Oct 2026",
+        "02 Nov 2026",
+        "02 Dec 2026",
+    )
+
+    assert tuple(
+        sale_asn_create._date_for_wfx(f"2026-{month:02d}-02")
+        for month in range(1, 13)
+    ) == expected
+
+
 def test_order_details_only_runner_never_enters_other_sale_asn_steps(monkeypatch):
     rows = [{"po_no": "PO-001", "carton": "2", "nw": "9.5"}]
     frame = object()

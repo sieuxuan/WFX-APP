@@ -214,7 +214,10 @@ def _start_persistent_chrome(
 
     creation_flags = 0
     if os.name == "nt":
-        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        # Chrome là ứng dụng GUI và vẫn sống độc lập sau khi panel thoát trên
+        # Windows. Không dùng DETACHED_PROCESS: chạy như một ứng dụng desktop
+        # bình thường để thao tác Recent Downloads có thể gọi Windows Shell.
+        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
 
     subprocess.Popen(
         [

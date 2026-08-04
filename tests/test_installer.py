@@ -18,8 +18,15 @@ def test_installer_is_per_user_and_keeps_user_data_outside_install_tree():
 def test_installer_closes_running_app_and_creates_windows_shortcuts():
     source = INSTALLER.read_text(encoding="utf-8")
 
-    assert "CloseApplications=force" in source
-    assert "CloseApplicationsFilter=*.exe,*.dll,*.pyd" in source
+    assert "CloseApplications=no" in source
+    assert "CloseApplicationsFilter=*.exe,*.dll,*.pyd" not in source
+    assert "taskkill.exe" not in source
+    assert '-Filter "Name=\'\'WFX-Panel.exe\'\'"' in source
+    assert "$process.ExecutablePath" in source
+    assert "[System.StringComparer]::OrdinalIgnoreCase.Equals" in source
+    assert "Stop-Process -Id $process.ProcessId -Force" in source
+    assert "ewWaitUntilTerminated" in source
+    assert "exit 1" in source
     assert "RestartApplications=no" in source
     assert 'Name: "desktopicon"' in source
     assert "Flags: unchecked" not in source
