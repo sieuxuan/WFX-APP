@@ -202,8 +202,9 @@ Delivery Terms theo mode đó:
 > [!meo]
 > Packing List J.Lindeberg có header `JL PO#` tự gộp dọc Net Wt, Gross Wt, No of
 > Carton và CBM cho các dòng liền nhau cùng PO + Style khi số liệu giống nhau.
-> Packing List CORPORATE OFFICE - TRUEWERK tự gộp bốn cột tương ứng từ PO gốc xuống
-> dòng `ADD`/`- ADD` đứng ngay sau, khi số liệu ở dòng `ADD` là 0/trống.
+> Packing List CORPORATE OFFICE - TRUEWERK tự gộp bốn cột tương ứng của dòng PO và
+> `ADD`/`- ADD` liền nhau khi mỗi cột chỉ có một số khác 0, rồi đưa số đó lên ô đầu
+> vùng gộp.
 
 > [!meo]
 > Nếu file cùng tên đang mở trong Excel, app tự lưu tên kế tiếp, ví dụ

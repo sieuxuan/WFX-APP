@@ -806,6 +806,20 @@ def _clear_merged_cell_value(cell: ET.Element) -> None:
     cell.attrib.pop("t", None)
 
 
+def _copy_cell_value(source: ET.Element, target: ET.Element) -> None:
+    """Chuyển nội dung ô nguồn sang ô đầu của vùng merge, giữ style ô đích."""
+    _clear_merged_cell_value(target)
+    if "t" in source.attrib:
+        target.set("t", source.attrib["t"])
+    for child in source:
+        if child.tag in {
+            _tag(MAIN_NS, "f"),
+            _tag(MAIN_NS, "v"),
+            _tag(MAIN_NS, "is"),
+        }:
+            target.append(deepcopy(child))
+
+
 def _merge_jl_packing_sheet(root: ET.Element, shared_strings: list[str]) -> bool:
     """Gộp cột tổng của Packing List J.Lindeberg theo JL PO# + Style No."""
     sheet_data = root.find(_tag(MAIN_NS, "sheetData"))
@@ -986,11 +1000,9 @@ def _merge_truewerk_packing_sheet(
 
     def merge_group(group: list[tuple[ET.Element, dict[int, ET.Element], bool]]) -> None:
         nonlocal existing
-        if (
-            len(group) < 2
-            or group[0][2]
-            or not all(is_add for _row, _cells, is_add in group[1:])
-        ):
+        if len(group) < 2 or not any(is_add for _row, _cells, is_add in group):
+            return
+        if not any(not is_add for _row, _cells, is_add in group):
             return
         first_row = int(group[0][0].get("r", "0"))
         last_row = int(group[-1][0].get("r", "0"))
@@ -1000,16 +1012,13 @@ def _merge_truewerk_packing_sheet(
             if any(cell is None for cell in cells):
                 continue
             values = [_cell_text(cell, shared_strings).strip() for cell in cells]
-            base_values = [
-                value
-                for value, (_row, _cells, is_add) in zip(values, group, strict=True)
-                if not is_add
+            non_zero_indices = [
+                index
+                for index, value in enumerate(values)
+                if value and not _is_zero_measurement(value)
             ]
-            add_values = [
-                value
-                for value, (_row, _cells, is_add) in zip(values, group, strict=True)
-                if is_add
-            ]
+            if len(non_zero_indices) != 1:
+                continue
             anchor_range = next(
                 (
                     item
@@ -1039,16 +1048,16 @@ def _merge_truewerk_packing_sheet(
                 )
             ]
             if (
-                len(base_values) != 1
-                or not base_values[0]
-                or any(value and not _is_zero_measurement(value) for value in add_values)
-                or any(item not in row_ranges for item in conflicts)
+                any(item not in row_ranges for item in conflicts)
             ):
                 continue
             new_ranges.append(target_range)
             replaced_ranges.update(conflicts)
             existing = [item for item in existing if item not in conflicts]
             existing.append(target_range)
+            source_index = non_zero_indices[0]
+            if source_index:
+                _copy_cell_value(cells[source_index], cells[0])
             for cell in cells[1:]:
                 _clear_merged_cell_value(cell)
 
