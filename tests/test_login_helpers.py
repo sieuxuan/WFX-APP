@@ -507,6 +507,7 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
     executable.write_bytes(b"exe")
     calls = iter([False, True])
     command = []
+    launch_options = {}
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
     monkeypatch.setattr(
@@ -522,7 +523,7 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
     monkeypatch.setattr(
         browser.subprocess,
         "Popen",
-        lambda args, **_kwargs: command.extend(args),
+        lambda args, **kwargs: (command.extend(args), launch_options.update(kwargs)),
     )
     browser._start_persistent_chrome(lambda _message: None)
     assert "--disable-save-password-bubble" in command
@@ -531,6 +532,7 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
         and "PasswordManagerOnboarding" in arg
         for arg in command
     )
+    assert launch_options["creationflags"] & browser.subprocess.DETACHED_PROCESS == 0
 
 
 def test_chrome_ready_wait_recovers_a_transient_cdp_failure(monkeypatch):

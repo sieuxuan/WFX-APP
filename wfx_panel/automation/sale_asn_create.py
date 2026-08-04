@@ -46,6 +46,22 @@ STYLE_INPUT_SELECTORS = (
     "#txtBuyerStyleRef",
 )
 
+_WFX_MONTHS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
+_WFX_MONTH_NUMBERS = {month.casefold(): index for index, month in enumerate(_WFX_MONTHS, 1)}
+
 ORDER_FIELD_COLUMNS = {
     "carton": "colTotalNoOfCartons",
     "gw": "colTotalGrossWeight",
@@ -858,7 +874,8 @@ def _auto_add_po(
 
 def _date_for_wfx(value: str) -> str:
     try:
-        return datetime.strptime(value, "%Y-%m-%d").strftime("%d/%m/%Y")
+        parsed = datetime.strptime(value, "%Y-%m-%d")
+        return f"{parsed.day:02d} {_WFX_MONTHS[parsed.month - 1]} {parsed.year:04d}"
     except ValueError:
         return value
 
@@ -885,23 +902,8 @@ def _table_value_matches(expected: str, actual: str) -> bool:
         return abs(left - right) <= Decimal("0.0001")
     except InvalidOperation:
         pass
-    date_formats = ("%d/%m/%Y", "%Y-%m-%d", "%d %b %Y", "%m/%d/%Y")
-    expected_date = next(
-        (
-            parsed
-            for pattern in date_formats
-            if (parsed := _try_date(expected_clean, pattern)) is not None
-        ),
-        None,
-    )
-    actual_date = next(
-        (
-            parsed
-            for pattern in date_formats
-            if (parsed := _try_date(actual_clean, pattern)) is not None
-        ),
-        None,
-    )
+    expected_date = _parse_supported_date(expected_clean)
+    actual_date = _parse_supported_date(actual_clean)
     if expected_date is not None and actual_date is not None:
         return expected_date == actual_date
     return _fold(expected_clean) == _fold(actual_clean)
@@ -910,6 +912,22 @@ def _table_value_matches(expected: str, actual: str) -> bool:
 def _try_date(value: str, pattern: str) -> datetime | None:
     try:
         return datetime.strptime(value, pattern)
+    except ValueError:
+        return None
+
+
+def _parse_supported_date(value: str) -> datetime | None:
+    for pattern in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
+        if (parsed := _try_date(value, pattern)) is not None:
+            return parsed
+    match = re.fullmatch(r"(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})", value)
+    if match is None:
+        return None
+    month = _WFX_MONTH_NUMBERS.get(match.group(2).casefold())
+    if month is None:
+        return None
+    try:
+        return datetime(int(match.group(3)), month, int(match.group(1)))
     except ValueError:
         return None
 

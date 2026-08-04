@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.0.20",
+    "date": "2026-08-04",
+    "highlights": [
+      {
+        "title": "Sale ASN nhập ngày đúng như WFX hiển thị",
+        "body": "Ngày Cargo Ready, Invoice và Shipping Bill được nhập theo định dạng tiếng Anh của WFX, tránh bị lệch một ngày hoặc báo chưa xác nhận dù ô đã có dữ liệu.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Nâng cấp đóng ứng dụng nhanh và an toàn hơn",
+        "body": "Bộ cài chỉ đóng đúng WFX Smart tại thư mục cài đặt, không quét mọi ứng dụng và không đóng theo cây tiến trình Chrome đang làm việc.",
+        "entry": "bat-dau-mo-panel"
+      },
+      {
+        "title": "Recent Downloads mở Windows Shell bình thường",
+        "body": "Chrome làm việc không còn được khởi chạy ở chế độ tiến trình tách rời đặc biệt, giúp thao tác mở file hoặc hiện file trong thư mục Downloads đi qua Windows Shell như Chrome thông thường.",
+        "entry": "bat-dau-mo-panel"
+      }
+    ]
+  },
+  {
     "version": "1.0.19",
     "date": "2026-08-03",
     "highlights": [
