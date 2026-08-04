@@ -4,6 +4,16 @@
     "date": "2026-08-04",
     "highlights": [
       {
+        "title": "Form Sale ASN có đầy đủ thông tin giao hàng",
+        "body": "Form mới bỏ Season và Description, thêm Consignee Address, Ship To và Shipping Mode. App tự điền Port of Loading cùng Delivery Terms theo AIR, SEA hoặc COURIER; Cargo Ready Date trống được giữ nguyên để bạn tự điền.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Tìm PO theo tiêu chí bạn chọn",
+        "body": "Sale ASN tìm lần lượt theo PO, Style và Destination; bạn có thể tắt từng tiêu chí trong Cài đặt. Khi tiêu chí cuối vẫn còn nhiều dòng, app chọn tất cả và tiếp tục.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
         "title": "Sale ASN nhập ngày đúng như WFX hiển thị",
         "body": "Ngày Cargo Ready, Invoice và Shipping Bill được nhập theo định dạng tiếng Anh của WFX, tránh bị lệch một ngày hoặc báo chưa xác nhận dù ô đã có dữ liệu.",
         "entry": "don-hang-sale-asn"

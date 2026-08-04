@@ -194,6 +194,7 @@
   // nếu không một payload đến trễ sẽ xóa thẻ kết quả và kéo lùi bộ đếm.
   let saleAsnRunActive = false;
   const SALE_ASN_STAGES = ["po", "order_details", "style_details", "shipping_info"];
+  const SALE_ASN_PO_SEARCH_FIELDS = ["po", "style", "destination"];
   let ocSelectionRevision = 0;
   let checkedCostingFile = null;
   let catalogThemeChoice = "light";
@@ -1832,6 +1833,21 @@
     });
     resetSaleAsnProgress();
     syncSaleAsnCreate();
+  }
+
+  function selectedSaleAsnPoSearchFields() {
+    return $$('[data-sale-asn-po-search-field]:checked')
+      .map((input) => input.dataset.saleAsnPoSearchField);
+  }
+
+  function applySaleAsnPoSearchFields(fields) {
+    const requested = Array.isArray(fields)
+      ? fields.filter((field) => SALE_ASN_PO_SEARCH_FIELDS.includes(field))
+      : [];
+    const selected = requested.length ? requested : SALE_ASN_PO_SEARCH_FIELDS;
+    $$('[data-sale-asn-po-search-field]').forEach((input) => {
+      input.checked = selected.includes(input.dataset.saleAsnPoSearchField);
+    });
   }
 
   function syncSaleAsnCreate() {
@@ -4018,6 +4034,16 @@
         syncSaleAsnCreate();
         callQuiet("set_sale_asn_stages", selectedSaleAsnStages());
       }));
+    $$('[data-sale-asn-po-search-field]').forEach((input) =>
+      input.addEventListener("change", async () => {
+        let fields = selectedSaleAsnPoSearchFields();
+        if (!fields.length) {
+          fields = [...SALE_ASN_PO_SEARCH_FIELDS];
+          applySaleAsnPoSearchFields(fields);
+        }
+        const result = await callQuiet("set_sale_asn_po_search_fields", fields);
+        applySaleAsnPoSearchFields(result?.sale_asn_po_search_fields || fields);
+      }));
     $(".sale-asn-buyer")?.addEventListener("input", () => {
       if (saleAsnReviewToken) cancelSaleAsnReview();
       renderSaleAsnBuyerSuggestions();
@@ -4626,6 +4652,7 @@
       manualErrorCodes = new Set(state.manual_error_codes);
     }
     applySaleAsnStages(state.sale_asn_stages);
+    applySaleAsnPoSearchFields(state.sale_asn_po_search_fields);
     renderSaleAsnBuyers(state.sale_asn_buyers);
     const hasManualNews = state.manual_has_news === true;
     const manualButton = $(".manual-button");

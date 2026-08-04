@@ -799,6 +799,13 @@ body.compact-mode .compact-launcher .compact-mark {
     .setting-row strong, .setting-row span { display: block; }
     .setting-row strong { color: var(--text); font-size: 11.5px; font-weight: 650; }
     .setting-row span { margin-top: 2px; color: var(--text-3); font-size: 11px; line-height: 1.35; }
+    .sale-asn-po-search-setting { align-items: flex-start; flex-direction: column; }
+    .sale-asn-po-search-options { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+    .sale-asn-po-search-options label { position: relative; cursor: pointer; }
+    .sale-asn-po-search-options input { position: absolute; opacity: 0; pointer-events: none; }
+    .sale-asn-po-search-options span { min-height: 28px; display: flex; align-items: center; justify-content: center; margin: 0; color: var(--text-2); font-size: 11px; font-weight: 700; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); transition: .18s; }
+    .sale-asn-po-search-options input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .sale-asn-po-search-options input:checked + span { color: var(--accent-strong); border-color: var(--accent-border); background: var(--accent-soft); }
     .settings-inline-action { width: 100%; height: 30px; margin-top: 5px; color: var(--accent-strong); font-size: 11px; font-weight: 750; cursor: pointer; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); }
     .hotkey-button { min-width: 104px; padding: 7px 8px; color: var(--accent-strong); font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-soft); }
     .hotkey-button.capturing { color: var(--warn); border-color: var(--warn); animation: capture 1s ease infinite alternate; }

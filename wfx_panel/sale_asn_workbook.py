@@ -13,6 +13,7 @@ from zipfile import BadZipFile, ZipFile
 from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 SALE_ASN_SHEET = "SALE ASN"
@@ -23,8 +24,6 @@ SALE_ASN_COLUMNS = (
     "Shipping Bill Date",
     "Style No",
     "PO No",
-    "SEASON",
-    "DESCRIPTION",
     "HS CODE",
     "Qty",
     "Carton",
@@ -36,7 +35,12 @@ SALE_ASN_COLUMNS = (
     "FOB Price",
     "Service Price",
     "Cargo Ready Date",
+    "Consignee Address",
+    "Ship To",
+    "Shipping Mode",
 )
+
+SHIPPING_MODES = ("AIR", "SEA", "COURIER")
 
 SALE_ASN_ORDER_DETAILS_SHEET = "ORDER DETAILS"
 SALE_ASN_ORDER_DETAILS_COLUMNS = (
@@ -61,8 +65,6 @@ MAX_SALE_ASN_NUMBER_EXPONENT = 15
 
 _OPTIONAL_COLUMNS = frozenset(
     {
-        "SEASON",
-        "DESCRIPTION",
         "HS CODE",
         "Qty",
         "Carton",
@@ -71,6 +73,9 @@ _OPTIONAL_COLUMNS = frozenset(
         "CBM",
         "FOB Price",
         "Service Price",
+        "Cargo Ready Date",
+        "Consignee Address",
+        "Ship To",
     }
 )
 _DATE_COLUMNS = frozenset(
@@ -103,8 +108,6 @@ class SaleASNRow:
     shipping_bill_date: str
     style_no: str
     po_no: str
-    season: str
-    description: str
     hs_code: str
     qty: str
     carton: str
@@ -116,6 +119,9 @@ class SaleASNRow:
     fob_price: str
     service_price: str
     cargo_ready_date: str
+    consignee_address: str
+    ship_to: str
+    shipping_mode: str
 
     def automation_payload(self) -> dict[str, str | int]:
         return {
@@ -243,7 +249,7 @@ def _find_input_sheet(workbook) -> object:
             return sheet
     raise SaleASNWorkbookError(
         "SALE_ASN_FILE_HEADERS_INVALID",
-        "Không tìm thấy hàng tiêu đề Sale ASN gồm đủ 19 cột chuẩn.",
+        "Không tìm thấy hàng tiêu đề Sale ASN gồm đủ 20 cột chuẩn.",
     )
 
 
@@ -259,6 +265,7 @@ def read_sale_asn_workbook(
     require_destination = strict_create or bool(stages & {"po", "shipping_info"})
     require_factory = strict_create or "shipping_info" in stages
     require_invoice = strict_create or "shipping_info" in stages
+    require_shipping = strict_create or "shipping_info" in stages
     path = Path(input_path).expanduser().resolve()
     _assert_safe_xlsx(path)
     try:
@@ -325,6 +332,9 @@ def read_sale_asn_workbook(
         "Destination",
         "FTY",
         "Cargo Ready Date",
+        "Consignee Address",
+        "Ship To",
+        "Shipping Mode",
     ):
         raw = next((row[column] for row in raw_rows if _text(row[column])), None)
         try:
@@ -341,7 +351,7 @@ def read_sale_asn_workbook(
     # trống phải thật sự được bỏ qua thay vì vô tình ghi ngày hôm nay lên WFX.
     if strict_create or "po" in stages:
         today = date.today().isoformat()
-        for column in _DATE_COLUMNS:
+        for column in ("Invoice Date", "Shipping Bill Date"):
             if not first_values[column]:
                 first_values[column] = today
     if require_invoice and not first_values["Invoice No"]:
@@ -365,6 +375,14 @@ def read_sale_asn_workbook(
         po_no = _identifier(raw["PO No"])
         destination = _text(raw["Destination"]) or first_values["Destination"]
         factory = _text(raw["FTY"]) or first_values["FTY"]
+        consignee_address = (
+            _text(raw["Consignee Address"])
+            or first_values["Consignee Address"]
+        )
+        ship_to = _text(raw["Ship To"]) or first_values["Ship To"]
+        shipping_mode = (
+            _text(raw["Shipping Mode"]) or first_values["Shipping Mode"]
+        ).upper()
         if require_style and not style_no:
             errors.append(f"E{source_row}: Style No bắt buộc.")
         if po_no.casefold() in seen_pos:
@@ -372,9 +390,13 @@ def read_sale_asn_workbook(
         else:
             seen_pos.add(po_no.casefold())
         if require_destination and not destination:
-            errors.append(f"O{source_row}: Destination bắt buộc.")
+            errors.append(f"M{source_row}: Destination bắt buộc.")
         if require_factory and not factory:
-            errors.append(f"P{source_row}: FTY bắt buộc.")
+            errors.append(f"N{source_row}: FTY bắt buộc.")
+        if require_shipping and shipping_mode not in SHIPPING_MODES:
+            errors.append(
+                f"T{source_row}: Shipping Mode bắt buộc chọn AIR, SEA hoặc COURIER."
+            )
 
         numbers: dict[str, str] = {}
         for column in _NUMBER_COLUMNS:
@@ -390,12 +412,19 @@ def read_sale_asn_workbook(
         dates: dict[str, str] = {}
         for column in _DATE_COLUMNS:
             try:
-                dates[column] = _date_text(
+                parsed_date = _date_text(
                     raw[column], cell=f"{column} dòng {source_row}"
-                ) or first_values[column]
+                )
+                dates[column] = (
+                    parsed_date
+                    if column == "Cargo Ready Date"
+                    else parsed_date or first_values[column]
+                )
             except ValueError as error:
                 errors.append(str(error))
-                dates[column] = first_values[column]
+                dates[column] = (
+                    "" if column == "Cargo Ready Date" else first_values[column]
+                )
 
         rows.append(
             SaleASNRow(
@@ -410,8 +439,6 @@ def read_sale_asn_workbook(
                 shipping_bill_date=dates["Shipping Bill Date"],
                 style_no=style_no,
                 po_no=po_no,
-                season=_text(raw["SEASON"]),
-                description=_text(raw["DESCRIPTION"]),
                 hs_code=_identifier(raw["HS CODE"]),
                 qty=numbers["Qty"],
                 carton=numbers["Carton"],
@@ -423,6 +450,9 @@ def read_sale_asn_workbook(
                 fob_price=numbers["FOB Price"],
                 service_price=numbers["Service Price"],
                 cargo_ready_date=dates["Cargo Ready Date"],
+                consignee_address=consignee_address,
+                ship_to=ship_to,
+                shipping_mode=shipping_mode,
             )
         )
 
@@ -458,7 +488,7 @@ def write_sale_asn_template(
     output_path: str | Path,
     rows: list[dict] | tuple[dict, ...] = (),
 ) -> Path:
-    """Tạo form Sale ASN gọn, bám đúng 19 cột của workbook mẫu."""
+    """Tạo form Sale ASN gọn với schema Shipping Info hiện hành."""
     target = Path(output_path).expanduser().resolve()
     if target.suffix.casefold() != ".xlsx":
         target = target.with_suffix(".xlsx")
@@ -477,8 +507,6 @@ def write_sale_asn_template(
         "Shipping Bill Date": "shipping_bill_date",
         "Style No": "style_no",
         "PO No": "po_no",
-        "SEASON": "season",
-        "DESCRIPTION": "description",
         "HS CODE": "hs_code",
         "Qty": "qty",
         "Carton": "carton",
@@ -490,6 +518,9 @@ def write_sale_asn_template(
         "FOB Price": "fob_price",
         "Service Price": "service_price",
         "Cargo Ready Date": "cargo_ready_date",
+        "Consignee Address": "consignee_address",
+        "Ship To": "ship_to",
+        "Shipping Mode": "shipping_mode",
     }
     for row in rows:
         sheet.append(
@@ -502,7 +533,10 @@ def write_sale_asn_template(
     for _ in range(len(rows), reserved_rows):
         sheet.append([None] * len(SALE_ASN_COLUMNS))
 
-    widths = (20, 14, 20, 18, 34, 22, 12, 28, 15, 12, 12, 12, 12, 12, 20, 34, 14, 14, 18)
+    widths = (
+        20, 14, 20, 18, 34, 22, 15, 12, 12, 12,
+        12, 12, 20, 34, 14, 14, 18, 34, 34, 16,
+    )
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
 
@@ -521,12 +555,22 @@ def write_sale_asn_template(
     sheet.row_dimensions[1].height = 34
 
     for row in range(2, reserved_rows + 2):
-        for column in (2, 4, 19):
+        for column in (2, 4, 17):
             sheet.cell(row, column).number_format = "dd/mm/yyyy"
-        for column in range(10, 19):
-            if column != 15 and column != 16:
-                sheet.cell(row, column).number_format = "#,##0.00"
-    table_ref = f"A1:S{reserved_rows + 1}"
+        for column in (8, 9, 10, 11, 12, 15, 16):
+            sheet.cell(row, column).number_format = "#,##0.00"
+    shipping_mode_validation = DataValidation(
+        type="list",
+        formula1='"AIR,SEA,COURIER"',
+        allow_blank=False,
+    )
+    shipping_mode_validation.error = "Chọn AIR, SEA hoặc COURIER."
+    shipping_mode_validation.errorTitle = "Shipping Mode không hợp lệ"
+    shipping_mode_validation.prompt = "Chọn AIR, SEA hoặc COURIER."
+    shipping_mode_validation.promptTitle = "Shipping Mode"
+    sheet.add_data_validation(shipping_mode_validation)
+    shipping_mode_validation.add(f"T2:T{MAX_SALE_ASN_ROWS + 1}")
+    table_ref = f"A1:T{reserved_rows + 1}"
     table = Table(displayName="SaleASNInput", ref=table_ref)
     table.tableStyleInfo = TableStyleInfo(
         name="TableStyleMedium2",

@@ -874,6 +874,14 @@
           <label class="setting-row toggle-row"><div><strong>Trở về List sau khi thao tác</strong><span>Tắt để nhớ màn đang làm và tiếp tục ở lần mở sau</span></div><input class="return-list-input" type="checkbox" /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Đưa Chrome lên khi chạy module</strong><span>Mặc định chuyển ngay sang cửa sổ WFX</span></div><input class="focus-chrome-input" type="checkbox" checked /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Mở file Costing sau khi tải</strong><span>Mở bằng Excel hoặc ứng dụng mặc định</span></div><input class="open-costing-file-input" type="checkbox" checked /><i></i></label>
+          <div class="setting-row sale-asn-po-search-setting">
+            <div><strong>Tìm PO khi tạo Sale ASN</strong><span>Thu hẹp lần lượt theo các tiêu chí đang bật</span></div>
+            <div class="sale-asn-po-search-options" role="group" aria-label="Tiêu chí tìm PO khi tạo Sale ASN">
+              <label><input class="sale-asn-po-search-input" type="checkbox" data-sale-asn-po-search-field="po" checked /><span>PO</span></label>
+              <label><input class="sale-asn-po-search-input" type="checkbox" data-sale-asn-po-search-field="style" checked /><span>Style</span></label>
+              <label><input class="sale-asn-po-search-input" type="checkbox" data-sale-asn-po-search-field="destination" checked /><span>Destination</span></label>
+            </div>
+          </div>
           <label class="setting-row toggle-row"><div><strong>Khởi động cùng Windows</strong><span>Sẵn sàng ngay khi bạn đăng nhập máy</span></div><input class="autostart-input" type="checkbox" /><i></i></label>
           <label class="setting-row toggle-row"><div><strong>Mở ẩn trong khay hệ thống</strong><span>Khởi động yên lặng, gọi bằng phím tắt</span></div><input class="start-hidden-input" type="checkbox" /><i></i></label>
           <label class="setting-row toggle-row admin-mode-row" hidden><div><strong>Chế độ quản trị</strong><span>Chỉ hiện module quản trị được tài khoản cấp quyền</span></div><input class="admin-mode-input" type="checkbox" /><i></i></label>
@@ -946,6 +954,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260803-10"></script>
+  <script src="panel.js?v=20260804-1"></script>
 </body>
 </html>

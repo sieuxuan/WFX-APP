@@ -439,7 +439,7 @@
           "title": "Sale ASN",
           "summary": "Tạo Sale ASN nhiều PO từ Excel, hoặc mở và tìm chứng từ cũ.",
           "file": "05-don-hang/sale-asn.md",
-          "keywords": ["sale asn", "invoice", "buyer order ref", "buyer", "po", "excel", "hs code"],
+          "keywords": ["sale asn", "invoice", "buyer order ref", "buyer", "po", "excel", "hs code", "shipping mode", "consignee", "ship to"],
           "covers": {
             "modules": ["0004_0070_0020"],
             "actions": [
@@ -460,6 +460,7 @@
               "sale-asn-order-start",
               "sale-asn-handoff-documents"
             ],
+            "settings": ["sale-asn-po-search-input"],
             "errors": [
               "SALE_ASN_BUYER_NOT_CONFIRMED",
               "SALE_ASN_BUYER_NOT_FOUND",

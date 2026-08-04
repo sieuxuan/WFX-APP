@@ -441,17 +441,25 @@ Các workflow riêng hiện có:
   `SALE_ASN_FORM_COMPLETED`, thẻ kết quả liệt kê cảnh báo Shipping Info và có nút
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
   xuất báo cáo vì user còn phải Save trên WFX.
-  Form Excel có đúng 19 cột theo `template saleasn.xlsx`; mỗi file chỉ chứa một
-  Invoice No. và một FTY, xử lý PO đúng thứ tự dòng. Style No./PO No./Destination/
-  FTY bắt buộc; Season/Description/HS Code/Qty/Carton/NW/GW/CBM/FOB Price/
-  Service Price được phép trống. Invoice Date/Shipping Bill Date/Cargo Ready Date
-  trống thì kế thừa ngày đầu tiên, không có nữa mới dùng ngày hiện tại; Shipping
-  Bill No. trống thì dùng Invoice No.
-  Automation chọn Buyer, mở Add Order Details, tìm PO trước rồi fallback thêm
-  Destination/Style. Một kết quả được chọn tự động; nhiều kết quả được phân giải
-  bằng Style gần đúng rồi Dispatched Qty. Nếu vẫn mơ hồ hoặc không thấy, giữ cửa
-  sổ cho user tự chọn và bấm Add & Continue; app dùng review token để tiếp tục
-  từ dòng kế, không đọc lại hay đảo thứ tự file. Trước một lượt tạo mới, nếu
+  Form Excel có đúng 20 cột; bỏ `SEASON`/`DESCRIPTION` và thêm `Consignee
+  Address`/`Ship To`/`Shipping Mode`. Mỗi file chỉ chứa một Invoice No. và một
+  FTY, xử lý PO đúng thứ tự dòng. Style No./PO No./Destination/FTY bắt buộc;
+  Shipping Mode bắt buộc khi chạy Shipping Info và chỉ nhận AIR/SEA/COURIER;
+  HS Code/Qty/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
+  Consignee Address/Ship To được phép trống. Cargo Ready Date trống phải giữ
+  trống theo từng dòng, không kế thừa và không dùng ngày hiện tại. Invoice Date/
+  Shipping Bill Date vẫn kế thừa ngày đầu tiên, không có nữa mới dùng ngày hiện
+  tại; Shipping Bill No. trống thì dùng Invoice No.
+  Automation chọn Buyer, mở Add Order Details và tìm tuần tự theo các tiêu chí
+  đang bật trong `prefs.sale_asn_po_search_fields`, thứ tự cố định PO → Style →
+  Destination. Mặc định bật đủ ba; dữ liệu hỏng hoặc danh sách rỗng phải quay về
+  đủ ba. Sau mỗi lần thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay;
+  nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì select all rồi Add & Continue/
+  OK đúng một lần. Không dùng Dispatched Qty để tự quyết định. Nếu 0 kết quả, giữ
+  cửa sổ cho user xử lý thủ công; app dùng review token để tiếp tục từ dòng kế,
+  không đọc lại hay đảo thứ tự file. Bộ tiêu chí phải được snapshot vào review
+  token để thay đổi Settings giữa lượt không đổi hành vi của lượt đang chạy.
+  Trước một lượt tạo mới, nếu
   frame Sale ASN New đang mở — kể
   cả đang trống hoặc đã chọn Buyer — phải reload chính frame `WFXSalesASN.aspx`
   rồi mới chọn Buyer để không dùng datasource PO stale.
@@ -461,11 +469,15 @@ Các workflow riêng hiện có:
   cell `td` bao ngoài, và không bấm `Add & Continue` trước `OK` vì thao tác đó
   xóa selection khiến WFX báo `Please select a record`. Sau click `OK`, popup
   có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
-  trang Sale ASN chính rồi điền 7 cột
-  Order Details, map Style gần đúng để điền HS Code, rồi điền Shipping Info với
-  Consignor Address
-  `BILL-ADD - PSHK`, Delivery Terms `FOB`, Factory theo FTY và Notify 1 là option
-  đầu tiên. Luồng luôn dừng trước Save để user kiểm tra trên WFX.
+  trang Sale ASN chính rồi điền 7 cột Order Details, map Style gần đúng để điền
+  HS Code, rồi điền Shipping Info với Consignor Address `BILL-ADD - PSHK`,
+  Factory theo FTY và Notify 1 là option đầu tiên. Consignee Address và Ship To
+  lấy option gần đúng tốt nhất duy nhất trong dropdown; không có hoặc đồng hạng
+  thì bỏ qua có warning. Shipping Mode sinh Port of Loading/Delivery Terms:
+  AIR → `HAN- Hanoi`/`FCA HANOI, VIETNAM`; SEA → `HPH- Haiphong`/
+  `FOB HAIPHONG, VIETNAM`; COURIER → `HAN- Hanoi`/`EXW`. Field Shipping Info
+  không có option tương ứng được bỏ qua có warning. Luồng luôn dừng trước Save
+  để user kiểm tra trên WFX.
   Luồng Documents nhận Invoice No. đang nhập
   hoặc đúng một dòng đang chọn; xác nhận invoice độc lập với cột Docs rồi quét
   ngang AG Grid để tìm/click Docs theo metadata vì mỗi user có thể kéo cột tới

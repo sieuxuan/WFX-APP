@@ -30,6 +30,33 @@ def test_prefs_defaults(tmp_path: Path):
     assert loaded["hotkey_label"] == "Ctrl + Shift + X"
     assert loaded["open_costing_file_after_export"] is True
     assert loaded["open_costing_folder_after_export"] is False
+    assert loaded["sale_asn_po_search_fields"] == [
+        "po",
+        "style",
+        "destination",
+    ]
+
+
+def test_sale_asn_po_search_fields_are_canonical_and_never_empty(tmp_path: Path):
+    saved = prefs.save_prefs(
+        base_dir=tmp_path,
+        sale_asn_po_search_fields=["destination", "bad", "po", "destination"],
+    )
+    assert saved["sale_asn_po_search_fields"] == ["po", "destination"]
+    assert prefs.load_prefs(base_dir=tmp_path)["sale_asn_po_search_fields"] == [
+        "po",
+        "destination",
+    ]
+
+    reset = prefs.save_prefs(
+        base_dir=tmp_path,
+        sale_asn_po_search_fields=[],
+    )
+    assert reset["sale_asn_po_search_fields"] == [
+        "po",
+        "style",
+        "destination",
+    ]
 
 
 def test_prefs_partial_update_preserves_others(tmp_path: Path):
