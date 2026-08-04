@@ -34,9 +34,11 @@ Excel để gửi hoặc lưu trữ.
 > Style sẽ tự gộp dọc Net Wt, Gross Wt, No of Carton và CBM khi số liệu giống nhau.
 
 > [!meo]
-> Với Packing List CORPORATE OFFICE - TRUEWERK, cặp dòng cùng Style có PO gốc và
-> PO hậu tố `ADD` tự gộp dọc Net-Weight, Gross-Weight, Qty Cartons và CBM khi dòng
-> `ADD` có số 0/trống. Qty/Unit được giữ riêng cho từng dòng.
+> Với Packing List CORPORATE OFFICE - TRUEWERK, cặp dòng liền nhau cùng Style có
+> PO gốc trước và PO hậu tố `ADD` hoặc `- ADD` ngay sau tự gộp dọc Net-Weight,
+> Gross-Weight, Qty Cartons và CBM khi dòng `ADD` có số 0/trống. Qty/Unit được giữ
+> riêng. Nếu report xếp PO `ADD` trước hoặc tách hai dòng ra xa nhau, app giữ nguyên
+> để không đổi thứ tự Packing List hay làm mất số liệu.
 
 > [!meo]
 > Nếu file cùng tên đang mở trong Excel, ứng dụng tự lưu thành tên kế tiếp như

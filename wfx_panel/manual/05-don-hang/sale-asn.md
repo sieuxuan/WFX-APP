@@ -200,6 +200,12 @@ Delivery Terms theo mode đó:
 > một trang theo chiều ngang khi in.
 
 > [!meo]
+> Packing List J.Lindeberg có header `JL PO#` tự gộp dọc Net Wt, Gross Wt, No of
+> Carton và CBM cho các dòng liền nhau cùng PO + Style khi số liệu giống nhau.
+> Packing List CORPORATE OFFICE - TRUEWERK tự gộp bốn cột tương ứng từ PO gốc xuống
+> dòng `ADD`/`- ADD` đứng ngay sau, khi số liệu ở dòng `ADD` là 0/trống.
+
+> [!meo]
 > Nếu file cùng tên đang mở trong Excel, app tự lưu tên kế tiếp, ví dụ
 > `INV-001 (2).xlsx`; không cần tải lại hai report.
 
