@@ -23,7 +23,14 @@ AppSupportURL=https://github.com/sieuxuan/WFX-APP/issues
 AppUpdatesURL=https://github.com/sieuxuan/WFX-APP/releases/latest
 DefaultDirName={localappdata}\Programs\WFX Smart
 DefaultGroupName=WFX Smart
+; Cài một chạm: người dùng bấm đúp bộ cài là xong, không có trang nào phải
+; bấm Next. Vị trí cài là cố định per-user nên không cho chọn thư mục; hai
+; shortcut Desktop/Start Menu luôn được tạo nên cũng không cần trang tác vụ.
+DisableWelcomePage=yes
+DisableDirPage=yes
 DisableProgramGroupPage=yes
+DisableReadyPage=yes
+DisableFinishedPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -43,18 +50,18 @@ VersionInfoProductVersion={#AppVersion}
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
-
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\WFX Smart"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\WFX Smart"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\WFX Smart"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Open WFX Smart"; Flags: nowait postinstall skipifsilent
+; Không dùng postinstall: trang Finished đã tắt nên không còn ô tick để bấm.
+; skipifsilent giữ nguyên vì bản cập nhật trong app chạy /VERYSILENT rồi tự
+; mở lại ứng dụng — nếu bỏ cờ này thì app sẽ bị mở hai lần.
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Flags: nowait skipifsilent
 
 [Code]
 function WriteCloseAppScript(const ScriptPath: String): Boolean;
