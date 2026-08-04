@@ -587,6 +587,9 @@ class PanelAPI:
             "jobs": job_history.list_jobs(self._base_dir, 20),
             "sale_asn_buyers": list(self._sale_asn_buyers),
             "sale_asn_stages": preferences["sale_asn_stages"],
+            "sale_asn_po_search_fields": preferences[
+                "sale_asn_po_search_fields"
+            ],
             "logs": list(self._logs),
             **self.get_status(),
         }
@@ -1373,6 +1376,11 @@ class PanelAPI:
                 "message": "Hãy chọn Buyer trước khi kiểm tra file.",
             }
         source = Path(str(file_path or "")).expanduser()
+        po_search_fields = list(
+            self._prefs.load_prefs(base_dir=self._base_dir)[
+                "sale_asn_po_search_fields"
+            ]
+        )
         cache_root = self._base_dir / "sale-asn-create-cache"
         cache_root.mkdir(parents=True, exist_ok=True)
         temporary = tempfile.TemporaryDirectory(
@@ -1414,6 +1422,7 @@ class PanelAPI:
             "skipped_stages": [
                 stage for stage in stage_order if stage not in stages
             ],
+            "po_search_fields": po_search_fields,
         }
         stage_labels = {
             "po": "Thêm PO",
@@ -1470,6 +1479,10 @@ class PanelAPI:
         start_index = int(review.get("next_index") or 0) if continue_existing else 0
         stage = str(review.get("next_stage") or "po")
         skipped_stages = tuple(review.get("skipped_stages") or ())
+        po_search_fields = tuple(
+            review.get("po_search_fields")
+            or ("po", "style", "destination")
+        )
         method = (
             "continue_sale_asn_create" if continue_existing else "start_sale_asn_create"
         )
@@ -1483,6 +1496,7 @@ class PanelAPI:
                 self._log,
                 stage=stage,
                 skip_stages=skipped_stages,
+                search_fields=po_search_fields,
                 progress=self._progress_for(method),
             ),
             {
@@ -2766,6 +2780,25 @@ class PanelAPI:
             "code": "PREF_SAVED",
             "message": "Đã lưu các bước Sale ASN.",
             "sale_asn_stages": saved["sale_asn_stages"],
+        }
+
+    def set_sale_asn_po_search_fields(
+        self,
+        fields: list[str] | None = None,
+    ) -> dict:
+        """Nhớ các tiêu chí Add PO và luôn trả danh sách đã chuẩn hóa."""
+
+        saved = self._prefs.save_prefs(
+            base_dir=self._base_dir,
+            sale_asn_po_search_fields=list(fields or []),
+        )
+        return {
+            "ok": True,
+            "code": "PREF_SAVED",
+            "message": "Đã lưu tiêu chí tìm PO cho Sale ASN.",
+            "sale_asn_po_search_fields": saved[
+                "sale_asn_po_search_fields"
+            ],
         }
 
     def set_costing_export_open_options(

@@ -127,7 +127,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260803-10"',
+        'src="panel.js?v=20260804-1"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -467,6 +467,19 @@ def test_settings_has_new_toggles_and_enabled_hotkey_button():
     hotkey_tag = html[html.index('class="hotkey-button"') :]
     hotkey_tag = hotkey_tag[: hotkey_tag.index(">")]
     assert "disabled" not in hotkey_tag
+
+
+def test_sale_asn_po_search_settings_expose_all_three_persisted_fields():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    js = (UI / "panel.js").read_text(encoding="utf-8")
+
+    for field in ("po", "style", "destination"):
+        assert f'data-sale-asn-po-search-field="{field}"' in html
+    assert html.count("data-sale-asn-po-search-field=") == 3
+    assert "function selectedSaleAsnPoSearchFields()" in js
+    assert "function applySaleAsnPoSearchFields(fields)" in js
+    assert 'callQuiet("set_sale_asn_po_search_fields"' in js
+    assert "applySaleAsnPoSearchFields(state.sale_asn_po_search_fields)" in js
 
 
 def test_settings_account_flow_and_defaults_are_safe():

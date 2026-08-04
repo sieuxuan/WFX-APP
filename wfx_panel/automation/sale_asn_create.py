@@ -45,6 +45,32 @@ STYLE_INPUT_SELECTORS = (
     "#txtArticle",
     "#txtBuyerStyleRef",
 )
+SALE_ASN_PO_SEARCH_FIELDS = ("po", "style", "destination")
+SALE_ASN_PO_SEARCH_LABELS = {
+    "po": "PO",
+    "style": "Style",
+    "destination": "Destination",
+}
+CONSIGNEE_ADDRESS_SELECTOR = (
+    "#ddlConsigneeAddress, #Cell_ConsigneeAddress, #Cell_Consignee"
+)
+SHIP_TO_SELECTOR = "#ddlShipTo, #Cell_ShipTo"
+PORT_OF_LOADING_SELECTOR = "#ddlPortOfLoading, #Cell_PortOfLoading"
+
+SHIPPING_MODE_VALUES = {
+    "AIR": {
+        "port_of_loading": "HAN- Hanoi",
+        "delivery_terms": "FCA HANOI, VIETNAM",
+    },
+    "SEA": {
+        "port_of_loading": "HPH- Haiphong",
+        "delivery_terms": "FOB HAIPHONG, VIETNAM",
+    },
+    "COURIER": {
+        "port_of_loading": "HAN- Hanoi",
+        "delivery_terms": "EXW",
+    },
+}
 
 _WFX_MONTHS = (
     "Jan",
@@ -81,7 +107,10 @@ SHIPPING_FIELDS = (
     ("#Cell_DestinationCountry", "destination", "exact"),
     ("#Cell_FinalDestination", "destination", "exact"),
     ("#ddlConsignorAddress", "__BILL-ADD - PSHK", "exact"),
-    ("#ddlDeliveryTerms", "__FOB", "exact"),
+    (CONSIGNEE_ADDRESS_SELECTOR, "consignee_address", "closest"),
+    (SHIP_TO_SELECTOR, "ship_to", "closest"),
+    (PORT_OF_LOADING_SELECTOR, "port_of_loading", "exact"),
+    ("#ddlDeliveryTerms", "delivery_terms", "exact"),
     ("#ddlFactory", "factory", "exact"),
     ("#ddlNotify1", "__FIRST", "first"),
 )
@@ -95,6 +124,9 @@ SHIPPING_FIELD_LABELS = {
     "#Cell_DestinationCountry": "Destination Country",
     "#Cell_FinalDestination": "Final Destination",
     "#ddlConsignorAddress": "Consignor Address",
+    CONSIGNEE_ADDRESS_SELECTOR: "Consignee Address",
+    SHIP_TO_SELECTOR: "Ship To",
+    PORT_OF_LOADING_SELECTOR: "Port of Loading",
     "#ddlDeliveryTerms": "Delivery Terms",
     "#ddlFactory": "Factory",
     "#ddlNotify1": "Notify",
@@ -315,10 +347,17 @@ _SET_CONTROL_JS = r"""spec => {
             .find(item => item.type !== 'hidden' && !item.disabled)
             || [...document.querySelectorAll('select')]
                 .filter(item => shown(item)).at(-1);
-        if (!control && ['exact', 'first'].includes(spec.mode)) {
+        if (!control && ['exact', 'first', 'options'].includes(spec.mode)) {
             const choices = [...document.querySelectorAll(
                 '[role="option"], .select2-results__option, li.clsMultiSelectContent'
             )].filter(shown);
+            if (spec.mode === 'options') {
+                return {
+                    ok: false,
+                    reason: 'option-not-found',
+                    options: choices.map(item => clean(item.textContent)).slice(0, 50),
+                };
+            }
             const chosen = spec.mode === 'first'
                 ? choices[0]
                 : choices.find(item => fold(item.textContent) === fold(spec.value)
@@ -336,6 +375,16 @@ _SET_CONTROL_JS = r"""spec => {
     if (control.tagName === 'SELECT') {
         const choices = [...control.options].filter(option => !option.disabled
             && clean(option.value) && !/^\[?select\]?$/i.test(clean(option.textContent)));
+        if (spec.mode === 'options') {
+            control.dispatchEvent(new MouseEvent(
+                'mousedown', {bubbles: true, cancelable: true, view: window}
+            ));
+            return {
+                ok: false,
+                reason: 'option-not-found',
+                options: choices.map(item => clean(item.textContent)).slice(0, 50),
+            };
+        }
         let option = null;
         if (spec.mode === 'first') option = choices[0] || null;
         else option = choices.find(item => fold(item.textContent) === fold(wanted)
@@ -352,6 +401,8 @@ _SET_CONTROL_JS = r"""spec => {
         }
         control.value = option.value;
         option.selected = true;
+    } else if (spec.mode === 'options') {
+        return {ok: false, reason: 'option-not-found', options: []};
     } else if (control.isContentEditable) {
         control.textContent = wanted;
     } else {
@@ -519,31 +570,14 @@ def _style_similarity(source: str, candidate: str) -> int:
     return len(shared) * 100 - abs(len(left_tokens) - len(right_tokens))
 
 
-def _number_key(value: object) -> str:
-    text = str(value or "").replace(",", "").strip()
-    try:
-        return f"{float(text):.6f}".rstrip("0").rstrip(".")
-    except ValueError:
-        return ""
+def _best_dropdown_label(options: Sequence[str], query: str) -> str | None:
+    """Chọn duy nhất option gần query nhất; đồng hạng/không liên quan thì bỏ qua."""
 
-
-def _choose_po_candidate(row: dict, candidates: Sequence[dict]) -> dict | None:
-    if len(candidates) == 1:
-        return candidates[0]
-    if not candidates:
-        return None
-    po_key = _fold(row.get("po_no"))
-    exact_po = [item for item in candidates if _fold(item.get("po_no")) == po_key]
-    pool = exact_po or list(candidates)
-    style = str(row.get("style_no") or "")
-    scores = [(_style_similarity(style, str(item.get("style_no") or item.get("text") or "")), item) for item in pool]
-    best_score = max((score for score, _item in scores), default=0)
-    best = [item for score, item in scores if score == best_score and score > 0]
-    if len(best) == 1:
-        return best[0]
-    qty = _number_key(row.get("qty"))
-    qty_matches = [item for item in (best or pool) if qty and _number_key(item.get("dispatched_qty")) == qty]
-    return qty_matches[0] if len(qty_matches) == 1 else None
+    cleaned = list(dict.fromkeys(" ".join(str(item or "").split()) for item in options))
+    scored = [(_style_similarity(query, option), option) for option in cleaned if option]
+    best_score = max((score for score, _option in scored), default=0)
+    best = [option for score, option in scored if score == best_score and score > 0]
+    return best[0] if len(best) == 1 else None
 
 
 def _frame_with_selector(context: Any, selector: str, timeout_s: float = 20) -> tuple[Page, Frame]:
@@ -695,14 +729,30 @@ def _set_control(
 ) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_s
     last: dict[str, Any] = {"ok": False, "reason": "not-found"}
+    requested_mode = mode
+    selected_value = value
+    selected_mode = "options" if requested_mode == "closest" else requested_mode
     while time.monotonic() < deadline:
         try:
             last = frame.evaluate(
                 _SET_CONTROL_JS,
-                {"selector": selector, "value": value, "mode": mode},
+                {
+                    "selector": selector,
+                    "value": selected_value,
+                    "mode": selected_mode,
+                },
             )
             if last.get("ok"):
                 return last
+            if requested_mode == "closest" and selected_mode == "options":
+                matched = _best_dropdown_label(
+                    last.get("options") or (),
+                    value,
+                )
+                if matched:
+                    selected_value = matched
+                    selected_mode = "exact"
+                    continue
         except PlaywrightError:
             last = {"ok": False, "reason": "document-changed"}
         _wait(frame, 120)
@@ -757,6 +807,22 @@ def _select_popup_destination(frame: Frame, destination: str) -> bool:
     select = frame.locator("#wfx_GMPOAsnSearch select[name='cboDestination'], #wfx_GMPOAsnSearch #cboDestination")
     if not select.count() or not select.first.is_visible():
         return False
+    if not str(destination or "").strip():
+        return bool(
+            select.first.evaluate(
+                r"""control => {
+                    const option = [...control.options].find(item =>
+                        !String(item.value || '').trim()
+                        || /^\[?select\]?$/i.test(String(item.textContent || '').trim())
+                    ) || control.options[0];
+                    if (!option) return false;
+                    control.value = option.value;
+                    option.selected = true;
+                    control.dispatchEvent(new Event('change', {bubbles: true}));
+                    return true;
+                }"""
+            )
+        )
     options = select.first.locator("option")
     exact = []
     for index in range(options.count()):
@@ -779,15 +845,22 @@ def _click_search(frame: Frame) -> None:
     _wait(frame, 700)
 
 
-def _search_po(frame: Frame, row: dict, *, destination: bool, style: bool) -> list[dict]:
-    if not _fill_popup_input(frame, "#txtOCNo", str(row.get("po_no") or "")):
+def _search_po(
+    frame: Frame,
+    row: dict,
+    *,
+    fields: Sequence[str],
+) -> list[dict]:
+    enabled = set(fields)
+    po_no = str(row.get("po_no") or "") if "po" in enabled else ""
+    if not _fill_popup_input(frame, "#txtOCNo", po_no):
         raise RuntimeError("SALE_ASN_PO_SEARCH_NOT_READY")
-    if destination:
-        _select_popup_destination(frame, str(row.get("destination") or ""))
-    if style:
-        for selector in STYLE_INPUT_SELECTORS:
-            if _fill_popup_input(frame, selector, str(row.get("style_no") or "")):
-                break
+    destination = str(row.get("destination") or "") if "destination" in enabled else ""
+    _select_popup_destination(frame, destination)
+    style = str(row.get("style_no") or "") if "style" in enabled else ""
+    for selector in STYLE_INPUT_SELECTORS:
+        if _fill_popup_input(frame, selector, style):
+            break
     _click_search(frame)
     table = frame.locator(PO_RESULTS_TABLE_SELECTOR).first
     table.wait_for(state="visible", timeout=5_000)
@@ -800,39 +873,47 @@ def _auto_add_po(
     log: Callable[[str], None],
     *,
     final: bool = False,
+    search_fields: Sequence[str] = SALE_ASN_PO_SEARCH_FIELDS,
 ) -> tuple[bool, list[dict], str]:
-    attempts = ((False, False, "PO No"), (True, False, "PO + Destination"), (True, True, "PO + Style"))
+    enabled = tuple(
+        field for field in SALE_ASN_PO_SEARCH_FIELDS if field in set(search_fields)
+    ) or SALE_ASN_PO_SEARCH_FIELDS
+    active: list[str] = []
     last: list[dict] = []
-    for with_destination, with_style, label in attempts:
-        last = _search_po(frame, row, destination=with_destination, style=with_style)
-        chosen = _choose_po_candidate(row, last)
+    label = ""
+    for field in enabled:
+        active.append(field)
+        label = " + ".join(SALE_ASN_PO_SEARCH_LABELS[item] for item in active)
+        last = _search_po(frame, row, fields=tuple(active))
         _write_log(log, f"[SALE ASN] Dòng {row.get('source_row')}: {label} → {len(last)} kết quả.")
-        if chosen is None:
-            if not last:
-                # Các lượt sau chỉ thêm điều kiện (Destination, rồi Style) nên
-                # kết quả luôn là tập con. Đã 0 kết quả thì thử tiếp chắc chắn
-                # vẫn 0, chỉ tốn thêm hai lượt search đầy đủ.
-                break
+        if not last:
+            # Mỗi lượt chỉ thêm điều kiện nên 0 kết quả không thể tăng lại.
+            break
+        if len(last) > 1 and field != enabled[-1]:
             continue
-        selected = frame.locator(PO_RESULTS_TABLE_SELECTOR).first.evaluate(
-            _SELECT_PO_ROW_JS,
-            {
-                "row_index": chosen.get("row_index"),
-                "selection_name": str(chosen.get("selection_name") or ""),
-                "selection_value": str(chosen.get("selection_value") or ""),
-                "selection_order_id": str(chosen.get("selection_order_id") or ""),
-            },
-        )
-        if not selected.get("ok"):
-            raise RuntimeError(
-                "SALE_ASN_PO_SELECTION_NOT_CONFIRMED:"
-                f"{selected.get('reason') or 'unknown'}"
+
+        selected_values: list[str] = []
+        for chosen in last:
+            selected = frame.locator(PO_RESULTS_TABLE_SELECTOR).first.evaluate(
+                _SELECT_PO_ROW_JS,
+                {
+                    "row_index": chosen.get("row_index"),
+                    "selection_name": str(chosen.get("selection_name") or ""),
+                    "selection_value": str(chosen.get("selection_value") or ""),
+                    "selection_order_id": str(chosen.get("selection_order_id") or ""),
+                },
             )
+            if not selected.get("ok"):
+                raise RuntimeError(
+                    "SALE_ASN_PO_SELECTION_NOT_CONFIRMED:"
+                    f"{selected.get('reason') or 'unknown'}"
+                )
+            selected_values.append(str(selected.get("value") or ""))
         _write_log(
             log,
             (
-                f"[SALE ASN] Dòng {row.get('source_row')}: đã chọn checkbox "
-                f"{selected.get('value')}."
+                f"[SALE ASN] Dòng {row.get('source_row')}: đã chọn "
+                f"{len(selected_values)} dòng ({', '.join(selected_values)})."
             ),
         )
         action_selector = PO_OK_SELECTOR if final else PO_CONTINUE_SELECTOR
@@ -1054,6 +1135,7 @@ def _ensure_order_grid_rows(
     main_frame: Frame,
     rows: Sequence[dict],
     log: Callable[[str], None],
+    search_fields: Sequence[str] = SALE_ASN_PO_SEARCH_FIELDS,
 ) -> Frame:
     """Xác nhận PO đã vào grid và phục hồi đúng các dòng bị rơi khi đóng popup."""
 
@@ -1097,6 +1179,7 @@ def _ensure_order_grid_rows(
             row,
             log,
             final=final,
+            search_fields=search_fields,
         )
         if not added:
             # Popup vẫn đang mở và đang chờ user chọn dòng. Trả đúng trạng thái
@@ -1313,6 +1396,14 @@ def _fill_shipping(
     tab.click(timeout=5_000)
     _wait(frame, 500)
     warnings: list[str] = []
+    shipping_mode = str(first_row.get("shipping_mode") or "").strip().upper()
+    mapped = SHIPPING_MODE_VALUES.get(shipping_mode)
+    if mapped is None:
+        warning = f'Shipping Mode: không hỗ trợ "{shipping_mode or "(trống)"}"'
+        warnings.append(warning)
+        _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
+        mapped = {}
+    shipping_values = {**first_row, **mapped}
     for selector, key, mode in SHIPPING_FIELDS:
         label = SHIPPING_FIELD_LABELS.get(selector, selector)
         if key == "__FIRST":
@@ -1320,7 +1411,7 @@ def _fill_shipping(
         elif key.startswith("__"):
             value = key[2:]
         else:
-            value = str(first_row.get(key) or "")
+            value = str(shipping_values.get(key) or "")
         if key in {"invoice_date", "shipping_bill_date"}:
             value = _date_for_wfx(value)
         if not value.strip() and not key.startswith("__"):
@@ -1361,6 +1452,7 @@ def run_sale_asn_create(
     *,
     stage: str = "po",
     skip_stages: Sequence[str] = (),
+    search_fields: Sequence[str] = SALE_ASN_PO_SEARCH_FIELDS,
     progress: Callable[..., None] | None = None,
 ) -> dict[str, Any]:
     playwright = None
@@ -1419,6 +1511,7 @@ def run_sale_asn_create(
                         row,
                         log,
                         final=final_pending,
+                        search_fields=search_fields,
                     )
                     if not added:
                         return _po_selection_result(
@@ -1470,6 +1563,7 @@ def run_sale_asn_create(
                         main_frame,
                         rows,
                         log,
+                        search_fields,
                     )
                 else:
                     present = _wait_order_grid(
