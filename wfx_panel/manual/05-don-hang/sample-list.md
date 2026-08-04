@@ -8,8 +8,8 @@ Order mới.
 1. Mở module Sample List.
 2. Bấm `List` để mở danh sách trên WFX.
 3. Nhập một hoặc nhiều điều kiện: Sample Order No., Style, Created By và Buyer.
-4. Bấm `Tìm theo các điều kiện đã nhập`.
-5. Nếu cần kiểm tra file, bấm `Check File theo các điều kiện đã nhập` để dùng
+4. Bấm `Tìm`.
+5. Nếu cần kiểm tra file, bấm `Xem file đính kèm` để dùng
    đúng bộ điều kiện đó.
 6. Bấm `New` nếu bạn muốn mở màn hình tạo Sample Order mới.
 

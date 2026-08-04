@@ -7,7 +7,7 @@ phải nhập lại mỗi ngày.
 
 1. Bấm biểu tượng bánh răng ở góc trên bảng điều khiển.
 2. Chọn thẻ Tài khoản.
-3. Nhập Tên đăng nhập WFX và Mật khẩu.
+3. Nhập User ID và Mật khẩu.
 4. Bấm `Lưu và đăng nhập WFX`.
 5. Chờ dòng trạng thái dưới cùng báo đã kết nối.
 

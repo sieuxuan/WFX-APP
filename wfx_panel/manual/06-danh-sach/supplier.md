@@ -7,7 +7,7 @@ Category.
 
 1. Mở module Supplier List.
 2. Chọn Category nếu bạn biết nhóm của Supplier, rồi bấm
-   `Đổi Category · mở Master`.
+   `Mở Master`.
 3. Hoặc nhập tên/một phần tên công ty rồi bấm `Tìm tất cả Category` nếu muốn
    tìm rộng hơn.
 4. Đọc tổng kết kết quả trên bảng điều khiển.
@@ -26,6 +26,6 @@ danh sách hiện tại.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Master chưa sẵn sàng | Chờ danh sách Supplier tải xong rồi bấm `Đổi Category · mở Master` lại. |
+| Master chưa sẵn sàng | Chờ danh sách Supplier tải xong rồi bấm `Mở Master` lại. |
 | Chỉ có kết quả một phần | Đọc Category bị lỗi trong thông báo, mở riêng Category đó rồi tìm lại. |
 | Không thấy Supplier | Nhập phần tên ngắn hơn hoặc kiểm tra cách viết tên công ty. |

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260804-1">
+  <link rel="stylesheet" href="style.css?v=20260804-2">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -43,17 +43,16 @@
 
     <div class="panel-body">
       <section class="update-banner" hidden aria-live="polite">
-        <div class="banner-icon" aria-hidden="true">↑</div>
+        <div class="banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"/><path d="m7.5 9.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg></div>
         <div class="update-banner-copy">
           <strong class="update-banner-title">Có bản cập nhật mới</strong>
-          <span class="update-banner-message">Một lần bấm để tải, cài đặt và tự mở lại ứng dụng.</span>
-          <span class="update-banner-steps" aria-hidden="true">Tải bản mới <b>›</b> Cài đặt <b>›</b> Tự mở lại</span>
+          <span class="update-banner-message">Tải, cài rồi tự mở lại. Không mất dữ liệu.</span>
         </div>
-        <button class="update-banner-button" type="button">Cập nhật phần mềm mới</button>
+        <button class="update-banner-button" type="button">Cập nhật ngay</button>
       </section>
 
       <section class="browser-banner" hidden aria-live="polite">
-        <div class="banner-icon">◎</div>
+        <div class="banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M6.5 6.5h.01M9.5 6.5h.01"/></svg></div>
         <div><strong>Chưa có trình duyệt làm việc</strong><span class="browser-banner-message">Mở Chrome, Edge, Brave hoặc Chromium.</span></div>
         <button class="open-chrome-button" type="button">Mở trình duyệt</button>
       </section>
@@ -70,6 +69,7 @@
             <span>PSSG</span>
           </button>
         </div>
+        <p class="division-hint" aria-live="polite" hidden></p>
       </section>
 
       <label class="search-box">
@@ -102,7 +102,7 @@
       <span class="footer-health">
         <span class="health-chrome" data-state="unknown" data-tooltip="Trình duyệt làm việc"><i></i>Chrome</span>
         <span class="health-session" data-state="unknown" data-tooltip="Phiên WFX"><i></i>WFX</span>
-        <button class="health-refresh" type="button" data-tooltip="Kiểm tra lại trạng thái" aria-label="Kiểm tra lại trạng thái">⟳</button>
+        <button class="health-refresh" type="button" data-tooltip="Kiểm tra lại trạng thái" aria-label="Kiểm tra lại trạng thái"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
       </span>
     </footer>
 
@@ -128,7 +128,7 @@
           <div class="catalog-space-switch" role="tablist" aria-label="Không gian Catalog">
             <button type="button" role="tab" data-catalog-space="search" aria-selected="true">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg>
-              <span><strong>Tìm Article</strong><small>Catalog &amp; Costing</small></span>
+              <span><strong>Tìm Article</strong><small>Costing · BOM</small></span>
             </button>
             <button type="button" role="tab" data-catalog-space="costing" aria-selected="false">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5V3Z"/><path d="M8 7h8M8 11h3m2 0h3M8 15h3m2 0h3"/></svg>
@@ -160,7 +160,6 @@
                 </button>
                 <button class="catalog-folder-summary" type="button" aria-expanded="false" data-tooltip="Sửa vị trí mặc định" aria-label="Sửa vị trí mặc định">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Z"/><path d="m13.8 6.2 3.2 3.2"/></svg>
-                  <strong class="catalog-folder-current" hidden>Mặc định (Master)</strong>
                 </button>
               </div>
             </div>
@@ -237,8 +236,8 @@
             </div>
             <div class="catalog-costing-file-check" aria-live="polite" hidden></div>
             <p class="catalog-costing-note">
-              Mọi status đều tải XLSX được; Import/Save cần <b>Open</b>.
-              Ô trống giữ nguyên; chỉ xóa Article khi Action là <b>DELETE</b>.
+              Tải XLSX: mọi status. Import: chỉ khi <b>Open</b>.
+              Ô trống = giữ nguyên. Xóa Article = Action <b>DELETE</b>.
             </p>
             <div class="catalog-costing-plan" aria-live="polite" hidden>
               <div class="catalog-costing-plan-heading">
@@ -246,7 +245,7 @@
                   <strong class="catalog-costing-plan-title">Dry-run</strong>
                   <small class="catalog-costing-plan-file"></small>
                 </span>
-                <button type="button" data-costing-action="cancel-plan" aria-label="Hủy bản xem trước Costing">×</button>
+                <button type="button" data-costing-action="cancel-plan" aria-label="Hủy bản xem trước Costing"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
               </div>
               <div class="catalog-costing-counts"></div>
               <div class="catalog-costing-warnings" hidden></div>
@@ -295,20 +294,20 @@
                 <button type="button" data-style-action="template">Tải form Excel</button>
                 <button type="button" class="catalog-primary-action" data-style-action="import">Chọn file &amp; kiểm tra</button>
               </div>
-              <p class="catalog-style-note">New điền đủ trường; Copy chỉ đổi ô có dữ liệu. Purchase UOM, Price Per và Color Definition dùng giá trị mặc định bắt buộc.</p>
+              <p class="catalog-style-note">New: điền đủ. Copy: chỉ đổi ô có dữ liệu.<br />Purchase UOM, Price Per, Color Definition: cố định.</p>
               <div class="catalog-style-review" aria-live="polite" hidden>
                 <div class="catalog-costing-plan-heading">
                   <span>
                     <strong>Danh sách chuẩn bị</strong>
                     <small class="catalog-style-review-file"></small>
                   </span>
-                  <button type="button" data-style-action="cancel" aria-label="Hủy danh sách Tạo Style">×</button>
+                  <button type="button" data-style-action="cancel" aria-label="Hủy danh sách Tạo Style"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
                 </div>
                 <div class="catalog-style-progress"></div>
                 <div class="catalog-style-row-summary"></div>
                 <div class="catalog-style-copy-choices" hidden></div>
                 <button type="button" class="catalog-style-prepare" data-style-action="prepare-row">Chuẩn bị dòng đầu tiên</button>
-                <small class="catalog-style-save-reminder">Sau khi app điền xong, kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.</small>
+                <small class="catalog-style-save-reminder">Kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.</small>
               </div>
             </section>
           </div>
@@ -348,7 +347,7 @@
                 <span class="oc-flow-badge">NEW</span>
                 <div class="oc-upload-card-copy">
                   <strong>Upload OC New</strong>
-                  <small>Tải mẫu, điền dữ liệu rồi chọn file để review.</small>
+                  <small>Tải mẫu, điền rồi chọn file để kiểm tra.</small>
                 </div>
               </div>
               <div class="oc-upload-card-actions oc-upload-card-actions-even">
@@ -404,7 +403,7 @@
               </span>
               <span>
                 <strong>Chỉ thực hiện sau GRN ít nhất 15 phút</strong>
-                <small>Hãy chắc chắn (GRN) nhập kho hàng thành phẩm đã hoàn tất và chờ đủ thời gian để WFX đồng bộ.</small>
+                <small>Chờ WFX đồng bộ xong GRN nhập kho thành phẩm.</small>
               </span>
             </div>
             <label class="module-multi-filter-field dispatch-invoice-field">
@@ -415,8 +414,8 @@
               <input class="gdn-grn-confirm-input" type="checkbox" />
               <span>Tôi xác nhận GRN đã hoàn tất ít nhất 15 phút.</span>
             </label>
-            <button type="button" class="special-primary-button dispatch-submit-button" data-module-action="gdn-dispatch-submit" disabled>Submit &amp; tạo Dispatch</button>
-            <small class="module-action-hint">App sẽ tự tải report, reload XLSX, Process Package và chọn transaction Pending mới nhất theo Processed ON.</small>
+            <button type="button" class="special-primary-button dispatch-submit-button" data-module-action="gdn-dispatch-submit" disabled>Tạo Dispatch</button>
+            <small class="module-action-hint">App tự chạy 6 bước, dừng ngay nếu WFX báo lỗi.</small>
             <section class="dispatch-progress-card" aria-live="polite" hidden>
               <div class="dispatch-progress-heading"><strong>Tiến độ GDN</strong><span class="dispatch-progress-count">0/6</span></div>
               <ol class="dispatch-progress-steps">
@@ -429,7 +428,7 @@
               </ol>
               <p class="dispatch-progress-message"></p>
               <div class="dispatch-checkpoint" hidden>
-                <span>Không Submit lại. Kiểm tra package mới nhất trên WFX để tránh tạo trùng.</span>
+                <span>Đừng Submit lại. Kiểm tra package mới nhất trên WFX.</span>
                 <button type="button" data-module-action="gdn-status">Mở EDI kiểm tra</button>
               </div>
             </section>
@@ -440,23 +439,23 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="sample-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>List</strong><small>Mở danh sách và bật Floating Filter</small></span>
+              <span><strong>Sample List</strong><small>Mở danh sách, bật ô lọc</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="sample-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-              <span><strong>New</strong><small>Mở New Sample Order</small></span>
+              <span><strong>New</strong><small>Tạo Sample Order mới</small></span>
             </button>
           </div>
           <div class="module-search-block">
             <div class="module-multi-filter-grid" aria-label="Điều kiện tìm Sample">
-              <label class="module-multi-filter-field"><span>Sample Order No.</span><input class="sample-no-query" type="text" autocomplete="off" placeholder="Nhập Sample Order No." aria-label="Sample Order No." /></label>
-              <label class="module-multi-filter-field"><span>Style</span><input class="sample-style-query" type="text" autocomplete="off" placeholder="Nhập Style" aria-label="Style" /></label>
-              <label class="module-multi-filter-field"><span>Created By</span><input class="sample-created-by-query" type="text" autocomplete="off" placeholder="Nhập Created By" aria-label="Created By" /></label>
-              <label class="module-multi-filter-field"><span>Buyer</span><input class="sample-buyer-query" type="text" autocomplete="off" placeholder="Nhập Buyer" aria-label="Buyer" /></label>
+              <label class="module-multi-filter-field"><span>Sample Order No.</span><input class="sample-no-query" type="text" autocomplete="off" aria-label="Sample Order No." /></label>
+              <label class="module-multi-filter-field"><span>Style</span><input class="sample-style-query" type="text" autocomplete="off" aria-label="Style" /></label>
+              <label class="module-multi-filter-field"><span>Created By</span><input class="sample-created-by-query" type="text" autocomplete="off" aria-label="Created By" /></label>
+              <label class="module-multi-filter-field"><span>Buyer</span><input class="sample-buyer-query" type="text" autocomplete="off" aria-label="Buyer" /></label>
             </div>
-            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="sample-search" data-validation-group="sample" disabled>Tìm theo các điều kiện đã nhập</button>
-            <button type="button" class="sample-check-file-button module-multi-search-button" data-module-action="sample-check-file" data-validation-group="sample" disabled>Check File theo các điều kiện đã nhập</button>
-            <small class="module-validation-hint" data-validation-hint="sample">Nhập ít nhất một điều kiện để tìm.</small>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="sample-search" data-validation-group="sample" disabled>Tìm</button>
+            <button type="button" class="sample-check-file-button module-multi-search-button" data-module-action="sample-check-file" data-validation-group="sample" disabled>Xem file đính kèm</button>
+            <small class="module-validation-hint" data-validation-hint="sample">Nhập ít nhất một điều kiện.</small>
             <section class="sample-file-results" aria-live="polite" hidden>
               <div class="catalog-results-heading">
                 <strong class="sample-file-results-title">Kết quả</strong>
@@ -495,7 +494,7 @@
                     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
                   </button>
                 </span>
-                <button type="button" class="sale-asn-icon-button" data-module-action="sale-asn-scan-buyers" data-tooltip="Quét lại Buyer từ WFX" aria-label="Quét lại Buyer từ WFX">↻</button>
+                <button type="button" class="sale-asn-icon-button" data-module-action="sale-asn-scan-buyers" data-tooltip="Quét lại Buyer từ WFX" aria-label="Quét lại Buyer từ WFX"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
               </div>
               <div class="sale-asn-buyer-suggestions" id="sale-asn-buyer-suggestions" role="listbox" aria-label="Gợi ý Buyer" hidden></div>
             </div>
@@ -536,7 +535,7 @@
               <div class="sale-asn-stage-action" hidden>
                 <p class="sale-asn-stage-message"></p>
                 <div class="sale-asn-candidates" hidden>
-                  <small>WFX đang hiện các dòng dưới đây; chọn đúng dòng trên WFX rồi quay lại app.</small>
+                  <small>Chọn đúng dòng trên WFX rồi quay lại app.</small>
                   <ul class="sale-asn-candidate-list"></ul>
                 </div>
                 <label class="sale-asn-manual-check"><input class="sale-asn-manual-confirm" type="checkbox" /> <span>Tôi đã chọn đúng dòng và bấm <code>Add &amp; Continue</code> hoặc <code>OK</code> trên WFX.</span></label>
@@ -544,13 +543,13 @@
                   <button type="button" class="sale-asn-secondary-button sale-asn-skip-step" data-module-action="sale-asn-skip-step" hidden>Bỏ qua bước</button>
                   <button type="button" class="special-primary-button" data-module-action="sale-asn-continue" disabled>Tiếp tục dòng kế</button>
                 </div>
-                <button type="button" class="sale-asn-link-button sale-asn-abandon" data-module-action="sale-asn-review-cancel">Bỏ lượt này và chọn file khác</button>
+                <button type="button" class="sale-asn-link-button sale-asn-abandon" data-module-action="sale-asn-review-cancel">Chọn file khác</button>
               </div>
             </section>
 
             <div class="sale-asn-done" hidden>
               <strong class="sale-asn-done-title">Đã điền xong Sale ASN</strong>
-              <p class="sale-asn-done-message">Kiểm tra lại toàn bộ chứng từ rồi tự bấm Save trên WFX.</p>
+              <p class="sale-asn-done-message">Kiểm tra lại chứng từ rồi tự bấm Save trên WFX.</p>
               <ul class="sale-asn-done-warnings" hidden></ul>
               <button type="button" class="special-primary-button" data-module-action="sale-asn-handoff-documents">Xuất Invoice + PKL</button>
             </div>
@@ -571,7 +570,7 @@
 
                 <div class="sale-asn-advanced-group">
                   <strong>Tiêu chí tìm PO</strong>
-                  <small>App thu hẹp lần lượt theo các tiêu chí đang bật; mặc định dùng đủ cả ba.</small>
+                  <small>App lọc dần theo tiêu chí đang bật.</small>
                   <div class="sale-asn-po-search-options" role="group" aria-label="Tiêu chí tìm PO khi tạo Sale ASN">
                     <label><input class="sale-asn-po-search-input" type="checkbox" data-sale-asn-po-search-field="po" checked /><span>PO</span></label>
                     <label><input class="sale-asn-po-search-input" type="checkbox" data-sale-asn-po-search-field="style" checked /><span>Style</span></label>
@@ -581,12 +580,12 @@
 
                 <div class="sale-asn-advanced-group sale-asn-order-flow">
                   <strong>Chỉ điền Order Details</strong>
-                  <small>Chứng từ đã có đủ PO; app chỉ cập nhật 8 cột và map theo PO No.</small>
+                  <small>Chứng từ đã đủ PO. App chỉ cập nhật 8 cột theo PO No.</small>
                   <div class="sale-asn-order-actions">
                     <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-order-export">Xuất form từ WFX</button>
                     <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-order-import">Chọn file 8 cột</button>
                   </div>
-                  <p class="sale-asn-order-status sale-asn-inline-status" aria-live="polite">Mở đúng Sale ASN trên WFX để xuất hoặc import.</p>
+                  <p class="sale-asn-order-status sale-asn-inline-status" aria-live="polite">Mở đúng Sale ASN trên WFX trước.</p>
                   <div class="sale-asn-order-review sale-asn-review" hidden>
                     <div class="sale-asn-review-title"><strong class="sale-asn-order-review-file"></strong><span>Order Details</span></div>
                     <div class="sale-asn-review-stats">
@@ -595,12 +594,12 @@
                     </div>
                     <div class="sale-asn-review-actions">
                       <button type="button" class="sale-asn-secondary-button" data-module-action="sale-asn-order-cancel">Chọn lại</button>
-                      <button type="button" class="special-primary-button" data-module-action="sale-asn-order-start">Điền Order Details trên WFX</button>
+                      <button type="button" class="special-primary-button" data-module-action="sale-asn-order-start">Điền Order Details</button>
                     </div>
                   </div>
                 </div>
 
-                <button type="button" class="sale-asn-link-button" data-module-action="sale-asn-new">Mở Sale ASN New trống trên WFX</button>
+                <button type="button" class="sale-asn-link-button" data-module-action="sale-asn-new">Mở Sale ASN New trống</button>
               </div>
             </details>
           </section>
@@ -614,40 +613,40 @@
               <input class="sale-asn-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Nội dung tìm Sale ASN" aria-describedby="sale-asn-documents-hint" />
               <button type="button" class="special-primary-button" data-module-action="sale-asn-search" data-validation-group="sale-asn" disabled>Tìm</button>
             </div>
-            <button type="button" class="special-primary-button sale-asn-documents-button" data-module-action="sale-asn-documents">Xuất Buyer Invoice + Packing List</button>
-            <small class="module-action-hint" id="sale-asn-documents-hint">Nhập Invoice No. chính xác, hoặc để trống nếu đã chọn đúng một dòng trên WFX. Không cần kéo cột Docs.</small>
+            <button type="button" class="special-primary-button sale-asn-documents-button" data-module-action="sale-asn-documents">Xuất Invoice + PKL</button>
+            <small class="module-action-hint" id="sale-asn-documents-hint">Nhập đúng Invoice No., hoặc chọn sẵn 1 dòng trên WFX.<br />Không cần kéo cột Docs.</small>
           </section>
         </div>
 
         <div class="special-module-workspace" data-module-view="rmpo" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="rmpo-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>List</strong><small>Mở RMPO List hiện tại</small></span>
+            <span><strong>RMPO List</strong><small>Mở danh sách, bật ô lọc</small></span>
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid module-multi-filter-grid-two">
-              <label class="module-multi-filter-field"><span>Supplier</span><input class="rmpo-supplier-query" type="text" autocomplete="off" placeholder="Nhập Supplier" /></label>
-              <label class="module-multi-filter-field"><span>RMPO No.</span><input class="rmpo-order-query" type="text" autocomplete="off" placeholder="Nhập RMPO No." /></label>
+              <label class="module-multi-filter-field"><span>Supplier</span><input class="rmpo-supplier-query" type="text" autocomplete="off" /></label>
+              <label class="module-multi-filter-field"><span>RMPO No.</span><input class="rmpo-order-query" type="text" autocomplete="off" /></label>
             </div>
-            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="rmpo-search" data-validation-group="rmpo" disabled>Tìm theo các điều kiện đã nhập</button>
-            <small class="module-validation-hint" data-validation-hint="rmpo">Nhập Supplier hoặc RMPO No. để tìm.</small>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="rmpo-search" data-validation-group="rmpo" disabled>Tìm</button>
+            <small class="module-validation-hint" data-validation-hint="rmpo">Nhập Supplier hoặc RMPO No.</small>
           </div>
         </div>
 
         <div class="special-module-workspace" data-module-view="indent" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="indent-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>List</strong><small>Mở danh sách hiện tại</small></span>
+            <span><strong>List</strong><small>Mở danh sách, bật ô lọc</small></span>
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
-              <label class="module-multi-filter-field"><span>Supplier</span><input class="indent-supplier-query" type="text" autocomplete="off" placeholder="Nhập Supplier" /></label>
-              <label class="module-multi-filter-field"><span>Article</span><input class="indent-article-query" type="text" autocomplete="off" placeholder="Nhập Article" /></label>
-              <label class="module-multi-filter-field"><span>Indent No.</span><input class="indent-no-query" type="text" autocomplete="off" placeholder="Nhập Indent No." /></label>
-              <label class="module-multi-filter-field"><span>Style</span><input class="indent-style-query" type="text" autocomplete="off" placeholder="Nhập Style" /></label>
+              <label class="module-multi-filter-field"><span>Supplier</span><input class="indent-supplier-query" type="text" autocomplete="off" /></label>
+              <label class="module-multi-filter-field"><span>Article</span><input class="indent-article-query" type="text" autocomplete="off" /></label>
+              <label class="module-multi-filter-field"><span>Indent No.</span><input class="indent-no-query" type="text" autocomplete="off" /></label>
+              <label class="module-multi-filter-field"><span>Style</span><input class="indent-style-query" type="text" autocomplete="off" /></label>
             </div>
-            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="indent-search" data-validation-group="indent" disabled>Tìm theo các điều kiện đã nhập</button>
-            <small class="module-validation-hint" data-validation-hint="indent">Nhập ít nhất một điều kiện để tìm.</small>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="indent-search" data-validation-group="indent" disabled>Tìm</button>
+            <small class="module-validation-hint" data-validation-hint="indent">Nhập ít nhất một điều kiện.</small>
           </div>
         </div>
 
@@ -655,7 +654,7 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="advance-pr-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>List</strong><small>Mở Advance PR List hiện tại</small></span>
+              <span><strong>Advance PR List</strong><small>Mở danh sách, bật ô lọc</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="advance-pr-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -664,36 +663,36 @@
           </div>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
-              <label class="module-multi-filter-field"><span>Buyer Name</span><input class="advance-pr-buyer-query" type="text" autocomplete="off" placeholder="Nhập Buyer Name" aria-label="Buyer Name" /></label>
-              <label class="module-multi-filter-field"><span>Supplier</span><input class="advance-pr-supplier-query" type="text" autocomplete="off" placeholder="Nhập Supplier" aria-label="Supplier" /></label>
-              <label class="module-multi-filter-field"><span>Invoice Number</span><input class="advance-pr-invoice-query" type="text" autocomplete="off" placeholder="Nhập Invoice Number" aria-label="Invoice Number" /></label>
-              <label class="module-multi-filter-field"><span>Order No.</span><input class="advance-pr-order-query" type="text" autocomplete="off" placeholder="Nhập Order No." aria-label="Order No." /></label>
+              <label class="module-multi-filter-field"><span>Buyer Name</span><input class="advance-pr-buyer-query" type="text" autocomplete="off" aria-label="Buyer Name" /></label>
+              <label class="module-multi-filter-field"><span>Supplier</span><input class="advance-pr-supplier-query" type="text" autocomplete="off" aria-label="Supplier" /></label>
+              <label class="module-multi-filter-field"><span>Invoice Number</span><input class="advance-pr-invoice-query" type="text" autocomplete="off" aria-label="Invoice Number" /></label>
+              <label class="module-multi-filter-field"><span>Order No.</span><input class="advance-pr-order-query" type="text" autocomplete="off" aria-label="Order No." /></label>
             </div>
-            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="advance-pr-search" data-validation-group="advance-pr" disabled>Tìm theo các điều kiện đã nhập</button>
-            <small class="module-validation-hint" data-validation-hint="advance-pr">Nhập ít nhất một điều kiện để tìm.</small>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="advance-pr-search" data-validation-group="advance-pr" disabled>Tìm</button>
+            <small class="module-validation-hint" data-validation-hint="advance-pr">Nhập ít nhất một điều kiện.</small>
           </div>
         </div>
 
         <div class="special-module-workspace" data-module-view="supplier_invoice" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="supplier-invoice-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>List</strong><small>Mở Supplier Inv List hiện tại</small></span>
+            <span><strong>Supplier Inv List</strong><small>Mở danh sách, bật ô lọc</small></span>
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
-              <label class="module-multi-filter-field"><span>Supplier</span><input class="supplier-invoice-supplier-query" type="text" autocomplete="off" placeholder="Nhập Supplier" aria-label="Supplier" /></label>
-              <label class="module-multi-filter-field"><span>Invoice No.</span><input class="supplier-invoice-no-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Invoice No." /></label>
-              <label class="module-multi-filter-field"><span>PO No.</span><input class="supplier-invoice-po-query" type="text" autocomplete="off" placeholder="Nhập PO No." aria-label="PO No." /></label>
-              <label class="module-multi-filter-field"><span>ASN/GRN No.</span><input class="supplier-invoice-asn-grn-query" type="text" autocomplete="off" placeholder="Nhập ASN/GRN No." aria-label="ASN/GRN No." /></label>
+              <label class="module-multi-filter-field"><span>Supplier</span><input class="supplier-invoice-supplier-query" type="text" autocomplete="off" aria-label="Supplier" /></label>
+              <label class="module-multi-filter-field"><span>Invoice No.</span><input class="supplier-invoice-no-query" type="text" autocomplete="off" aria-label="Invoice No." /></label>
+              <label class="module-multi-filter-field"><span>PO No.</span><input class="supplier-invoice-po-query" type="text" autocomplete="off" aria-label="PO No." /></label>
+              <label class="module-multi-filter-field"><span>ASN/GRN No.</span><input class="supplier-invoice-asn-grn-query" type="text" autocomplete="off" aria-label="ASN/GRN No." /></label>
             </div>
-            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="supplier-invoice-search" data-validation-group="supplier-invoice" disabled>Tìm theo các điều kiện đã nhập</button>
-            <small class="module-validation-hint" data-validation-hint="supplier-invoice">Nhập ít nhất một điều kiện để tìm.</small>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="supplier-invoice-search" data-validation-group="supplier-invoice" disabled>Tìm</button>
+            <small class="module-validation-hint" data-validation-hint="supplier-invoice">Nhập ít nhất một điều kiện.</small>
           </div>
           <div class="module-search-block module-cancel-section">
             <label class="module-multi-filter-field"><span>Invoice No. cần Cancel</span><input class="supplier-invoice-cancel-query" type="text" autocomplete="off" placeholder="Nhập đúng Invoice No." aria-label="Invoice No. cần Cancel" /></label>
             <button type="button" class="module-danger-button module-multi-search-button" data-module-action="supplier-invoice-cancel" data-validation-group="supplier-invoice-cancel" disabled>Cancel Supplier Invoice</button>
             <small class="module-validation-hint" data-validation-hint="supplier-invoice-cancel">Nhập chính xác Invoice No. trước khi Cancel.</small>
-            <small class="module-action-hint">Nếu có nhiều invoice, hãy chọn đúng dòng ở đây. Nếu chỉ có một dòng, app chọn dòng đó và bấm Delete khi Status là Save hoặc Cancel khi Status là Confirm.</small>
+            <small class="module-action-hint">Một dòng: app tự xử lý. Nhiều dòng: chọn ở đây.</small>
             <section class="supplier-invoice-cancel-results" aria-live="polite" hidden>
               <div class="catalog-results-heading">
                 <strong class="supplier-invoice-cancel-results-title">Chọn Supplier Invoice</strong>
@@ -708,7 +707,7 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="expense-invoice-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>List</strong><small>Mở Expense Inv List hiện tại</small></span>
+              <span><strong>Expense Inv List</strong><small>Mở danh sách, bật ô lọc</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="expense-invoice-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -717,13 +716,13 @@
           </div>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
-              <label class="module-multi-filter-field"><span>Supplier</span><input class="expense-invoice-supplier-query" type="text" autocomplete="off" placeholder="Nhập Supplier" aria-label="Supplier" /></label>
-              <label class="module-multi-filter-field"><span>Invoice No.</span><input class="expense-invoice-no-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Invoice No." /></label>
-              <label class="module-multi-filter-field"><span>Created By</span><input class="expense-invoice-created-by-query" type="text" autocomplete="off" placeholder="Nhập Created By" aria-label="Created By" /></label>
-              <label class="module-multi-filter-field"><span>Status</span><input class="expense-invoice-status-query" type="text" autocomplete="off" placeholder="Nhập Status" aria-label="Status" /></label>
+              <label class="module-multi-filter-field"><span>Supplier</span><input class="expense-invoice-supplier-query" type="text" autocomplete="off" aria-label="Supplier" /></label>
+              <label class="module-multi-filter-field"><span>Invoice No.</span><input class="expense-invoice-no-query" type="text" autocomplete="off" aria-label="Invoice No." /></label>
+              <label class="module-multi-filter-field"><span>Created By</span><input class="expense-invoice-created-by-query" type="text" autocomplete="off" aria-label="Created By" /></label>
+              <label class="module-multi-filter-field"><span>Status</span><input class="expense-invoice-status-query" type="text" autocomplete="off" aria-label="Status" /></label>
             </div>
-            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="expense-invoice-search" data-validation-group="expense-invoice" disabled>Tìm theo các điều kiện đã nhập</button>
-            <small class="module-validation-hint" data-validation-hint="expense-invoice">Nhập ít nhất một điều kiện để tìm.</small>
+            <button type="button" class="special-primary-button module-multi-search-button" data-module-action="expense-invoice-search" data-validation-group="expense-invoice" disabled>Tìm</button>
+            <small class="module-validation-hint" data-validation-hint="expense-invoice">Nhập ít nhất một điều kiện.</small>
           </div>
         </div>
 
@@ -731,11 +730,11 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="list-new-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>List</strong><small>Mở danh sách hiện tại</small></span>
+              <span><strong>List</strong><small>Mở danh sách, bật ô lọc</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="list-new-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-              <span><strong>New</strong><small class="list-new-module-label">Mở màn tạo mới</small></span>
+              <span><strong>New</strong><small class="list-new-module-label">Tạo bản ghi mới</small></span>
             </button>
           </div>
         </div>
@@ -743,7 +742,7 @@
         <div class="special-module-workspace" data-module-view="supplier" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="supplier-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>Supplier List</strong><small>Mở danh sách Supplier hiện tại</small></span>
+            <span><strong>Supplier List</strong><small>Mở danh sách, bật ô lọc</small></span>
           </button>
           <div class="special-section">
             <label><span>Category</span>
@@ -756,24 +755,24 @@
                 <option value="Trims">Trims</option>
               </select>
             </label>
-            <button type="button" class="module-secondary-button" data-module-action="supplier-open">Đổi Category · mở Master</button>
+            <button type="button" class="module-secondary-button" data-module-action="supplier-open">Mở Master</button>
           </div>
           <div class="special-section special-search-section">
             <label><span>Tìm tên công ty</span><input class="supplier-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
             <button type="button" class="special-primary-button" data-module-action="supplier-find" data-validation-group="supplier" disabled>Tìm tất cả Category</button>
-            <small class="module-validation-hint" data-validation-hint="supplier">Nhập tên Supplier để tìm. Không cần mở List trước; app tự mở nếu chưa có.</small>
+            <small class="module-validation-hint" data-validation-hint="supplier">Nhập tên Supplier. App tự mở List nếu chưa mở.</small>
           </div>
         </div>
 
         <div class="special-module-workspace" data-module-view="buyer" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="buyer-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></svg>
-            <span><strong>Buyers List</strong><small>Mở danh sách Buyer hiện tại</small></span>
+            <span><strong>Buyers List</strong><small>Mở danh sách, bật ô lọc</small></span>
           </button>
           <div class="special-section special-search-section">
             <label><span>Find Buyer</span><input class="buyer-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
-            <button type="button" class="special-primary-button" data-module-action="buyer-find" data-validation-group="buyer" disabled>Tìm và mở Buyer đầu tiên</button>
-            <small class="module-validation-hint" data-validation-hint="buyer">Nhập tên Buyer để tìm.</small>
+            <button type="button" class="special-primary-button" data-module-action="buyer-find" data-validation-group="buyer" disabled>Tìm và mở Buyer</button>
+            <small class="module-validation-hint" data-validation-hint="buyer">Nhập tên Buyer.</small>
           </div>
         </div>
 
@@ -781,11 +780,11 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="company-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>List</strong><small>Mở trang Company Setup hiện tại</small></span>
+              <span><strong>Company Setup</strong><small>Mở trang thiết lập công ty</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="company-toggle-foc">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12a7 7 0 0 1 12-5l2 2"/><path d="M19 5v4h-4M19 12a7 7 0 0 1-12 5l-2-2"/><path d="M5 19v-4h4"/></svg>
-              <span><strong>Đổi FOC</strong><small>Chuyển FOC giữa ASN và GRN rồi lưu</small></span>
+              <span><strong>Đổi FOC</strong><small>Chuyển FOC giữa ASN và GRN</small></span>
             </button>
           </div>
           <div class="company-foc-state" aria-live="polite" hidden>
@@ -797,7 +796,7 @@
         <div class="generic-module-workspace" data-module-view="generic" hidden>
           <div class="generic-module-visual"><span class="generic-module-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 12h8M12 8v8"/></svg></span></div>
           <strong class="generic-module-title">Sẵn sàng mở trên WFX</strong>
-          <p>Module sẽ được mở trong trình duyệt làm việc hiện tại.</p>
+          <p>Mở module trong trình duyệt làm việc.</p>
           <button class="primary-button generic-module-open" type="button"><span>Mở module trên WFX</span></button>
         </div>
       </section>
@@ -808,7 +807,7 @@
         <div class="settings-sticky-header">
           <div class="sheet-handle"></div>
           <div class="sheet-heading">
-            <div><strong id="settings-title">Cài đặt WFX Smart</strong><span>Ba nhóm ngắn gọn, thay đổi được lưu ngay</span></div>
+            <div><strong id="settings-title">Cài đặt</strong><span>Thay đổi được lưu ngay.</span></div>
             <button class="icon-button settings-close-button" type="button" aria-label="Đóng cài đặt"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
           </div>
           <div class="settings-tabs" role="tablist" aria-label="Nhóm cài đặt">
@@ -830,7 +829,7 @@
         <section class="settings-panel settings-account-panel" data-settings-panel="account" hidden>
           <div class="auth-prompt" hidden data-tone="warning" aria-live="assertive">
             <span class="auth-prompt-icon" aria-hidden="true">!</span>
-            <div><strong class="auth-prompt-title">Cần thông tin đăng nhập</strong><p class="auth-prompt-message">Nhập tài khoản WFX để bắt đầu.</p></div>
+            <div><strong class="auth-prompt-title">Cần đăng nhập</strong><p class="auth-prompt-message">Nhập tài khoản WFX để bắt đầu.</p></div>
           </div>
           <div class="account-status-card">
             <span class="account-status-icon" data-state="unknown"><i></i></span>
@@ -840,39 +839,16 @@
               <small class="account-status-user" hidden></small>
             </div>
           </div>
-          <section class="reference-sync-card" aria-labelledby="reference-sync-title">
-            <div class="reference-sync-heading">
-              <span>
-                <strong id="reference-sync-title">Dữ liệu Article &amp; Style</strong>
-                <small class="reference-sync-status">Chưa kiểm tra dữ liệu server</small>
-              </span>
-              <button class="reference-sync-button" type="button">Đồng bộ ngay</button>
-            </div>
-            <div class="reference-sync-counts" aria-live="polite">
-              <span><b class="reference-sync-articles">0</b> Article</span>
-              <span><b class="reference-sync-options">0</b> lựa chọn Style</span>
-            </div>
-            <div class="reference-sync-admin" hidden>
-              <label>
-                <span>Admin key (chỉ lưu trên máy này)</span>
-                <input class="reference-sync-admin-key" type="password" autocomplete="off" placeholder="Nhập key khi cần publish" />
-              </label>
-              <div>
-                <button class="reference-sync-save-key" type="button">Lưu key</button>
-                <button class="reference-sync-publish" type="button">Publish dữ liệu hiện tại</button>
-              </div>
-            </div>
-          </section>
           <div class="account-connected-view" hidden>
-            <p>Phiên WFX đang hoạt động. Bạn chỉ cần đổi tài khoản khi muốn đăng nhập bằng User ID khác.</p>
+            <p>Đang đăng nhập. Đổi tài khoản nếu cần User ID khác.</p>
             <button class="account-change-button" type="button">Đổi tài khoản</button>
           </div>
           <div class="account-edit-view">
             <div class="form-grid">
-              <label><span>Tên đăng nhập WFX</span><input class="user-input" type="text" autocomplete="username" placeholder="Nhập User ID" /></label>
-              <label class="password-field"><span>Mật khẩu</span><div><input class="password-input" type="password" autocomplete="current-password" placeholder="Nhập lại mật khẩu" /><button class="toggle-password" type="button">Hiện</button></div></label>
+              <label><span>User ID</span><input class="user-input" type="text" autocomplete="username" placeholder="User ID đăng nhập WFX" /></label>
+              <label class="password-field"><span>Mật khẩu</span><div><input class="password-input" type="password" autocomplete="current-password" /><button class="toggle-password" type="button">Hiện</button></div></label>
             </div>
-            <p class="account-help">Mật khẩu được lưu riêng trên máy này và không hiển thị lại. Nếu WFX từ chối đăng nhập, ứng dụng sẽ mở màn hình này để bạn nhập lại.</p>
+            <p class="account-help">Mật khẩu chỉ lưu trên máy này, không hiện lại.</p>
             <p class="account-form-status" aria-live="polite"></p>
             <button class="save-button settings-save-button" type="button">
               <span>Lưu và đăng nhập WFX</span>
@@ -882,32 +858,61 @@
         </section>
 
         <section class="settings-panel settings-automation-panel" data-settings-panel="automation">
-          <div class="settings-section-heading"><span>Thao tác tự động</span><small>Điều chỉnh cách bảng điều khiển phối hợp với WFX và Windows</small></div>
-          <div class="setting-row hotkey-row"><div><strong>Phím tắt mở bảng điều khiển</strong><span>Bấm nút rồi nhấn tổ hợp mới</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
-          <label class="setting-row toggle-row"><div><strong>Trở về List sau khi thao tác</strong><span>Tắt để nhớ màn đang làm và tiếp tục ở lần mở sau</span></div><input class="return-list-input" type="checkbox" /><i></i></label>
-          <label class="setting-row toggle-row"><div><strong>Đưa Chrome lên khi chạy module</strong><span>Mặc định chuyển ngay sang cửa sổ WFX</span></div><input class="focus-chrome-input" type="checkbox" checked /><i></i></label>
-          <label class="setting-row toggle-row"><div><strong>Mở file Costing sau khi tải</strong><span>Mở bằng Excel hoặc ứng dụng mặc định</span></div><input class="open-costing-file-input" type="checkbox" checked /><i></i></label>
-          <label class="setting-row toggle-row"><div><strong>Khởi động cùng Windows</strong><span>Sẵn sàng ngay khi bạn đăng nhập máy</span></div><input class="autostart-input" type="checkbox" /><i></i></label>
-          <label class="setting-row toggle-row"><div><strong>Mở ẩn trong khay hệ thống</strong><span>Khởi động yên lặng, gọi bằng phím tắt</span></div><input class="start-hidden-input" type="checkbox" /><i></i></label>
-          <label class="setting-row toggle-row admin-mode-row" hidden><div><strong>Chế độ quản trị</strong><span>Chỉ hiện module quản trị được tài khoản cấp quyền</span></div><input class="admin-mode-input" type="checkbox" /><i></i></label>
+          <div class="settings-section-heading"><span>Khi chạy tác vụ</span></div>
+          <label class="setting-row toggle-row"><div><strong>Tự chuyển sang Chrome</strong><span>Bật: hiện WFX ngay khi chạy.</span></div><input class="focus-chrome-input" type="checkbox" checked /><i></i></label>
+          <label class="setting-row toggle-row"><div><strong>Quay về danh sách khi xong</strong><span>Bật: về danh sách. Tắt: ở lại màn này.</span></div><input class="return-list-input" type="checkbox" /><i></i></label>
+          <label class="setting-row toggle-row"><div><strong>Mở file Costing sau khi tải</strong><span>Mở bằng Excel hoặc app mặc định.</span></div><input class="open-costing-file-input" type="checkbox" checked /><i></i></label>
+
+          <div class="settings-section-heading"><span>Khởi động</span></div>
+          <div class="setting-row hotkey-row"><div><strong>Phím tắt mở bảng điều khiển</strong><span>Bấm nút rồi nhấn tổ hợp mới.</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
+          <label class="setting-row toggle-row"><div><strong>Khởi động cùng Windows</strong><span>Sẵn sàng ngay khi đăng nhập máy.</span></div><input class="autostart-input" type="checkbox" /><i></i></label>
+          <label class="setting-row toggle-row"><div><strong>Mở ẩn ở khay hệ thống</strong><span>Gọi lại bằng phím tắt.</span></div><input class="start-hidden-input" type="checkbox" /><i></i></label>
+
+          <div class="settings-section-heading"><span>Cập nhật &amp; dữ liệu</span></div>
+          <div class="setting-row update-info-row">
+            <div><strong>Cập nhật tự động</strong><span>Tự kiểm tra mỗi 4 giờ.</span></div>
+            <span class="settings-version-badge">v1.0</span>
+          </div>
+          <label class="setting-row toggle-row admin-mode-row" hidden><div><strong>Chế độ quản trị</strong><span>Hiện thêm module quản trị.</span></div><input class="admin-mode-input" type="checkbox" /><i></i></label>
+          <section class="reference-sync-card" aria-labelledby="reference-sync-title">
+            <div class="reference-sync-heading">
+              <span>
+                <strong id="reference-sync-title">Dữ liệu Article &amp; Style</strong>
+                <small class="reference-sync-status">Chưa kiểm tra.</small>
+              </span>
+              <button class="reference-sync-button" type="button">Đồng bộ ngay</button>
+            </div>
+            <div class="reference-sync-counts" aria-live="polite">
+              <span><b class="reference-sync-articles">0</b> Article</span>
+              <span><b class="reference-sync-options">0</b> lựa chọn Style</span>
+            </div>
+            <div class="reference-sync-admin" hidden>
+              <label>
+                <span>Key quản trị</span>
+                <input class="reference-sync-admin-key" type="password" autocomplete="off" placeholder="Chỉ lưu trên máy này" />
+              </label>
+              <div>
+                <button class="reference-sync-save-key" type="button">Lưu key</button>
+                <button class="reference-sync-publish" type="button">Đẩy lên server</button>
+              </div>
+            </div>
+          </section>
         </section>
 
         <section class="settings-panel settings-appearance-panel" data-settings-panel="appearance" hidden>
-          <div class="settings-section-heading"><span>Hiển thị &amp; thông báo</span><small>Giữ bảng điều khiển dễ nhìn nhưng không che công việc</small></div>
-          <label class="setting-row toggle-row"><div><strong>Luôn trên cùng</strong><span>Giữ bảng điều khiển phía trên các cửa sổ khác</span></div><input class="always-on-top-input" type="checkbox" checked /><i></i></label>
-        <label class="setting-row toggle-row"><div><strong>Thông báo khi xong việc</strong><span>Hiện thông báo WFX Smart khi bạn đang làm việc ở WFX</span></div><input class="toast-input" type="checkbox" checked /><i></i></label>
-        <button class="settings-inline-action toast-test-button" type="button">Thử thông báo</button>
-          <div class="setting-row appearance-row"><div><strong>Giao diện</strong><span>Chọn nền phù hợp với mắt bạn</span></div>
+          <div class="settings-section-heading"><span>Hiển thị</span></div>
+          <div class="setting-row appearance-row"><div><strong>Giao diện</strong><span>Sáng, tối hoặc theo Windows.</span></div>
             <div class="segmented" role="group" aria-label="Giao diện">
               <button class="seg-button" type="button" data-theme-choice="light" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>Sáng</button>
               <button class="seg-button" type="button" data-theme-choice="dark" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.3 6.3 0 0 0 9.5 9.5Z"/></svg>Tối</button>
               <button class="seg-button" type="button" data-theme-choice="system" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Tự động</button>
             </div>
           </div>
-          <div class="setting-row update-info-row">
-            <div><strong>Cập nhật tự động</strong><span>Kênh Stable • kiểm tra an toàn mỗi 4 giờ</span></div>
-            <span class="settings-version-badge">v1.0</span>
-          </div>
+          <label class="setting-row toggle-row"><div><strong>Luôn trên cùng</strong><span>Nổi trên các cửa sổ khác.</span></div><input class="always-on-top-input" type="checkbox" checked /><i></i></label>
+
+          <div class="settings-section-heading"><span>Thông báo</span></div>
+          <label class="setting-row toggle-row"><div><strong>Thông báo khi xong việc</strong><span>Báo khi đang làm việc trên WFX.</span></div><input class="toast-input" type="checkbox" checked /><i></i></label>
+          <button class="settings-inline-action toast-test-button" type="button">Thử thông báo</button>
         </section>
       </div>
     </div>
@@ -916,7 +921,7 @@
       <div class="settings-sheet feedback-sheet" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
         <div class="sheet-handle"></div>
         <div class="sheet-heading">
-          <div><strong id="feedback-title">Góp ý / Báo lỗi</strong><span>Gửi thẳng tới nhóm phát triển khi kênh báo lỗi sẵn sàng</span></div>
+          <div><strong id="feedback-title">Góp ý / Báo lỗi</strong><span>Gửi thẳng tới nhóm phát triển.</span></div>
           <button class="icon-button feedback-close-button" type="button" aria-label="Đóng góp ý"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
         </div>
         <label class="feedback-field"><span>Loại nội dung</span>
@@ -929,8 +934,8 @@
             <output id="feedback-character-count" class="feedback-character-count" aria-live="polite">0/2000</output>
           </span>
         </label>
-        <label class="feedback-diagnostics"><input class="feedback-diagnostics-input" type="checkbox" checked /><span>Đính kèm chẩn đoán an toàn (Windows, trạng thái Chrome và mã lỗi gần đây)</span></label>
-        <p class="feedback-privacy">Không gửi mật khẩu, cookie, Style Code hay ảnh màn hình tự động. Vui lòng không nhập mật khẩu vào nội dung.</p>
+        <label class="feedback-diagnostics"><input class="feedback-diagnostics-input" type="checkbox" checked /><span>Đính kèm chẩn đoán (Windows, Chrome, mã lỗi gần đây)</span></label>
+        <p class="feedback-privacy">Không gửi mật khẩu, cookie hay ảnh màn hình. Đừng nhập mật khẩu vào nội dung.</p>
         <p class="feedback-status" aria-live="polite"></p>
         <button class="save-button feedback-submit-button" type="button" disabled>Gửi báo cáo</button>
       </div>
@@ -940,7 +945,7 @@
       <div class="settings-sheet activity-sheet" role="dialog" aria-modal="true" aria-labelledby="activity-title">
         <div class="sheet-handle"></div>
         <div class="sheet-heading">
-          <div><strong id="activity-title">Lịch sử hoạt động</strong><span>Tự xóa sau 7 ngày • không lưu nội dung tìm kiếm</span></div>
+          <div><strong id="activity-title">Lịch sử hoạt động</strong><span>Tự xóa sau 7 ngày. Không lưu nội dung tìm kiếm.</span></div>
           <div class="log-heading-actions">
             <button class="history-refresh-button catalog-log-copy" type="button">Làm mới</button>
             <button class="icon-button log-close-button" type="button" aria-label="Đóng nhật ký"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
@@ -959,6 +964,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260804-3"></script>
+  <script src="panel.js?v=20260804-4"></script>
 </body>
 </html>

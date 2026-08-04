@@ -63,7 +63,7 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
   `Add & Continue` (hoặc `OK` nếu là PO cuối). Quay lại ứng dụng, tích ô xác nhận
   và bấm `Tiếp tục dòng kế`.
   Nếu muốn bỏ hẳn lượt này để làm lại từ file khác, bấm
-  `Bỏ lượt này và chọn file khác`.
+  `Chọn file khác`.
 - **Một bước bị lỗi.** Dòng bước đó chuyển sang màu cảnh báo. Form WFX hiện tại
   được giữ nguyên: xử lý nguyên nhân rồi bấm `Thử lại bước này`, hoặc bấm
   `Bỏ qua ...` để chuyển sang bước sau. Bỏ qua chỉ áp dụng cho ba bước điền dữ
@@ -120,7 +120,7 @@ ASN rồi thử tiếp.
    chứng từ đang mở.
 4. Điền các cột cần cập nhật trong Excel rồi lưu file.
 5. Bấm `Chọn file 8 cột`, kiểm tra số PO và số ô sẽ điền.
-6. Giữ đúng chứng từ trên WFX rồi bấm `Điền Order Details trên WFX`.
+6. Giữ đúng chứng từ trên WFX rồi bấm `Điền Order Details`.
 7. Kiểm tra kết quả và tự bấm `Save` trên WFX.
 
 Form riêng gồm tám cột: `PO No`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`,
@@ -135,7 +135,7 @@ luồng tạo mới.
 ### Mở Sale ASN New trống, không cần upload
 
 1. Mở `Tùy chọn nâng cao` trong thẻ `Tạo mới`.
-2. Bấm `Mở Sale ASN New trống trên WFX`.
+2. Bấm `Mở Sale ASN New trống`.
 3. Tạo chứng từ và thêm PO thủ công trực tiếp trên WFX.
 
 Nút này chỉ mở màn New. Ứng dụng không yêu cầu file Excel và không tự điền dữ
@@ -180,7 +180,7 @@ Delivery Terms theo mode đó:
 1. Chọn thẻ `Tra cứu`.
 2. Chọn `Invoice No.` hoặc `Buyer Order Ref/OC`.
 3. Nhập nội dung rồi bấm `Tìm`.
-4. Bấm `Xuất Buyer Invoice + Packing List` để lấy hai báo cáo trong cùng một file Excel.
+4. Bấm `Xuất Invoice + PKL` để lấy hai báo cáo trong cùng một file Excel.
 
 > [!luuy]
 > Report WFX có thể tải chậm. Ứng dụng chờ tối đa ba phút cho từng Packing List

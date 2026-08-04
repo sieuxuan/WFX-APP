@@ -7,7 +7,7 @@ Mở Buyers List hoặc tìm theo tên và mở Buyer đầu tiên phù hợp đ
 1. Mở module Buyer List.
 2. Bấm `Buyers List` nếu bạn muốn mở toàn bộ danh sách.
 3. Nhập tên hoặc một phần tên công ty vào ô Find Buyer.
-4. Bấm `Tìm và mở Buyer đầu tiên`.
+4. Bấm `Tìm và mở Buyer`.
 5. Chờ WFX mở màn hình chỉnh sửa của Buyer phù hợp đầu tiên.
 
 ## Mẹo

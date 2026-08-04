@@ -34,7 +34,7 @@ hoặc điền file Costing.
 3. Nhập Admin key một lần và bấm `Lưu key`. Key được mã hóa bằng Windows DPAPI,
    chỉ dùng được bởi đúng tài khoản Windows trên máy đó.
 4. Sau khi cache Article và dropdown Style đã đúng, bấm
-   `Publish dữ liệu hiện tại` và xác nhận.
+   `Đẩy lên server` và xác nhận.
 
 User khác sẽ nhận snapshot mới ở lần tự đồng bộ tháng kế tiếp hoặc ngay khi họ
 bấm `Đồng bộ ngay`.

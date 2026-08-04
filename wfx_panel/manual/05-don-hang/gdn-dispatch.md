@@ -9,7 +9,7 @@ Tạo `(GDN) Dispatch` từ Invoice GRN sau khi hàng thành phẩm đã nhập 
 3. Mở module `(GDN) Dispatch` trong WFX Smart.
 4. Nhập đúng `Invoice GRN`.
 5. Đánh dấu xác nhận GRN đã hoàn tất ít nhất 15 phút.
-6. Bấm `Submit & tạo Dispatch`.
+6. Bấm `Tạo Dispatch`.
 7. Theo dõi sáu bước ngay trong thẻ `Tiến độ GDN`.
 
 WFX Smart sẽ tự tải report, làm mới file Excel, Process Package và chọn giao dịch

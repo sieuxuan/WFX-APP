@@ -8,7 +8,7 @@ Mở RMPO List hoặc lọc danh sách bằng nhà cung cấp và số RMPO cùn
 2. Bấm `List` nếu bạn chỉ muốn mở danh sách hiện tại.
 3. Nhập tên vào ô Supplier nếu bạn muốn lọc theo nhà cung cấp.
 4. Nhập số vào ô RMPO No. nếu bạn muốn lọc theo đơn.
-5. Bấm `Tìm theo các điều kiện đã nhập`.
+5. Bấm `Tìm`.
 6. Chờ WFX hiển thị các dòng phù hợp với mọi điều kiện đã điền.
 
 ## Mẹo

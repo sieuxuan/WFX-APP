@@ -95,26 +95,26 @@ ERROR_CODE_INFO = {
     ),
     "MODULE_SEARCH_NOT_CONFIRMED": (
         "WFX chưa xác nhận kết quả tìm kiếm",
-        "Kiểm tra màn List và thử lại sau khi grid tải xong.",
+        "Chờ bảng tải xong rồi thử lại.",
     ),
     "MODULE_SEARCH_FAILED": (
         "Không thể thao tác ô tìm kiếm",
         "Mở Log kỹ thuật để xem lỗi gốc rồi thử lại.",
     ),
     "FLOATING_FILTER_NOT_READY": (
-        "Floating Filter chưa sẵn sàng",
-        "App chưa chuẩn bị được bộ lọc tự động; hãy chờ WFX rồi thử lại.",
+        "Chưa bật được ô lọc trên bảng",
+        "Chờ WFX tải xong bảng rồi thử lại.",
     ),
     "PANEL_ERROR": (
         "Ứng dụng gặp lỗi khi chạy tác vụ",
-        "Mở Log kỹ thuật và dùng Run ID để đối chiếu.",
+        "Mở Log kỹ thuật để xem mã lượt chạy.",
     ),
 }
 
 ERROR_CODE_INFO.update(
     {
         "SUPPLIER_INVOICE_ACTION_NOT_READY": (
-            "Nút Delete/Cancel Supplier Invoice chưa sẵn sàng",
+            "Nút Delete/Cancel chưa sẵn sàng",
             "Mở lại Supplier Inv List, tìm đúng invoice rồi thử lại.",
         ),
         "SUPPLIER_INVOICE_CANCEL_FAILED": (
@@ -207,7 +207,7 @@ ERROR_CODE_INFO.update(
         ),
         "STYLE_FIELD_NOT_AVAILABLE": (
             "Không điền được một trường Style",
-            "Giữ form Article đang mở, xem Log kỹ thuật và kiểm tra danh sách giá trị WFX.",
+            "Giữ form Article đang mở, xem Log kỹ thuật.",
         ),
         "STYLE_FILE_EMPTY": (
             "File Tạo Style chưa có dữ liệu",
@@ -307,7 +307,7 @@ ERROR_CODE_INFO.update(
         ),
         "COSTING_APPLY_FAILED": (
             "Không thể áp dụng Costing",
-            "Dry-run lại file và kiểm tra các field WFX trước khi Save.",
+            "Xem trước lại file và kiểm tra field WFX trước khi Save.",
         ),
         "COSTING_FIELD_APPLY_FAILED": (
             "WFX không nhận một field Costing",
@@ -327,15 +327,15 @@ ERROR_CODE_INFO.update(
         ),
         "COSTING_SAVE_ALERT": (
             "WFX từ chối Save Costing",
-            "Kiểm tra field bắt buộc trong thông báo WFX rồi dry-run lại.",
+            "Điền field bắt buộc WFX báo thiếu rồi xem trước lại.",
         ),
         "COSTING_VERIFY_FAILED": (
             "WFX chưa xác nhận dữ liệu Costing sau Save",
-            "Kiểm tra các field báo sai trong Log rồi dry-run lại.",
+            "Xem field báo sai trong Log rồi xem trước lại.",
         ),
         "CATALOG_NOT_OPEN": (
             "Catalog Master chưa sẵn sàng",
-            "Bấm Mở Catalog và chờ Master/Floating Filter hiển thị.",
+            "Bấm Mở Catalog và chờ bảng Master hiện ra.",
         ),
         "CATALOG_SEARCH_FAILED": (
             "Không thể tìm trong Catalog",
@@ -350,12 +350,12 @@ ERROR_CODE_INFO.update(
             "Kiểm tra cài đặt Chrome/Edge và quyền chạy ứng dụng.",
         ),
         "CODE_FILTER_FAILED": (
-            "Không thể thao tác Code Filter",
-            "Mở lại Catalog Master và Floating Filter rồi thử lại.",
+            "Không dùng được ô lọc Code",
+            "Mở lại Catalog Master rồi thử lại.",
         ),
         "CODE_FILTER_TIMEOUT": (
-            "Code Filter phản hồi quá chậm",
-            "Chờ grid Catalog ổn định rồi thử lại.",
+            "Ô lọc Code phản hồi quá chậm",
+            "Chờ bảng Catalog tải xong rồi thử lại.",
         ),
         "COMPANY_FOC_FAILED": (
             "Không thể đổi cấu hình FOC",
@@ -382,12 +382,12 @@ ERROR_CODE_INFO.update(
             "Kiểm tra màn Home WFX và đăng nhập lại nếu cần.",
         ),
         "FILTER_RESULTS_NOT_READY": (
-            "Kết quả filter chưa ổn định",
-            "Chờ grid tải xong rồi thử tìm lại.",
+            "Kết quả lọc chưa ổn định",
+            "Chờ bảng tải xong rồi tìm lại.",
         ),
         "FILTER_VALUE_NOT_CONFIRMED": (
-            "WFX chưa nhận giá trị filter",
-            "Mở lại Floating Filter rồi nhập lại.",
+            "WFX chưa nhận giá trị ô lọc",
+            "Mở lại ô lọc rồi nhập lại.",
         ),
         "LOGIN_FAILED": (
             "Đăng nhập WFX thất bại",
@@ -398,16 +398,16 @@ ERROR_CODE_INFO.update(
             "Giữ đúng CostSheet Open đang chọn, kiểm tra Log rồi thử lại.",
         ),
         "COSTING_CLEAR_DEPENDENCY_TARGET_CHANGED": (
-            "Các section Costing đã thay đổi khi đang Clear Dependency",
+            "Section Costing đã đổi khi đang Clear",
             "Chờ Costing tải ổn định rồi bấm Clear All Dependency lại.",
         ),
         "COSTING_CLEAR_UNSUPPORTED": (
-            "Phiên bản tự động hóa chưa hỗ trợ Clear All Dependency",
+            "Bản này chưa hỗ trợ Clear All Dependency",
             "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
         ),
         "OC_EDI_FAILED": (
-            "Không thể hoàn tất Upload OC trên EDI Buyer PO",
-            "Mở Log kỹ thuật, kiểm tra màn EDI Buyer PO và thử lại trước bước Create Transaction.",
+            "Không hoàn tất được Upload OC",
+            "Kiểm tra màn EDI Buyer PO trước khi Create Transaction.",
         ),
         "OC_EDI_NOT_READY": (
             "EDI Buyer PO chưa sẵn sàng",
@@ -423,7 +423,7 @@ ERROR_CODE_INFO.update(
         ),
         "OC_UPLOAD_FILE_MISSING": (
             "File Upload OC tạm không còn tồn tại",
-            "Chọn lại file OC trong app; nếu lỗi lặp lại, dùng Run ID để kiểm tra thư mục tạm.",
+            "Chọn lại file OC. Nếu vẫn lỗi, xem Log kỹ thuật.",
         ),
         "LOGIN_TIMEOUT": (
             "WFX phản hồi quá chậm khi đăng nhập",
@@ -486,7 +486,7 @@ ERROR_CODE_INFO.update(
             "Chọn đúng một dòng trên WFX rồi bấm tải lại.",
         ),
         "SALE_ASN_DOCS_NOT_AVAILABLE": (
-            "Invoice không có nút Docs hoặc tài khoản chưa được cấp quyền",
+            "Không thấy nút Docs, hoặc chưa đủ quyền",
             "Kiểm tra đúng dòng Sale ASN và quyền Documents trên WFX.",
         ),
         "SALE_ASN_REPORT_NOT_READY": (
@@ -499,7 +499,7 @@ ERROR_CODE_INFO.update(
         ),
         "SALE_ASN_REPORT_MERGE_FAILED": (
             "Không ghép được hai report Sale ASN",
-            "Mở Log kỹ thuật và dùng Run ID để kiểm tra file report.",
+            "Mở Log kỹ thuật để xem file report.",
         ),
         "SALE_ASN_DOCUMENTS_SAVE_FAILED": (
             "Không lưu được file Documents Sale ASN",
@@ -539,7 +539,7 @@ ERROR_CODE_INFO.update(
         ),
         "SALE_ASN_CREATE_STEPS_REQUIRED": (
             "Chưa chọn bước Sale ASN cần thực hiện",
-            "Tích ít nhất một bước: Thêm PO, Order Details, Style Details hoặc Shipping Info.",
+            "Tích ít nhất một bước trong Tùy chọn nâng cao.",
         ),
         "SALE_ASN_FIELD_NOT_EDITABLE": (
             "Một ô Sale ASN không thể chỉnh sửa",
@@ -666,16 +666,16 @@ ERROR_CODE_INFO.update(
             "Chờ form tải xong rồi thử lại.",
         ),
         "SAMPLE_FILES_UNSUPPORTED": (
-            "Phiên bản tự động hóa chưa hỗ trợ Check File Sample",
+            "Bản này chưa hỗ trợ kiểm tra file Sample",
             "Cập nhật WFX Smart lên bản mới nhất rồi thử lại.",
         ),
         "SAMPLE_FILE_SEARCH_FAILED": (
             "Không thể đọc kết quả Sample để kiểm tra file",
-            "Mở lại Sample List, chờ grid ổn định rồi thử lại.",
+            "Mở lại Sample List, chờ bảng tải xong rồi thử lại.",
         ),
         "SAMPLE_FILE_OPEN_FAILED": (
             "Không thể mở Style từ kết quả Sample",
-            "Tìm lại Sample và kiểm tra Style Code trên grid WFX.",
+            "Tìm lại Sample và kiểm tra Style Code trên WFX.",
         ),
         "SESSION_CHECK_FAILED": (
             "Không thể kiểm tra phiên WFX",
@@ -748,7 +748,7 @@ ERROR_CODE_INFO.update(
         ),
         "GDN_PACKAGE_PROCESS_FAILED": (
             "WFX từ chối Process Package GDN",
-            "Kiểm tra lỗi hiển thị trên WFX; invoice có thể đã được import trước đó.",
+            "Xem lỗi trên WFX. Invoice có thể đã import trước đó.",
         ),
         "GDN_PENDING_NOT_FOUND": (
             "Không tìm thấy package GDN Pending mới",
@@ -772,7 +772,7 @@ ERROR_CODE_INFO.update(
         ),
         "GDN_TRANSACTION_UNCONFIRMED": (
             "Chưa xác nhận được kết quả GDN Dispatch",
-            "Không chạy lại ngay; kiểm tra transaction mới nhất trên WFX để tránh tạo trùng.",
+            "Đừng chạy lại. Kiểm tra transaction mới nhất trên WFX.",
         ),
         "GDN_WORKBOOK_RELOAD_FAILED": (
             "Không reload được file XLSX GDN",

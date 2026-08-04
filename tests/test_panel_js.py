@@ -798,7 +798,7 @@ def test_auto_update_banner_uses_one_click_installer():
     assert "wfxSetUpdateState" in JS
     assert '".update-banner-button"' in JS
     assert "installUpdate(event.currentTarget)" in JS
-    assert '"Cập nhật phần mềm mới"' in JS
+    assert '"Cập nhật ngay"' in JS
     assert "commit" not in JS.lower()
 
 
