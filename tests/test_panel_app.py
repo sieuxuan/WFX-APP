@@ -1153,21 +1153,40 @@ def test_native_foreground_fallback_hides_panel_after_grace(monkeypatch):
     assert hidden == [True]
 
 
-def test_native_foreground_fallback_defers_until_action_finishes(monkeypatch):
+def test_native_foreground_fallback_hides_during_running_action(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
     app._panel_visible = True
-    running = iter([True, False])
-    app.api.is_action_running = lambda: next(running)
+    app.api.is_action_running = lambda: True
     hidden = []
     app.hide_panel = lambda: hidden.append(True)
-    monkeypatch.setattr(module.time, "monotonic", lambda: 20.0)
+    times = iter([20.0, 20.5])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
 
     app._track_panel_foreground(os.getpid() + 1)
-    assert app._panel_hide_pending is True
+    assert hidden == []
     app._track_panel_foreground(os.getpid() + 1)
 
+    assert hidden == [True]
+
+
+def test_blur_request_hides_panel_during_running_action(monkeypatch):
+    app = panel_app.PanelApp()
+    app._panel_visible = True
+    app._panel_pointer_inside = False
+    app.api.is_action_running = lambda: True
+    hidden = []
+    app.hide_panel = lambda: hidden.append(True)
+    monkeypatch.setattr(
+        panel_app,
+        "_foreground_process_id",
+        lambda: os.getpid() + 1,
+    )
+
+    result = app.request_panel_hide()
+
+    assert result["code"] == "PANEL_HIDDEN_ON_BLUR"
     assert hidden == [True]
 
 

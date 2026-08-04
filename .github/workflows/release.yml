@@ -314,8 +314,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} sửa lỗi ngày Sale ASN và rút ngắn thời
-            gian chờ khi bộ cài cần đóng ứng dụng để nâng cấp.
+            WFX Smart ${{ env.VERSION }} hoàn thiện luồng Sale ASN nhiều PO/style,
+            Shipping Info và khả năng chạy nền khi người dùng chuyển cửa sổ.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.

@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 from openpyxl import Workbook, load_workbook
+from playwright.sync_api import sync_playwright
 
 from wfx_panel import prefs
 from wfx_panel.automation import sale_asn_create
@@ -92,7 +93,6 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert SALE_ASN_COLUMNS == (
         "Style No",
         "PO No",
-        "HS CODE",
         "Qty",
         "Carton",
         "NW",
@@ -101,6 +101,7 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "FOB Price",
         "Service Price",
         "Cargo Ready Date",
+        "HS CODE",
         "Invoice No",
         "Invoice Date",
         "Shipping Bill No",
@@ -111,7 +112,7 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "Ship To",
         "Shipping Mode",
     )
-    assert sheet["K2"].number_format == "dd/mm/yyyy"
+    assert sheet["J2"].number_format == "dd/mm/yyyy"
     assert sheet["M2"].number_format == "dd/mm/yyyy"
     assert sheet["O2"].number_format == "dd/mm/yyyy"
     assert "SEASON" not in SALE_ASN_COLUMNS
@@ -129,7 +130,7 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert shipping_validation.allow_blank is False
     date_validations = [item for item in validations if item.type == "date"]
     assert {str(item.sqref) for item in date_validations} == {
-        "K2:K2001",
+        "J2:J2001",
         "M2:M2001",
         "O2:O2001",
     }
@@ -150,7 +151,7 @@ def test_reader_preserves_row_order_and_applies_business_fallbacks(tmp_path):
     assert document["rows"][0]["shipping_bill_no"] == "INV-001"
     assert document["rows"][1]["invoice_date"] == "2026-08-01"
     assert document["rows"][1]["shipping_bill_date"] == "2026-08-02"
-    assert document["rows"][1]["cargo_ready_date"] == ""
+    assert document["rows"][1]["cargo_ready_date"] == "2026-08-03"
     assert document["rows"][1]["destination"] == "Germany"
     assert document["rows"][0]["hs_code"] == "62014010"
     assert document["rows"][0]["shipping_mode"] == "AIR"
@@ -207,10 +208,25 @@ def test_reader_ignores_every_row_without_po_number(tmp_path):
     assert [row["source_row"] for row in document["rows"]] == [2, 3]
 
 
-def test_reader_reports_duplicate_po_and_required_cells(tmp_path):
+def test_reader_allows_one_po_to_have_multiple_styles(tmp_path):
     rows = _valid_rows()
     rows[1]["PO No"] = "PO-001"
-    rows[1]["Style No"] = ""
+    source = tmp_path / "same-po-multiple-styles.xlsx"
+    _input_workbook(source, rows)
+
+    document = read_sale_asn_workbook(source)
+
+    assert [row["po_no"] for row in document["rows"]] == ["PO-001", "PO-001"]
+    assert [row["style_no"] for row in document["rows"]] == [
+        rows[0]["Style No"],
+        rows[1]["Style No"],
+    ]
+
+
+def test_reader_rejects_only_duplicate_po_and_style_pair(tmp_path):
+    rows = _valid_rows()
+    rows[1]["PO No"] = rows[0]["PO No"]
+    rows[1]["Style No"] = rows[0]["Style No"]
     source = tmp_path / "invalid.xlsx"
     _input_workbook(source, rows)
 
@@ -218,8 +234,7 @@ def test_reader_reports_duplicate_po_and_required_cells(tmp_path):
         read_sale_asn_workbook(source)
 
     assert raised.value.code == "SALE_ASN_FILE_VALIDATION_FAILED"
-    assert any("PO No bị trùng" in error for error in raised.value.errors)
-    assert any("Style No bắt buộc" in error for error in raised.value.errors)
+    assert any("PO No + Style No bị trùng" in error for error in raised.value.errors)
 
 
 def test_reader_relaxes_fields_when_continuing_only_order_details(tmp_path):
@@ -265,10 +280,10 @@ def test_full_template_can_prefill_current_order_details(tmp_path):
     workbook = load_workbook(target)
     sheet = workbook["SALE ASN"]
     assert sheet["B2"].value == "PO-001"
-    assert sheet["E2"].value == 2
-    assert sheet["F2"].value == 9.5
-    assert sheet["I2"].value == 12.75
-    assert sheet["K2"].value.date() == date(2026, 8, 3)
+    assert sheet["D2"].value == 2
+    assert sheet["E2"].value == 9.5
+    assert sheet["H2"].value == 12.75
+    assert sheet["J2"].value.date() == date(2026, 8, 3)
     assert sheet.tables["SaleASNInput"].ref == "A1:T21"
     workbook.close()
 
@@ -337,6 +352,24 @@ def test_order_details_reader_requires_a_value_and_unique_po(tmp_path):
     assert raised.value.code == "SALE_ASN_ORDER_FILE_VALIDATION_FAILED"
     assert any("công thức" in error for error in raised.value.errors)
     assert any("PO No bị trùng" in error for error in raised.value.errors)
+
+
+def test_order_details_reader_fills_single_cargo_date_to_all_rows(tmp_path):
+    source = tmp_path / "cargo-date-order-details.xlsx"
+    _order_details_workbook(
+        source,
+        [
+            {"PO No": "PO-001", "Cargo Ready Date": date(2026, 8, 3)},
+            {"PO No": "PO-002", "Carton": 2},
+        ],
+    )
+
+    document = read_sale_asn_order_details_workbook(source)
+
+    assert [row["cargo_ready_date"] for row in document["rows"]] == [
+        "2026-08-03",
+        "2026-08-03",
+    ]
 
 
 def test_buyer_scan_waits_for_lazy_bound_select_options(monkeypatch):
@@ -608,6 +641,59 @@ def test_sale_asn_order_grid_uses_exact_wfx_columns():
     }
 
 
+def test_sale_asn_order_grid_disambiguates_same_po_by_style():
+    markup = """
+      <table id="gridOrderDetails_tblGridContent"><tbody>
+        <tr class="trContent" id="row-a">
+          <td id="colOrderRefNum">PO-001</td>
+          <td id="colStyle">JLD-SMOW17905-M ACEL JACKET-MEN</td>
+          <td id="colTotalNoOfCartons">1</td>
+        </tr>
+        <tr class="trContent" id="row-b">
+          <td id="colOrderRefNum">PO-001</td>
+          <td id="colStyle">JLD-STYLE-B-M CLAES PANT (SWV002/STYLE-B)</td>
+          <td id="colTotalNoOfCartons">2</td>
+        </tr>
+      </tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            result = page.evaluate(
+                sale_asn_create._MARK_ORDER_GRID_CELL_JS,
+                {
+                    "table": sale_asn_create.ORDER_GRID_SELECTOR,
+                    "po_no": "PO-001",
+                    "style_no": "M Acel Jacket",
+                    "column_id": "colTotalNoOfCartons",
+                },
+            )
+            assert result["ok"] is True
+            assert result["row_id"] == "row-a"
+            assert page.locator(
+                "#row-a #colTotalNoOfCartons"
+            ).get_attribute("data-wfx-sale-asn-target") == "1"
+        finally:
+            browser.close()
+
+
+def test_missing_order_rows_uses_po_and_style_identity():
+    rows = [
+        {"po_no": "PO-001", "style_no": "M Acel Jacket"},
+        {"po_no": "PO-001", "style_no": "STYLE-B"},
+    ]
+    present = {
+        (
+            sale_asn_create._fold("PO-001"),
+            sale_asn_create._fold("JLD-SMOW17905-M ACEL JACKET-MEN"),
+        )
+    }
+
+    assert sale_asn_create._missing_order_rows(rows, present) == [rows[1]]
+
+
 def test_sale_asn_style_details_targets_exact_hts_cell(monkeypatch):
     captured = {}
 
@@ -653,8 +739,9 @@ def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatc
         def wait_for(self, **_kwargs):
             return None
 
-        def click(self, **_kwargs):
+        def evaluate(self, _script):
             calls["add_clicked"] = True
+            return {"ok": True, "tag": "DIV", "id": ""}
 
     class FakeMainFrame:
         def locator(self, selector):
@@ -717,6 +804,74 @@ def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatc
     ]
     assert any("còn thiếu 1 PO" in message for message in logs)
     assert logs[-1] == "[SALE ASN] Đã xác nhận đủ PO trong Order Details."
+
+
+def test_reopens_add_order_popup_when_wfx_closes_it_between_rows(monkeypatch):
+    rows_added = [
+        {"source_row": 2, "po_no": "PO-1", "style_no": "STYLE A"},
+        {"source_row": 3, "po_no": "PO-2", "style_no": "STYLE B"},
+    ]
+    context = object()
+    page = object()
+    popup_frame = object()
+    calls = []
+
+    class FakeAdd:
+        @property
+        def first(self):
+            return self
+
+        def wait_for(self, **kwargs):
+            calls.append(("add-wait", kwargs))
+
+        def evaluate(self, _script):
+            calls.append(("add-dom-click",))
+            return {"ok": True, "tag": "DIV", "id": ""}
+
+    class FakeMainFrame:
+        def locator(self, selector):
+            assert selector == f"xpath={sale_asn_create.ADD_ORDER_XPATH}"
+            return FakeAdd()
+
+    main_frame = FakeMainFrame()
+    popup_checks = 0
+
+    def fake_frame_with_selector(selected_context, selector, timeout_s):
+        nonlocal popup_checks
+        assert selected_context is context
+        calls.append(("frame", selector, timeout_s))
+        if selector == sale_asn_create.PO_POPUP_SELECTOR:
+            popup_checks += 1
+            if popup_checks == 1:
+                raise sale_asn_create.PlaywrightTimeoutError("popup closed")
+            return page, popup_frame
+        assert selector == "#sectionOrderDetails"
+        return page, main_frame
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        fake_frame_with_selector,
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_wait_order_grid",
+        lambda frame, rows, timeout_s: calls.append(
+            ("grid", frame, list(rows), timeout_s)
+        ),
+    )
+    logs = []
+
+    result = sale_asn_create._ensure_po_popup_for_next_row(
+        context,
+        rows_added,
+        logs.append,
+    )
+
+    assert result is popup_frame
+    assert ("grid", main_frame, rows_added, 15) in calls
+    assert ("add-dom-click",) in calls
+    assert any("đã mở lại Add Order Details" in message for message in logs)
 
 
 def test_sale_asn_resume_after_manual_final_ok_skips_closed_popup(monkeypatch):
@@ -976,12 +1131,18 @@ def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
         and mode == "closest"
         for selector, value, mode, _timeout in calls
     )
-    assert any(
-        selector == sale_asn_create.PORT_OF_LOADING_SELECTOR
-        and value == "HAN- Hanoi"
-        and mode == "exact"
-        for selector, value, mode, _timeout in calls
+    for port_selector in sale_asn_create.PORT_OF_LOADING_SELECTORS:
+        assert (port_selector, "HAN - Hanoi", "exact", 6) in calls
+    assert ("#ddlShipmentMode", "AIR", "exact", 6) in calls
+    shipment_index = next(
+        index for index, call in enumerate(calls) if call[0] == "#ddlShipmentMode"
     )
+    port_index = next(
+        index
+        for index, call in enumerate(calls)
+        if call[0] in sale_asn_create.PORT_OF_LOADING_SELECTORS
+    )
+    assert shipment_index < port_index
     assert (
         "#ddlDeliveryTerms",
         "FCA HANOI, VIETNAM",
@@ -994,7 +1155,7 @@ def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
         "factory_first",
         6,
     ) in calls
-    assert calls[-1][0] == "#ddlNotify1"
+    assert all(selector != "#ddlNotify1" for selector, *_rest in calls)
     assert any("Shipping Info bỏ qua Factory: WFX không có lựa chọn" in item for item in logs)
     assert logs[-1] == (
         "[SALE ASN] Đã điền Shipping Info; bỏ qua 1 trường và chưa bấm Save."
@@ -1004,15 +1165,15 @@ def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
 def test_shipping_modes_map_to_port_and_delivery_terms():
     assert sale_asn_create.SHIPPING_MODE_VALUES == {
         "AIR": {
-            "port_of_loading": "HAN- Hanoi",
+            "port_of_loading": "HAN - Hanoi",
             "delivery_terms": "FCA HANOI, VIETNAM",
         },
         "SEA": {
-            "port_of_loading": "HPH- Haiphong",
+            "port_of_loading": "HPH - Haiphong",
             "delivery_terms": "FOB HAIPHONG, VIETNAM",
         },
         "COURIER": {
-            "port_of_loading": "HAN- Hanoi",
+            "port_of_loading": "HAN - Hanoi",
             "delivery_terms": "EXW",
         },
     }
@@ -1030,7 +1191,7 @@ def test_fuzzy_dropdown_requires_one_unique_best_match():
     assert sale_asn_create._best_dropdown_label(["OTHER"], "missing") is None
 
 
-def test_factory_dropdown_uses_first_relative_match_and_skips_dotted_rows():
+def test_factory_dropdown_is_fuzzy_case_insensitive_and_skips_dotted_rows():
     assert sale_asn_create._best_factory_label(
         [
             "PRO SPORTS GIAO THUY JSC.",
@@ -1040,9 +1201,19 @@ def test_factory_dropdown_uses_first_relative_match_and_skips_dotted_rows():
         "GIAO THUY",
     ) == "PRO SPORTS GIAO THUY JSC"
     assert sale_asn_create._best_factory_label(
+        ["PROSPORTS GIAO THUY JOINT STOCK COMPANY", "OTHER FACTORY"],
+        "pro sports giao thuy",
+    ) == "PROSPORTS GIAO THUY JOINT STOCK COMPANY"
+    assert sale_asn_create._best_factory_label(
         ["PRO SPORTS NAM DINH", "OTHER FACTORY"],
         "GIAO THUY",
     ) is None
+
+
+def test_shipping_control_chooses_visible_host_for_alternative_port_cells():
+    source = sale_asn_create._SET_CONTROL_JS
+    assert "document.querySelectorAll(spec.selector)" in source
+    assert "hosts.find(shown)" in source
 
 
 def test_sale_asn_table_value_confirmation_handles_wfx_formats():

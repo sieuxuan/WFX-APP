@@ -47,11 +47,12 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   Windows Run key sau khi giữ được single-instance lock. Nếu người dùng đã tắt
   thì phải giữ nguyên lựa chọn đó. Chạy source development không được tự đăng
   ký Python/Pythonw vào startup.
-- Panel tự thu khi mất focus. Ngoài `window.blur`, monitor foreground Win32 là
-  fallback bắt buộc vì WebView2 đôi khi bỏ lỡ blur. Nếu automation đang chạy,
-  panel ghi nhận yêu cầu và chỉ thu khi tác vụ kết thúc **và** con trỏ không còn
-  nằm trong UI. Trạng thái pointer của WebView phải được đồng bộ sang native;
-  không được thu panel chỉ vì automation vừa đưa Chrome lên foreground.
+- Panel tự thu khi mất focus, kể cả khi automation đang chạy, để user có thể
+  thu nhỏ UI hoặc chuyển sang Chrome theo dõi WFX mà không dừng task. Ngoài
+  `window.blur`, monitor foreground Win32 là fallback bắt buộc vì WebView2 đôi
+  khi bỏ lỡ blur. Trạng thái pointer của WebView phải được đồng bộ sang native;
+  không được thu panel chỉ vì automation vừa đưa Chrome lên foreground khi con
+  trỏ vẫn đang thao tác trong UI.
 - Chuyển giữa List/module và thanh tiến trình dùng animation ngắn chỉ với
   transform/opacity; phải tôn trọng `prefers-reduced-motion`. Nút vừa kích hoạt
   giữ highlight trong khi tác vụ chạy để người dùng biết flow nào đang xử lý.
@@ -409,8 +410,9 @@ Các workflow riêng hiện có:
   thanh trên nên dùng được ở cả hai thẻ. Không được thêm tầng tab thứ hai bên
   trong thẻ Tạo mới. Thẻ `Tạo mới` là một cột dọc Buyer → file → review → chạy.
   Buyer được quét từ `#Cell_Buyer`, cache lại, và dùng listbox gợi ý (không dùng
-  `<datalist>`): gõ từ 2 ký tự, tối đa 20 kết quả, khớp exact thì hiện dấu ✓ và
-  chưa khớp thì viền cảnh báo ngay tại ô. Chọn bước chạy, luồng `Chỉ điền Order
+  `<datalist>`): gõ từ 2 ký tự thì lọc tối đa 20 kết quả; nút dropdown mở toàn bộ
+  Buyer đã cache; khớp exact thì hiện dấu ✓ và chưa khớp thì viền cảnh báo ngay
+  tại ô. Chọn bước chạy, luồng `Chỉ điền Order
   Details` 8 cột và nút `Mở Sale ASN New trống` nằm trong khối gấp
   `Tùy chọn nâng cao`, mặc định đóng và tự bung khi có bước đang bỏ tích hoặc khi
   một thao tác 8 cột trả kết quả. Thẻ `Tra cứu` gom bộ lọc Search và nút xuất
@@ -442,17 +444,19 @@ Các workflow riêng hiện có:
   `SALE_ASN_FORM_COMPLETED`, thẻ kết quả liệt kê cảnh báo Shipping Info và có nút
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
   xuất báo cáo vì user còn phải Save trên WFX.
-  Form Excel có đúng 20 cột theo thứ tự `Style No`, `PO No`, `HS CODE`, `Qty`,
-  `Carton`, `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
-  `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
+  Form Excel có đúng 20 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Carton`,
+  `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
+  `HS CODE`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
   `Destination`, `FTY`, `Consignee Address`, `Ship To`, `Shipping Mode`; bỏ
   `SEASON`/`DESCRIPTION`. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
-  đúng thứ tự dòng. Style No./PO No./Destination/FTY bắt buộc; Shipping Mode chỉ
+  đúng thứ tự dòng. Một PO có thể có nhiều Style; chỉ cặp PO No. + Style No. trùng
+  hoàn toàn là lỗi. Style No./PO No./Destination/FTY bắt buộc; Shipping Mode chỉ
   bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
   nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;
   HS Code/Qty/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
-  Consignee Address/Ship To được phép trống. Cargo Ready Date trống phải giữ
-  trống theo từng dòng, không kế thừa và không dùng ngày hiện tại. Ba cột Cargo
+  Consignee Address/Ship To được phép trống. Nếu cả file không có Cargo Ready
+  Date thì giữ trống và không dùng ngày hiện tại; nếu có ngày ở một dòng thì
+  dùng ngày có dữ liệu đầu tiên để điền mọi dòng còn trống. Ba cột Cargo
   Ready Date/Invoice Date/Shipping Bill Date phải có date validation trong form
   Excel và cho phép để trống. Invoice Date/Shipping Bill Date vẫn kế thừa ngày
   đầu tiên, không có nữa mới dùng ngày hiện tại; Shipping Bill No. trống thì dùng
@@ -460,7 +464,9 @@ Các workflow riêng hiện có:
   Automation chọn Buyer, mở Add Order Details và tìm tuần tự theo các tiêu chí
   đang bật trong `prefs.sale_asn_po_search_fields`, thứ tự cố định PO → Style →
   Destination. Mặc định bật đủ ba; dữ liệu hỏng hoặc danh sách rỗng phải quay về
-  đủ ba. Sau mỗi lần thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay;
+  đủ ba. Style từ file là từ khóa gần đúng (ví dụ `M Acel Jacket` phải khớp được
+  `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX), không phải mã exact. Sau mỗi lần
+  thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay;
   nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì select all rồi Add & Continue/
   OK đúng một lần. Không dùng Dispatched Qty để tự quyết định. Nếu 0 kết quả, giữ
   cửa sổ cho user xử lý thủ công; app dùng review token để tiếp tục từ dòng kế,
@@ -473,17 +479,25 @@ Các workflow riêng hiện có:
   Các PO trước dùng
   `Add & Continue`; ở PO cuối phải giữ checkbox đang chọn và click đúng link
   `OK` bên trong cell action để WFX vừa add PO cuối vừa đóng popup. Không click
+  theo tọa độ/viewport: Search, Add và action popup phải hoạt động khi WFX bị
+  scroll hoặc Chrome không ở foreground. Nếu WFX tự đóng popup giữa hai PO,
+  automation phải xác nhận các dòng vừa thêm trong Order Details, mở lại Add
+  Order Details và tiếp tục đúng dòng kế, không thêm lại dòng đã có. Không click
   cell `td` bao ngoài, và không bấm `Add & Continue` trước `OK` vì thao tác đó
   xóa selection khiến WFX báo `Please select a record`. Sau click `OK`, popup
   có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
   trang Sale ASN chính rồi điền 7 cột Order Details, map Style gần đúng để điền
   HS Code, rồi điền Shipping Info với Consignor Address `BILL-ADD - PSHK`,
-  Factory theo FTY bằng option đầu tiên chứa đủ các từ user nhập, bỏ qua mọi
-  option Factory có dấu chấm ở cuối; Notify 1 là option đầu tiên. Consignee Address và Ship To
+  Factory theo FTY bằng lựa chọn gần đúng tốt nhất, không phân biệt hoa/thường,
+  và bỏ qua mọi option Factory có dấu chấm ở cuối. Không tự điền Notify 1.
+  Shipment Mode phải
+  điền exact vào `#ddlShipmentMode` trước Port of Loading; Port of Loading phải
+  thử điền cả `#Cell_AWBLoadingPort` và `#Cell_BLMotherLoadingPort`; chỉ cần một
+  host tồn tại và nhận giá trị là thành công. Consignee Address và Ship To
   lấy option gần đúng tốt nhất duy nhất trong dropdown; không có hoặc đồng hạng
   thì bỏ qua có warning. Shipping Mode sinh Port of Loading/Delivery Terms:
-  AIR → `HAN- Hanoi`/`FCA HANOI, VIETNAM`; SEA → `HPH- Haiphong`/
-  `FOB HAIPHONG, VIETNAM`; COURIER → `HAN- Hanoi`/`EXW`. Field Shipping Info
+  AIR → `HAN - Hanoi`/`FCA HANOI, VIETNAM`; SEA → `HPH - Haiphong`/
+  `FOB HAIPHONG, VIETNAM`; COURIER → `HAN - Hanoi`/`EXW`. Field Shipping Info
   không có option tương ứng được bỏ qua có warning. Luồng luôn dừng trước Save
   để user kiểm tra trên WFX.
   Luồng Documents nhận Invoice No. đang nhập

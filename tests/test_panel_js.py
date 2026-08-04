@@ -173,7 +173,6 @@ def test_sale_asn_create_flow_is_reviewed_and_resumable():
         assert f'"{method}"' in JS
     assert "SALE_ASN_PO_SELECTION_REQUIRED" in JS
     assert "result.resumable" in JS
-    assert "INTERACTIVE_RESULT_CODES.has(result.code) || result.resumable" in JS
     assert '"Tiếp tục dòng kế" : "Thử lại bước này"' in JS
     assert "saleAsnExactBuyer" in JS
     assert "saleAsnReviewToken" in JS
@@ -681,16 +680,17 @@ def test_overlays_trap_focus_and_restore_it():
     assert 'addEventListener("keydown", trapOverlayFocus, true)' in JS
 
 
-def test_autohide_remembers_busy_blur_and_hides_when_idle():
-    assert "hidePanelWhenIdle = true" in JS
-    assert "hidePanelWhenIdle && !pointerInsidePanel" in JS
+def test_autohide_can_hide_while_task_is_running():
     assert 'document.documentElement.addEventListener("pointerenter"' in JS
     assert 'document.documentElement.addEventListener("pointerleave"' in JS
-    assert 'window.addEventListener("focus"' in JS
     assert "set_panel_pointer_inside?.(true)" in JS
     assert "set_panel_pointer_inside?.(false)" in JS
-    focus_block = JS[JS.index('window.addEventListener("focus"') :]
-    assert "hidePanelWhenIdle = false" in focus_block[:250]
+    blur_block = JS[
+        JS.index('window.addEventListener("blur"'):
+        JS.index('window.addEventListener("keydown", trapOverlayFocus')
+    ]
+    assert "if (busy)" not in blur_block
+    assert "request_panel_hide" in blur_block
     assert "hasPendingUserInput" not in JS
 
 
@@ -803,13 +803,15 @@ def test_auto_update_banner_uses_one_click_installer():
 
 
 def test_panel_auto_hides_when_focus_leaves_the_app():
-    # Click ra ngoài (blur) → panel tự thu; nếu đang bận thì thu ngay khi xong.
+    # Click ra ngoài (blur) → panel tự thu kể cả khi task vẫn đang chạy.
     assert 'window.addEventListener("blur"' in JS
     assert "request_panel_hide" in JS
-    assert "hidePanelWhenIdle = true" in JS
+    blur_block = JS[
+        JS.index('window.addEventListener("blur"'):
+        JS.index('window.addEventListener("keydown", trapOverlayFocus')
+    ]
+    assert "if (busy)" not in blur_block
     assert "if (pointerInsidePanel) {" in JS
-    assert '"MULTIPLE_RESULTS"' in JS
-    assert "INTERACTIVE_RESULT_CODES.has(result.code)" in JS
 
 
 def test_bubble_launcher_is_wired():

@@ -18,8 +18,9 @@ Hai cách gọi khác:
 ## Mẹo
 
 > [!meo]
-> Bảng điều khiển tự thu lại khi bạn bấm sang cửa sổ khác. Nếu một tác vụ đang
-> chạy, bảng chờ tác vụ xong mới thu.
+> Bảng điều khiển tự thu lại khi bạn bấm sang cửa sổ khác, kể cả khi một tác vụ
+> đang chạy. Task vẫn tiếp tục bình thường nên bạn có thể chuyển sang Chrome để
+> theo dõi thao tác trên WFX; bấm bubble hoặc `Ctrl + Shift + X` để mở lại tiến độ.
 
 > [!meo]
 > Đổi tổ hợp phím trong Cài đặt, thẻ Tự động hóa, dòng `Phím tắt mở bảng điều

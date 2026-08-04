@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from playwright.sync_api import sync_playwright
+
 from wfx_panel import panel_app
 
 UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
@@ -127,7 +129,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260804-1"',
+        'src="panel.js?v=20260804-3"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -208,6 +210,12 @@ def test_sale_asn_workspace_uses_one_flat_guided_flow():
     # Buyer dùng listbox gợi ý thay cho datalist.
     assert "<datalist" not in workspace
     assert 'class="sale-asn-buyer-suggestions"' in workspace
+    assert 'class="sale-asn-buyer-dropdown"' in workspace
+    assert 'aria-label="Mở danh sách Buyer"' in workspace
+
+    panel_js = (UI / "panel.js").read_text(encoding="utf-8")
+    assert "renderSaleAsnBuyerSuggestions({ showAll: true })" in panel_js
+    assert '.sale-asn-buyer-dropdown")?.addEventListener("click"' in panel_js
 
 
 def test_no_module_screen_repeats_a_button_label():
@@ -578,6 +586,47 @@ def test_favorites_scroll_without_moving_module_search():
     assert "overflow" not in favorites_list
     assert "max-height" not in favorites_list
     assert ".favorites-list .module-card:last-child:nth-child(odd)" not in css
+
+
+def test_disabled_favorite_stays_centered_while_a_task_is_running():
+    """Busy state must not remove the star's centering transform."""
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    markup = f"""
+      <style>{css}</style>
+      <div class="module-card" style="width: 220px">
+        <button class="module-button" type="button">
+          <span class="module-icon"></span><span class="module-name">Module</span>
+        </button>
+        <button class="module-favorite-button" type="button">★</button>
+      </div>
+    """
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            card = page.locator(".module-card")
+            favorite = page.locator(".module-favorite-button")
+
+            def center_offset():
+                card_box = card.bounding_box()
+                favorite_box = favorite.bounding_box()
+                assert card_box is not None
+                assert favorite_box is not None
+                return (
+                    favorite_box["y"]
+                    + favorite_box["height"] / 2
+                    - card_box["y"]
+                    - card_box["height"] / 2
+                )
+
+            assert abs(center_offset()) < 0.5
+            favorite.evaluate("button => { button.disabled = true; }")
+            page.wait_for_timeout(250)
+            assert abs(center_offset()) < 0.5
+        finally:
+            browser.close()
 
 
 def test_header_alerts_are_labeled_instead_of_ambiguous_red_dots():
