@@ -186,9 +186,19 @@ Mỗi nút trong module là một flow riêng:
    treo Chrome khi đóng tab đó. Việc "dùng lại grid Master đang mở" vẫn chạy vì
    nó tái dùng DOM đang mở trong Chrome, không phụ thuộc Playwright có giữ kết
    nối. Không dùng object Playwright sync từ thread khác.
-8. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
+8. Playwright attach qua CDP là ĐỔI thư mục tải của chính Chrome sang temp
+   riêng của nó (`Browser.setDownloadBehavior` = `allowAndName`), rồi xóa sạch
+   thư mục đó khi ngắt. Nên trong lúc một flow chạy, file NGƯỜI DÙNG tự bấm tải
+   trên WFX cũng bị nuốt vào đó và mất hẳn — Downloads rỗng, mục trong Chrome
+   Download history trỏ vào đường dẫn đã chết nên bấm mở file/`Show in folder`
+   đều không có tác dụng. Vì vậy runtime theo dõi mọi sự kiện `download` của
+   context và, trong `_release_connections()` TRƯỚC khi nhả driver, lưu các
+   download không có flow nào nhận về `%USERPROFILE%\Downloads` kèm log. Flow
+   nào tự `save_as` phải gọi `claim_download()` ngay trước đó, nếu không mỗi lần
+   xuất báo cáo lại sinh thêm một bản thừa trong Downloads.
+9. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
    không thêm cơ chế terminate/close page từ thread UI.
-9. Chỉ tác vụ thật sự chạm Playwright/Chrome mới được bọc `_run()`. Các lời gọi
+10. Chỉ tác vụ thật sự chạm Playwright/Chrome mới được bọc `_run()`. Các lời gọi
    HTTP thuần như `sync_reference_data`/`sync_article_library` phải chạy ngoài
    `_run()`: `_run()` giữ `_run_lock` và chiếm automation worker suốt cả timeout
    mạng, nên vòng lặp nền sẽ trả `ACTION_IN_PROGRESS` cho mọi cú bấm của người

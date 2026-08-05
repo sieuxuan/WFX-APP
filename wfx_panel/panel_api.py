@@ -27,6 +27,7 @@ from wfx_panel import (
 )
 from wfx_panel import prefs as prefs_default
 from wfx_panel.automation import runtime as automation_runtime
+from wfx_panel.automation.runtime import RUNTIME as AUTOMATION_RUNTIME
 from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.catalog_controller import CatalogController
 from wfx_panel.oc_workbook import OCWorkbookError, prepare_oc_workbook
@@ -393,6 +394,9 @@ class PanelAPI:
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
         self._sink = sink
+        # Runtime cứu file người dùng tự tải trong lúc flow chạy; họ phải thấy
+        # được nó đã lưu vào đâu.
+        AUTOMATION_RUNTIME.log_sink = self._log
 
     def set_result_sink(
         self, sink: Callable[[str, dict, float], None]

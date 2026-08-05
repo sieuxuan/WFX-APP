@@ -32,7 +32,7 @@ from wfx_panel.automation.modules import (
     _open_list_search_context,
     _search_input_in_frame,
 )
-from wfx_panel.automation.runtime import cancellation_deferred
+from wfx_panel.automation.runtime import cancellation_deferred, claim_download
 from wfx_panel.automation.search_specs import SALE_ASN_SEARCH_SPEC
 
 PACKING_LIST_SELECTOR = "#lnkANFPackingList"
@@ -561,6 +561,7 @@ def _download_report_excel(
             raise PlaywrightTimeoutError(f"WFX không bắt đầu download {label}.")
         with cancellation_deferred():
             target.parent.mkdir(parents=True, exist_ok=True)
+            claim_download(downloads[0])
             downloads[0].save_as(target)
         if not target.is_file() or target.stat().st_size <= 0:
             raise RuntimeError(f"File {label} tải về bị rỗng.")

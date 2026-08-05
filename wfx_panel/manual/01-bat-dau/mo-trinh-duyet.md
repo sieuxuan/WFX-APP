@@ -26,3 +26,4 @@ Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công vi�
 |---|---|
 | Bấm mở nhưng chưa thấy trình duyệt | Chờ vài giây rồi bấm `Kiểm tra lại` trên dải thông báo. |
 | Đèn Chrome sáng nhưng đèn WFX chưa sáng | Mở cửa sổ trình duyệt và đăng nhập WFX, sau đó bấm nút kiểm tra lại ở góc dưới. |
+| Tự bấm tải file trên WFX nhưng không mở được từ Download history | Trong lúc ứng dụng đang chạy một tác vụ, Chrome ghi file vào thư mục tạm rồi thư mục đó bị dọn, nên mục trong Download history trỏ vào chỗ không còn. Ứng dụng tự lưu lại file đó vào thư mục `Downloads` của bạn khi tác vụ kết thúc; mở thẳng ở đó. |

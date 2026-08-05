@@ -31,7 +31,11 @@ from wfx_panel.automation.oc import (
     _select_exact_option,
     _toolbar_link,
 )
-from wfx_panel.automation.runtime import cancellation_deferred, checkpoint
+from wfx_panel.automation.runtime import (
+    cancellation_deferred,
+    checkpoint,
+    claim_download,
+)
 
 REPORT_URL = (
     "https://prosports.worldfashionexchange.com/WFXBase4.0/"
@@ -301,6 +305,7 @@ def _download_report(
             )
         with cancellation_deferred():
             target.parent.mkdir(parents=True, exist_ok=True)
+            claim_download(downloads[0])
             downloads[0].save_as(target)
         if not target.is_file() or target.stat().st_size <= 0:
             raise DispatchFlowError(

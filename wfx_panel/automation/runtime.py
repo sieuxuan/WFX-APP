@@ -7,11 +7,13 @@ toàn cho các workflow dài.
 
 from __future__ import annotations
 
+import os
 import queue
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TypeVar
 
 from playwright.sync_api import Browser, Playwright
@@ -19,6 +21,28 @@ from playwright.sync_api import sync_playwright as _sync_playwright
 
 T = TypeVar("T")
 CDP_CONNECT_TIMEOUT_MS = 10_000
+
+
+def _user_downloads_dir() -> Path:
+    """Thư mục Downloads thật của người dùng, nơi Chrome vốn lưu file."""
+
+    profile = os.getenv("USERPROFILE") or str(Path.home())
+    return Path(profile) / "Downloads"
+
+
+def _available_download_path(directory: Path, file_name: str) -> Path:
+    """Không ghi đè file sẵn có: thêm hậu tố (2), (3)… như Chrome."""
+
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / file_name
+    if not target.exists():
+        return target
+    stem, suffix = target.stem, target.suffix
+    for index in range(2, 1000):
+        candidate = directory / f"{stem} ({index}){suffix}"
+        if not candidate.exists():
+            return candidate
+    return directory / f"{stem} ({os.getpid()}){suffix}"
 
 
 class AutomationCancelled(BaseException):
@@ -70,6 +94,12 @@ class AutomationRuntime:
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._closed = False
+        # Playwright đổi thư mục tải của Chrome sang temp riêng của nó rồi xóa
+        # sạch khi ngắt CDP. Download nào flow không nhận là của người dùng tự
+        # bấm; phải trả về Downloads thật, nếu không họ tải xong mà mất file.
+        self._unclaimed_downloads: list[Any] = []
+        self._tracked_contexts: set[int] = set()
+        self.log_sink: Callable[[str], None] | None = None
 
     def _ensure_thread(self) -> None:
         """Bảo đảm có worker sống. Trả về sau khi thread đã được xếp hàng chạy.
@@ -136,8 +166,63 @@ class AutomationRuntime:
             if self._thread_id == my_id:
                 self._thread_id = None
 
+    def _log(self, message: str) -> None:
+        sink = self.log_sink
+        if sink is None:
+            return
+        try:
+            sink(message)
+        except Exception:
+            pass
+
+    def _track_downloads(self, browser: Browser) -> None:
+        for context in browser.contexts:
+            key = id(context)
+            if key in self._tracked_contexts:
+                continue
+            try:
+                context.on("download", self._on_download)
+            except Exception:
+                continue
+            self._tracked_contexts.add(key)
+
+    def _on_download(self, download: Any) -> None:
+        # Không bind thẳng list.append: hàm cứu phải xóa tại chỗ, còn nếu gán
+        # list mới thì listener sẽ ghi vào list cũ đã tách rời và mất file.
+        self._unclaimed_downloads.append(download)
+
+    def claim_download(self, download: Any) -> None:
+        """Flow báo download này là của nó, đừng cứu về Downloads."""
+        for index, pending in enumerate(self._unclaimed_downloads):
+            if pending is download:
+                del self._unclaimed_downloads[index]
+                return
+
+    def _rescue_unclaimed_downloads(self) -> None:
+        """Lưu file người dùng tự tải trước khi Playwright xóa thư mục tạm."""
+        pending = list(self._unclaimed_downloads)
+        self._unclaimed_downloads.clear()
+        self._tracked_contexts.clear()
+        if not pending:
+            return
+        directory = _user_downloads_dir()
+        for download in pending:
+            try:
+                name = str(download.suggested_filename or "").strip()
+                target = _available_download_path(directory, name or "wfx-download")
+                download.save_as(str(target))
+            except Exception:
+                continue
+            self._log(f"[DOWNLOAD] Đã lưu file bạn tải về {target}.")
+
     def _release_connections(self) -> None:
         """Nhả driver sau mỗi flow; Chrome ngoài vẫn mở và giữ phiên đăng nhập."""
+        # Phải chạy TRƯỚC khi nhả driver: playwright.stop() xóa thư mục artifacts
+        # chứa file tạm, sau đó không cứu được nữa.
+        try:
+            self._rescue_unclaimed_downloads()
+        except Exception:
+            pass
         self._browser = None
         if self._playwright is not None:
             try:
@@ -207,6 +292,7 @@ class AutomationRuntime:
         if self._browser is not None:
             try:
                 if self._browser.is_connected():
+                    self._track_downloads(self._browser)
                     return self._browser
             except Exception:
                 pass
@@ -214,6 +300,7 @@ class AutomationRuntime:
             cdp_url,
             timeout=CDP_CONNECT_TIMEOUT_MS,
         )
+        self._track_downloads(self._browser)
         return self._browser
 
     def invalidate_browser(self, browser: Browser | None = None) -> None:
@@ -283,6 +370,11 @@ def connect_browser(playwright: Any, cdp_url: str) -> Browser:
 
 def invalidate_browser(browser: Browser | None = None) -> None:
     RUNTIME.invalidate_browser(browser)
+
+
+def claim_download(download: Any) -> None:
+    """Đánh dấu download thuộc về flow, không cứu về Downloads."""
+    RUNTIME.claim_download(download)
 
 
 def recycle_playwright(
