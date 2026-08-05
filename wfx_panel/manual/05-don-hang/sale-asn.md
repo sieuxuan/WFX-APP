@@ -25,9 +25,11 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
    `Style Details` và `Shipping Info` sáng dần theo đúng bước ứng dụng đang làm.
    Ba bước đầu hiện thêm số dòng đang xử lý, ví dụ `Order Details 5/12`, nên bạn
    biết ứng dụng đang chạy tới đâu chứ không phải đứng im.
-10. Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm
+10. Khi hoàn tất, ứng dụng tự đưa thẻ kết quả vào tầm nhìn để bạn thấy ngay các
+    cảnh báo và nút `Xuất Invoice + PKL`.
+11. Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm
     `Save`.
-11. Sau khi đã Save, bấm `Xuất Invoice + PKL` trong thẻ kết quả để sang thẳng thẻ
+12. Sau khi đã Save, bấm `Xuất Invoice + PKL` trong thẻ kết quả để sang thẳng thẻ
     `Tra cứu` với Invoice No. đã điền sẵn.
 
 > [!luuy]
@@ -85,7 +87,9 @@ cảnh báo trong thẻ kết quả để bạn bổ sung thủ công trước k
 `Shipment Mode` trước, sau đó điền Port of Loading vào cả trường WFX có sẵn:
 `AWB Loading Port` và `BL Mother Loading Port`. Chỉ cần một trường tồn tại và
 nhận giá trị là bước này thành công. `Notify 1` được giữ nguyên để bạn tự chọn
-khi cần.
+khi cần. Nếu `Country Of Destination` không có lựa chọn khớp vì WFX dùng tên
+quốc gia đầy đủ, ứng dụng giữ nguyên `Final Destination` theo giá trị mặc định
+của `Country Of Destination`; không đổi riêng `Final Destination`.
 
 ### Bỏ Add PO và làm tiếp từ chứng từ đang mở
 
@@ -171,7 +175,7 @@ Delivery Terms theo mode đó:
 
 | Shipping Mode | Port of Loading | Delivery Terms |
 |---|---|---|
-| `AIR` | `HAN - Hanoi` | `FCA HANOI, VIETNAM` |
+| `AIR` | `HAN - Hanoi` | `FCA HANOI, VIET NAM` |
 | `SEA` | `HPH - Haiphong` | `FOB HAIPHONG, VIETNAM` |
 | `COURIER` | `HAN - Hanoi` | `EXW` |
 

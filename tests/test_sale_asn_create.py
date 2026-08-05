@@ -1177,7 +1177,7 @@ def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
     assert shipment_index < port_index
     assert (
         "#ddlDeliveryTerms",
-        "FCA HANOI, VIETNAM",
+        "FCA HANOI, VIET NAM",
         "exact",
         6,
     ) in calls
@@ -1198,7 +1198,7 @@ def test_shipping_modes_map_to_port_and_delivery_terms():
     assert sale_asn_create.SHIPPING_MODE_VALUES == {
         "AIR": {
             "port_of_loading": "HAN - Hanoi",
-            "delivery_terms": "FCA HANOI, VIETNAM",
+            "delivery_terms": "FCA HANOI, VIET NAM",
         },
         "SEA": {
             "port_of_loading": "HPH - Haiphong",
@@ -1209,6 +1209,58 @@ def test_shipping_modes_map_to_port_and_delivery_terms():
             "delivery_terms": "EXW",
         },
     }
+
+
+def test_shipping_keeps_default_final_destination_when_country_is_not_found(
+    monkeypatch,
+):
+    calls = []
+    logs = []
+
+    class FakeTab:
+        @property
+        def first(self):
+            return self
+
+        def wait_for(self, **_kwargs):
+            return None
+
+        def click(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, selector):
+            assert selector == "#tabShippingInfo"
+            return FakeTab()
+
+    def fake_set_control(_frame, selector, value, mode, timeout_s):
+        calls.append((selector, value, mode, timeout_s))
+        if selector == "#Cell_DestinationCountry":
+            return {"ok": False, "reason": "option-not-found"}
+        return {"ok": True}
+
+    monkeypatch.setattr(sale_asn_create, "_set_control", fake_set_control)
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+
+    sale_asn_create._fill_shipping(
+        FakeFrame(),
+        {
+            "invoice_no": "INV-1",
+            "invoice_date": "2026-08-01",
+            "shipping_bill_no": "SB-1",
+            "shipping_bill_date": "2026-08-02",
+            "destination": "DE",
+            "factory": "FACTORY",
+            "consignee_address": "CONSIGNEE",
+            "ship_to": "SHIP TO",
+            "shipping_mode": "AIR",
+        },
+        logs.append,
+    )
+
+    assert any(call[0] == "#Cell_DestinationCountry" for call in calls)
+    assert all(call[0] != "#Cell_FinalDestination" for call in calls)
+    assert any("Giữ nguyên Final Destination" in line for line in logs)
 
 
 def test_fuzzy_dropdown_requires_one_unique_best_match():

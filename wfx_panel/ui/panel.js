@@ -2253,6 +2253,14 @@
         : "Xuất Invoice + PKL";
     }
     done.hidden = false;
+    // Thẻ kết quả nằm dưới progress và có thể ngoài viewport của vùng module.
+    // Chờ layout nhận chiều cao mới rồi đưa kết quả vào tầm nhìn, để user thấy
+    // ngay cảnh báo và nút Xuất Invoice + PKL sau khi flow hoàn tất.
+    setTimeout(() => {
+      if (!done.hidden) {
+        done.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }, 0);
   }
 
   function handoffSaleAsnDocuments() {

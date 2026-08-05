@@ -1932,6 +1932,60 @@ def test_background_session_maintenance_relogs_expired_session(tmp_path):
     assert api.get_status()["session_active"] is True
 
 
+def test_user_action_reopens_closed_chrome_relogs_and_retries(tmp_path):
+    fake = FakeLogin()
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    attempts = []
+
+    def action():
+        attempts.append(True)
+        if len(attempts) == 1:
+            return {
+                "ok": False,
+                "code": "CHROME_CLOSED",
+                "message": "closed",
+            }
+        return {"ok": True, "code": "MODULE_OPENED", "message": "ready"}
+
+    result = api._run("open_module", action)
+
+    assert result["code"] == "MODULE_OPENED"
+    assert len(attempts) == 2
+    assert fake.calls[:2] == [
+        ("start_chrome",),
+        ("run", "alice", "pw", "psh"),
+    ]
+    assert api.get_status()["session_active"] is True
+
+
+def test_user_action_does_not_retry_when_chrome_cannot_reopen(tmp_path):
+    class CannotOpenChrome(FakeLogin):
+        def start_chrome(self, log=print):
+            self.calls.append(("start_chrome",))
+            return {
+                "ok": False,
+                "code": "CHROME_OPEN_FAILED",
+                "message": "cannot open",
+                "chrome_alive": False,
+            }
+
+    fake = CannotOpenChrome()
+    prefs.save_account("alice", "pw", base_dir=tmp_path)
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    attempts = []
+
+    result = api._run(
+        "open_module",
+        lambda: attempts.append(True)
+        or {"ok": False, "code": "CHROME_CLOSED", "message": "closed"},
+    )
+
+    assert result["code"] == "CHROME_OPEN_FAILED"
+    assert len(attempts) == 1
+    assert fake.calls == [("start_chrome",)]
+
+
 def test_healthy_session_maintenance_is_quiet_and_not_a_user_job(tmp_path):
     class HealthyLogin(FakeLogin):
         def check_session(self, log=print):

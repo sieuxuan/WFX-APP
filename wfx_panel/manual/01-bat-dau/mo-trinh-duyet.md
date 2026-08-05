@@ -15,6 +15,10 @@ Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công vi�
 > [!meo]
 > Bạn có thể để cửa sổ trình duyệt mở trong suốt ngày làm việc. WFX Smart dùng
 > lại cửa sổ đó cho các tác vụ tiếp theo.
+>
+> Nếu bạn đóng trình duyệt rồi bấm một thao tác trong module, WFX Smart tự mở
+> lại trình duyệt, đăng nhập bằng tài khoản đã lưu và tiếp tục thao tác đó một
+> lần. Bạn không cần quay ra màn hình chính để mở lại thủ công.
 
 ## Gặp lỗi thì sao
 

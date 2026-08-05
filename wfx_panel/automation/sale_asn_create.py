@@ -65,7 +65,7 @@ SHIPMENT_MODE_SELECTOR = "#ddlShipmentMode"
 SHIPPING_MODE_VALUES = {
     "AIR": {
         "port_of_loading": "HAN - Hanoi",
-        "delivery_terms": "FCA HANOI, VIETNAM",
+        "delivery_terms": "FCA HANOI, VIET NAM",
     },
     "SEA": {
         "port_of_loading": "HPH - Haiphong",
@@ -1612,8 +1612,23 @@ def _fill_shipping(
         _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
         mapped = {}
     shipping_values = {**first_row, **mapped}
+    destination_country_confirmed: bool | None = None
     for selector, key, mode in SHIPPING_FIELDS:
         label = SHIPPING_FIELD_LABELS.get(selector, selector)
+        if (
+            selector == "#Cell_FinalDestination"
+            and destination_country_confirmed is False
+        ):
+            # WFX khởi tạo Final Destination giống Country Of Destination.
+            # Nếu tên trong file không khớp danh sách country (WFX thường dùng
+            # tên quốc gia đầy đủ), giữ nguyên cả hai giá trị mặc định thay vì
+            # chỉ đổi Final Destination và tạo ra một cặp không nhất quán.
+            _write_log(
+                log,
+                "[SALE ASN] Giữ nguyên Final Destination theo "
+                "Country Of Destination mặc định vì không chọn được country.",
+            )
+            continue
         if key == "__FIRST":
             value = ""
         elif key.startswith("__"):
@@ -1643,7 +1658,10 @@ def _fill_shipping(
             results.append(result)
             if result.get("ok"):
                 _wait(frame, 150)
-        if any(result.get("ok") for result in results):
+        field_confirmed = any(result.get("ok") for result in results)
+        if selector == "#Cell_DestinationCountry":
+            destination_country_confirmed = field_confirmed
+        if field_confirmed:
             continue
         if exception_reason:
             warning = f"{label}: {exception_reason}"
