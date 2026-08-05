@@ -31,8 +31,17 @@
     notification.classList.add("notification-visible");
   };
 
-  document.querySelector(".notification-close").addEventListener("click", () => {
+  const close = document.querySelector(".notification-close");
+  close.addEventListener("click", (event) => {
+    // Nút đóng nằm trong thân toast; chặn nổi bọt để nó không mở luôn panel.
+    event.stopPropagation();
     notification.classList.remove("notification-visible");
     window.setTimeout(() => window.pywebview?.api?.dismiss?.(), 150);
+  });
+
+  // Bấm vào thân toast là ý định xem kết quả, nên phải mở lại panel.
+  notification.addEventListener("click", () => {
+    notification.classList.remove("notification-visible");
+    window.setTimeout(() => window.pywebview?.api?.activate?.(), 150);
   });
 })();

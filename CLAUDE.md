@@ -105,6 +105,12 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   WebView2 hidden và vẫn lưu ở Notification Center; WebView notification là
   fallback, giữ thông báo mới nhất nếu chưa load. Settings có nút thử toast,
   toast không được lấy focus.
+  Bấm vào THÂN toast phải mở lại panel qua `show_from_tray()`, vì đó là lý do
+  người dùng bấm. Toast native gửi `NIN_BALLOONUSERCLICK` (`0x0405`) chứ không
+  phải `WM_LBUTTONUP`, và pystray không xử lý message này, nên
+  `_WfxTrayIcon._on_notify` phải tự bắt. Toast WebView bắt click trên chính
+  `.notification` và gọi bridge `activate()`; nút đóng nằm bên trong nên bắt
+  buộc `stopPropagation()` để bấm ✕ chỉ đóng chứ không kéo panel lên.
 - Updater chờ instance hiện tại tự đóng 15 giây. Nếu pywebview/WebView2 còn giữ
   process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
   process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo
@@ -415,12 +421,28 @@ Các workflow riêng hiện có:
   Buyer được quét từ `#Cell_Buyer`, cache lại, và dùng listbox gợi ý (không dùng
   `<datalist>`): gõ từ 2 ký tự thì lọc tối đa 20 kết quả; nút dropdown mở toàn bộ
   Buyer đã cache; khớp exact thì hiện dấu ✓ và chưa khớp thì viền cảnh báo ngay
-  tại ô. Chọn bước chạy, luồng `Chỉ điền Order
-  Details` 8 cột và nút `Mở Sale ASN New trống` nằm trong khối gấp
-  `Tùy chọn nâng cao`, mặc định đóng và tự bung khi có bước đang bỏ tích hoặc khi
-  một thao tác 8 cột trả kết quả. Thẻ `Tra cứu` gom bộ lọc Search và nút xuất
+  tại ô. Chọn bước chạy, tiêu chí tìm PO và nút `Mở Sale ASN New trống` nằm
+  trong khối gấp `Tùy chọn nâng cao`, mặc định đóng và tự bung khi có bước đang
+  bỏ tích. KHÔNG có luồng `Chỉ điền Order Details` 8 cột: form 8 cột, hai nút
+  `Xuất form từ WFX`/`Chọn file 8 cột` và các API
+  `read/write_sale_asn_order_details_*`, `prepare/start/cancel_sale_asn_order_details`,
+  `run_sale_asn_order_details` đã bị gỡ. Chứng từ đã có sẵn PO thì bỏ tích bước
+  `Thêm PO`, bấm `Xuất PO đang mở` để lấy form 22 cột đã điền sẵn PO rồi chạy
+  các bước còn lại. Nút đó chạy `scan_sale_asn_order_details` (chỉ đọc grid
+  Order Details đang mở) rồi `save_sale_asn_continue_template` (ghi form 22 cột);
+  hai hàm này phải được giữ lại.
+  Thẻ `Tạo mới` chỉ hiện đúng phần của giai đoạn hiện tại qua
+  `data-stage-view` (`idle`/`review`/`running`/`done`) do `setSaleAsnStageView`
+  đặt: từ `review` trở đi, hàng Buyer, nút chọn file và `Tùy chọn nâng cao` thu
+  về một dòng ngữ cảnh `Buyer · tên file` kèm nút `Đổi`. Mở lại module phải suy
+  giai đoạn từ `saleAsnReviewToken`, không được để kẹt ở `done` làm mất hẳn hàng
+  Buyer/chọn file. `.sale-asn-inline-status` nằm TRONG khối setup nên chỉ sống ở
+  `idle`: nó là hướng dẫn chọn Buyer/file, không phải trạng thái tác vụ (footer
+  mới là nơi đó). Không được ghi lại vào nó câu mà thẻ review/kết quả đã in.
+  Thông điệp khi lượt chạy dừng đi vào `.sale-asn-review-note` cạnh nút Bắt đầu.
+  Thẻ `Tra cứu` gom bộ lọc Search và nút xuất
   Buyer Invoice + Packing List trong cùng một bề mặt, không tách thêm card.
-  Trong lúc chạy, panel hiện thẻ tiến độ bốn bước theo `SALE_ASN_STAGE_ORDER`;
+  Trong lúc chạy, panel hiện thẻ tiến độ năm bước theo `SALE_ASN_STAGE_ORDER`;
   `run_sale_asn_create` bắn progress qua callback tùy chọn `progress` và
   `PanelAPI._progress` phải mang `method` của flow đang chạy để
   `wfxHandleBackendProgress` rẽ đúng thẻ, không đè thẻ GDN. Mọi bước chạy theo
@@ -448,16 +470,17 @@ Các workflow riêng hiện có:
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
   xuất báo cáo vì user còn phải Save trên WFX. Ngay khi thẻ kết quả hiện, UI phải
   tự scroll thẻ đó vào viewport của module để user không phải kéo xuống tìm.
-  Form Excel có đúng 21 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Carton`,
+  Form Excel có đúng 22 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Price`, `Carton`,
   `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
   `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
   `Destination`, `FTY`, `Consignee Address`, `Ship To`, `Shipping Mode`; bỏ
   `SEASON`/cột `DESCRIPTION` cũ. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
   đúng thứ tự dòng. Một PO có thể có nhiều Style; chỉ cặp PO No. + Style No. trùng
-  hoàn toàn là lỗi. Style No./PO No./Destination/FTY bắt buộc; Shipping Mode chỉ
+  hoàn toàn là lỗi. Style No./PO No./FTY bắt buộc, Destination là tùy chọn;
+  Shipping Mode chỉ
   bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
   nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;
-  HS Code/Goods Description/Qty/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
+  HS Code/Goods Description/Qty/Price/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
   Consignee Address/Ship To được phép trống. Nếu cả file không có Cargo Ready
   Date thì giữ trống và không dùng ngày hiện tại; nếu có ngày ở một dòng thì
   dùng ngày có dữ liệu đầu tiên để điền mọi dòng còn trống. Ba cột Cargo
@@ -468,11 +491,14 @@ Các workflow riêng hiện có:
   Automation chọn Buyer, mở Add Order Details và tìm tuần tự theo các tiêu chí
   đang bật trong `prefs.sale_asn_po_search_fields`, thứ tự cố định PO → Style →
   Destination. Mặc định bật đủ ba; dữ liệu hỏng hoặc danh sách rỗng phải quay về
-  đủ ba. Style từ file là từ khóa gần đúng (ví dụ `M Acel Jacket` phải khớp được
+  đủ ba. Destination trống phải tự bỏ qua tiêu chí này cho đúng dòng đó, đồng
+  thời không làm thay đổi cặp Country Of Destination/Final Destination mặc định.
+  Style từ file là từ khóa gần đúng (ví dụ `M Acel Jacket` phải khớp được
   `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX), không phải mã exact. Sau mỗi lần
   thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay;
   nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì select all rồi Add & Continue/
-  OK đúng một lần. Không dùng Dispatched Qty để tự quyết định. Nếu 0 kết quả, giữ
+  OK đúng một lần. Không dùng Dispatched Qty để tự quyết định PO, nhưng nếu popup
+  trả số này thì phải so sánh với Qty file trước khi Add/OK và dừng khi lệch. Nếu 0 kết quả, giữ
   cửa sổ cho user xử lý thủ công; app dùng review token để tiếp tục từ dòng kế,
   không đọc lại hay đảo thứ tự file. Bộ tiêu chí phải được snapshot vào review
   token để thay đổi Settings giữa lượt không đổi hành vi của lượt đang chạy.
@@ -506,6 +532,20 @@ Các workflow riêng hiện có:
   không khớp vì WFX dùng tên quốc gia đầy đủ, phải giữ nguyên Final Destination
   theo giá trị mặc định ban đầu; không được đổi riêng Final Destination. Luồng
   luôn dừng trước Save để user kiểm tra trên WFX.
+  Sau bốn bước tạo, task cuối `Check giá / Qty` tự mở Shipment Details rồi map
+  PO No.+Style No. theo PO tách từ Order No. dạng mã hệ thống/PO + Article, so
+  sánh Shipping Qty và Price (USD) từng dòng. Đồng thời tổng Qty và Qty×Price
+  file phải được so với Total Quantity, Value In Doc Currency và Net Value In
+  Doc Currency ở Summary Total; có nút xuất workbook kết quả và không sửa dữ
+  liệu WFX. Panel chỉ rộng 440px nên kết quả trong app phải rút gọn: một hàng
+  chip `n khớp`/`n lệch`/`Summary ✓|✕`, chỉ dòng `status != "ok"` và các
+  Summary lệch hiện sẵn dạng `File → WFX`, dòng khớp nằm trong `<details>`.
+  Dòng không so được Qty/Price (`shipment_not_found`, `file_value_missing`,
+  `system_value_missing`, `system_price_ambiguous`) chỉ hiện `message`, không in
+  cặp giá trị rỗng. Workbook xuất vẫn giữ đầy đủ mọi dòng.
+  Nhãn nút `Xuất Invoice + PKL` là cố định; Invoice No. hiện ở đầu thẻ kết quả,
+  tuyệt đối không nhét vào nhãn nút vì `.special-primary-button` là
+  `white-space: nowrap` nên số invoice dài sẽ tràn khỏi thẻ.
   Luồng Documents nhận Invoice No. đang nhập
   hoặc đúng một dòng đang chọn; xác nhận invoice độc lập với cột Docs rồi quét
   ngang AG Grid để tìm/click Docs theo metadata vì mỗi user có thể kéo cột tới

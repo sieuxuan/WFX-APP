@@ -21,11 +21,12 @@ def test_sale_asn_advanced_exposes_all_three_po_search_fields():
     assert advanced.count("data-sale-asn-po-search-field=") == 3
 
 
-def test_sale_asn_create_labels_current_twenty_one_column_form():
+def test_sale_asn_create_keeps_file_action_compact_without_column_label():
     workspace = _sale_asn_workspace()
 
-    assert "File 21 cột" in workspace
-    assert "File 20 cột" not in workspace
+    assert "Chọn file &amp; kiểm tra" in workspace
+    assert "File 22 cột" not in workspace
+    assert "File 21 cột" not in workspace
 
 
 def test_sale_asn_advanced_groups_render_as_distinct_cards():

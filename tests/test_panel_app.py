@@ -1852,6 +1852,49 @@ def test_native_tray_icon_double_click_restores_app_without_backend(monkeypatch)
     assert calls == [("activate",)]
 
 
+def test_native_tray_balloon_click_opens_the_panel(monkeypatch):
+    """Bấm vào thân toast phải mở lại panel để xem kết quả.
+
+    Windows gửi NIN_BALLOONUSERCLICK chứ không phải WM_LBUTTONUP khi user bấm
+    toast. pystray không xử lý message này, nên nếu override không bắt thì cú
+    bấm rơi vào backend và không làm gì — user buộc phải bấm bubble.
+    """
+    import wfx_panel.panel_app as module
+
+    calls = []
+    monkeypatch.setattr(
+        module.pystray.Icon,
+        "_on_notify",
+        lambda _self, wparam, lparam: calls.append(("backend", wparam, lparam)),
+        raising=False,
+    )
+    icon = object.__new__(module._WfxTrayIcon)
+    icon._running = False
+    icon._icon_handle = None
+    icon._on_context_menu = None
+    icon._on_activate = lambda: calls.append(("activate",))
+
+    icon._on_notify(12, module.TRAY_BALLOON_USER_CLICK)
+
+    assert calls == [("activate",)]
+
+
+def test_webview_toast_click_opens_the_panel_and_dismisses_itself():
+    """Fallback WebView cũng phải mở panel, không chỉ có nút đóng."""
+
+    import wfx_panel.panel_app as module
+
+    calls = []
+    app = object.__new__(module.PanelApp)
+    app._hide_notification = lambda: calls.append("hide")
+    app.show_from_tray = lambda: calls.append("show") or {"ok": True}
+
+    result = module._NotificationBridge(app).activate()
+
+    assert result["ok"] is True
+    assert calls == ["hide", "show"]
+
+
 class _FakeEvents:
     def __init__(self):
         self.handlers = []

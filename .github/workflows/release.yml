@@ -314,8 +314,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} cải thiện luồng tạo và xuất Documents
-            của Sale ASN, đồng thời tự phục hồi trình duyệt làm việc.
+            WFX Smart ${{ env.VERSION }} cải thiện độ ổn định khi tạo Sale ASN.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.
@@ -336,10 +335,10 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
-            - AIR dùng Delivery Terms `FCA HANOI, VIET NAM`; Final Destination không còn bị đổi riêng khi Country Of Destination không khớp.
-            - Xuất Invoice + PKL nhận đúng Excel OpenXML ngay lần đầu dù menu Report Viewer còn ẩn hoặc render ở vùng khác.
-            - Khi tạo Sale ASN xong, ứng dụng tự cuộn tới thẻ kết quả và nút xuất chứng từ.
-            - Nếu trình duyệt làm việc bị đóng, thao tác trong module tự mở lại, đăng nhập bằng tài khoản đã lưu và tiếp tục đúng một lần.
+            - Destination không còn bắt buộc. Dòng để trống tự bỏ qua tiêu chí lọc và giữ nguyên Country Of Destination/Final Destination mặc định.
+            - Khi WFX phản hồi chậm, ứng dụng chờ Order Details đồng bộ tối đa 40 giây trước khi phục hồi Add PO.
+            - Goods Description có dấu nháy được xác nhận đúng cả khi WFX tự chuẩn hóa dấu nháy.
+            - Form Sale ASN có cột Price; task Check giá / Qty tự đối chiếu PO trong Order No., Shipment Details và ba tổng Qty/Value/Net Value trước Save, rồi cho xuất file Excel kết quả.
 
             File `.sha256` và chữ ký `.p7s` xác minh gói tải về đúng từ nhà phát hành.
           make_latest: true

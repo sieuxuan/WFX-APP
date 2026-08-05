@@ -179,21 +179,41 @@ def test_sale_asn_create_flow_is_reviewed_and_resumable():
     assert 'showSaleAsnView("lookup", { focus: false })' in JS
     assert 'showSaleAsnView("create"' in JS
     # Mở module phải vào thẳng thẻ Tạo mới, không rơi về Tra cứu như bản cũ.
-    opened = JS[JS.index('module.kind === "sale_asn"') :][:500]
+    opened = JS[JS.index('module.kind === "sale_asn"') :][:800]
     assert 'showSaleAsnView("create", { focus: false })' in opened
     assert "showSaleAsnView(\"lookup\"" not in opened
     assert "openSaleAsnAdvanced()" in opened
 
 
-def test_sale_asn_progress_card_streams_four_stages():
+def test_sale_asn_file_check_renders_a_prominent_error_card():
+    assert "function renderSaleAsnFileError(result)" in JS
+    assert "Không kiểm tra được file Sale ASN" in JS
+    assert "File chưa hợp lệ. Xem chi tiết bên dưới." in JS
+    assert "errors.filter(Boolean).slice(0, 12)" in JS
+    assert "destinationStat.hidden = !destination" in JS
+
+
+def test_sale_asn_done_result_renders_automatic_price_check_and_can_export():
+    assert 'const SALE_ASN_STAGES = [...SALE_ASN_USER_STAGES, "price_check"]' in JS
+    assert "saleAsnPriceCheck = result.price_check || null" in JS
+    assert '"sale-asn-export-price-check": exportSaleAsnPriceCheck' in JS
+    assert 'call("export_sale_asn_price_check", saleAsnPriceCheck, selected.file_path)' in JS
+    assert "function renderSaleAsnPriceCheck(result)" in JS
+    for label in (
+        "Total Quantity",
+        "Value In Doc Currency",
+        "Net Value In Doc Currency",
+    ):
+        assert label in JS
+
+
+def test_sale_asn_progress_card_streams_five_stages():
     # Tiến độ dùng chung sink backend nhưng phải rẽ theo method, không đè GDN.
     assert "start_sale_asn_create: updateSaleAsnProgress" in JS
     assert "continue_sale_asn_create: updateSaleAsnProgress" in JS
     assert "skip_sale_asn_create_step: updateSaleAsnProgress" in JS
-    assert (
-        'const SALE_ASN_STAGES = ["po", "order_details", "style_details", '
-        '"shipping_info"]' in JS
-    )
+    assert 'const SALE_ASN_USER_STAGES = ["po", "order_details", "style_details", "shipping_info"]' in JS
+    assert 'const SALE_ASN_STAGES = [...SALE_ASN_USER_STAGES, "price_check"]' in JS
     assert "function updateSaleAsnProgress(progress)" in JS
     assert "function setSaleAsnStageState(stage, state, detail" in JS
     # Trạng thái chờ/lỗi nằm trong đúng dòng bước, không còn thẻ pending rời.
@@ -235,26 +255,88 @@ def test_sale_asn_hands_off_to_invoice_and_packing_list():
     assert "query.value = saleAsnDoneInvoice" in JS
 
 
-def test_sale_asn_order_details_flow_is_isolated_from_full_creation():
+def test_sale_asn_order_details_only_flow_is_fully_removed():
+    """Luồng 8 cột đã bỏ hẳn; không được để lại nhánh gọi backend mồ côi.
+
+    Riêng ``scan_sale_asn_order_details`` được giữ vì nút `Xuất PO đang mở` dùng
+    nó để đọc PO trên chứng từ đang mở rồi ghi ra form 22 cột.
+    """
+
     for method in (
-        "scan_sale_asn_order_details",
         "save_sale_asn_order_details_template",
         "prepare_sale_asn_order_details",
         "start_sale_asn_order_details",
         "cancel_sale_asn_order_details",
     ):
-        assert f'"{method}"' in JS
-    # Không còn tab chế độ; luồng 8 cột nằm trong khối Tùy chọn nâng cao.
+        assert method not in JS
     assert "showSaleAsnCreateMode" not in JS
-    assert 'openSaleAsnAdvanced({ scrollTo: ".sale-asn-order-status" })' in JS
-    assert "saleAsnOrderReviewToken" in JS
-    assert 'result.code === "SALE_ASN_ORDER_DETAILS_COMPLETED"' in JS
+    assert "saleAsnOrderReviewToken" not in JS
+    assert "SALE_ASN_ORDER_DETAILS_COMPLETED" not in JS
+
+
+def test_sale_asn_continue_export_writes_the_22_column_form():
+    assert '"sale-asn-continue-export": exportSaleAsnContinueTemplate' in JS
+    assert '"scan_sale_asn_order_details"' in JS
+    assert '"save_sale_asn_continue_template"' in JS
+
+
+def test_sale_asn_create_shows_one_stage_at_a_time():
+    """Buyer/chọn file/Tùy chọn nâng cao phải thu về dòng ngữ cảnh sau khi
+    review, nếu không các thẻ lại xếp chồng như trước."""
+
+    assert "function setSaleAsnStageView(view)" in JS
+    assert 'pane.dataset.stageView = view' in JS
+    for view in ("idle", "review", "running", "done"):
+        assert f'setSaleAsnStageView("{view}")' in JS
+    # Mở lại module sau một lượt xong không được kẹt ở "done".
+    assert 'setSaleAsnStageView(saleAsnReviewToken ? "review" : "idle")' in JS
+
+
+def test_sale_asn_status_line_is_setup_only_and_never_echoes_the_footer():
+    """Thanh footer đã là nơi duy nhất báo trạng thái tác vụ.
+
+    Dòng status trong module chỉ hướng dẫn lúc chọn Buyer/file, nên nó nằm
+    trong khối setup và phải im từ giai đoạn review trở đi; nếu không nó đứng
+    ngay trên thẻ Tiến độ với text thừa của bước trước.
+    """
+    html = (Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
+            / "index.html").read_text(encoding="utf-8")
+    workspace = html[
+        html.index('data-module-view="sale_asn"') : html.index('data-module-view="rmpo"')
+    ]
+    setup = workspace[
+        workspace.index('class="sale-asn-setup"') : workspace.index(
+            'class="sale-asn-file-error"'
+        )
+    ]
+    assert 'class="sale-asn-inline-status"' in setup
+
+    # Không lặp lại đúng câu mà thẻ review/kết quả đã in.
+    assert '$(".sale-asn-inline-status").textContent = result.message || "File hợp lệ."' not in JS
+    assert 'textContent = result.message || "Đã điền xong Sale ASN."' not in JS
+    # Thông điệp khi dừng phải còn chỗ hiển thị, cạnh nút Bắt đầu.
+    assert "function setSaleAsnReviewNote(message)" in JS
+    assert 'setSaleAsnReviewNote(' in JS[JS.index("function haltSaleAsnRun(result) {"):]
+
+
+def test_sale_asn_handoff_button_label_never_carries_the_invoice():
+    """Invoice dài từng bơm vào nhãn nút white-space:nowrap và làm tràn thẻ."""
+
+    assert "Xuất Invoice + PKL cho" not in JS
+    assert '$(".sale-asn-done-invoice").textContent = saleAsnDoneInvoice' in JS
+
+
+def test_sale_asn_price_check_hides_matching_rows_behind_a_toggle():
+    assert 'item.status === "ok"' in JS
+    assert "sale-asn-price-chip" in JS
+    assert "dòng khớp</summary>" in JS
+    # Dòng không so được Qty/Price chỉ hiện thông điệp, không in "—  →  —".
+    assert 'const comparable = ["ok", "mismatch"].includes(item.status)' in JS
 
 
 def test_sale_asn_existing_po_flow_passes_only_selected_stages():
     assert "selectedSaleAsnStages()" in JS
     assert 'stages.includes("po")' in JS
-    assert '"save_sale_asn_continue_template"' in JS
     assert '"prepare_sale_asn_create"' in JS
     assert "selected.file_path,\n      buyer,\n      stages," in JS
 
@@ -928,7 +1010,8 @@ def test_halted_sale_asn_run_gives_the_start_button_back():
     halt = JS[JS.index("function haltSaleAsnRun(result) {") : body and JS.index(
         "function renderSaleAsnRunResult(result) {"
     )]
-    assert 'if (saleAsnReviewToken) $(".sale-asn-review").hidden = false;' in halt
+    assert '$(".sale-asn-review").hidden = false;' in halt
+    assert 'setSaleAsnStageView("review");' in halt
     assert 'setSaleAsnStageState(stage, "warn", "đã dừng")' in halt
 
 

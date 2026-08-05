@@ -454,11 +454,10 @@
               "sale-asn-continue",
               "sale-asn-skip-step",
               "sale-asn-continue-export",
-              "sale-asn-order-export",
-              "sale-asn-order-import",
               "sale-asn-order-cancel",
               "sale-asn-order-start",
-              "sale-asn-handoff-documents"
+              "sale-asn-handoff-documents",
+              "sale-asn-export-price-check"
             ],
             "settings": ["sale-asn-po-search-input"],
             "errors": [
@@ -499,7 +498,12 @@
               "SALE_ASN_SHIPPING_FIELD_FAILED",
               "SALE_ASN_STYLE_HS_CODE_CONFLICT",
               "SALE_ASN_TABLE_MAPPING_FAILED",
-              "SALE_ASN_TEMPLATE_EXPORT_FAILED"
+              "SALE_ASN_TEMPLATE_EXPORT_FAILED",
+              "SALE_ASN_PRICE_CHECK_FAILED",
+              "SALE_ASN_PRICE_EXPORT_FAILED",
+              "SALE_ASN_PRICE_FILE_EMPTY",
+              "SALE_ASN_SHIPMENT_DETAILS_EMPTY",
+              "SALE_ASN_SUMMARY_TOTAL_EMPTY"
             ]
           }
         },

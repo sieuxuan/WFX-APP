@@ -1,7 +1,8 @@
 ## Dùng để làm gì
 
-Tạo Sale ASN mới từ file Excel, tìm Sale ASN cũ, mở một form New trống, hoặc chỉ
-điền Order Details cho chứng từ đã được tạo thủ công.
+Tạo Sale ASN mới từ file Excel, tìm Sale ASN cũ, hoặc mở một form New trống.
+Chứng từ đã được thêm PO thủ công thì bỏ tích bước `Thêm PO` rồi chạy các bước
+còn lại bằng chính form 22 cột.
 
 Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi làm việc chính.
 `Tra cứu` dùng để tìm chứng từ và xuất Buyer Invoice + Packing List. Nút mở
@@ -16,20 +17,33 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 3. Bấm mũi tên trong ô để mở toàn bộ danh sách Buyer, hoặc gõ ít nhất hai ký tự
    để lọc nhanh, rồi chọn đúng Buyer.
    Khi đã khớp chính xác, ô Buyer hiện dấu ✓ ở bên phải.
-4. Bấm `Tải form trống` nếu bạn chưa có form 21 cột.
+4. Bấm `Tải form trống` nếu bạn chưa có form 22 cột.
 5. Điền dữ liệu theo thứ tự từ trên xuống dưới trong file rồi lưu lại.
 6. Bấm `Chọn file & kiểm tra`.
-7. Kiểm tra Invoice No., số PO, số Style và Destination trong thẻ review.
+7. Kiểm tra Invoice No., số PO, số Style và các dữ liệu cần điền trong thẻ review.
+   Từ lúc này, ô Buyer, nút chọn file và `Tùy chọn nâng cao` thu lại thành một
+   dòng gọn ở trên cùng ghi Buyer và tên file. Bấm `Đổi` trên dòng đó để quay về
+   chọn Buyer/file khác.
 8. Bấm `Bắt đầu tạo Sale ASN`.
-9. Theo dõi thẻ `Tiến độ Sale ASN`: bốn bước `Thêm PO`, `Order Details`,
-   `Style Details` và `Shipping Info` sáng dần theo đúng bước ứng dụng đang làm.
+9. Theo dõi thẻ `Tiến độ Sale ASN`: năm bước `Thêm PO`, `Order Details`,
+   `Style Details`, `Shipping Info` và bước cuối `Check giá / Qty` sáng dần theo
+   đúng bước ứng dụng đang làm.
    Ba bước đầu hiện thêm số dòng đang xử lý, ví dụ `Order Details 5/12`, nên bạn
    biết ứng dụng đang chạy tới đâu chứ không phải đứng im.
-10. Khi hoàn tất, ứng dụng tự đưa thẻ kết quả vào tầm nhìn để bạn thấy ngay các
-    cảnh báo và nút `Xuất Invoice + PKL`.
+10. Khi hoàn tất, ứng dụng tự đưa thẻ kết quả vào tầm nhìn. Thẻ này hiện Invoice
+    No., số cảnh báo Shipping Info, kết quả đối chiếu và các nút xuất.
 11. Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm
     `Save`.
-12. Sau khi đã Save, bấm `Xuất Invoice + PKL` trong thẻ kết quả để sang thẳng thẻ
+12. Nếu đã nhập `Qty` và `Price`, bước `Check giá / Qty` tự chạy trước Save.
+    Ứng dụng đối chiếu từng `PO No` + `Style No` trong file với `PO` được tách từ
+    `Order No.` dạng `mã hệ thống/PO` + `Article` ở `Shipment Details`, sau đó tổng
+    kết `Total Quantity`, `Value In Doc Currency` và `Net Value In Doc Currency`
+    của `Summary Total`. Kết quả hiện gọn trong app: một hàng chip
+    `n khớp`, `n lệch`, `Summary ✓` hoặc `✕`; chỉ các dòng lệch được liệt kê sẵn
+    theo dạng `File → WFX`, còn các dòng khớp nằm trong mục `n dòng khớp` bấm để
+    mở ra. Bấm `Xuất kết quả check` để lưu file Excel gồm hai sheet
+    `PO + Style` và `Summary Total`, tô rõ các dòng khớp hoặc cần kiểm tra.
+13. Sau khi đã Save, bấm `Xuất Invoice + PKL` trong thẻ kết quả để sang thẳng thẻ
     `Tra cứu` với Invoice No. đã điền sẵn.
 
 > [!luuy]
@@ -50,10 +64,15 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 
 Ứng dụng mặc định tìm PO theo thứ tự `PO` → `Style` → `Destination`. Nếu một
 bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu dùng hết các tiêu chí mà
-vẫn còn nhiều dòng, ứng dụng chọn tất cả các dòng đó rồi tiếp tục. Bạn có thể mở
+vẫn còn nhiều dòng, ứng dụng chỉ chọn tất cả khi tổng `Dispatched Qty` bằng đúng
+`Qty` trong file. Nếu tổng không khớp, popup được giữ mở để bạn chọn lại thủ công
+rồi bấm `Add & Continue` hoặc `OK`. Bạn có thể mở
 `Tùy chọn nâng cao` > `Tiêu chí tìm PO` ngay trong module Sale ASN để tắt từng
 tiêu chí không muốn dùng. Ứng dụng nhớ lựa chọn cho những lần sau; khi bỏ tích
-cả ba, ứng dụng tự bật lại cả ba để tránh chạy không có điều kiện tìm.
+cả ba, ứng dụng tự bật lại cả ba để tránh chạy không có điều kiện tìm. Cột
+`Destination` không bắt buộc: nếu để trống ở dòng nào, ứng dụng bỏ qua tiêu chí
+Destination của dòng đó và không thay đổi `Country Of Destination` hoặc
+`Final Destination` mặc định trên WFX.
 
 ### Khi ứng dụng dừng giữa chừng
 
@@ -97,8 +116,9 @@ của `Country Of Destination`; không đổi riêng `Final Destination`.
 2. Mở `Tùy chọn nâng cao` ở cuối thẻ `Tạo mới`.
 3. Trong `Các bước app sẽ làm`, bỏ tích `Thêm PO`. Chỉ giữ các bước cần app làm:
    `Order Details`, `Style Details` và/hoặc `Shipping Info`.
-4. Bấm `Xuất PO đang mở`. App tạo form 21 cột có sẵn PO No. và toàn bộ giá trị
-   Order Details đang có trên WFX.
+4. Bấm `Xuất PO đang mở`. Ứng dụng đọc chứng từ đang mở trên WFX và tạo form
+   22 cột có sẵn PO No. cùng các giá trị Order Details hiện có, nên bạn không
+   phải gõ lại danh sách PO.
 5. Bổ sung Style/HS Code/Goods Description hoặc Shipping Info trong form nếu các bước đó được
    chọn, lưu file rồi bấm `Chọn file & kiểm tra`.
 6. Bấm `Chạy các bước đã chọn`.
@@ -115,27 +135,6 @@ ASN rồi thử tiếp.
 > chạy hiện dạng gạch ngang. Bỏ tích cả bốn bước là không hợp lệ; ứng dụng sẽ
 > đưa về đủ bốn bước.
 
-### Chỉ điền Order Details cho Sale ASN đã tạo thủ công
-
-1. Tạo hoặc mở đúng Sale ASN trên WFX và bảo đảm các PO đã nằm trong bảng
-   `Order Details`.
-2. Trong WFX Smart, mở `Tùy chọn nâng cao` > `Chỉ điền Order Details`.
-3. Bấm `Xuất form từ WFX`. Ứng dụng xuất sẵn PO No. và các giá trị hiện có của
-   chứng từ đang mở.
-4. Điền các cột cần cập nhật trong Excel rồi lưu file.
-5. Bấm `Chọn file 8 cột`, kiểm tra số PO và số ô sẽ điền.
-6. Giữ đúng chứng từ trên WFX rồi bấm `Điền Order Details`.
-7. Kiểm tra kết quả và tự bấm `Save` trên WFX.
-
-Form riêng gồm tám cột: `PO No`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`,
-`Service Price` và `Cargo Ready Date`. `PO No` dùng để map đúng dòng và không nên
-sửa sau khi xuất. Các ô còn lại có thể để trống; ứng dụng chỉ điền ô có dữ liệu.
-
-Luồng này không chọn Buyer, không thêm PO và không chạm vào Style Details hoặc
-Shipping Info. Nếu đang mở nhầm chứng từ hoặc thiếu PO, ứng dụng giữ nguyên file
-đã review để bạn mở đúng Sale ASN rồi bấm `Thử lại Order Details`; không chạy lại
-luồng tạo mới.
-
 ### Mở Sale ASN New trống, không cần upload
 
 1. Mở `Tùy chọn nâng cao` trong thẻ `Tạo mới`.
@@ -149,18 +148,22 @@ liệu.
 
 - Mỗi file chỉ chứa một Invoice No. và một FTY.
 - Chỉ dòng có `PO No` mới được tính và xử lý; dòng tổng hoặc ghi chú không có PO sẽ được bỏ qua.
-- Với mỗi dòng có PO, `Style No`, `Destination` và `FTY` là dữ liệu bắt buộc.
+- Với mỗi dòng có PO, `Style No` và `FTY` là dữ liệu bắt buộc. `Destination` có
+  thể để trống.
 - `Style No` được dùng như từ khóa tìm gần đúng. Ví dụ `M Acel Jacket` có thể khớp với Style `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX.
 - Một `PO No` có thể xuất hiện ở nhiều dòng khi mỗi dòng là một `Style No` khác nhau. Chỉ cặp `PO No` + `Style No` trùng hoàn toàn mới bị báo lỗi.
-- Form có 21 cột và không còn `SEASON` hoặc cột `DESCRIPTION` cũ. Thứ tự cột là:
-  `Style No`, `PO No`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`,
+- Form có 22 cột và không còn `SEASON` hoặc cột `DESCRIPTION` cũ. Thứ tự cột là:
+  `Style No`, `PO No`, `Qty`, `Price`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`,
   `Service Price`, `Cargo Ready Date`, `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`,
   `Shipping Bill No`, `Shipping Bill Date`, `Destination`, `FTY`,
   `Consignee Address`, `Ship To`, `Shipping Mode`.
 - Chỉ điền `Shipping Mode` tại dòng dữ liệu đầu tiên. Ô này bắt buộc khi chạy
   bước Shipping Info và chỉ nhận `AIR`, `SEA` hoặc `COURIER`; các dòng sau có thể
   để trống vì ứng dụng dùng mode của dòng đầu cho toàn bộ chứng từ.
-- `HS CODE`, `Goods Description`, `Qty`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address` và `Ship To` có thể để trống. Khi có Goods Description, app điền vào đúng dòng Style Details trên WFX.
+- `Destination`, `HS CODE`, `Goods Description`, `Qty`, `Price`, `Carton`, `NW`, `GW`,
+  `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address`
+  và `Ship To` có thể để trống. Khi có Goods Description, app điền vào đúng dòng
+  Style Details trên WFX.
 - Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
 - Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không
@@ -224,9 +227,9 @@ Delivery Terms theo mode đó:
 | Ô Buyer viền vàng, không có dấu ✓ | Tên đang gõ chưa khớp Buyer nào. Gõ lại và chọn đúng dòng trong danh sách gợi ý. |
 | File có lỗi | Đọc vị trí ô hoặc dòng trong thông báo, sửa file rồi chọn lại. |
 | Báo một ô số `quá lớn` | Ô Qty, Carton, NW, GW, CBM hoặc giá đang chứa giá trị vượt ngoài phạm vi thực tế (thường do dán nhầm hoặc Excel đổi sang dạng `1E+...`). Nhập lại đúng số rồi chọn file lại. |
-| Có nhiều dòng sau tiêu chí cuối | Ứng dụng chọn tất cả dòng còn lại và tiếp tục. Nếu không muốn vậy, mở `Tùy chọn nâng cao` và bật thêm tiêu chí Style hoặc Destination trước lượt chạy kế tiếp. |
-| Không tìm thấy PO | Kiểm tra `Tiêu chí tìm PO` trong `Tùy chọn nâng cao` cùng PO No., Style và Destination trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
+| Có nhiều dòng sau tiêu chí cuối | Ứng dụng chỉ tự chọn tất cả khi tổng `Dispatched Qty` khớp `Qty` file. Nếu không khớp, popup giữ nguyên để bạn chọn lại và bấm `Add & Continue` hoặc `OK`. |
+| Không tìm thấy PO | Kiểm tra `Tiêu chí tìm PO` trong `Tùy chọn nâng cao` cùng PO No., Style và (nếu có) Destination trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
 | Đã đóng cửa sổ Add PO | Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng. |
 | Không xuất được form Order Details | Mở đúng chứng từ có PO và vào tab Order Details rồi bấm xuất lại. |
-| PO trong form Order Details hoặc form 21 cột không có trên trang | Mở đúng Sale ASN có đủ PO rồi bấm thử lại; app không tự thêm PO khi bước Thêm PO đã được bỏ chọn. |
+| PO trong form Order Details hoặc form 22 cột không có trên trang | Mở đúng Sale ASN có đủ PO rồi bấm thử lại; app không tự thêm PO khi bước Thêm PO đã được bỏ chọn. |
 | Order Details, Style Details hoặc cả tab Shipping Info bị lỗi | Giữ nguyên form WFX, sửa trạng thái/ô đang vướng rồi bấm `Thử lại bước này` ngay trong dòng bước đó; hoặc bấm `Bỏ qua ...` nếu muốn tự điền bước đó. Một field riêng lẻ trong Shipping Info sẽ tự được bỏ qua và báo lại trong thẻ kết quả. |

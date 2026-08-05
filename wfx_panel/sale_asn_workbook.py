@@ -21,6 +21,7 @@ SALE_ASN_COLUMNS = (
     "Style No",
     "PO No",
     "Qty",
+    "Price",
     "Carton",
     "NW",
     "GW",
@@ -43,18 +44,7 @@ SALE_ASN_COLUMNS = (
 
 SHIPPING_MODES = ("AIR", "SEA", "COURIER")
 
-SALE_ASN_ORDER_DETAILS_SHEET = "ORDER DETAILS"
-SALE_ASN_ORDER_DETAILS_COLUMNS = (
-    "PO No",
-    "Carton",
-    "NW",
-    "GW",
-    "CBM",
-    "FOB Price",
-    "Service Price",
-    "Cargo Ready Date",
-)
-_ORDER_DETAILS_NUMBER_COLUMNS = frozenset(
+_TEMPLATE_NUMBER_COLUMNS = frozenset(
     {"Carton", "NW", "GW", "CBM", "FOB Price", "Service Price"}
 )
 
@@ -69,6 +59,7 @@ _OPTIONAL_COLUMNS = frozenset(
         "HS CODE",
         "Goods Description",
         "Qty",
+        "Price",
         "Carton",
         "NW",
         "GW",
@@ -84,7 +75,7 @@ _DATE_COLUMNS = frozenset(
     {"Invoice Date", "Shipping Bill Date", "Cargo Ready Date"}
 )
 _NUMBER_COLUMNS = frozenset(
-    {"Qty", "Carton", "NW", "GW", "CBM", "FOB Price", "Service Price"}
+    {"Qty", "Price", "Carton", "NW", "GW", "CBM", "FOB Price", "Service Price"}
 )
 
 
@@ -113,6 +104,7 @@ class SaleASNRow:
     hs_code: str
     goods_description: str
     qty: str
+    price: str
     carton: str
     nw: str
     gw: str
@@ -245,20 +237,32 @@ def _header_identity(value: object) -> str:
 
 
 def _find_input_sheet(workbook) -> object:
-    # Giữ đọc được form 20 cột trước đây; cột Goods Description mới là tùy chọn
-    # cả về dữ liệu lẫn tương thích với file người dùng đã tải trước khi nâng cấp.
-    expected = {
-        _header_identity(value)
+    # Giữ đọc được form cũ chưa có Goods Description/Price; hai cột mới đều
+    # tùy chọn để lượt tạo Sale ASN cũ không bị chặn chỉ vì muốn Check giá.
+    expected_columns = tuple(
+        value
         for value in SALE_ASN_COLUMNS
-        if value != "Goods Description"
-    }
+        if value not in {"Goods Description", "Price"}
+    )
+    expected = {_header_identity(value) for value in expected_columns}
+    missing_by_sheet: list[str] = []
     for sheet in workbook.worksheets:
         actual = {_header_identity(cell.value) for cell in sheet[1] if cell.value}
         if expected <= actual:
             return sheet
+        missing = [
+            column
+            for column in expected_columns
+            if _header_identity(column) not in actual
+        ]
+        if missing:
+            missing_by_sheet.append(
+                f'Sheet "{sheet.title}": thiếu cột {", ".join(missing)}.'
+            )
     raise SaleASNWorkbookError(
         "SALE_ASN_FILE_HEADERS_INVALID",
-        "Không tìm thấy hàng tiêu đề Sale ASN gồm đủ các cột chuẩn.",
+        "Không tìm thấy hàng tiêu đề Sale ASN đủ các cột chuẩn.",
+        tuple(missing_by_sheet[:10]),
     )
 
 
@@ -271,7 +275,6 @@ def read_sale_asn_workbook(
     strict_create = required_stages is None
     stages = set(required_stages or ())
     require_style = strict_create or bool(stages & {"po", "style_details"})
-    require_destination = strict_create or bool(stages & {"po", "shipping_info"})
     require_factory = strict_create or "shipping_info" in stages
     require_invoice = strict_create or "shipping_info" in stages
     require_shipping = strict_create or "shipping_info" in stages
@@ -383,8 +386,6 @@ def read_sale_asn_workbook(
                 first_values[column] = today
     if require_invoice and not first_values["Invoice No"]:
         errors.append("Invoice No: bắt buộc nhập ở ít nhất một dòng.")
-    if require_destination and not first_values["Destination"]:
-        errors.append("Destination: bắt buộc nhập ở ít nhất một dòng.")
     if require_factory and not first_values["FTY"]:
         errors.append("FTY: bắt buộc nhập ở ít nhất một dòng.")
     if not first_values["Shipping Bill No"]:
@@ -418,8 +419,6 @@ def read_sale_asn_workbook(
             )
         else:
             seen_po_styles.add(po_style_key)
-        if require_destination and not destination:
-            errors.append(f"P{source_row}: Destination bắt buộc.")
         if require_factory and not factory:
             errors.append(f"Q{source_row}: FTY bắt buộc.")
 
@@ -461,6 +460,7 @@ def read_sale_asn_workbook(
                 hs_code=_identifier(raw["HS CODE"]),
                 goods_description=_text(raw["Goods Description"]),
                 qty=numbers["Qty"],
+                price=numbers["Price"],
                 carton=numbers["Carton"],
                 nw=numbers["NW"],
                 gw=numbers["GW"],
@@ -530,6 +530,7 @@ def write_sale_asn_template(
         "HS CODE": "hs_code",
         "Goods Description": "goods_description",
         "Qty": "qty",
+        "Price": "price",
         "Carton": "carton",
         "NW": "nw",
         "GW": "gw",
@@ -546,7 +547,7 @@ def write_sale_asn_template(
     for row in rows:
         sheet.append(
             [
-                _order_details_export_value(column, row.get(key_map[column]))
+                _template_export_value(column, row.get(key_map[column]))
                 for column in SALE_ASN_COLUMNS
             ]
         )
@@ -555,7 +556,7 @@ def write_sale_asn_template(
         sheet.append([None] * len(SALE_ASN_COLUMNS))
 
     widths = (
-        34, 22, 12, 12, 12, 12, 12, 14, 14, 18,
+        34, 22, 12, 14, 12, 12, 12, 12, 14, 14, 18,
         15, 34, 20, 14, 20, 18, 20, 34, 34, 34, 16,
     )
     for index, width in enumerate(widths, start=1):
@@ -576,12 +577,12 @@ def write_sale_asn_template(
     sheet.row_dimensions[1].height = 34
 
     for row in range(2, reserved_rows + 2):
-        for column in (10, 14, 16):
+        for column in (11, 15, 17):
             sheet.cell(row, column).number_format = "dd/mm/yyyy"
-        for column in (3, 4, 5, 6, 7, 8, 9):
+        for column in (3, 4, 5, 6, 7, 8, 9, 10):
             sheet.cell(row, column).number_format = "#,##0.00"
 
-    for cell_range in ("J2:J2001", "N2:N2001", "P2:P2001"):
+    for cell_range in ("K2:K2001", "O2:O2001", "Q2:Q2001"):
         date_validation = DataValidation(
             type="date",
             operator="between",
@@ -606,8 +607,8 @@ def write_sale_asn_template(
     shipping_mode_validation.prompt = "Chọn AIR, SEA hoặc COURIER."
     shipping_mode_validation.promptTitle = "Shipping Mode"
     sheet.add_data_validation(shipping_mode_validation)
-    shipping_mode_validation.add("U2")
-    table_ref = f"A1:U{reserved_rows + 1}"
+    shipping_mode_validation.add("V2")
+    table_ref = f"A1:V{reserved_rows + 1}"
     table = Table(displayName="SaleASNInput", ref=table_ref)
     table.tableStyleInfo = TableStyleInfo(
         name="TableStyleMedium2",
@@ -622,26 +623,129 @@ def write_sale_asn_template(
     return target
 
 
-def _find_order_details_sheet(workbook) -> object:
-    expected = {
-        _header_identity(value) for value in SALE_ASN_ORDER_DETAILS_COLUMNS
-    }
-    for sheet in workbook.worksheets:
-        actual = {_header_identity(cell.value) for cell in sheet[1] if cell.value}
-        if expected <= actual:
-            return sheet
-    raise SaleASNWorkbookError(
-        "SALE_ASN_ORDER_FILE_HEADERS_INVALID",
-        "Không tìm thấy hàng tiêu đề Order Details gồm đủ 8 cột chuẩn.",
+def write_sale_asn_price_check_workbook(
+    output_path: str | Path,
+    price_check: dict,
+) -> Path:
+    """Xuất kết quả đối chiếu Sale ASN thành workbook dễ kiểm tra lại."""
+
+    target = Path(output_path).expanduser().resolve()
+    if target.suffix.casefold() != ".xlsx":
+        target = target.with_suffix(".xlsx")
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    workbook = Workbook()
+    details = workbook.active
+    details.title = "PO + Style"
+    details.sheet_view.showGridLines = False
+    details.freeze_panes = "A4"
+    details.merge_cells("A1:J1")
+    details["A1"] = "KẾT QUẢ CHECK GIÁ / QTY SALE ASN"
+    details["A1"].font = Font(bold=True, size=14, color="172033")
+    details["A1"].alignment = Alignment(horizontal="center")
+    details.merge_cells("A2:J2")
+    details["A2"] = str(price_check.get("message") or "")
+    details["A2"].alignment = Alignment(wrap_text=True)
+    headers = (
+        "Dòng file",
+        "PO trong file",
+        "Style trong file",
+        "Order No. WFX (mã hệ thống/PO)",
+        "Qty file",
+        "Price file",
+        "Shipping Qty WFX",
+        "Price (USD) WFX",
+        "Kết quả",
+        "Chi tiết",
     )
+    details.append([])
+    details.append(list(headers))
+    header_fill = PatternFill("solid", fgColor="DBEAFE")
+    ok_fill = PatternFill("solid", fgColor="DCFCE7")
+    attention_fill = PatternFill("solid", fgColor="FEE2E2")
+    for cell in details[4]:
+        cell.font = Font(bold=True, color="172033")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    comparisons = price_check.get("comparisons")
+    if not isinstance(comparisons, list):
+        comparisons = []
+    for item in comparisons:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or "mismatch")
+        details.append(
+            [
+                ", ".join(str(value) for value in item.get("source_rows") or ()),
+                str(item.get("po_no") or ""),
+                str(item.get("style_no") or ""),
+                "\n".join(str(value) for value in item.get("system_order_nos") or ()),
+                str(item.get("file_qty") or ""),
+                str(item.get("file_price") or ""),
+                str(item.get("system_qty") or ""),
+                ", ".join(str(value) for value in item.get("system_prices") or ()),
+                "KHỚP" if status == "ok" else "CẦN KIỂM TRA",
+                str(item.get("message") or ""),
+            ]
+        )
+        fill = ok_fill if status == "ok" else attention_fill
+        for cell in details[details.max_row]:
+            cell.fill = fill
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+    for index, width in enumerate((12, 20, 36, 38, 14, 14, 18, 18, 18, 42), 1):
+        details.column_dimensions[details.cell(4, index).column_letter].width = width
+    details.row_dimensions[1].height = 25
+    details.row_dimensions[2].height = 30
+    details.auto_filter.ref = f"A4:J{max(4, details.max_row)}"
+
+    summary = workbook.create_sheet("Summary Total")
+    summary.sheet_view.showGridLines = False
+    summary.append(["SUMMARY TOTAL — ĐỐI CHIẾU FILE VÀ WFX"])
+    summary.merge_cells("A1:D1")
+    summary["A1"].font = Font(bold=True, size=14, color="172033")
+    summary["A1"].alignment = Alignment(horizontal="center")
+    summary.append([])
+    summary.append(["Chỉ tiêu", "File", "WFX", "Kết quả"])
+    for cell in summary[3]:
+        cell.font = Font(bold=True, color="172033")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    summary_labels = {
+        "total_quantity": "Total Quantity",
+        "value_in_doc_currency": "Value In Doc Currency",
+        "net_value_in_doc_currency": "Net Value In Doc Currency",
+    }
+    summary_data = price_check.get("summary")
+    checks = summary_data.get("checks", {}) if isinstance(summary_data, dict) else {}
+    if not isinstance(checks, dict):
+        checks = {}
+    for key, label in summary_labels.items():
+        check = checks.get(key) if isinstance(checks.get(key), dict) else {}
+        ok = bool(check.get("ok"))
+        summary.append(
+            [
+                label,
+                str(check.get("expected") or ""),
+                str(check.get("actual") or ""),
+                "KHỚP" if ok else "CẦN KIỂM TRA",
+            ]
+        )
+        for cell in summary[summary.max_row]:
+            cell.fill = ok_fill if ok else attention_fill
+    for column, width in {"A": 32, "B": 22, "C": 22, "D": 20}.items():
+        summary.column_dimensions[column].width = width
+    summary.auto_filter.ref = "A3:D6"
+    workbook.save(target)
+    workbook.close()
+    return target
 
 
-def _order_details_export_value(column: str, value: object) -> object:
+def _template_export_value(column: str, value: object) -> object:
     """Giữ ô export là number/date thật để người dùng tiếp tục tính toán."""
 
     if value is None or _text(value) == "":
         return None
-    if column in _ORDER_DETAILS_NUMBER_COLUMNS:
+    if column in _TEMPLATE_NUMBER_COLUMNS:
         try:
             normalized = _number(
                 value,
@@ -658,220 +762,3 @@ def _order_details_export_value(column: str, value: object) -> object:
         except ValueError:
             return _text(value)
     return _identifier(value)
-
-
-def read_sale_asn_order_details_workbook(input_path: str | Path) -> dict:
-    """Đọc file chỉ dùng để cập nhật Order Details trên form WFX đang mở."""
-
-    path = Path(input_path).expanduser().resolve()
-    _assert_safe_xlsx(path)
-    try:
-        workbook = load_workbook(path, data_only=False, read_only=False)
-    except Exception as error:
-        raise SaleASNWorkbookError(
-            "SALE_ASN_FILE_INVALID",
-            "Không đọc được workbook Order Details.",
-        ) from error
-
-    errors: list[str] = []
-    rows: list[dict[str, str | int]] = []
-    seen_pos: set[str] = set()
-    try:
-        sheet = _find_order_details_sheet(workbook)
-        header_map = {
-            _header_identity(cell.value): cell.column
-            for cell in sheet[1]
-            if cell.value
-        }
-        if sheet.max_row - 1 > MAX_SALE_ASN_ROWS:
-            raise SaleASNWorkbookError(
-                "SALE_ASN_FILE_TOO_MANY_ROWS",
-                f"File Order Details chỉ hỗ trợ tối đa {MAX_SALE_ASN_ROWS} dòng.",
-            )
-        for source_row in range(2, sheet.max_row + 1):
-            values = {
-                column: sheet.cell(
-                    source_row,
-                    header_map[_header_identity(column)],
-                ).value
-                for column in SALE_ASN_ORDER_DETAILS_COLUMNS
-            }
-            po_no = _identifier(values["PO No"])
-            if not po_no:
-                continue
-            formula_cells = [
-                sheet.cell(
-                    source_row,
-                    header_map[_header_identity(column)],
-                ).coordinate
-                for column, value in values.items()
-                if isinstance(value, str) and value.startswith("=")
-            ]
-            if formula_cells:
-                errors.extend(
-                    f"{cell}: đang chứa công thức." for cell in formula_cells
-                )
-            po_key = po_no.casefold()
-            if po_key in seen_pos:
-                errors.append(f"A{source_row}: PO No bị trùng ({po_no}).")
-            seen_pos.add(po_key)
-
-            payload: dict[str, str | int] = {
-                "source_row": source_row,
-                "po_no": po_no,
-            }
-            key_map = {
-                "Carton": "carton",
-                "NW": "nw",
-                "GW": "gw",
-                "CBM": "cbm",
-                "FOB Price": "fob_price",
-                "Service Price": "service_price",
-            }
-            for column, key in key_map.items():
-                try:
-                    payload[key] = _number(
-                        values[column],
-                        cell=f"{column} dòng {source_row}",
-                        integer=column == "Carton",
-                    )
-                except ValueError as error:
-                    errors.append(str(error))
-                    payload[key] = ""
-            try:
-                payload["cargo_ready_date"] = _date_text(
-                    values["Cargo Ready Date"],
-                    cell=f"Cargo Ready Date dòng {source_row}",
-                )
-            except ValueError as error:
-                errors.append(str(error))
-                payload["cargo_ready_date"] = ""
-            rows.append(payload)
-    finally:
-        workbook.close()
-
-    if not rows:
-        raise SaleASNWorkbookError(
-            "SALE_ASN_ORDER_FILE_EMPTY",
-            "File Order Details chưa có PO No.",
-        )
-    editable_keys = (
-        "carton",
-        "nw",
-        "gw",
-        "cbm",
-        "fob_price",
-        "service_price",
-        "cargo_ready_date",
-    )
-    cargo_ready_date = next(
-        (
-            str(row.get("cargo_ready_date") or "").strip()
-            for row in rows
-            if str(row.get("cargo_ready_date") or "").strip()
-        ),
-        "",
-    )
-    if cargo_ready_date:
-        for row in rows:
-            if not str(row.get("cargo_ready_date") or "").strip():
-                row["cargo_ready_date"] = cargo_ready_date
-    filled_count = sum(
-        1 for row in rows for key in editable_keys if str(row.get(key) or "").strip()
-    )
-    if not filled_count:
-        errors.append("Chưa có dữ liệu Order Details nào để điền lên WFX.")
-    if errors:
-        raise SaleASNWorkbookError(
-            "SALE_ASN_ORDER_FILE_VALIDATION_FAILED",
-            f"File Order Details có {len(errors)} lỗi cần sửa.",
-            tuple(errors[:100]),
-        )
-    return {
-        "file_name": path.name,
-        "po_count": len(rows),
-        "filled_count": filled_count,
-        "rows": rows,
-    }
-
-
-def write_sale_asn_order_details_template(
-    output_path: str | Path,
-    rows: list[dict] | tuple[dict, ...] = (),
-) -> Path:
-    """Xuất form Order Details, ưu tiên các PO/giá trị đang có trên WFX."""
-
-    target = Path(output_path).expanduser().resolve()
-    if target.suffix.casefold() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = SALE_ASN_ORDER_DETAILS_SHEET
-    sheet.sheet_view.showGridLines = False
-    sheet.freeze_panes = "A2"
-    sheet.append(list(SALE_ASN_ORDER_DETAILS_COLUMNS))
-    key_map = {
-        "PO No": "po_no",
-        "Carton": "carton",
-        "NW": "nw",
-        "GW": "gw",
-        "CBM": "cbm",
-        "FOB Price": "fob_price",
-        "Service Price": "service_price",
-        "Cargo Ready Date": "cargo_ready_date",
-    }
-    for row in rows:
-        sheet.append(
-            [
-                _order_details_export_value(column, row.get(key_map[column]))
-                for column in SALE_ASN_ORDER_DETAILS_COLUMNS
-            ]
-        )
-    reserved_rows = max(20, len(rows))
-    for _ in range(len(rows), reserved_rows):
-        sheet.append([None] * len(SALE_ASN_ORDER_DETAILS_COLUMNS))
-
-    widths = (24, 12, 12, 12, 12, 15, 18, 22)
-    for index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
-    required_fill = PatternFill("solid", fgColor="FDE68A")
-    optional_fill = PatternFill("solid", fgColor="DBEAFE")
-    for cell in sheet[1]:
-        cell.font = Font(bold=True, color="172033")
-        cell.fill = required_fill if cell.value == "PO No" else optional_fill
-        cell.alignment = Alignment(
-            horizontal="center",
-            vertical="center",
-            wrap_text=True,
-        )
-        cell.comment = Comment(
-            (
-                "Không sửa PO No nếu form được xuất từ WFX; app dùng cột này để map đúng dòng."
-                if cell.value == "PO No"
-                else "Có thể để trống; app chỉ điền các ô có dữ liệu."
-            ),
-            "WFX Smart",
-        )
-    sheet.row_dimensions[1].height = 34
-    for row_index in range(2, reserved_rows + 2):
-        for column in range(2, 8):
-            sheet.cell(row_index, column).number_format = "#,##0.00"
-        sheet.cell(row_index, 2).number_format = "#,##0"
-        sheet.cell(row_index, 8).number_format = "dd/mm/yyyy"
-    table = Table(
-        displayName="SaleASNOrderDetailsInput",
-        ref=f"A1:H{reserved_rows + 1}",
-    )
-    table.tableStyleInfo = TableStyleInfo(
-        name="TableStyleMedium2",
-        showFirstColumn=False,
-        showLastColumn=False,
-        showRowStripes=True,
-        showColumnStripes=False,
-    )
-    sheet.add_table(table)
-    workbook.save(target)
-    workbook.close()
-    return target
