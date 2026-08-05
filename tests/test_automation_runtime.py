@@ -42,7 +42,31 @@ class FakeFactory:
         return playwright
 
 
+class FakeContext:
+    def __init__(self):
+        self.handlers = {}
+
+    def on(self, event, handler):
+        self.handlers.setdefault(event, []).append(handler)
+
+    def emit(self, event, payload):
+        for handler in self.handlers.get(event, []):
+            handler(payload)
+
+
+class FakeDownload:
+    def __init__(self, name="bao-cao.xlsx"):
+        self.suggested_filename = name
+        self.saved_to = None
+
+    def save_as(self, target):
+        self.saved_to = str(target)
+
+
 class FakeBrowser:
+    def __init__(self):
+        self.contexts = [FakeContext()]
+
     def is_connected(self):
         return True
 
@@ -194,3 +218,88 @@ def test_critical_section_defers_stop_until_next_checkpoint():
         worker.checkpoint()
     with pytest.raises(runtime.AutomationCancelled):
         worker.checkpoint()
+
+
+def test_user_download_during_a_flow_is_rescued_to_the_downloads_folder(tmp_path, monkeypatch):
+    """Playwright đổi thư mục tải của Chrome sang temp riêng rồi xóa khi ngắt CDP.
+
+    Người dùng tự bấm tải trên WFX trong lúc flow chạy sẽ mất file thật: Chrome
+    báo tải xong nhưng thư mục Downloads rỗng. Runtime phải lưu lại trước khi
+    nhả driver.
+    """
+    monkeypatch.setattr(runtime, "_user_downloads_dir", lambda: tmp_path)
+    worker = runtime.AutomationRuntime()
+    chromium = FakeChromium()
+    playwright = type("FakePlaywrightClient", (), {"chromium": chromium})()
+    download = FakeDownload()
+
+    try:
+        def flow():
+            browser = worker.connect_browser(playwright, "http://127.0.0.1:9222")
+            browser.contexts[0].emit("download", download)  # user tự bấm tải
+
+        worker.execute(flow)
+    finally:
+        worker.shutdown()
+
+    assert download.saved_to == str(tmp_path / "bao-cao.xlsx")
+
+
+def test_download_claimed_by_a_flow_is_not_duplicated_into_downloads(tmp_path, monkeypatch):
+    """File flow tự tải đã được save_as về nơi người dùng chọn.
+
+    Nếu vẫn cứu thêm một bản vào Downloads thì mỗi lần Xuất Invoice + PKL lại
+    sinh ra một file thừa.
+    """
+    monkeypatch.setattr(runtime, "_user_downloads_dir", lambda: tmp_path)
+    worker = runtime.AutomationRuntime()
+    chromium = FakeChromium()
+    playwright = type("FakePlaywrightClient", (), {"chromium": chromium})()
+    download = FakeDownload()
+
+    try:
+        def flow():
+            browser = worker.connect_browser(playwright, "http://127.0.0.1:9222")
+            browser.contexts[0].emit("download", download)
+            worker.claim_download(download)
+
+        worker.execute(flow)
+    finally:
+        worker.shutdown()
+
+    assert download.saved_to is None
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_rescue_keeps_working_on_every_flow_not_just_the_first(tmp_path, monkeypatch):
+    """Việc cứu file phải lặp lại ở mọi flow.
+
+    Runtime nhả driver sau từng flow rồi gắn lại listener cho connection mới;
+    nếu trạng thái theo dõi không được dọn đúng, chỉ lượt tải đầu được cứu.
+    """
+    monkeypatch.setattr(runtime, "_user_downloads_dir", lambda: tmp_path)
+    worker = runtime.AutomationRuntime()
+    chromium = FakeChromium()
+    playwright = type("FakePlaywrightClient", (), {"chromium": chromium})()
+    first, second = FakeDownload("mot.xlsx"), FakeDownload("hai.xlsx")
+
+    try:
+        for download in (first, second):
+            def flow(item=download):
+                browser = worker.connect_browser(playwright, "http://127.0.0.1:9222")
+                browser.contexts[0].emit("download", item)
+
+            worker.execute(flow)
+    finally:
+        worker.shutdown()
+
+    assert first.saved_to == str(tmp_path / "mot.xlsx")
+    assert second.saved_to == str(tmp_path / "hai.xlsx")
+
+
+def test_rescued_file_never_overwrites_an_existing_one(tmp_path):
+    (tmp_path / "bao-cao.xlsx").write_text("cu", encoding="utf-8")
+
+    target = runtime._available_download_path(tmp_path, "bao-cao.xlsx")
+
+    assert target.name == "bao-cao (2).xlsx"

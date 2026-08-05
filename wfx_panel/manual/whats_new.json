@@ -29,6 +29,11 @@
         "entry": "don-hang-sale-asn"
       },
       {
+        "title": "Không còn mất file bạn tự tải trên WFX",
+        "body": "Khi ứng dụng đang chạy một tác vụ, file bạn tự bấm tải trên WFX bị Chrome ghi vào thư mục tạm rồi mất khi tác vụ kết thúc, và mục trong Download history trỏ vào chỗ không còn nên bấm mở file hay Show in folder đều không có tác dụng. Nay ứng dụng tự lưu file đó vào thư mục Downloads của bạn và ghi lại đường dẫn trong Log kỹ thuật.",
+        "entry": "bat-dau-trinh-duyet"
+      },
+      {
         "title": "Bấm thông báo là mở lại bảng điều khiển",
         "body": "Trước đây bấm vào thông báo khi xong việc không có phản ứng, phải bấm icon nổi mới xem được kết quả. Nay bấm vào thân thông báo sẽ mở lại bảng điều khiển ngay; bấm dấu ✕ vẫn chỉ đóng thông báo.",
         "entry": "hang-ngay-giao-dien"
