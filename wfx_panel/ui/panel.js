@@ -186,13 +186,14 @@
   let saleAsnBuyers = [];
   let saleAsnSelectedFile = null;
   let saleAsnReviewToken = "";
-  let saleAsnOrderReviewToken = "";
   let saleAsnDoneInvoice = "";
+  let saleAsnPriceCheck = null;
   // Progress tới qua evaluate_js từ worker, còn kết quả flow về bằng đường khác;
   // hai luồng không đảm bảo thứ tự. Chỉ nhận progress khi đang có lời gọi chạy,
   // nếu không một payload đến trễ sẽ xóa thẻ kết quả và kéo lùi bộ đếm.
   let saleAsnRunActive = false;
-  const SALE_ASN_STAGES = ["po", "order_details", "style_details", "shipping_info"];
+  const SALE_ASN_USER_STAGES = ["po", "order_details", "style_details", "shipping_info"];
+  const SALE_ASN_STAGES = [...SALE_ASN_USER_STAGES, "price_check"];
   const SALE_ASN_PO_SEARCH_FIELDS = ["po", "style", "destination"];
   let ocSelectionRevision = 0;
   let checkedCostingFile = null;
@@ -222,8 +223,8 @@
     "prepare_catalog", "scan_catalog_folders", "find_code", "find_buyer_reference",
     "open_catalog_destination", "browse_catalog", "catalog_action",
     "open_sale_asn_new", "scan_sale_asn_buyers", "start_sale_asn_create",
+    "scan_sale_asn_order_details",
     "continue_sale_asn_create", "skip_sale_asn_create_step",
-    "scan_sale_asn_order_details", "start_sale_asn_order_details",
     "open_sample_new", "search_oc", "search_sample",
     "check_sample_files", "open_sample_file_choice",
     "search_sale_asn", "prepare_sale_asn_documents",
@@ -262,11 +263,10 @@
     download_style_template: "Đang tạo form Tạo Style…",
     open_sale_asn_new: "Đang mở Sale ASN mới…",
     scan_sale_asn_buyers: "Đang quét Buyer từ WFX…",
+    scan_sale_asn_order_details: "Đang đọc PO trên Sale ASN đang mở…",
     start_sale_asn_create: "Đang thêm PO và điền Sale ASN…",
     continue_sale_asn_create: "Đang tiếp tục các PO còn lại…",
     skip_sale_asn_create_step: "Đang bỏ qua bước và tiếp tục…",
-    scan_sale_asn_order_details: "Đang đọc Order Details trên WFX…",
-    start_sale_asn_order_details: "Đang điền Order Details trên WFX…",
     download_sale_asn_template: "Đang tạo form Sale ASN…",
     open_sample_new: "Đang mở Sample Order mới…",
     search_oc: "Đang tìm OC…",
@@ -327,11 +327,10 @@
     publish_reference_data: "Publish Article và Style",
     open_sale_asn_new: "Sale ASN mới",
     scan_sale_asn_buyers: "Quét Buyer Sale ASN",
+    scan_sale_asn_order_details: "Xuất PO đang mở",
     start_sale_asn_create: "Tạo Sale ASN",
     continue_sale_asn_create: "Tiếp tục Sale ASN",
     skip_sale_asn_create_step: "Bỏ qua bước Sale ASN",
-    scan_sale_asn_order_details: "Xuất Order Details",
-    start_sale_asn_order_details: "Điền Order Details",
     open_sample_new: "Sample Order mới",
     search_oc: "Tìm OC",
     open_oc_revision_report: "Mở report Revise OC",
@@ -1247,9 +1246,6 @@
     if (["SALE_ASN_PO_SELECTION_REQUIRED", "SALE_ASN_FORM_COMPLETED"].includes(result.code) || result.resume_stage) {
       renderSaleAsnRunResult(result);
     }
-    if (result.code === "SALE_ASN_ORDER_DETAILS_COMPLETED") {
-      renderSaleAsnOrderResult(result);
-    }
     lastErrorCode = (!result.ok && result.code) ? result.code : "";
     $(".footer-help-button").hidden = !manualErrorCodes.has(lastErrorCode);
     if (result.user_id !== undefined) setAccount(result.user_id);
@@ -1467,9 +1463,13 @@
     } else if (module.kind === "sale_asn") {
       showSaleAsnView("create", { focus: false });
       resetSaleAsnProgress();
+      // resetSaleAsnProgress ẩn thẻ kết quả nhưng không xóa review đang chờ, nên
+      // giai đoạn phải bám theo token; nếu không, mở lại module sau một lượt xong
+      // sẽ kẹt ở "done" và mất hẳn hàng Buyer/chọn file.
+      setSaleAsnStageView(saleAsnReviewToken ? "review" : "idle");
       // Bung sẵn khối nâng cao nếu còn bước đang bỏ tích, để user không bất ngờ
       // vì app chạy thiếu bước.
-      if (selectedSaleAsnStages().length < SALE_ASN_STAGES.length) {
+      if (selectedSaleAsnStages().length < SALE_ASN_USER_STAGES.length) {
         openSaleAsnAdvanced();
       }
       syncSaleAsnCreate();
@@ -1871,6 +1871,32 @@
     }
   }
 
+  // Màn Tạo mới chỉ hiện đúng phần của giai đoạn hiện tại. Ở "idle" là hàng
+  // Buyer/chọn file/Tùy chọn nâng cao; từ "review" trở đi chúng thu về một dòng
+  // ngữ cảnh để thẻ review/tiến độ/kết quả không phải xếp chồng lên nhau.
+  function setSaleAsnStageView(view) {
+    const pane = $(".sale-asn-create");
+    if (!pane) return;
+    pane.dataset.stageView = view;
+    const context = $(".sale-asn-context");
+    if (!context) return;
+    context.hidden = view === "idle";
+    if (view === "idle") return;
+    const buyer = String($(".sale-asn-buyer")?.value || "").trim();
+    $(".sale-asn-context-buyer").textContent = buyer || "Sale ASN đang mở";
+    $(".sale-asn-context-file").textContent = saleAsnSelectedFile?.file_name || "";
+  }
+
+  // Dòng trạng thái chỉ phục vụ lúc chuẩn bị (chọn Buyer/file) nên nằm trong
+  // khối setup và tự ẩn từ giai đoạn review. Thông điệp khi lượt chạy dừng lại
+  // không có chỗ nào khác nên đặt ngay trong thẻ review, cạnh nút Bắt đầu.
+  function setSaleAsnReviewNote(message) {
+    const note = $(".sale-asn-review-note");
+    if (!note) return;
+    note.textContent = message || "";
+    note.hidden = !message;
+  }
+
   function saleAsnStageRow(stage) {
     return $(`[data-sale-asn-progress-stage="${stage}"]`);
   }
@@ -1886,7 +1912,7 @@
   function resetSaleAsnProgress({ show = false } = {}) {
     const selected = selectedSaleAsnStages();
     SALE_ASN_STAGES.forEach((stage) => {
-      const skipped = !selected.includes(stage);
+      const skipped = stage !== "price_check" && !selected.includes(stage);
       setSaleAsnStageState(stage, skipped ? "skipped" : "pending", skipped ? "không chạy" : "");
     });
     const count = $(".sale-asn-progress-count");
@@ -1958,8 +1984,12 @@
     saleAsnSelectedFile = null;
     saleAsnReviewToken = "";
     saleAsnDoneInvoice = "";
+    saleAsnPriceCheck = null;
     $(".sale-asn-review").hidden = true;
     $(".sale-asn-done").hidden = true;
+    $(".sale-asn-price-result").hidden = true;
+    setSaleAsnStageView("idle");
+    clearSaleAsnFileError();
     resetSaleAsnProgress();
     if (message) $(".sale-asn-inline-status").textContent = message;
     syncSaleAsnCreate();
@@ -1968,19 +1998,49 @@
   function renderSaleAsnReview(result) {
     saleAsnReviewToken = String(result.review_token || "");
     saleAsnDoneInvoice = String(result.invoice_no || "");
-    $(".sale-asn-review-file").textContent = result.file_name || "File Sale ASN";
+    saleAsnPriceCheck = null;
     $(".sale-asn-review-invoice").textContent = result.invoice_no || "";
     $(".sale-asn-review-po").textContent = String(result.po_count || 0);
     $(".sale-asn-review-style").textContent = String(result.style_count || 0);
-    $(".sale-asn-review-destination").textContent = result.destination || "";
+    const destination = String(result.destination || "").trim();
+    const destinationStat = $(".sale-asn-review-destination");
+    destinationStat.textContent = destination;
+    destinationStat.hidden = !destination;
     $(".sale-asn-review").hidden = false;
     $(".sale-asn-done").hidden = true;
+    clearSaleAsnFileError();
     resetSaleAsnProgress();
-    $(".sale-asn-inline-status").textContent = result.message || "File hợp lệ.";
+    setSaleAsnStageView("review");
+    setSaleAsnReviewNote("");
     $('[data-module-action="sale-asn-start"]').textContent =
       Array.isArray(result.selected_stages) && !result.selected_stages.includes("po")
         ? "Chạy các bước đã chọn"
         : "Bắt đầu tạo Sale ASN";
+  }
+
+  function clearSaleAsnFileError() {
+    const card = $(".sale-asn-file-error");
+    if (!card) return;
+    card.hidden = true;
+    card.replaceChildren();
+  }
+
+  function renderSaleAsnFileError(result) {
+    const card = $(".sale-asn-file-error");
+    if (!card) return;
+    const errors = Array.isArray(result?.errors)
+      ? result.errors.filter(Boolean).slice(0, 12)
+      : [];
+    const remaining = Math.max(
+      0,
+      (Array.isArray(result?.errors) ? result.errors.length : 0) - errors.length,
+    );
+    card.innerHTML = `
+      <strong>Không kiểm tra được file Sale ASN</strong>
+      <p>${escapeHtml(result?.message || "File chưa hợp lệ. Hãy kiểm tra các mục bên dưới.")}</p>
+      ${errors.length ? `<ul>${errors.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}${remaining ? `<li>Còn ${remaining} lỗi khác.</li>` : ""}</ul>` : ""}
+      ${result?.code ? `<code>${escapeHtml(result.code)}</code>` : ""}`;
+    card.hidden = false;
   }
 
   async function scanSaleAsnBuyers() {
@@ -2011,6 +2071,7 @@
       return selected;
     }
     saleAsnSelectedFile = selected;
+    clearSaleAsnFileError();
     $(".sale-asn-inline-status").textContent = `Đang kiểm tra ${selected.file_name}…`;
     const result = await call(
       "prepare_sale_asn_create",
@@ -2021,9 +2082,8 @@
     if (result?.ok) {
       renderSaleAsnReview(result);
     } else if (result) {
-      const details = Array.isArray(result.errors) && result.errors.length
-        ? ` ${result.errors.slice(0, 3).join(" · ")}` : "";
-      $(".sale-asn-inline-status").textContent = `${result.message || "File chưa hợp lệ."}${details}`;
+      $(".sale-asn-inline-status").textContent = "File chưa hợp lệ. Xem chi tiết bên dưới.";
+      renderSaleAsnFileError(result);
     }
     return result;
   }
@@ -2044,92 +2104,6 @@
     return saved;
   }
 
-  async function exportSaleAsnOrderDetailsTemplate() {
-    openSaleAsnAdvanced({ scrollTo: ".sale-asn-order-status" });
-    const prepared = await call("scan_sale_asn_order_details");
-    if (!prepared?.ok) {
-      $(".sale-asn-order-status").textContent = prepared?.message || "Không đọc được Order Details đang mở.";
-      return prepared;
-    }
-    const saved = await call(
-      "save_sale_asn_order_details_template",
-      prepared.rows || [],
-    );
-    if (saved) {
-      $(".sale-asn-order-status").textContent = saved.message || "Đã xuất form Order Details.";
-    }
-    return saved;
-  }
-
-  function renderSaleAsnOrderReview(result) {
-    saleAsnOrderReviewToken = String(result.review_token || "");
-    $(".sale-asn-order-review-file").textContent = result.file_name || "Order Details.xlsx";
-    $(".sale-asn-order-review-po").textContent = String(result.po_count || 0);
-    $(".sale-asn-order-review-fields").textContent = String(result.filled_count || 0);
-    $(".sale-asn-order-review").hidden = false;
-    $(".sale-asn-order-status").textContent = result.message || "File Order Details hợp lệ.";
-    $('[data-module-action="sale-asn-order-start"]').textContent = "Điền Order Details trên WFX";
-  }
-
-  function renderSaleAsnOrderResult(result) {
-    if (!result) return;
-    showSaleAsnView("create", { focus: false });
-    openSaleAsnAdvanced({ scrollTo: ".sale-asn-order-status" });
-    if (result.resumable) {
-      saleAsnOrderReviewToken = String(result.review_token || saleAsnOrderReviewToken);
-      $(".sale-asn-order-review").hidden = false;
-      $(".sale-asn-order-status").textContent = result.message || "Order Details chưa hoàn tất.";
-      $('[data-module-action="sale-asn-order-start"]').textContent = "Thử lại Order Details";
-      return;
-    }
-    if (result.code === "SALE_ASN_ORDER_DETAILS_COMPLETED") {
-      saleAsnOrderReviewToken = "";
-      $(".sale-asn-order-review").hidden = true;
-      $(".sale-asn-order-status").textContent = result.message || "Đã điền xong Order Details.";
-    }
-  }
-
-  async function chooseSaleAsnOrderDetailsInput() {
-    openSaleAsnAdvanced({ scrollTo: ".sale-asn-order-status" });
-    const selected = await callQuiet("choose_sale_asn_import_file");
-    if (!selected?.ok) {
-      if (selected?.code !== "SALE_ASN_FILE_DIALOG_CANCELLED") handleResult(selected);
-      return selected;
-    }
-    $(".sale-asn-order-status").textContent = `Đang kiểm tra ${selected.file_name}…`;
-    const result = await call(
-      "prepare_sale_asn_order_details",
-      selected.file_path,
-    );
-    if (result?.ok) {
-      renderSaleAsnOrderReview(result);
-    } else if (result) {
-      const details = Array.isArray(result.errors) && result.errors.length
-        ? ` ${result.errors.slice(0, 3).join(" · ")}` : "";
-      $(".sale-asn-order-status").textContent = `${result.message || "File chưa hợp lệ."}${details}`;
-    }
-    return result;
-  }
-
-  async function startSaleAsnOrderDetails() {
-    if (!saleAsnOrderReviewToken) return null;
-    const result = await call(
-      "start_sale_asn_order_details",
-      saleAsnOrderReviewToken,
-    );
-    renderSaleAsnOrderResult(result);
-    dismissAfterSuccessfulModule(result);
-    return result;
-  }
-
-  async function cancelSaleAsnOrderDetails() {
-    const token = saleAsnOrderReviewToken;
-    saleAsnOrderReviewToken = "";
-    $(".sale-asn-order-review").hidden = true;
-    $(".sale-asn-order-status").textContent = "Đã hủy file Order Details đang chuẩn bị.";
-    return token ? callQuiet("cancel_sale_asn_order_details", token) : null;
-  }
-
   // Progress chỉ để hiển thị. renderSaleAsnRunResult chạy sau và là nguồn sự thật,
   // nên payload đến trễ không thể để lại trạng thái sai.
   function updateSaleAsnProgress(progress) {
@@ -2141,6 +2115,7 @@
     card.hidden = false;
     $(".sale-asn-review").hidden = true;
     $(".sale-asn-done").hidden = true;
+    setSaleAsnStageView("running");
     const state = String(progress.state || "active");
     SALE_ASN_STAGES.slice(0, index).forEach((earlier) => {
       const row = saleAsnStageRow(earlier);
@@ -2174,9 +2149,13 @@
         setSaleAsnStageState(stage, "warn", "đã dừng");
       }
     });
-    if (saleAsnReviewToken) $(".sale-asn-review").hidden = false;
-    $(".sale-asn-inline-status").textContent = result?.message
-      || "Đã dừng. Bấm Bắt đầu để chạy lại.";
+    if (saleAsnReviewToken) {
+      $(".sale-asn-review").hidden = false;
+      setSaleAsnStageView("review");
+    }
+    setSaleAsnReviewNote(
+      result?.message || "Đã dừng. Bấm Bắt đầu để chạy lại.",
+    );
   }
 
   function renderSaleAsnRunResult(result) {
@@ -2189,6 +2168,7 @@
       saleAsnReviewToken = String(result.review_token || saleAsnReviewToken);
       showSaleAsnView("create", { focus: false });
       $(".sale-asn-review").hidden = true;
+      setSaleAsnStageView("running");
       setSaleAsnStageState("po", "warn", "chờ bạn chọn");
       showSaleAsnStageAction("po", {
         message: result.message || "",
@@ -2204,6 +2184,7 @@
       const stage = stageOf(result.resume_stage) || "po";
       showSaleAsnView("create", { focus: false });
       $(".sale-asn-review").hidden = true;
+      setSaleAsnStageView("running");
       setSaleAsnStageState(stage, "warn", "chưa hoàn tất");
       showSaleAsnStageAction(stage, {
         message: result.message
@@ -2226,7 +2207,6 @@
       });
       const count = $(".sale-asn-progress-count");
       if (count) count.textContent = `${SALE_ASN_STAGES.length}/${SALE_ASN_STAGES.length}`;
-      $(".sale-asn-inline-status").textContent = result.message || "Đã điền xong Sale ASN.";
       renderSaleAsnDone(result);
       return;
     }
@@ -2236,22 +2216,29 @@
   function renderSaleAsnDone(result) {
     const done = $(".sale-asn-done");
     if (!done) return;
+    setSaleAsnStageView("done");
+    $(".sale-asn-done-invoice").textContent = saleAsnDoneInvoice;
     const warnings = Array.isArray(result.warnings) ? result.warnings : [];
-    const list = $(".sale-asn-done-warnings");
-    if (list) {
-      list.innerHTML = warnings
+    const warnBlock = $(".sale-asn-done-warn");
+    if (warnBlock) {
+      $(".sale-asn-done-warnings").innerHTML = warnings
         .map((item) => `<li>${escapeHtml(String(item))}</li>`).join("");
-      list.hidden = !warnings.length;
+      $(".sale-asn-done-warn-count").textContent =
+        `${warnings.length} cảnh báo Shipping Info`;
+      warnBlock.hidden = !warnings.length;
     }
     $(".sale-asn-done-message").textContent = warnings.length
-      ? "Bổ sung các mục dưới đây rồi tự bấm Save trên WFX."
+      ? "Bổ sung các mục cảnh báo rồi tự bấm Save trên WFX."
       : "Kiểm tra lại toàn bộ chứng từ rồi tự bấm Save trên WFX.";
-    const handoff = $('[data-module-action="sale-asn-handoff-documents"]');
-    if (handoff) {
-      handoff.textContent = saleAsnDoneInvoice
-        ? `Xuất Invoice + PKL cho ${saleAsnDoneInvoice}`
-        : "Xuất Invoice + PKL";
+    const priceResult = $(".sale-asn-price-result");
+    if (priceResult) {
+      priceResult.hidden = true;
+      priceResult.replaceChildren();
     }
+    saleAsnPriceCheck = result.price_check || null;
+    const priceExport = $('[data-module-action="sale-asn-export-price-check"]');
+    if (priceExport) priceExport.disabled = !saleAsnPriceCheck;
+    if (saleAsnPriceCheck) renderSaleAsnPriceCheck(saleAsnPriceCheck);
     done.hidden = false;
     // Thẻ kết quả nằm dưới progress và có thể ngoài viewport của vùng module.
     // Chờ layout nhận chiều cao mới rồi đưa kết quả vào tầm nhìn, để user thấy
@@ -2261,6 +2248,79 @@
         done.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
     }, 0);
+  }
+
+  // Panel chỉ rộng 440px nên kết quả check phải đọc được trong một tầm mắt:
+  // chip tổng kết trước, dòng lệch hiện sẵn, dòng khớp gấp lại.
+  const SALE_ASN_SUMMARY_LABELS = {
+    total_quantity: "Total Quantity",
+    value_in_doc_currency: "Value In Doc Currency",
+    net_value_in_doc_currency: "Net Value In Doc Currency",
+  };
+
+  function saleAsnPriceRow(item) {
+    const tone = item.status === "ok" ? "ok" : "bad";
+    const head = `<div class="sale-asn-price-row-head"><b>${escapeHtml(item.po_no || "—")}</b>`
+      + `<span title="${escapeHtml(item.style_no || "")}">${escapeHtml(item.style_no || "")}</span></div>`;
+    // Chỉ so được Qty/Price khi cả hai phía đều có số; các trạng thái còn lại
+    // (thiếu dữ liệu, không thấy PO, nhiều giá) chỉ có thông điệp để hiển thị.
+    const comparable = ["ok", "mismatch"].includes(item.status);
+    if (!comparable) {
+      return `<li data-tone="${tone}">${head}`
+        + `<div class="sale-asn-price-row-note">${escapeHtml(item.message || "")}</div></li>`;
+    }
+    const systemPrice = (item.system_prices || [])[0] || "—";
+    const cell = (label, ok, fileValue, systemValue) => {
+      const text = ok
+        ? `${label} ${fileValue || "—"}`
+        : `${label} ${fileValue || "—"} → ${systemValue || "—"}`;
+      return `<span data-ok="${ok}">${escapeHtml(text)}</span>`;
+    };
+    return `<li data-tone="${tone}">${head}<div class="sale-asn-price-row-diff">`
+      + cell("Qty", item.qty_ok !== false, item.file_qty, item.system_qty)
+      + cell("Price", item.price_ok !== false, item.file_price, systemPrice)
+      + "</div></li>";
+  }
+
+  function renderSaleAsnPriceCheck(result) {
+    const host = $(".sale-asn-price-result");
+    if (!host || !result) return;
+    const comparisons = Array.isArray(result.comparisons) ? result.comparisons : [];
+    const matched = comparisons.filter((item) => item.status === "ok");
+    const attention = comparisons.filter((item) => item.status !== "ok");
+    const summaryChecks = result.summary?.checks || {};
+    const summaryOk = Object.keys(SALE_ASN_SUMMARY_LABELS)
+      .every((key) => summaryChecks[key]?.ok);
+    const summaryFailed = Object.keys(SALE_ASN_SUMMARY_LABELS)
+      .filter((key) => summaryChecks[key] && !summaryChecks[key].ok);
+
+    const chips = [
+      `<span class="sale-asn-price-chip" data-tone="${matched.length ? "ok" : "muted"}">${matched.length} khớp</span>`,
+      attention.length
+        ? `<span class="sale-asn-price-chip" data-tone="bad">${attention.length} lệch</span>`
+        : "",
+      `<span class="sale-asn-price-chip" data-tone="${summaryOk ? "ok" : "bad"}">Summary ${summaryOk ? "✓" : "✕"}</span>`,
+    ].join("");
+
+    const summaryRows = summaryFailed.map((key) => {
+      const check = summaryChecks[key];
+      return `<li data-tone="bad"><div class="sale-asn-price-row-head"><b>Summary</b>`
+        + `<span>${escapeHtml(SALE_ASN_SUMMARY_LABELS[key])}</span></div>`
+        + `<div class="sale-asn-price-row-diff"><span data-ok="false">`
+        + `${escapeHtml(`${check.expected || "—"} → ${check.actual || "—"}`)}</span></div></li>`;
+    }).join("");
+
+    const problems = attention.map(saleAsnPriceRow).join("") + summaryRows;
+    host.innerHTML = `<div class="sale-asn-price-chips">${chips}</div>`
+      + (problems
+        ? `<p class="sale-asn-price-legend">File → WFX</p>`
+          + `<ul class="sale-asn-price-rows">${problems}</ul>`
+        : "")
+      + (matched.length
+        ? `<details class="sale-asn-price-more"><summary>${matched.length} dòng khớp</summary>`
+          + `<ul class="sale-asn-price-rows">${matched.map(saleAsnPriceRow).join("")}</ul></details>`
+        : "");
+    host.hidden = false;
   }
 
   function handoffSaleAsnDocuments() {
@@ -2273,6 +2333,19 @@
     }
     setTimeout(() => $('[data-module-action="sale-asn-search"]')?.focus(), 0);
     return null;
+  }
+
+  async function exportSaleAsnPriceCheck() {
+    if (!saleAsnPriceCheck) return null;
+    const selected = await callQuiet(
+      "choose_sale_asn_price_check_export_file",
+      saleAsnDoneInvoice || "Invoice",
+    );
+    if (!selected?.ok) {
+      if (selected?.code !== "SALE_ASN_FILE_DIALOG_CANCELLED") handleResult(selected);
+      return selected;
+    }
+    return call("export_sale_asn_price_check", saleAsnPriceCheck, selected.file_path);
   }
 
   async function startSaleAsnCreate() {
@@ -2513,10 +2586,7 @@
     "sale-asn-continue": continueSaleAsnCreate,
     "sale-asn-skip-step": skipSaleAsnCreateStep,
     "sale-asn-handoff-documents": handoffSaleAsnDocuments,
-    "sale-asn-order-export": exportSaleAsnOrderDetailsTemplate,
-    "sale-asn-order-import": chooseSaleAsnOrderDetailsInput,
-    "sale-asn-order-cancel": cancelSaleAsnOrderDetails,
-    "sale-asn-order-start": startSaleAsnOrderDetails,
+    "sale-asn-export-price-check": exportSaleAsnPriceCheck,
     "sale-asn-search": () => runSelectedModuleAction(
       "search_sale_asn",
       moduleFilterKinds.sale_asn,

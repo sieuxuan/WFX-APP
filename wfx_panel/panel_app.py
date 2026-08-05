@@ -38,7 +38,6 @@ from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.oc_workbook import write_oc_input_template
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.sale_asn_workbook import (
-    write_sale_asn_order_details_template,
     write_sale_asn_template,
 )
 from wfx_panel.single_instance import SingleInstance
@@ -84,6 +83,9 @@ BUBBLE_CONTEXT_POLL_SECONDS = 0.04
 BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS = 0.75
 TRAY_RIGHT_BUTTON_UP = 0x0205  # WM_RBUTTONUP
 TRAY_LEFT_BUTTON_DOUBLE_CLICK = 0x0203  # WM_LBUTTONDBLCLK
+# WM_USER + 5. Windows gửi message này khi user bấm vào THÂN toast, không phải
+# WM_LBUTTONUP như bấm vào icon tray; pystray không xử lý nên phải tự bắt.
+TRAY_BALLOON_USER_CLICK = 0x0405  # NIN_BALLOONUSERCLICK
 UPDATE_INITIAL_DELAY_SECONDS = 1
 UPDATE_POLL_SECONDS = 4 * 60 * 60
 ARTICLE_LIBRARY_INITIAL_DELAY_SECONDS = 3
@@ -134,7 +136,6 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "start_sale_asn_create",
         "continue_sale_asn_create",
         "skip_sale_asn_create_step",
-        "start_sale_asn_order_details",
         "open_sample_new",
         "search_oc",
         "open_oc_revision_report",
@@ -169,11 +170,10 @@ NOTIFICATION_ACTION_LABELS = {
     "apply_catalog_costing": "Áp dụng Costing",
     "open_sale_asn_new": "Sale ASN",
     "scan_sale_asn_buyers": "Quét Buyer Sale ASN",
-    "scan_sale_asn_order_details": "Xuất Order Details",
+    "scan_sale_asn_order_details": "Xuất PO đang mở",
     "start_sale_asn_create": "Tạo Sale ASN",
     "continue_sale_asn_create": "Tiếp tục Sale ASN",
     "skip_sale_asn_create_step": "Bỏ qua bước Sale ASN",
-    "start_sale_asn_order_details": "Điền Order Details",
     "open_sample_new": "Sample",
     "search_oc": "Tìm OC",
     "open_oc_revision_report": "Mở report Revise OC",
@@ -292,7 +292,8 @@ class _WfxTrayIcon(pystray.Icon):
 
     def _on_notify(self, wparam, lparam):
         if (
-            int(lparam) == TRAY_LEFT_BUTTON_DOUBLE_CLICK
+            int(lparam)
+            in (TRAY_LEFT_BUTTON_DOUBLE_CLICK, TRAY_BALLOON_USER_CLICK)
             and self._on_activate
         ):
             self._on_activate()
@@ -399,6 +400,13 @@ class _NotificationBridge:
 
     def dismiss(self) -> dict:
         self._app._hide_notification()
+        return {"ok": True}
+
+    def activate(self) -> dict:
+        """Bấm vào thân toast: đóng toast rồi mở lại panel để xem kết quả."""
+
+        self._app._hide_notification()
+        self._app.show_from_tray()
         return {"ok": True}
 
 
@@ -823,6 +831,52 @@ class PanelApp:
             "file_name": target.name,
         }
 
+    def choose_sale_asn_price_check_export_file(self, invoice_no: str) -> dict:
+        """Chọn nơi lưu workbook đối chiếu tự động của Sale ASN."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        stem = _safe_costing_file_stem(invoice_no or "Invoice")
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename=f"WFX-Smart-Sale-ASN-Check-{stem}.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy xuất kết quả Check giá Sale ASN.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "SALE_ASN_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != ".xlsx":
+            target = target.with_suffix(".xlsx")
+        return {
+            "ok": True,
+            "code": "SALE_ASN_PRICE_EXPORT_PATH_SELECTED",
+            "message": f"Sẽ lưu thành {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
     def choose_sale_asn_import_file(self) -> dict:
         """Chọn workbook tạo Sale ASN do người dùng chủ động cung cấp."""
         if self.window is None:
@@ -1088,55 +1142,8 @@ class PanelApp:
             "file_name": target.name,
         }
 
-    def save_sale_asn_order_details_template(self, rows: list[dict]) -> dict:
-        """Lưu form Order Details đã lấy PO/giá trị từ WFX đang mở."""
-
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename="WFX-Smart-Sale-ASN-Order-Details.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy xuất form Order Details.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-            target = write_sale_asn_order_details_template(target, rows or [])
-            _open_downloaded_file(target)
-            _reveal_downloaded_file(target)
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_ORDER_TEMPLATE_EXPORT_FAILED",
-                "message": f"Không tạo được form Order Details: {error}",
-            }
-        return {
-            "ok": True,
-            "code": "SALE_ASN_ORDER_TEMPLATE_EXPORTED",
-            "message": f"Đã xuất {len(rows or [])} PO vào form {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
-
     def save_sale_asn_continue_template(self, rows: list[dict]) -> dict:
-        """Xuất form 19 cột có sẵn PO/Order Details của Sale ASN đang mở."""
+        """Xuất form 22 cột có sẵn PO/Order Details của Sale ASN đang mở."""
 
         if self.window is None:
             return {
@@ -2558,14 +2565,14 @@ class PanelApp:
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]
         self.api.choose_oc_upload_file = self.choose_oc_upload_file  # type: ignore[attr-defined]
         self.api.choose_sale_asn_export_file = self.choose_sale_asn_export_file  # type: ignore[attr-defined]
+        self.api.choose_sale_asn_price_check_export_file = (  # type: ignore[attr-defined]
+            self.choose_sale_asn_price_check_export_file
+        )
         self.api.choose_sale_asn_import_file = self.choose_sale_asn_import_file  # type: ignore[attr-defined]
         self.api.choose_style_import_file = self.choose_style_import_file  # type: ignore[attr-defined]
         self.api.download_style_template = self.download_style_template  # type: ignore[attr-defined]
         self.api.download_oc_template = self.download_oc_template  # type: ignore[attr-defined]
         self.api.download_sale_asn_template = self.download_sale_asn_template  # type: ignore[attr-defined]
-        self.api.save_sale_asn_order_details_template = (  # type: ignore[attr-defined]
-            self.save_sale_asn_order_details_template
-        )
         self.api.save_sale_asn_continue_template = (  # type: ignore[attr-defined]
             self.save_sale_asn_continue_template
         )

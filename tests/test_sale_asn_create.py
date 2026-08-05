@@ -16,11 +16,9 @@ from wfx_panel.automation.sale_asn_create import (
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.sale_asn_workbook import (
     SALE_ASN_COLUMNS,
-    SALE_ASN_ORDER_DETAILS_COLUMNS,
     SaleASNWorkbookError,
-    read_sale_asn_order_details_workbook,
     read_sale_asn_workbook,
-    write_sale_asn_order_details_template,
+    write_sale_asn_price_check_workbook,
     write_sale_asn_template,
 )
 
@@ -48,6 +46,7 @@ def _valid_rows():
             "HS CODE": 62014010,
             "Goods Description": "Men's jacket",
             "Qty": 10,
+            "Price": 95,
             "Carton": 2,
             "NW": 9.5,
             "GW": 10.5,
@@ -68,17 +67,6 @@ def _valid_rows():
     ]
 
 
-def _order_details_workbook(path, rows):
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "ORDER DETAILS"
-    sheet.append(SALE_ASN_ORDER_DETAILS_COLUMNS)
-    for row in rows:
-        sheet.append([row.get(column) for column in SALE_ASN_ORDER_DETAILS_COLUMNS])
-    workbook.save(path)
-    workbook.close()
-
-
 def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     target = write_sale_asn_template(tmp_path / "sale-asn.xlsx")
 
@@ -87,15 +75,16 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert tuple(cell.value for cell in sheet[1]) == SALE_ASN_COLUMNS
     assert sheet.freeze_panes == "A2"
     assert sheet.sheet_view.showGridLines is False
-    assert sheet.tables["SaleASNInput"].ref == "A1:U21"
+    assert sheet.tables["SaleASNInput"].ref == "A1:V21"
     assert sheet.auto_filter.ref is None
     assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
     assert sheet["G1"].fill.fgColor.rgb == "00DBEAFE"
-    assert sheet["U1"].fill.fgColor.rgb == "00FDE68A"
+    assert sheet["V1"].fill.fgColor.rgb == "00FDE68A"
     assert SALE_ASN_COLUMNS == (
         "Style No",
         "PO No",
         "Qty",
+        "Price",
         "Carton",
         "NW",
         "GW",
@@ -115,9 +104,9 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "Ship To",
         "Shipping Mode",
     )
-    assert sheet["J2"].number_format == "dd/mm/yyyy"
-    assert sheet["N2"].number_format == "dd/mm/yyyy"
-    assert sheet["P2"].number_format == "dd/mm/yyyy"
+    assert sheet["K2"].number_format == "dd/mm/yyyy"
+    assert sheet["O2"].number_format == "dd/mm/yyyy"
+    assert sheet["Q2"].number_format == "dd/mm/yyyy"
     assert "SEASON" not in SALE_ASN_COLUMNS
     assert "DESCRIPTION" not in SALE_ASN_COLUMNS
     assert SALE_ASN_COLUMNS[-3:] == (
@@ -129,13 +118,13 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert len(validations) == 4
     shipping_validation = next(item for item in validations if item.type == "list")
     assert shipping_validation.formula1 == '"AIR,SEA,COURIER"'
-    assert str(shipping_validation.sqref) == "U2"
+    assert str(shipping_validation.sqref) == "V2"
     assert shipping_validation.allow_blank is False
     date_validations = [item for item in validations if item.type == "date"]
     assert {str(item.sqref) for item in date_validations} == {
-        "J2:J2001",
-        "N2:N2001",
-        "P2:P2001",
+        "K2:K2001",
+        "O2:O2001",
+        "Q2:Q2001",
     }
     assert all(item.allow_blank is True for item in date_validations)
     workbook.close()
@@ -158,10 +147,43 @@ def test_reader_preserves_row_order_and_applies_business_fallbacks(tmp_path):
     assert document["rows"][1]["destination"] == "Germany"
     assert document["rows"][0]["hs_code"] == "62014010"
     assert document["rows"][0]["goods_description"] == "Men's jacket"
+    assert document["rows"][0]["price"] == "95"
     assert document["rows"][0]["shipping_mode"] == "AIR"
     assert document["rows"][1]["shipping_mode"] == "AIR"
     assert document["rows"][1]["consignee_address"] == "PUMA EUROPE GMBH"
     assert document["rows"][1]["ship_to"] == "PUMA CENTRAL WAREHOUSE"
+
+
+def test_reader_allows_blank_destination_and_preserves_it_for_wfx_defaults(tmp_path):
+    rows = _valid_rows()
+    for row in rows:
+        row["Destination"] = ""
+    source = tmp_path / "blank-destination.xlsx"
+    _input_workbook(source, rows)
+
+    document = read_sale_asn_workbook(source)
+
+    assert [row["destination"] for row in document["rows"]] == ["", ""]
+
+
+def test_reader_reports_missing_headers_by_sheet(tmp_path):
+    source = tmp_path / "missing-header.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Nhập liệu"
+    sheet.append(["PO No", "Style No"])
+    sheet.append(["PO-1", "STYLE-1"])
+    workbook.save(source)
+    workbook.close()
+
+    with pytest.raises(SaleASNWorkbookError) as raised:
+        read_sale_asn_workbook(source)
+
+    assert raised.value.code == "SALE_ASN_FILE_HEADERS_INVALID"
+    assert any(
+        'Sheet "Nhập liệu": thiếu cột' in error and "Invoice No" in error
+        for error in raised.value.errors
+    )
 
 
 def test_reader_uses_shipping_mode_only_from_first_data_row(tmp_path):
@@ -284,96 +306,12 @@ def test_full_template_can_prefill_current_order_details(tmp_path):
     workbook = load_workbook(target)
     sheet = workbook["SALE ASN"]
     assert sheet["B2"].value == "PO-001"
-    assert sheet["D2"].value == 2
-    assert sheet["E2"].value == 9.5
-    assert sheet["H2"].value == 12.75
-    assert sheet["J2"].value.date() == date(2026, 8, 3)
-    assert sheet.tables["SaleASNInput"].ref == "A1:U21"
+    assert sheet["E2"].value == 2
+    assert sheet["F2"].value == 9.5
+    assert sheet["I2"].value == 12.75
+    assert sheet["K2"].value.date() == date(2026, 8, 3)
+    assert sheet.tables["SaleASNInput"].ref == "A1:V21"
     workbook.close()
-
-
-def test_order_details_template_round_trip_keeps_only_editable_schema(tmp_path):
-    target = write_sale_asn_order_details_template(
-        tmp_path / "order-details.xlsx",
-        [
-            {
-                "po_no": "PO-001",
-                "carton": "2",
-                "nw": "9.5",
-                "gw": "10.5",
-                "cbm": "1.25",
-                "fob_price": "12.75",
-                "service_price": "0.5",
-                "cargo_ready_date": "03 Aug 2026",
-            }
-        ],
-    )
-
-    workbook = load_workbook(target)
-    sheet = workbook["ORDER DETAILS"]
-    assert tuple(cell.value for cell in sheet[1]) == SALE_ASN_ORDER_DETAILS_COLUMNS
-    assert sheet.tables["SaleASNOrderDetailsInput"].ref == "A1:H21"
-    assert sheet.auto_filter.ref is None
-    assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
-    assert sheet["B1"].fill.fgColor.rgb == "00DBEAFE"
-    assert sheet["B2"].number_format == "#,##0"
-    assert sheet["H2"].number_format == "dd/mm/yyyy"
-    assert sheet["B2"].value == 2
-    assert sheet["H2"].value.date() == date(2026, 8, 3)
-    workbook.close()
-
-    document = read_sale_asn_order_details_workbook(target)
-    assert document["po_count"] == 1
-    assert document["filled_count"] == 7
-    assert document["rows"] == [
-        {
-            "source_row": 2,
-            "po_no": "PO-001",
-            "carton": "2",
-            "nw": "9.5",
-            "gw": "10.5",
-            "cbm": "1.25",
-            "fob_price": "12.75",
-            "service_price": "0.5",
-            "cargo_ready_date": "2026-08-03",
-        }
-    ]
-
-
-def test_order_details_reader_requires_a_value_and_unique_po(tmp_path):
-    source = tmp_path / "invalid-order-details.xlsx"
-    _order_details_workbook(
-        source,
-        [
-            {"PO No": "PO-001"},
-            {"PO No": "PO-001", "Carton": "=1+1"},
-        ],
-    )
-
-    with pytest.raises(SaleASNWorkbookError) as raised:
-        read_sale_asn_order_details_workbook(source)
-
-    assert raised.value.code == "SALE_ASN_ORDER_FILE_VALIDATION_FAILED"
-    assert any("công thức" in error for error in raised.value.errors)
-    assert any("PO No bị trùng" in error for error in raised.value.errors)
-
-
-def test_order_details_reader_fills_single_cargo_date_to_all_rows(tmp_path):
-    source = tmp_path / "cargo-date-order-details.xlsx"
-    _order_details_workbook(
-        source,
-        [
-            {"PO No": "PO-001", "Cargo Ready Date": date(2026, 8, 3)},
-            {"PO No": "PO-002", "Carton": 2},
-        ],
-    )
-
-    document = read_sale_asn_order_details_workbook(source)
-
-    assert [row["cargo_ready_date"] for row in document["rows"]] == [
-        "2026-08-03",
-        "2026-08-03",
-    ]
 
 
 def test_buyer_scan_waits_for_lazy_bound_select_options(monkeypatch):
@@ -554,7 +492,12 @@ def test_auto_add_po_narrows_by_enabled_fields_in_fixed_order(monkeypatch):
 
     added, _candidates, _reason = _auto_add_po(
         FakeFrame(),
-        {"source_row": 2, "po_no": "PO-1", "style_no": "S1"},
+        {
+            "source_row": 2,
+            "po_no": "PO-1",
+            "style_no": "S1",
+            "destination": "DE",
+        },
         lambda _message: None,
     )
 
@@ -572,9 +515,9 @@ def test_auto_add_po_respects_disabled_fields_and_selects_all_at_end(monkeypatch
     selected = []
     actions = []
     candidates = [
-        {"row_index": 1, "selection_value": "A", "po_no": "PO-1"},
-        {"row_index": 2, "selection_value": "B", "po_no": "PO-1"},
-        {"row_index": 3, "selection_value": "C", "po_no": "PO-1"},
+        {"row_index": 1, "selection_value": "A", "po_no": "PO-1", "dispatched_qty": "4"},
+        {"row_index": 2, "selection_value": "B", "po_no": "PO-1", "dispatched_qty": "3"},
+        {"row_index": 3, "selection_value": "C", "po_no": "PO-1", "dispatched_qty": "3"},
     ]
 
     def fake_search(_frame, _row, *, fields):
@@ -606,7 +549,7 @@ def test_auto_add_po_respects_disabled_fields_and_selects_all_at_end(monkeypatch
 
     added, returned, reason = _auto_add_po(
         FakeFrame(),
-        {"source_row": 2, "style_no": "S1", "destination": "DE"},
+        {"source_row": 2, "style_no": "S1", "destination": "DE", "qty": "10"},
         lambda _message: None,
         search_fields=("style", "destination"),
     )
@@ -617,6 +560,172 @@ def test_auto_add_po_respects_disabled_fields_and_selects_all_at_end(monkeypatch
     assert searches == [("style",), ("style", "destination")]
     assert selected == ["A", "B", "C"]
     assert actions == [sale_asn_create.PO_CONTINUE_SELECTOR]
+
+
+def test_auto_add_po_asks_user_when_ambiguous_rows_have_wrong_total_qty(monkeypatch):
+    candidates = [
+        {"row_index": 1, "selection_value": "A", "dispatched_qty": "4"},
+        {"row_index": 2, "selection_value": "B", "dispatched_qty": "5"},
+    ]
+    logs = []
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_search_po",
+        lambda _frame, _row, *, fields: candidates,
+    )
+
+    added, returned, reason = _auto_add_po(
+        object(),
+        {"source_row": 2, "po_no": "PO-1", "style_no": "S1", "qty": "10"},
+        logs.append,
+    )
+
+    assert added is False
+    assert returned == candidates
+    assert reason.startswith("qty_mismatch:")
+    assert any("chờ user xác nhận" in message for message in logs)
+
+
+def test_auto_add_po_recovers_once_when_popup_document_changes(monkeypatch):
+    context = object()
+    stale_frame = object()
+    fresh_frame = object()
+    calls = []
+    logs = []
+
+    def fake_auto(frame, _row, _log, *, final, search_fields):
+        calls.append((frame, final, tuple(search_fields)))
+        if frame is stale_frame:
+            raise sale_asn_create._POFrameChanged
+        return True, [{"selection_value": "A"}], "PO"
+
+    def fake_frame(selected_context, selector, timeout_s):
+        assert selected_context is context
+        assert selector == f"{sale_asn_create.PO_POPUP_SELECTOR} #txtOCNo"
+        assert 0 < timeout_s <= sale_asn_create.PO_POPUP_RECOVERY_TIMEOUT_SECONDS
+        return object(), fresh_frame
+
+    monkeypatch.setattr(sale_asn_create, "_auto_add_po", fake_auto)
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        fake_frame,
+    )
+
+    added, candidates, reason, returned_frame = (
+        sale_asn_create._auto_add_po_with_frame_retry(
+            context,
+            stale_frame,
+            {"source_row": 2, "po_no": "PO-1"},
+            logs.append,
+            final=False,
+            search_fields=("po", "style"),
+        )
+    )
+
+    assert added is True
+    assert candidates == [{"selection_value": "A"}]
+    assert reason == "PO"
+    assert returned_frame is fresh_frame
+    assert [call[0] for call in calls] == [stale_frame, fresh_frame]
+    assert any("nhận kết quả từ frame mới" in message for message in logs)
+
+
+def test_auto_add_po_uses_results_already_rendered_after_document_change(monkeypatch):
+    context = object()
+    stale_frame = object()
+    result_frame = object()
+    candidates = [{"selection_value": "A", "po_no": "PO-1"}]
+    calls = []
+
+    def fake_auto(
+        frame,
+        _row,
+        _log,
+        *,
+        final,
+        search_fields,
+        recovered_search=None,
+    ):
+        calls.append((frame, recovered_search))
+        if frame is stale_frame:
+            raise sale_asn_create._POFrameChanged(
+                fields=("po",),
+                search_submitted=True,
+            )
+        assert recovered_search == (("po",), candidates)
+        return True, candidates, "PO"
+
+    monkeypatch.setattr(sale_asn_create, "_auto_add_po", fake_auto)
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_recover_submitted_po_results",
+        lambda selected_context, *, timeout_s: (
+            result_frame,
+            candidates,
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        lambda *_args, **_kwargs: pytest.fail("không được Search lại"),
+    )
+
+    added, returned, reason, returned_frame = (
+        sale_asn_create._auto_add_po_with_frame_retry(
+            context,
+            stale_frame,
+            {"source_row": 2, "po_no": "PO-1"},
+            lambda _message: None,
+            final=False,
+            search_fields=("po", "style"),
+        )
+    )
+
+    assert added is True
+    assert returned == candidates
+    assert reason == "PO"
+    assert returned_frame is result_frame
+    assert calls == [(stale_frame, None), (result_frame, (("po",), candidates))]
+
+
+def test_auto_add_po_skips_blank_optional_destination(monkeypatch):
+    searches = []
+    logs = []
+
+    def fake_search(_frame, _row, *, fields):
+        searches.append(tuple(fields))
+        return [{"row_index": 1, "selection_value": "A", "po_no": "PO-1"}]
+
+    class FakeLocator:
+        first = property(lambda self: self)
+
+        def evaluate(self, _script, spec=None):
+            if spec is None:
+                return {"ok": True, "tag": "A"}
+            return {"ok": True, "value": spec["selection_value"]}
+
+        def wait_for(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, _selector):
+            return FakeLocator()
+
+    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+
+    added, _returned, reason = _auto_add_po(
+        FakeFrame(),
+        {"source_row": 2, "po_no": "PO-1", "style_no": "S1", "destination": ""},
+        logs.append,
+    )
+
+    assert added is True
+    assert reason == "PO"
+    assert searches == [("po",)]
+    assert any("Destination trống" in message for message in logs)
 
 
 def test_sale_asn_po_results_use_exact_wfx_table():
@@ -831,8 +940,16 @@ def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatc
         )
     ]
     assert calls["wait"] == [
-        (main_frame, 10, True),
-        (refreshed_frame, 15, False),
+        (
+            main_frame,
+            sale_asn_create.ORDER_GRID_SYNC_TIMEOUT_SECONDS,
+            True,
+        ),
+        (
+            refreshed_frame,
+            sale_asn_create.ORDER_GRID_SYNC_TIMEOUT_SECONDS,
+            False,
+        ),
     ]
     assert any("còn thiếu 1 PO" in message for message in logs)
     assert logs[-1] == "[SALE ASN] Đã xác nhận đủ PO trong Order Details."
@@ -901,7 +1018,12 @@ def test_reopens_add_order_popup_when_wfx_closes_it_between_rows(monkeypatch):
     )
 
     assert result is popup_frame
-    assert ("grid", main_frame, rows_added, 15) in calls
+    assert (
+        "grid",
+        main_frame,
+        rows_added,
+        sale_asn_create.ORDER_GRID_SYNC_TIMEOUT_SECONDS,
+    ) in calls
     assert ("add-dom-click",) in calls
     assert any("đã mở lại Add Order Details" in message for message in logs)
 
@@ -952,6 +1074,11 @@ def test_sale_asn_resume_after_manual_final_ok_skips_closed_popup(monkeypatch):
     monkeypatch.setattr(sale_asn_create, "_fill_order_details", lambda *_args: None)
     monkeypatch.setattr(sale_asn_create, "_fill_style_details", lambda *_args: None)
     monkeypatch.setattr(sale_asn_create, "_fill_shipping", lambda *_args: None)
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_check_sale_asn_price_on_page",
+        lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
+    )
 
     result = sale_asn_create.run_sale_asn_create(
         "menu-xpath",
@@ -1015,6 +1142,11 @@ def test_sale_asn_resume_shipping_uses_visible_shipping_tab_only(monkeypatch):
         sale_asn_create,
         "_fill_shipping",
         lambda *_args: ["Factory: option-not-found"],
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_check_sale_asn_price_on_page",
+        lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
     )
 
     result = sale_asn_create.run_sale_asn_create(
@@ -1086,6 +1218,11 @@ def test_sale_asn_can_skip_add_po_and_start_from_existing_order_grid(monkeypatch
         lambda frame, selected_rows, _log, _progress=None: calls.append(
             ("fill-order", frame, list(selected_rows))
         ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_check_sale_asn_price_on_page",
+        lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
     )
 
     result = sale_asn_create.run_sale_asn_create(
@@ -1263,6 +1400,45 @@ def test_shipping_keeps_default_final_destination_when_country_is_not_found(
     assert any("Giữ nguyên Final Destination" in line for line in logs)
 
 
+def test_shipping_keeps_destination_defaults_when_file_destination_is_blank(monkeypatch):
+    calls = []
+
+    class FakeTab:
+        @property
+        def first(self):
+            return self
+
+        def wait_for(self, **_kwargs):
+            return None
+
+        def click(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, _selector):
+            return FakeTab()
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_set_control",
+        lambda _frame, selector, value, mode, timeout_s: calls.append(selector) or {"ok": True},
+    )
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+
+    sale_asn_create._fill_shipping(
+        FakeFrame(),
+        {
+            "invoice_no": "INV-1", "invoice_date": "2026-08-01",
+            "shipping_bill_no": "SB-1", "shipping_bill_date": "2026-08-02",
+            "destination": "", "factory": "FACTORY", "shipping_mode": "AIR",
+        },
+        lambda _message: None,
+    )
+
+    assert "#Cell_DestinationCountry" not in calls
+    assert "#Cell_FinalDestination" not in calls
+
+
 def test_fuzzy_dropdown_requires_one_unique_best_match():
     assert sale_asn_create._best_dropdown_label(
         ["PUMA EUROPE GMBH", "OTHER COMPANY"],
@@ -1305,7 +1481,115 @@ def test_sale_asn_table_value_confirmation_handles_wfx_formats():
     assert sale_asn_create._number_for_wfx("498.99999999999994") == "499"
     assert sale_asn_create._table_value_matches("1085", "1,085.0000")
     assert sale_asn_create._table_value_matches("03/08/2026", "03 Aug 2026")
+    assert sale_asn_create._table_value_matches(
+        "Men's pants (1 layer)", "Mens pants (1 layer)"
+    )
     assert not sale_asn_create._table_value_matches("110", "0")
+
+
+def test_price_check_compares_po_style_and_all_summary_totals():
+    comparisons, totals = sale_asn_create._price_check_rows(
+        [
+            {
+                "source_row": 2,
+                "po_no": "NT 12-2026",
+                "style_no": "Striker XT Gen.3 Pants Multicam",
+                "qty": "70",
+                "price": "95",
+            }
+        ],
+        [
+            {
+                "order_no": "PSW-UFPRO-26-4957.12/NT 12-2026",
+                "article": "UFPRO-Striker XT Gen.3 Pants Multicam-TENDER-MEN PANTS",
+                "qty": "70.0000",
+                "price": "95.0000",
+            }
+        ],
+    )
+    summary = sale_asn_create._summary_price_check(
+        totals,
+        {
+            "total_quantity": "70.00",
+            "value_in_doc_currency": "6650.00",
+            "net_value_in_doc_currency": "6650.00",
+        },
+    )
+
+    assert comparisons[0]["status"] == "ok"
+    assert comparisons[0]["system_qty"] == "70"
+    assert comparisons[0]["system_prices"] == ["95"]
+    assert comparisons[0]["system_order_nos"] == ["PSW-UFPRO-26-4957.12/NT 12-2026"]
+    assert summary["ok"] is True
+    assert all(item["ok"] for item in summary["checks"].values())
+
+
+def test_price_check_flags_qty_price_and_summary_mismatches():
+    comparisons, totals = sale_asn_create._price_check_rows(
+        [
+            {
+                "source_row": 2,
+                "po_no": "PO-1",
+                "style_no": "STYLE-A",
+                "qty": "10",
+                "price": "20",
+            }
+        ],
+        [{"po_no": "PO-1", "article": "STYLE-A", "qty": "9", "price": "21"}],
+    )
+    summary = sale_asn_create._summary_price_check(
+        totals,
+        {
+            "total_quantity": "9",
+            "value_in_doc_currency": "189",
+            "net_value_in_doc_currency": "189",
+        },
+    )
+
+    assert comparisons[0]["status"] == "mismatch"
+    assert summary["ok"] is False
+    assert all(not item["ok"] for item in summary["checks"].values())
+
+
+def test_price_check_export_workbook_has_detail_and_summary_sheets(tmp_path):
+    target = write_sale_asn_price_check_workbook(
+        tmp_path / "price-check",
+        {
+            "message": "Đã check 1 PO + Style: 1 khớp.",
+            "comparisons": [
+                {
+                    "source_rows": [2],
+                    "po_no": "NT 12-2026",
+                    "style_no": "Striker XT",
+                    "system_order_nos": ["PSW-26/NT 12-2026"],
+                    "file_qty": "70",
+                    "file_price": "95",
+                    "system_qty": "70",
+                    "system_prices": ["95"],
+                    "status": "ok",
+                    "message": "Khớp Qty và Price.",
+                }
+            ],
+            "summary": {
+                "checks": {
+                    key: {"expected": value, "actual": value, "ok": True}
+                    for key, value in {
+                        "total_quantity": "70",
+                        "value_in_doc_currency": "6650",
+                        "net_value_in_doc_currency": "6650",
+                    }.items()
+                }
+            },
+        },
+    )
+
+    workbook = load_workbook(target)
+    assert target.suffix == ".xlsx"
+    assert workbook.sheetnames == ["PO + Style", "Summary Total"]
+    assert workbook["PO + Style"]["D5"].value == "PSW-26/NT 12-2026"
+    assert workbook["PO + Style"]["I5"].value == "KHỚP"
+    assert workbook["Summary Total"]["D4"].value == "KHỚP"
+    workbook.close()
 
 
 def test_sale_asn_dates_use_english_wfx_format_independent_of_system_locale(monkeypatch):
@@ -1352,71 +1636,6 @@ def test_sale_asn_dates_support_every_english_wfx_month():
         sale_asn_create._date_for_wfx(f"2026-{month:02d}-02")
         for month in range(1, 13)
     ) == expected
-
-
-def test_order_details_only_runner_never_enters_other_sale_asn_steps(monkeypatch):
-    rows = [{"po_no": "PO-001", "carton": "2", "nw": "9.5"}]
-    frame = object()
-    page = type("FakePage", (), {"context": object()})()
-    calls = []
-
-    class FakePlaywright:
-        def stop(self):
-            calls.append("stop")
-
-    class FakePlaywrightStarter:
-        def start(self):
-            return FakePlaywright()
-
-    monkeypatch.setattr(
-        sale_asn_create,
-        "sync_playwright",
-        lambda: FakePlaywrightStarter(),
-    )
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_active_wfx_page",
-        lambda _playwright, _log: (object(), page),
-    )
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_frame_with_selector",
-        lambda context, selector, timeout_s: (
-            calls.append((context, selector, timeout_s)) or (page, frame)
-        ),
-    )
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_wait_order_grid",
-        lambda selected_frame, selected_rows, **_kwargs: (
-            calls.append(("wait", selected_frame, list(selected_rows)))
-            or {sale_asn_create._fold("PO-001")}
-        ),
-    )
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_fill_order_details",
-        lambda selected_frame, selected_rows, _log: calls.append(
-            ("fill-order", selected_frame, list(selected_rows))
-        ),
-    )
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_fill_style_details",
-        lambda *_args: pytest.fail("Không được chạy Style Details"),
-    )
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_fill_shipping",
-        lambda *_args: pytest.fail("Không được chạy Shipping Info"),
-    )
-
-    result = sale_asn_create.run_sale_asn_order_details(rows, lambda _message: None)
-
-    assert result["code"] == "SALE_ASN_ORDER_DETAILS_COMPLETED"
-    assert result["updated_fields"] == 2
-    assert (page.context, sale_asn_create.ORDER_GRID_SELECTOR, 15) in calls
-    assert any(call[0] == "fill-order" for call in calls if isinstance(call, tuple))
 
 
 class _FakeSaleASNLogin:
@@ -1494,6 +1713,20 @@ def test_panel_api_keeps_review_across_manual_po_checkpoint(tmp_path):
     assert [call[4] for call in login.calls if call[0] == "create"] == [0, 1]
 
 
+def test_panel_api_returns_automatic_price_check_with_completed_sale_asn(tmp_path):
+    source = tmp_path / "input.xlsx"
+    _input_workbook(source, _valid_rows())
+    login = _FakeSaleASNLogin()
+    api = PanelAPI(login_module=login, prefs_module=prefs, base_dir=tmp_path / "data")
+
+    reviewed = api.prepare_sale_asn_create(str(source), "BUYER A")
+    api.start_sale_asn_create(reviewed["review_token"])
+    completed = api.continue_sale_asn_create(reviewed["review_token"])
+
+    assert completed["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert "price_check_token" not in completed
+
+
 def test_panel_api_retries_or_skips_failed_sale_asn_stage(tmp_path):
     source = tmp_path / "input.xlsx"
     _input_workbook(source, _valid_rows())
@@ -1553,46 +1786,6 @@ def test_panel_api_retries_or_skips_failed_sale_asn_stage(tmp_path):
     assert login.calls[-1][5:7] == ("style_details", ("style_details",))
 
 
-def test_panel_api_retries_only_order_details_with_same_review(tmp_path):
-    source = tmp_path / "order-details.xlsx"
-    _order_details_workbook(
-        source,
-        [{"PO No": "PO-001", "Carton": 2, "NW": 9.5}],
-    )
-
-    class OrderDetailsLogin(_FakeSaleASNLogin):
-        def run_sale_asn_order_details(self, rows, log=print):
-            self.calls.append(("order-details", list(rows)))
-            if len(self.calls) == 1:
-                return {
-                    "ok": False,
-                    "code": "SALE_ASN_ORDER_ROWS_NOT_FOUND",
-                    "message": "wrong Sale ASN",
-                    "resumable": True,
-                }
-            return {
-                "ok": True,
-                "code": "SALE_ASN_ORDER_DETAILS_COMPLETED",
-                "message": "done",
-            }
-
-    login = OrderDetailsLogin()
-    api = PanelAPI(login_module=login, prefs_module=prefs, base_dir=tmp_path / "data")
-
-    reviewed = api.prepare_sale_asn_order_details(str(source))
-    pending = api.start_sale_asn_order_details(reviewed["review_token"])
-    completed = api.start_sale_asn_order_details(reviewed["review_token"])
-    expired = api.start_sale_asn_order_details(reviewed["review_token"])
-
-    assert reviewed["code"] == "SALE_ASN_ORDER_DETAILS_REVIEW_READY"
-    assert reviewed["po_count"] == 1
-    assert reviewed["filled_count"] == 2
-    assert pending["review_token"] == reviewed["review_token"]
-    assert completed["code"] == "SALE_ASN_ORDER_DETAILS_COMPLETED"
-    assert expired["code"] == "SALE_ASN_ORDER_REVIEW_EXPIRED"
-    assert [call[0] for call in login.calls] == ["order-details", "order-details"]
-
-
 def test_panel_api_starts_at_first_selected_stage_without_buyer(tmp_path):
     source = tmp_path / "continue.xlsx"
     _input_workbook(source, [{"PO No": "PO-001", "Carton": 2}])
@@ -1647,7 +1840,7 @@ def test_panel_api_starts_at_first_selected_stage_without_buyer(tmp_path):
     assert call[6] == ("po", "style_details", "shipping_info")
 
 
-def test_stage_progress_numbers_follow_the_four_fixed_stages():
+def test_stage_progress_numbers_follow_the_five_fixed_stages():
     seen = []
 
     def sink(stage, message, step, total, *, state="active"):
@@ -1657,13 +1850,14 @@ def test_stage_progress_numbers_follow_the_four_fixed_stages():
         sale_asn_create._emit_stage_progress(sink, stage, f"Đang điền {stage}")
     sale_asn_create._emit_stage_progress(sink, "style_details", "bỏ", state="skipped")
 
-    # Bộ đếm luôn tính trên bốn bước cố định, không theo số bước user chọn.
+    # Bộ đếm luôn tính trên năm bước cố định, không theo số bước user chọn.
     assert [(item[0], item[2], item[3]) for item in seen] == [
-        ("po", 1, 4),
-        ("order_details", 2, 4),
-        ("style_details", 3, 4),
-        ("shipping_info", 4, 4),
-        ("style_details", 3, 4),
+        ("po", 1, 5),
+        ("order_details", 2, 5),
+        ("style_details", 3, 5),
+        ("shipping_info", 4, 5),
+        ("price_check", 5, 5),
+        ("style_details", 3, 5),
     ]
     assert seen[-1][4] == "skipped"
 
@@ -1882,6 +2076,11 @@ def test_skipped_stage_never_waits_for_its_own_tab(monkeypatch):
             "Không được resolve frame của bước đã bỏ qua"
         ),
     )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_check_sale_asn_price_on_page",
+        lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
+    )
 
     result = sale_asn_create.run_sale_asn_create(
         "menu-xpath",
@@ -2033,32 +2232,3 @@ def test_po_search_clears_disabled_fields_before_each_row(monkeypatch):
     assert destinations == [""]
 
 
-def test_order_details_runner_keeps_retry_affordance_on_unexpected_errors(
-    monkeypatch,
-):
-    """Lỗi ngoài dự kiến vẫn phải giữ resumable để UI còn nút thử lại."""
-
-    class FakePlaywright:
-        def stop(self):
-            return None
-
-    monkeypatch.setattr(
-        sale_asn_create,
-        "sync_playwright",
-        lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
-    )
-    monkeypatch.setattr(
-        sale_asn_create,
-        "_active_wfx_page",
-        lambda _playwright, _log: (_ for _ in ()).throw(TypeError("bridge hỏng")),
-    )
-
-    result = sale_asn_create.run_sale_asn_order_details(
-        [{"po_no": "PO-1", "carton": "2"}],
-        log=lambda _message: None,
-    )
-
-    assert result["ok"] is False
-    assert result["code"] == "SALE_ASN_ORDER_FILL_FAILED"
-    assert result["resumable"] is True
-    assert "TypeError" in result["message"]

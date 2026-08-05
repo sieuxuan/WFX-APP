@@ -5,10 +5,7 @@ import pytest
 from openpyxl import load_workbook
 
 from wfx_panel.oc_workbook import write_oc_input_template
-from wfx_panel.sale_asn_workbook import (
-    write_sale_asn_order_details_template,
-    write_sale_asn_template,
-)
+from wfx_panel.sale_asn_workbook import write_sale_asn_template
 from wfx_panel.style_workbook import write_style_template
 
 
@@ -18,7 +15,6 @@ from wfx_panel.style_workbook import write_style_template
         ("style.xlsx", write_style_template),
         ("oc.xlsx", write_oc_input_template),
         ("sale-asn.xlsx", write_sale_asn_template),
-        ("sale-asn-order-details.xlsx", write_sale_asn_order_details_template),
     ),
 )
 def test_downloadable_templates_have_excel_safe_filters_and_tables(

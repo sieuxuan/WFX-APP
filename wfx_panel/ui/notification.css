@@ -36,6 +36,8 @@ body { padding: 2px; background: transparent; }
   gap: 6px;
   padding: 6px;
   color: var(--text);
+  /* Bấm vào thân toast mở lại panel, nên phải trông bấm được. */
+  cursor: pointer;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface);

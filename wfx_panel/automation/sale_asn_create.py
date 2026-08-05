@@ -61,6 +61,14 @@ PORT_OF_LOADING_SELECTORS = (
 )
 PORT_OF_LOADING_SELECTOR = ", ".join(PORT_OF_LOADING_SELECTORS)
 SHIPMENT_MODE_SELECTOR = "#ddlShipmentMode"
+# WFX đôi khi cần thêm vài giây để Ajax ghi Order Details sau Add & Continue.
+# Chờ đủ ở đây giúp tránh mở/submit popup chồng lên request cũ nhưng vẫn không
+# kéo dài các thao tác ngoài Add PO.
+ORDER_GRID_SYNC_TIMEOUT_SECONDS = 40
+PO_POPUP_RECOVERY_TIMEOUT_SECONDS = 40
+SHIPMENT_DETAILS_TAB_SELECTOR = "#tabShipmentDetails"
+SHIPMENT_DETAILS_GRID_SELECTOR = "#gridShipmentDetails_tblGridContent"
+SUMMARY_TOTAL_GRID_SELECTOR = "#gridASNSummaryTotal_tblGridContent"
 
 SHIPPING_MODE_VALUES = {
     "AIR": {
@@ -167,6 +175,32 @@ class _POSelectionRequired(Exception):
         self.final = final
 
 
+class _POFrameChanged(Exception):
+    """Popup Add PO thay document trong lúc đang tìm, trước khi chọn dòng."""
+
+    def __init__(
+        self,
+        *,
+        fields: Sequence[str] = (),
+        search_submitted: bool = False,
+    ) -> None:
+        super().__init__("SALE_ASN_PO_FRAME_CHANGED")
+        self.fields = tuple(fields)
+        self.search_submitted = search_submitted
+
+
+def _is_transient_frame_error(error: BaseException) -> bool:
+    message = str(error).casefold()
+    return any(
+        marker in message
+        for marker in (
+            "execution context was destroyed",
+            "frame was detached",
+            "cannot find context with specified id",
+        )
+    )
+
+
 def _po_selection_result(
     row: dict,
     candidates: Sequence[dict],
@@ -179,13 +213,22 @@ def _po_selection_result(
     total: int,
 ) -> dict[str, Any]:
     manual_action = "OK" if final else "Add & Continue"
+    if reason.startswith("qty_mismatch:"):
+        detail = reason.split(":", 1)[1]
+        message = (
+            f"Dòng {row.get('source_row')} · PO {row.get('po_no')}: {detail}. "
+            "Popup vẫn đang mở; hãy kiểm tra/chọn lại các dòng rồi bấm "
+            f"{manual_action}, sau đó quay lại app bấm Tiếp tục."
+        )
+    else:
+        message = (
+            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
+            f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
+        )
     return _result(
         True,
         "SALE_ASN_PO_SELECTION_REQUIRED",
-        (
-            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
-            f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
-        ),
+        message,
         pending_index=pending_index,
         next_index=next_index,
         source_row=row.get("source_row"),
@@ -467,6 +510,39 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
     return {ok: true, row_id: candidates[0].id, column_id: cell.id};
 }"""
 
+
+_READ_SHIPMENT_DETAILS_JS = r"""root => {
+    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const read = (row, selector) => {
+        const cell = row.querySelector(selector);
+        const value = cell?.querySelector('[title]')?.getAttribute('title')
+            || cell?.getAttribute('title') || cell?.textContent || '';
+        return clean(value);
+    };
+    return [...root.querySelectorAll('tr.trContent')].map(row => ({
+        order_no: read(row, '#colOrderNo'),
+        article: read(row, '#colArticle'),
+        qty: read(row, '#colShippingQty'),
+        price: read(row, '#colPrice'),
+    })).filter(row => row.order_no || row.article);
+}"""
+
+_READ_ASN_SUMMARY_TOTAL_JS = r"""root => {
+    const row = root.querySelector('tr.trContent');
+    if (!row) return null;
+    const read = selector => {
+        const cell = row.querySelector(selector);
+        return String(cell?.querySelector('[title]')?.getAttribute('title')
+            || cell?.getAttribute('title') || cell?.textContent || '')
+            .replace(/\s+/g, ' ').trim();
+    };
+    return {
+        total_quantity: read('#colTotalQuantity'),
+        value_in_doc_currency: read('#colValueInDocCurrency'),
+        net_value_in_doc_currency: read('#colNetValueInDocCurrency'),
+    };
+}"""
+
 _READ_ORDER_DETAILS_JS = r"""spec => {
     const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
     const table = document.querySelector(spec.table);
@@ -559,6 +635,7 @@ SALE_ASN_STAGE_LABELS = {
     "order_details": "Order Details",
     "style_details": "Style Details",
     "shipping_info": "Shipping Info",
+    "price_check": "Check giá / Qty",
 }
 SALE_ASN_STAGE_ORDER = tuple(SALE_ASN_STAGE_LABELS)
 
@@ -736,7 +813,9 @@ def _buyer_options(frame: Frame, timeout_s: float = 15) -> list[dict[str, str]]:
 
     cell = _buyer_cell(frame)
     deadline = time.monotonic() + timeout_s
-    open_after = time.monotonic() + min(1.5, timeout_s / 2)
+    # Mở dropdown sớm để kích hoạt lazy-bind Buyer của WFX; chờ 1,5 giây như
+    # trước làm mỗi lượt bắt đầu chậm thêm dù popup đã sẵn sàng nhận click.
+    open_after = time.monotonic() + min(0.5, timeout_s / 2)
     dropdown_opened = False
     while time.monotonic() < deadline:
         options = _normalise_buyer_options(cell.evaluate(_BUYER_OPTIONS_JS) or [])
@@ -854,10 +933,20 @@ def scan_sale_asn_buyers(
 
 def _fill_popup_input(frame: Frame, selector: str, value: str) -> bool:
     locator = frame.locator(selector).first
+    # Popup root chỉ được trả về sau khi đã render. Selector biến thể của Style
+    # thường không tồn tại trên từng tenant; đừng chờ 12 giây cho mỗi selector
+    # vắng mặt trước khi thử selector kế tiếp.
+    if not locator.count():
+        return False
     try:
-        locator.wait_for(state="visible", timeout=12_000)
+        locator.wait_for(state="visible", timeout=3_000)
     except (PlaywrightError, PlaywrightTimeoutError):
         return False
+    try:
+        if locator.input_value(timeout=500) == value:
+            return True
+    except PlaywrightError:
+        pass
     locator.fill(value, timeout=5_000)
     return locator.input_value(timeout=1_000) == value
 
@@ -866,33 +955,36 @@ def _select_popup_destination(frame: Frame, destination: str) -> bool:
     select = frame.locator("#wfx_GMPOAsnSearch select[name='cboDestination'], #wfx_GMPOAsnSearch #cboDestination")
     if not select.count() or not select.first.is_visible():
         return False
-    if not str(destination or "").strip():
-        return bool(
-            select.first.evaluate(
-                r"""control => {
-                    const option = [...control.options].find(item =>
-                        !String(item.value || '').trim()
-                        || /^\[?select\]?$/i.test(String(item.textContent || '').trim())
-                    ) || control.options[0];
-                    if (!option) return false;
-                    control.value = option.value;
-                    option.selected = true;
-                    control.dispatchEvent(new Event('change', {bubbles: true}));
-                    return true;
-                }"""
-            )
+    # Danh sách quốc gia có thể hàng trăm option. Đọc/chọn toàn bộ ngay trong
+    # DOM một lần thay vì gọi Playwright riêng cho từng option.
+    return bool(
+        select.first.evaluate(
+            r"""(control, requested) => {
+                const clean = value => String(value || '')
+                    .replace(/\s+/g, ' ').trim();
+                const fold = value => clean(value).toLocaleLowerCase('en');
+                const wanted = clean(requested);
+                const options = [...control.options];
+                const matches = wanted
+                    ? options.filter(item =>
+                        fold(item.textContent || item.title) === fold(wanted)
+                        || fold(item.value) === fold(wanted))
+                    : options.filter(item =>
+                        !clean(item.value)
+                        || /^\[?select\]?$/i.test(clean(item.textContent)));
+                const option = matches.length === 1
+                    ? matches[0]
+                    : (!wanted ? options[0] : null);
+                if (!option) return false;
+                if (control.value === option.value && option.selected) return true;
+                control.value = option.value;
+                option.selected = true;
+                control.dispatchEvent(new Event('change', {bubbles: true}));
+                return true;
+            }""",
+            str(destination or "").strip(),
         )
-    options = select.first.locator("option")
-    exact = []
-    for index in range(options.count()):
-        option = options.nth(index)
-        label = " ".join((option.inner_text() or option.get_attribute("title") or "").split())
-        if _fold(label) == _fold(destination) or _fold(option.get_attribute("value")) == _fold(destination):
-            exact.append(option.get_attribute("value") or label)
-    if len(exact) != 1:
-        return False
-    select.first.select_option(value=exact[0])
-    return True
+    )
 
 
 def _click_dom_action(locator: Any, *, timeout: int = 8_000) -> dict[str, Any]:
@@ -922,8 +1014,97 @@ def _click_search(frame: Frame) -> None:
     search = frame.locator(PO_SEARCH_SELECTOR).first
     if not search.count():
         search = frame.locator("xpath=//*[@id='wfx_GMPOAsnSearch']/table[3]/tbody/tr/td[2]/input").first
+    monitor_installed = False
+    try:
+        monitor_installed = bool(
+            frame.evaluate(
+                r"""() => {
+                    const root = document.querySelector('#wfx_GMPOAsnSearch');
+                    if (!root) return false;
+                    window.__wfxPoSearchMonitor?.observer?.disconnect();
+                    const state = {
+                        changed: false,
+                        lastMutation: performance.now(),
+                    };
+                    const observer = new MutationObserver(() => {
+                        state.changed = true;
+                        state.lastMutation = performance.now();
+                    });
+                    observer.observe(root, {
+                        subtree: true,
+                        childList: true,
+                        attributes: true,
+                        characterData: true,
+                    });
+                    window.__wfxPoSearchMonitor = {state, observer};
+                    return true;
+                }"""
+            )
+        )
+    except PlaywrightError:
+        pass
     _click_dom_action(search)
-    _wait(frame, 700)
+    if not monitor_installed:
+        _wait(frame, 700)
+        return
+
+    started = time.monotonic()
+    deadline = started + 5
+    try:
+        while time.monotonic() < deadline:
+            state = frame.evaluate(
+                r"""() => {
+                    const monitor = window.__wfxPoSearchMonitor;
+                    const shown = element => {
+                        if (!element || !element.isConnected) return false;
+                        const style = getComputedStyle(element);
+                        const rect = element.getBoundingClientRect();
+                        return style.display !== 'none'
+                            && style.visibility !== 'hidden'
+                            && rect.width > 0 && rect.height > 0;
+                    };
+                    const busy = [
+                        '.blockUI', '.ui-widget-overlay', '.loading',
+                        '[id*="loading" i]', '[id*="progress" i]'
+                    ].some(selector =>
+                        [...document.querySelectorAll(selector)].some(shown));
+                    return {
+                        changed: Boolean(monitor?.state?.changed),
+                        quietMs: monitor
+                            ? performance.now() - monitor.state.lastMutation
+                            : 0,
+                        busy,
+                    };
+                }"""
+            )
+            elapsed_ms = (time.monotonic() - started) * 1_000
+            # Response nhanh: DOM đã đổi và yên ít nhất 120 ms. Nếu WFX không
+            # mutate DOM khi kết quả giống hệt, giữ fallback 700 ms như trước.
+            if (
+                not state.get("busy")
+                and (
+                    (state.get("changed") and state.get("quietMs", 0) >= 120)
+                    or (not state.get("changed") and elapsed_ms >= 700)
+                )
+            ):
+                return
+            _wait(frame, 60)
+    except PlaywrightError as error:
+        if _is_transient_frame_error(error):
+            # Click Search đã chạy. WFX thường thay cả document để hiển thị
+            # kết quả; frame cũ mất context không có nghĩa tìm PO thất bại.
+            raise _POFrameChanged(search_submitted=True) from error
+        raise
+    finally:
+        try:
+            frame.evaluate(
+                """() => {
+                    window.__wfxPoSearchMonitor?.observer?.disconnect();
+                    delete window.__wfxPoSearchMonitor;
+                }"""
+            )
+        except PlaywrightError:
+            pass
 
 
 def _search_po(
@@ -932,20 +1113,120 @@ def _search_po(
     *,
     fields: Sequence[str],
 ) -> list[dict]:
-    enabled = set(fields)
-    po_no = str(row.get("po_no") or "") if "po" in enabled else ""
-    if not _fill_popup_input(frame, "#txtOCNo", po_no):
-        raise RuntimeError("SALE_ASN_PO_SEARCH_NOT_READY")
-    destination = str(row.get("destination") or "") if "destination" in enabled else ""
-    _select_popup_destination(frame, destination)
-    style = str(row.get("style_no") or "") if "style" in enabled else ""
-    for selector in STYLE_INPUT_SELECTORS:
-        if _fill_popup_input(frame, selector, style):
-            break
-    _click_search(frame)
-    table = frame.locator(PO_RESULTS_TABLE_SELECTOR).first
-    table.wait_for(state="visible", timeout=5_000)
-    return list(table.evaluate(_PO_RESULTS_JS) or [])
+    search_submitted = False
+    try:
+        enabled = set(fields)
+        po_no = str(row.get("po_no") or "") if "po" in enabled else ""
+        if not _fill_popup_input(frame, "#txtOCNo", po_no):
+            raise _POFrameChanged(fields=fields, search_submitted=False)
+        destination = (
+            str(row.get("destination") or "")
+            if "destination" in enabled
+            else ""
+        )
+        _select_popup_destination(frame, destination)
+        style = str(row.get("style_no") or "") if "style" in enabled else ""
+        for selector in STYLE_INPUT_SELECTORS:
+            if _fill_popup_input(frame, selector, style):
+                break
+        _click_search(frame)
+        search_submitted = True
+        table = frame.locator(PO_RESULTS_TABLE_SELECTOR).first
+        table.wait_for(state="visible", timeout=5_000)
+        return list(table.evaluate(_PO_RESULTS_JS) or [])
+    except _POFrameChanged as error:
+        if not error.fields:
+            error.fields = tuple(fields)
+        raise
+    except PlaywrightError as error:
+        if _is_transient_frame_error(error):
+            raise _POFrameChanged(
+                fields=fields,
+                search_submitted=search_submitted,
+            ) from error
+        raise
+
+
+def _recover_submitted_po_results(
+    context: Any,
+    *,
+    timeout_s: float,
+) -> tuple[Frame, list[dict]] | None:
+    """Nhận bảng kết quả mà WFX đã render sau khi Search đổi document."""
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for page in reversed(context.pages):
+            for frame in reversed(page.frames):
+                try:
+                    table = frame.locator(PO_RESULTS_TABLE_SELECTOR).first
+                    if not table.count() or not table.is_visible():
+                        continue
+                    candidates = list(table.evaluate(_PO_RESULTS_JS) or [])
+                    if candidates:
+                        return frame, candidates
+                except PlaywrightError:
+                    continue
+        if context.pages:
+            _wait(context.pages[0], 100)
+    return None
+
+
+def _auto_add_po_with_frame_retry(
+    context: Any,
+    popup_frame: Frame,
+    row: dict,
+    log: Callable[[str], None],
+    *,
+    final: bool,
+    search_fields: Sequence[str],
+) -> tuple[bool, list[dict], str, Frame]:
+    """Nhận lại popup/kết quả nếu WFX đổi document lúc Search."""
+
+    deadline = time.monotonic() + PO_POPUP_RECOVERY_TIMEOUT_SECONDS
+    recovered_search: tuple[tuple[str, ...], list[dict]] | None = None
+    reported_reload = False
+    while time.monotonic() < deadline:
+        try:
+            kwargs: dict[str, Any] = {
+                "final": final,
+                "search_fields": search_fields,
+            }
+            if recovered_search is not None:
+                kwargs["recovered_search"] = recovered_search
+            added, candidates, reason = _auto_add_po(
+                popup_frame, row, log, **kwargs
+            )
+            return added, candidates, reason, popup_frame
+        except _POFrameChanged as changed:
+            if not reported_reload:
+                _write_log(
+                    log,
+                    f"[SALE ASN] Dòng {row.get('source_row')}: popup Add PO vừa tải lại; đang nhận kết quả từ frame mới.",
+                )
+                reported_reload = True
+            remaining = max(0.1, deadline - time.monotonic())
+            if changed.search_submitted:
+                recovered = _recover_submitted_po_results(
+                    context,
+                    timeout_s=min(8, remaining),
+                )
+                if recovered is not None:
+                    popup_frame, candidates = recovered
+                    recovered_search = (tuple(changed.fields), candidates)
+                    _write_log(
+                        log,
+                        f"[SALE ASN] Dòng {row.get('source_row')}: đã nhận {len(candidates)} kết quả PO từ frame mới.",
+                    )
+                    continue
+            recovered_search = None
+            remaining = max(0.1, deadline - time.monotonic())
+            _popup_page, popup_frame = _frame_with_selector(
+                context,
+                f"{PO_POPUP_SELECTOR} #txtOCNo",
+                timeout_s=remaining,
+            )
+    raise RuntimeError("SALE_ASN_PO_SEARCH_NOT_READY")
 
 
 def _auto_add_po(
@@ -955,23 +1236,95 @@ def _auto_add_po(
     *,
     final: bool = False,
     search_fields: Sequence[str] = SALE_ASN_PO_SEARCH_FIELDS,
+    recovered_search: tuple[tuple[str, ...], list[dict]] | None = None,
 ) -> tuple[bool, list[dict], str]:
-    enabled = tuple(
+    configured = tuple(
         field for field in SALE_ASN_PO_SEARCH_FIELDS if field in set(search_fields)
     ) or SALE_ASN_PO_SEARCH_FIELDS
+    # Destination là tùy chọn.  Không để một giá trị đang chọn từ PO trước trong
+    # popup vô tình trở thành điều kiện lọc cho dòng hiện tại khi ô Excel trống.
+    enabled = tuple(
+        field
+        for field in configured
+        if field != "destination" or str(row.get("destination") or "").strip()
+    )
+    if "destination" in configured and "destination" not in enabled:
+        _write_log(
+            log,
+            f"[SALE ASN] Dòng {row.get('source_row')}: Destination trống, bỏ qua tiêu chí Destination.",
+        )
+    if not enabled:
+        # PO No là khóa bắt buộc của mỗi dòng workbook, nên là điểm tựa an toàn
+        # khi người dùng chỉ bật Destination nhưng dòng hiện tại để trống.
+        enabled = ("po",)
     active: list[str] = []
     last: list[dict] = []
     label = ""
     for field in enabled:
         active.append(field)
         label = " + ".join(SALE_ASN_PO_SEARCH_LABELS[item] for item in active)
-        last = _search_po(frame, row, fields=tuple(active))
+        active_fields = tuple(active)
+        if recovered_search is not None and recovered_search[0] == active_fields:
+            last = list(recovered_search[1])
+            recovered_search = None
+        else:
+            last = _search_po(frame, row, fields=active_fields)
         _write_log(log, f"[SALE ASN] Dòng {row.get('source_row')}: {label} → {len(last)} kết quả.")
         if not last:
             # Mỗi lượt chỉ thêm điều kiện nên 0 kết quả không thể tăng lại.
             break
         if len(last) > 1 and field != enabled[-1]:
             continue
+
+        # Qty trong file vẫn được kiểm ngay tại Add PO. Nếu đã dùng hết tiêu
+        # chí nhưng còn nhiều dòng (thường là các size), chỉ auto-add khi tổng
+        # Dispatched Qty bằng Qty file. Lệch thì giữ popup để user quyết định.
+        expected_qty = _decimal_or_none(row.get("qty"))
+        all_dispatched_qty = [
+            _decimal_or_none(item.get("dispatched_qty")) for item in last
+        ]
+        if (
+            expected_qty is not None
+            and len(last) >= 2
+            and all(value is not None for value in all_dispatched_qty)
+        ):
+            total_dispatched_qty = sum(all_dispatched_qty, Decimal("0"))
+            if abs(expected_qty - total_dispatched_qty) > Decimal("0.0001"):
+                detail = (
+                    f"có {len(last)} dòng, tổng Dispatched Qty "
+                    f"{_decimal_display(total_dispatched_qty)} khác Qty file "
+                    f"{_decimal_display(expected_qty)}"
+                )
+                _write_log(
+                    log,
+                    f"[SALE ASN] Dòng {row.get('source_row')}: {detail}; chờ user xác nhận.",
+                )
+                return False, last, f"qty_mismatch:{detail}"
+            _write_log(
+                log,
+                f"[SALE ASN] Dòng {row.get('source_row')}: tổng Dispatched Qty {_decimal_display(total_dispatched_qty)} khớp Qty file; tự thêm {len(last)} dòng.",
+            )
+        matching_qty = [
+            _decimal_or_none(item.get("dispatched_qty"))
+            for item in last
+            if _order_style_matches(
+                _fold(row.get("style_no")), _fold(item.get("style_no"))
+            )
+        ]
+        matching_qty = [value for value in matching_qty if value is not None]
+        if expected_qty is not None and matching_qty and len(last) == 1:
+            actual_qty = sum(matching_qty, Decimal("0"))
+            if abs(expected_qty - actual_qty) > Decimal("0.0001"):
+                raise RuntimeError(
+                    "SALE_ASN_PO_QTY_MISMATCH:"
+                    f"Dòng {row.get('source_row')} · file Qty "
+                    f"{_decimal_display(expected_qty)} khác WFX "
+                    f"{_decimal_display(actual_qty)}."
+                )
+            _write_log(
+                log,
+                f"[SALE ASN] Dòng {row.get('source_row')}: Qty {_decimal_display(expected_qty)} khớp WFX trước khi thêm PO.",
+            )
 
         selected_values: list[str] = []
         for chosen in last:
@@ -1068,7 +1421,207 @@ def _table_value_matches(expected: str, actual: str) -> bool:
     actual_date = _parse_supported_date(actual_clean)
     if expected_date is not None and actual_date is not None:
         return expected_date == actual_date
-    return _fold(expected_clean) == _fold(actual_clean)
+    if _fold(expected_clean) == _fold(actual_clean):
+        return True
+    # Một số editor WFX tự bỏ apostrophe/quote khi blur ("Men's" → "Mens").
+    # Đây là chuẩn hóa hiển thị của WFX, không phải dữ liệu bị đổi; chỉ bỏ các
+    # ký tự quote ở nhánh fallback, còn dấu câu khác vẫn giữ ranh giới từ.
+    return _wfx_text_value_key(expected_clean) == _wfx_text_value_key(actual_clean)
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    text = str(value or "").replace(",", "").strip()
+    if not text:
+        return None
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return None
+
+
+def _shipment_order_po(value: object) -> str:
+    """Tách PO từ Order No WFX có dạng ``mã hệ thống/PO``."""
+
+    order_no = str(value or "").strip()
+    if "/" not in order_no:
+        return order_no
+    return order_no.rsplit("/", 1)[-1].strip()
+
+
+def _price_check_rows(
+    source_rows: Sequence[dict],
+    shipment_rows: Sequence[dict],
+) -> tuple[list[dict[str, Any]], dict[str, str | bool]]:
+    """So sánh file với Shipment Details theo PO trong Order No + Article."""
+
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for source in source_rows:
+        po_no = str(source.get("po_no") or "").strip()
+        style_no = str(source.get("style_no") or "").strip()
+        key = (_fold(po_no), _fold(style_no))
+        if not key[0] or not key[1]:
+            continue
+        group = groups.setdefault(
+            key,
+            {
+                "po_no": po_no,
+                "style_no": style_no,
+                "source_rows": [],
+                "qty_values": [],
+                "price_values": [],
+            },
+        )
+        group["source_rows"].append(int(source.get("source_row") or 0))
+        group["qty_values"].append(_decimal_or_none(source.get("qty")))
+        group["price_values"].append(_decimal_or_none(source.get("price")))
+
+    results: list[dict[str, Any]] = []
+    complete_file_rows: list[tuple[Decimal, Decimal]] = []
+    for group in groups.values():
+        file_qty_values = group["qty_values"]
+        file_price_values = group["price_values"]
+        file_qty = (
+            sum(file_qty_values, Decimal("0"))
+            if all(value is not None for value in file_qty_values)
+            else None
+        )
+        prices = {value for value in file_price_values if value is not None}
+        file_price = next(iter(prices)) if len(prices) == 1 else None
+        matched = [
+            item
+            for item in shipment_rows
+            if _fold(_shipment_order_po(item.get("order_no") or item.get("po_no")))
+            == _fold(group["po_no"])
+            and _order_style_matches(
+                _fold(group["style_no"]),
+                _fold(item.get("article")),
+            )
+        ]
+        system_qty_values = [_decimal_or_none(item.get("qty")) for item in matched]
+        system_prices = {
+            value
+            for item in matched
+            if (value := _decimal_or_none(item.get("price"))) is not None
+        }
+        system_qty = (
+            sum(system_qty_values, Decimal("0"))
+            if matched and all(value is not None for value in system_qty_values)
+            else None
+        )
+        result: dict[str, Any] = {
+            "po_no": group["po_no"],
+            "style_no": group["style_no"],
+            "source_rows": group["source_rows"],
+            "system_order_nos": sorted(
+                {
+                    str(item.get("order_no") or "").strip()
+                    for item in matched
+                    if str(item.get("order_no") or "").strip()
+                }
+            ),
+            "file_qty": _decimal_display(file_qty),
+            "file_price": _decimal_display(file_price),
+            "system_qty": _decimal_display(system_qty),
+            "system_prices": [_decimal_display(value) for value in sorted(system_prices)],
+            "status": "ok",
+            "message": "Khớp Qty và Price.",
+        }
+        if file_qty is None or file_price is None:
+            result.update(
+                status="file_value_missing",
+                message="File thiếu Qty hoặc Price, chưa thể đối chiếu dòng này.",
+            )
+        elif not matched:
+            result.update(
+                status="shipment_not_found",
+                message="Không tìm thấy PO trong Order No + Article tương ứng trên WFX.",
+            )
+        elif system_qty is None or not system_prices:
+            result.update(
+                status="system_value_missing",
+                message="Shipment Details thiếu Shipping Qty hoặc Price (USD).",
+            )
+        elif len(system_prices) != 1:
+            result.update(
+                status="system_price_ambiguous",
+                message="WFX có nhiều Price (USD) cho cùng PO + Style.",
+            )
+        else:
+            system_price = next(iter(system_prices))
+            qty_ok = abs(file_qty - system_qty) <= Decimal("0.0001")
+            price_ok = abs(file_price - system_price) <= Decimal("0.0001")
+            result["qty_ok"] = qty_ok
+            result["price_ok"] = price_ok
+            if not qty_ok or not price_ok:
+                differences = []
+                if not qty_ok:
+                    differences.append("Qty")
+                if not price_ok:
+                    differences.append("Price")
+                result.update(
+                    status="mismatch",
+                    message=f"Không khớp {' và '.join(differences)}.",
+                )
+        if file_qty is not None and file_price is not None:
+            complete_file_rows.append((file_qty, file_price))
+        results.append(result)
+
+    total_qty = sum((item[0] for item in complete_file_rows), Decimal("0"))
+    total_value = sum(
+        (qty * price for qty, price in complete_file_rows), Decimal("0")
+    )
+    all_file_values_present = len(complete_file_rows) == len(groups)
+    return results, {
+        "file_values_complete": all_file_values_present,
+        "file_total_qty": _decimal_display(total_qty) if all_file_values_present else "",
+        "file_total_value": _decimal_display(total_value) if all_file_values_present else "",
+    }
+
+
+def _decimal_display(value: Decimal | None) -> str:
+    if value is None:
+        return ""
+    rendered = format(value.quantize(Decimal("0.0001")), "f")
+    return rendered.rstrip("0").rstrip(".") if "." in rendered else rendered
+
+
+def _summary_price_check(
+    file_totals: dict[str, str | bool],
+    summary: dict[str, str],
+) -> dict[str, Any]:
+    expected_qty = str(file_totals.get("file_total_qty") or "")
+    expected_value = str(file_totals.get("file_total_value") or "")
+    values_complete = bool(file_totals.get("file_values_complete"))
+    checks = {
+        "total_quantity": {
+            "expected": expected_qty,
+            "actual": str(summary.get("total_quantity") or ""),
+        },
+        "value_in_doc_currency": {
+            "expected": expected_value,
+            "actual": str(summary.get("value_in_doc_currency") or ""),
+        },
+        "net_value_in_doc_currency": {
+            "expected": expected_value,
+            "actual": str(summary.get("net_value_in_doc_currency") or ""),
+        },
+    }
+    for check in checks.values():
+        check["ok"] = values_complete and _table_value_matches(
+            check["expected"], check["actual"]
+        )
+    return {
+        "file_values_complete": values_complete,
+        "checks": checks,
+        "ok": values_complete and all(item["ok"] for item in checks.values()),
+    }
+
+
+def _wfx_text_value_key(value: str) -> str:
+    text = unicodedata.normalize("NFD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = re.sub(r"['`\u2018\u2019\u02bc]+", "", text.casefold())
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
 
 
 def _try_date(value: str, pattern: str) -> datetime | None:
@@ -1231,7 +1784,7 @@ def _missing_order_rows(
 def _wait_order_grid(
     frame: Frame,
     rows: Sequence[dict],
-    timeout_s: float = 10,
+    timeout_s: float = ORDER_GRID_SYNC_TIMEOUT_SECONDS,
     *,
     allow_incomplete: bool = False,
 ) -> set[tuple[str, str]]:
@@ -1299,17 +1852,26 @@ def _ensure_po_popup_for_next_row(
     _main_page, main_frame = _frame_with_selector(
         context,
         "#sectionOrderDetails",
-        timeout_s=15,
+        timeout_s=PO_POPUP_RECOVERY_TIMEOUT_SECONDS,
     )
     # Chỉ mở lại sau khi các dòng vừa chọn đã thật sự vào grid; nếu request WFX
     # còn chạy thì bước chờ này ngăn click Add chồng lên postback cũ.
-    _wait_order_grid(main_frame, added_rows, timeout_s=15)
+    _write_log(
+        log,
+        "[SALE ASN] Add & Continue đang được WFX ghi nhận; "
+        "đang chờ Order Details cập nhật...",
+    )
+    _wait_order_grid(
+        main_frame,
+        added_rows,
+        timeout_s=ORDER_GRID_SYNC_TIMEOUT_SECONDS,
+    )
     add = main_frame.locator(f"xpath={ADD_ORDER_XPATH}").first
     _click_dom_action(add)
     _popup_page, popup_frame = _frame_with_selector(
         context,
         PO_POPUP_SELECTOR,
-        timeout_s=15,
+        timeout_s=PO_POPUP_RECOVERY_TIMEOUT_SECONDS,
     )
     _write_log(
         log,
@@ -1330,10 +1892,14 @@ def _ensure_order_grid_rows(
 ) -> Frame:
     """Xác nhận PO đã vào grid và phục hồi đúng các dòng bị rơi khi đóng popup."""
 
+    _write_log(
+        log,
+        "[SALE ASN] Đang chờ WFX xác nhận các PO trong Order Details...",
+    )
     present = _wait_order_grid(
         main_frame,
         rows,
-        timeout_s=10,
+        timeout_s=ORDER_GRID_SYNC_TIMEOUT_SECONDS,
         allow_incomplete=True,
     )
     missing = _missing_order_rows(rows, present)
@@ -1359,12 +1925,13 @@ def _ensure_order_grid_rows(
         _popup_page, popup_frame = _frame_with_selector(
             context,
             PO_POPUP_SELECTOR,
-            timeout_s=15,
+            timeout_s=PO_POPUP_RECOVERY_TIMEOUT_SECONDS,
         )
 
     for index, row in enumerate(missing):
         final = index == len(missing) - 1
-        added, candidates, reason = _auto_add_po(
+        added, candidates, reason, popup_frame = _auto_add_po_with_frame_retry(
+            context,
             popup_frame,
             row,
             log,
@@ -1379,9 +1946,13 @@ def _ensure_order_grid_rows(
     _main_page, refreshed_frame = _frame_with_selector(
         context,
         "#sectionOrderDetails",
-        timeout_s=15,
+        timeout_s=PO_POPUP_RECOVERY_TIMEOUT_SECONDS,
     )
-    _wait_order_grid(refreshed_frame, rows, timeout_s=15)
+    _wait_order_grid(
+        refreshed_frame,
+        rows,
+        timeout_s=ORDER_GRID_SYNC_TIMEOUT_SECONDS,
+    )
     _write_log(log, "[SALE ASN] Đã xác nhận đủ PO trong Order Details.")
     return refreshed_frame
 
@@ -1461,92 +2032,51 @@ def scan_sale_asn_order_details(
             playwright.stop()
 
 
-def run_sale_asn_order_details(
+def _check_sale_asn_price_on_page(
+    page: Page,
     rows: Sequence[dict],
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None],
 ) -> dict[str, Any]:
-    """Chỉ cập nhật Order Details; không thêm PO hoặc sửa tab khác."""
+    """Đối chiếu ngay trên form vừa tạo, không mở một flow/nút riêng."""
 
-    playwright = None
-    try:
-        if not rows:
-            return _result(
-                False,
-                "SALE_ASN_ORDER_FILE_EMPTY",
-                "File Order Details chưa có dữ liệu.",
-            )
-        playwright = sync_playwright().start()
-        _browser, page = _active_wfx_page(playwright, log)
-        _main_page, frame = _frame_with_selector(
-            page.context,
-            ORDER_GRID_SELECTOR,
-            timeout_s=15,
-        )
-        present = _wait_order_grid(
-            frame,
-            rows,
-            timeout_s=3,
-            allow_incomplete=True,
-        )
-        missing = _missing_order_rows(rows, present)
-        if missing:
-            missing_pos = [str(row.get("po_no") or "") for row in missing]
-            return _result(
-                False,
-                "SALE_ASN_ORDER_ROWS_NOT_FOUND",
-                (
-                    "Order Details đang mở không có các PO trong file: "
-                    f"{', '.join(missing_pos[:10])}."
-                ),
-                missing_pos=missing_pos,
-                resumable=True,
-            )
-        _fill_order_details(frame, rows, log)
-        updated_fields = sum(
-            1
-            for row in rows
-            for key in ORDER_FIELD_COLUMNS
-            if str(row.get(key) or "").strip()
-        )
-        return _result(
-            True,
-            "SALE_ASN_ORDER_DETAILS_COMPLETED",
-            (
-                f"Đã điền {updated_fields} ô Order Details cho {len(rows)} PO. "
-                "Hãy kiểm tra trên WFX rồi tự bấm Save."
-            ),
-            po_count=len(rows),
-            updated_fields=updated_fields,
-            save_required=True,
-        )
-    except RuntimeError as error:
-        code = str(error).split(":", 1)[0] or "SALE_ASN_ORDER_FILL_FAILED"
-        message = f"Không điền xong Order Details: {_first_line(error)}"
-        _write_log(log, message)
-        return _result(False, code, message, resumable=True)
-    except (PlaywrightError, PlaywrightTimeoutError) as error:
-        message = f"Order Details chưa sẵn sàng: {_first_line(error)}"
-        _write_log(log, message)
-        return _result(
-            False,
-            "SALE_ASN_ORDER_FILL_FAILED",
-            message,
-            resumable=True,
-        )
-    except Exception as error:
-        # Không có nhánh này thì mọi lỗi ngoài dự kiến rơi lên PANEL_ERROR và
-        # mất cờ resumable, khiến UI không còn nút thử lại cho đúng file đó.
-        message = f"{type(error).__name__}: {_first_line(error)}"
-        _write_log(log, message)
-        return _result(
-            False,
-            "SALE_ASN_ORDER_FILL_FAILED",
-            message,
-            resumable=True,
-        )
-    finally:
-        if playwright is not None:
-            playwright.stop()
+    if not rows:
+        raise RuntimeError("SALE_ASN_PRICE_FILE_EMPTY")
+    _main_page, frame = _frame_with_selector(
+        page.context,
+        SHIPMENT_DETAILS_TAB_SELECTOR,
+        timeout_s=15,
+    )
+    _click_dom_action(frame.locator(SHIPMENT_DETAILS_TAB_SELECTOR).first)
+    _wait(frame, 350)
+    shipment_grid = frame.locator(SHIPMENT_DETAILS_GRID_SELECTOR).first
+    shipment_grid.wait_for(state="visible", timeout=15_000)
+    shipment_rows = list(shipment_grid.evaluate(_READ_SHIPMENT_DETAILS_JS) or [])
+    if not shipment_rows:
+        raise RuntimeError("SALE_ASN_SHIPMENT_DETAILS_EMPTY")
+    summary_grid = frame.locator(SUMMARY_TOTAL_GRID_SELECTOR).first
+    summary_grid.wait_for(state="visible", timeout=10_000)
+    summary = summary_grid.evaluate(_READ_ASN_SUMMARY_TOTAL_JS)
+    if not isinstance(summary, dict):
+        raise RuntimeError("SALE_ASN_SUMMARY_TOTAL_EMPTY")
+    comparisons, file_totals = _price_check_rows(rows, shipment_rows)
+    summary_check = _summary_price_check(file_totals, summary)
+    matched = sum(item["status"] == "ok" for item in comparisons)
+    attention = len(comparisons) - matched
+    summary_label = "khớp" if summary_check["ok"] else "cần kiểm tra"
+    message = (
+        f"Đã check {len(comparisons)} PO + Style: {matched} khớp"
+        f"{f', {attention} cần kiểm tra' if attention else ''}. "
+        f"Summary Total: {summary_label}."
+    )
+    _write_log(log, f"[SALE ASN] {message}")
+    return _result(
+        True,
+        "SALE_ASN_PRICE_CHECKED",
+        message,
+        comparisons=comparisons,
+        summary=summary_check,
+        shipment_row_count=len(shipment_rows),
+    )
 
 
 def _fill_style_details(
@@ -1612,9 +2142,17 @@ def _fill_shipping(
         _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
         mapped = {}
     shipping_values = {**first_row, **mapped}
+    destination_is_blank = not str(shipping_values.get("destination") or "").strip()
     destination_country_confirmed: bool | None = None
     for selector, key, mode in SHIPPING_FIELDS:
         label = SHIPPING_FIELD_LABELS.get(selector, selector)
+        if destination_is_blank and selector in {
+            "#Cell_DestinationCountry",
+            "#Cell_FinalDestination",
+        }:
+            # Destination không bắt buộc.  Khi file để trống, giữ nguyên các
+            # giá trị WFX khởi tạo thay vì xóa/đổi một nửa cặp country/final.
+            continue
         if (
             selector == "#Cell_FinalDestination"
             and destination_country_confirmed is False
@@ -1697,6 +2235,7 @@ def run_sale_asn_create(
     current_stage = str(stage or "po")
     add_po_selected = current_stage == "po"
     shipping_warnings: list[str] = []
+    price_check: dict[str, Any] | None = None
     try:
         if add_po_selected and not buyer.strip():
             return _result(False, "SALE_ASN_BUYER_REQUIRED", "Hãy chọn Buyer trước khi chạy.")
@@ -1743,12 +2282,15 @@ def run_sale_asn_create(
                         f"Thêm PO {index + 1}/{len(rows)}",
                     )
                     final_pending = index == len(rows) - 1
-                    added, candidates, reason = _auto_add_po(
-                        popup_frame,
-                        row,
-                        log,
-                        final=final_pending,
-                        search_fields=search_fields,
+                    added, candidates, reason, popup_frame = (
+                        _auto_add_po_with_frame_retry(
+                            context,
+                            popup_frame,
+                            row,
+                            log,
+                            final=final_pending,
+                            search_fields=search_fields,
+                        )
                     )
                     if not added:
                         return _po_selection_result(
@@ -1776,6 +2318,23 @@ def run_sale_asn_create(
         main_frame = None
         for step in SALE_ASN_STAGE_ORDER[start_stage_index:]:
             current_stage = step
+            # Đây là bước bắt buộc cuối luồng, không thuộc các checkbox "Các
+            # bước app sẽ làm". Chạy trên form vừa điền để user thấy kết quả
+            # trước Save, thay vì phải bấm thêm một nút Check giá.
+            if step == "price_check":
+                _emit_stage_progress(
+                    progress,
+                    step,
+                    "Đang đối chiếu Shipment Details và Summary Total",
+                )
+                price_check = _check_sale_asn_price_on_page(page, rows, log)
+                _emit_stage_progress(
+                    progress,
+                    step,
+                    price_check["message"],
+                    state="completed",
+                )
+                continue
             if step in skipped:
                 _write_log(
                     log,
@@ -1837,16 +2396,11 @@ def run_sale_asn_create(
                 f" Shipping Info đã bỏ qua {len(shipping_warnings)} trường: "
                 f"{' · '.join(shipping_warnings)}."
             )
-        action_summary = (
-            f"Đã thêm {len(rows)} PO và điền các bước đã chọn."
-            if add_po_selected
-            else "Đã điền các bước đã chọn trên Sale ASN đang mở."
-        )
         return _result(
             True,
             "SALE_ASN_FORM_COMPLETED",
             (
-                f"{action_summary}{warning_message} "
+                f"Đã hoàn tất Sale ASN và Check giá / Qty.{warning_message} "
                 "Hãy kiểm tra lại trên WFX rồi tự bấm Save."
             ),
             completed=len(rows),
@@ -1856,6 +2410,7 @@ def run_sale_asn_create(
             warnings=shipping_warnings,
             warning_count=len(shipping_warnings),
             add_po_selected=add_po_selected,
+            price_check=price_check,
         )
     except _POSelectionRequired as pending:
         # Lượt Tiếp tục quay lại bước Thêm PO với start_index = hết danh sách:
@@ -1882,7 +2437,7 @@ def run_sale_asn_create(
             resumable=current_stage in SALE_ASN_STAGE_LABELS,
             resume_stage=current_stage,
             stage_label=SALE_ASN_STAGE_LABELS.get(current_stage, current_stage),
-            can_skip=current_stage != "po",
+            can_skip=current_stage not in {"po", "price_check"},
         )
     except (PlaywrightError, PlaywrightTimeoutError) as error:
         message = f"Sale ASN chưa sẵn sàng: {_first_line(error)}"
@@ -1894,7 +2449,7 @@ def run_sale_asn_create(
             resumable=current_stage in SALE_ASN_STAGE_LABELS,
             resume_stage=current_stage,
             stage_label=SALE_ASN_STAGE_LABELS.get(current_stage, current_stage),
-            can_skip=current_stage != "po",
+            can_skip=current_stage not in {"po", "price_check"},
         )
     except Exception as error:
         message = f"{type(error).__name__}: {_first_line(error)}"
@@ -1906,7 +2461,7 @@ def run_sale_asn_create(
             resumable=current_stage in SALE_ASN_STAGE_LABELS,
             resume_stage=current_stage,
             stage_label=SALE_ASN_STAGE_LABELS.get(current_stage, current_stage),
-            can_skip=current_stage != "po",
+            can_skip=current_stage not in {"po", "price_check"},
         )
     finally:
         if playwright is not None:

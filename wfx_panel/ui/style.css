@@ -1779,7 +1779,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .module-multi-search-button { width: 100%; }
     .module-validation-hint { color: var(--text-3); font-size: 12px; line-height: 1.35; }
     .module-validation-hint[hidden] { display: none !important; }
-    .sale-asn-toolbar { display: grid; grid-template-columns: minmax(0,1fr) 34px; align-items: center; gap: 7px; margin-bottom: 7px; }
+    .sale-asn-toolbar { display: grid; grid-template-columns: minmax(0,1fr) 34px; align-items: center; gap: 7px; margin-bottom: 3px; }
     .sale-asn-view-tabs { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .sale-asn-list-button { display: grid; place-items: center; }
     .sale-asn-icon-button svg {
@@ -1794,8 +1794,18 @@ body.compact-mode .compact-launcher .compact-mark {
       stroke-linejoin: round;
     }
     .sale-asn-list-button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
-    .sale-asn-create, .sale-asn-lookup { display: grid; gap: 9px; padding-top: 2px; }
+    .sale-asn-create, .sale-asn-lookup { display: grid; gap: 9px; padding-top: 0; }
     .sale-asn-create[hidden], .sale-asn-lookup[hidden] { display: none !important; }
+    /* Mỗi giai đoạn chỉ hiện đúng phần của nó: khi đã chọn file xong, hàng
+       Buyer/nút chọn file/Tùy chọn nâng cao thu về một dòng ngữ cảnh. */
+    .sale-asn-setup { display: grid; gap: 9px; }
+    .sale-asn-create:not([data-stage-view="idle"]) .sale-asn-setup { display: none; }
+    /* Buyer được ưu tiên chỗ hơn tên file: cắt tên file ít gây nhầm hơn. */
+    .sale-asn-context { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) auto; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
+    .sale-asn-context[hidden] { display: none !important; }
+    .sale-asn-context-buyer { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+    .sale-asn-context-file { overflow: hidden; color: var(--text-3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .sale-asn-context-change { padding: 3px 8px; color: var(--accent-strong); font-size: 11.5px; font-weight: 750; cursor: pointer; border: 1px solid var(--accent-border); border-radius: 999px; background: var(--accent-soft); }
     .sale-asn-field { display: grid; gap: 5px; }
     .sale-asn-field-label { color: var(--text-2); font-size: 12px; font-weight: 700; }
     .sale-asn-buyer-row { display: grid; grid-template-columns: minmax(0,1fr) 34px; gap: 7px; }
@@ -1821,14 +1831,22 @@ body.compact-mode .compact-launcher .compact-mark {
     @media (prefers-reduced-motion: reduce) { .sale-asn-icon-button[data-needs-scan="true"] { animation: none; } }
     .sale-asn-secondary-button, .module-secondary-button { min-height: 34px; padding: 0 10px; color: var(--text-2); font-size: 12px; font-weight: 750; cursor: pointer; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
     .sale-asn-inline-status { min-height: 16px; margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.4; }
+    .sale-asn-file-error { display: grid; gap: 6px; margin: 1px 0 2px; padding: 10px 11px; color: var(--text); border: 1px solid var(--bad); border-left: 4px solid var(--bad); border-radius: 0 9px 9px 0; background: var(--bad-soft); }
+    .sale-asn-file-error[hidden] { display: none !important; }
+    .sale-asn-file-error strong { color: var(--bad); font-size: 13px; line-height: 1.3; }
+    .sale-asn-file-error p { margin: 0; color: var(--text); font-size: 12.5px; font-weight: 650; line-height: 1.45; }
+    .sale-asn-file-error ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--text-2); font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+    .sale-asn-file-error code { justify-self: start; padding: 2px 5px; color: var(--bad); font-size: 11px; font-weight: 750; border-radius: 4px; background: var(--surface); }
     .sale-asn-review { display: grid; gap: 8px; padding: 10px 11px; border-left: 3px solid var(--good); border-radius: 0 9px 9px 0; background: var(--good-soft); }
     .sale-asn-review[hidden], .sale-asn-progress-card[hidden], .sale-asn-done[hidden] { display: none !important; }
     .sale-asn-review-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--text); font-size: 12px; }
     .sale-asn-review-invoice { color: var(--good); font-weight: 800; }
+    .sale-asn-review-note { margin: 0; color: var(--warn); font-size: 12px; font-weight: 700; line-height: 1.4; }
+    .sale-asn-review-note[hidden] { display: none !important; }
     .sale-asn-review-stats { display: flex; flex-wrap: wrap; gap: 6px; }
     .sale-asn-review-stats span { padding: 3px 7px; color: var(--text-2); font-size: 12px; border-radius: 999px; background: var(--surface); }
     .sale-asn-review p { margin: 0; color: var(--text-2); font-size: 12px; line-height: 1.42; }
-    .sale-asn-review-actions { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 7px; }
+    .sale-asn-review-actions { display: grid; gap: 7px; }
     .sale-asn-progress-card { display: grid; gap: 8px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
     .sale-asn-progress-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--text); font-size: 12px; }
     .sale-asn-progress-count { color: var(--text-3); font-size: 12px; font-weight: 750; }
@@ -1868,10 +1886,46 @@ body.compact-mode .compact-launcher .compact-mark {
     .sale-asn-stage-buttons { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 7px; }
     .sale-asn-abandon { justify-self: start; }
     .sale-asn-done { display: grid; gap: 7px; padding: 10px 11px; border-left: 3px solid var(--good); border-radius: 0 9px 9px 0; background: var(--good-soft); }
+    .sale-asn-done-head { display: grid; gap: 2px; }
     .sale-asn-done-title { color: var(--good); font-size: 13px; }
+    /* Invoice No. dài phải xuống dòng ở đây thay vì bơm vào nhãn nút. */
+    .sale-asn-done-invoice { color: var(--text); font-size: 12.5px; font-weight: 800; overflow-wrap: anywhere; }
+    .sale-asn-done-invoice:empty { display: none; }
     .sale-asn-done-message { margin: 0; color: var(--text-2); font-size: 12px; line-height: 1.42; }
-    .sale-asn-done-warnings { display: grid; gap: 3px; margin: 0; padding-left: 16px; color: var(--text-2); font-size: 12px; line-height: 1.4; }
-    .sale-asn-done-warnings[hidden] { display: none !important; }
+    .sale-asn-done-warn[hidden] { display: none !important; }
+    .sale-asn-done-warn > summary { color: var(--warn); font-size: 12px; font-weight: 750; cursor: pointer; list-style: none; }
+    .sale-asn-done-warn > summary::-webkit-details-marker { display: none; }
+    .sale-asn-done-warn > summary::before { content: "\25B8  "; display: inline-block; transition: transform .15s ease; }
+    .sale-asn-done-warn[open] > summary::before { content: "\25BE  "; }
+    .sale-asn-done-warnings { display: grid; gap: 3px; margin: 5px 0 0; padding-left: 16px; color: var(--text-2); font-size: 12px; line-height: 1.4; }
+    .sale-asn-done-actions { display: grid; gap: 7px; }
+    .sale-asn-done-actions-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    /* Nhãn nút trong thẻ này không được đẩy thẻ rộng ra dù dữ liệu dài. */
+    .sale-asn-done-actions button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+    .sale-asn-price-result { display: grid; gap: 6px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    .sale-asn-price-result[hidden] { display: none !important; }
+    .sale-asn-price-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+    .sale-asn-price-chip { padding: 3px 8px; font-size: 11.5px; font-weight: 750; border-radius: 999px; }
+    .sale-asn-price-chip[data-tone="ok"] { color: var(--good); background: var(--good-soft); }
+    .sale-asn-price-chip[data-tone="bad"] { color: var(--bad); background: var(--bad-soft); }
+    .sale-asn-price-chip[data-tone="muted"] { color: var(--text-3); background: var(--surface-2); }
+    .sale-asn-price-legend { margin: 0; color: var(--text-3); font-size: 11px; }
+    .sale-asn-price-rows { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+    .sale-asn-price-rows li { display: grid; gap: 2px; padding: 6px 8px; border-left: 2px solid var(--border-strong); border-radius: 0 6px 6px 0; background: var(--surface-2); }
+    .sale-asn-price-rows li[data-tone="bad"] { border-left-color: var(--bad); }
+    .sale-asn-price-rows li[data-tone="ok"] { border-left-color: var(--good); }
+    .sale-asn-price-row-head { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: baseline; gap: 6px; font-size: 12px; }
+    .sale-asn-price-row-head b { color: var(--text); font-weight: 800; }
+    .sale-asn-price-row-head span { overflow: hidden; color: var(--text-3); text-overflow: ellipsis; white-space: nowrap; }
+    .sale-asn-price-row-diff { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    .sale-asn-price-row-diff span[data-ok="false"] { color: var(--bad); font-weight: 750; }
+    .sale-asn-price-row-note { color: var(--bad); font-size: 11.5px; font-weight: 700; line-height: 1.35; }
+    .sale-asn-price-more > summary { color: var(--text-3); font-size: 11.5px; font-weight: 700; cursor: pointer; list-style: none; }
+    .sale-asn-price-more > summary::-webkit-details-marker { display: none; }
+    .sale-asn-price-more > summary::before { content: "\25B8  "; }
+    .sale-asn-price-more[open] > summary::before { content: "\25BE  "; }
+    .sale-asn-price-more .sale-asn-price-rows { margin-top: 5px; }
     .sale-asn-advanced { margin-top: 2px; }
     .sale-asn-advanced > summary { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 7px 10px; color: var(--text-2); font-size: 12px; font-weight: 750; cursor: pointer; list-style: none; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); transition: color .15s ease, border-color .15s ease, background .15s ease; }
     .sale-asn-advanced > summary::-webkit-details-marker { display: none; }
@@ -1889,7 +1943,6 @@ body.compact-mode .compact-launcher .compact-mark {
     .sale-asn-stage-options label:has(input:checked) { color: var(--text); border-color: var(--accent-border); background: var(--accent-soft); }
     .sale-asn-advanced .sale-asn-po-search-options { gap: 6px; margin-top: 2px; }
     .sale-asn-advanced .sale-asn-po-search-options span { min-height: 34px; border-radius: 8px; background: var(--surface); }
-    .sale-asn-order-actions { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; margin-top: 2px; }
     .sale-asn-lookup { padding-top: 9px; }
     .sale-asn-documents-button { width: 100%; }
     .special-section { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 8px; }

@@ -1,5 +1,46 @@
 [
   {
+    "version": "1.0.25",
+    "date": "2026-08-05",
+    "highlights": [
+      {
+        "title": "Sale ASN chấp nhận Destination để trống",
+        "body": "Destination không còn là trường bắt buộc. Khi dòng Excel để trống, ứng dụng bỏ qua tiêu chí lọc Destination và giữ nguyên Country Of Destination cùng Final Destination mặc định trên WFX.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Thêm PO và Style Details bền hơn khi WFX chậm",
+        "body": "Tìm PO phản hồi nhanh hơn nhờ bỏ các lượt chờ selector Style không tồn tại và chọn Destination trong một lần đọc DOM. Nếu WFX thay document sau Search, ứng dụng nhận lại ngay bảng PO đã hiện để tiếp tục chọn thay vì tìm lại; thời gian chờ phục hồi tối đa là 40 giây. Goods Description có dấu nháy như Men's pants vẫn được xác nhận đúng.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Check giá / Qty Sale ASN tự động",
+        "body": "Form 22 cột có Price cạnh Qty. Sau bốn bước tạo Sale ASN, bước Check giá / Qty tự đối chiếu PO tách từ Order No. (mã hệ thống/PO) + Article, Shipping Qty và Price (USD), rồi kiểm tra ba tổng ở Summary Total. Có thể xuất file Excel kết quả rõ từng PO + Style.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Màn Sale ASN gọn theo từng giai đoạn",
+        "body": "Sau khi kiểm tra file, ô Buyer, nút chọn file và Tùy chọn nâng cao thu lại thành một dòng ghi Buyer và tên file, kèm nút Đổi để quay lại. Nhờ vậy thẻ review, thẻ tiến độ và thẻ kết quả không còn xếp chồng lên nhau trong màn hình hẹp.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Kết quả Check giá / Qty đọc nhanh hơn",
+        "body": "Kết quả rút thành một hàng chip n khớp, n lệch và Summary. Chỉ các dòng lệch được liệt kê sẵn theo dạng File → WFX; các dòng khớp nằm trong mục bấm để mở ra. Nút Xuất Invoice + PKL giữ nhãn cố định và hiện Invoice No. ở đầu thẻ nên không còn tràn ra ngoài khi số invoice dài.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Bấm thông báo là mở lại bảng điều khiển",
+        "body": "Trước đây bấm vào thông báo khi xong việc không có phản ứng, phải bấm icon nổi mới xem được kết quả. Nay bấm vào thân thông báo sẽ mở lại bảng điều khiển ngay; bấm dấu ✕ vẫn chỉ đóng thông báo.",
+        "entry": "hang-ngay-giao-dien"
+      },
+      {
+        "title": "Bỏ luồng Chỉ điền Order Details 8 cột",
+        "body": "Form 8 cột cùng hai nút Xuất form từ WFX và Chọn file 8 cột đã được gỡ khỏi ứng dụng. Khi chứng từ đã có sẵn PO, hãy bỏ tích bước Thêm PO trong Tùy chọn nâng cao, bấm Xuất PO đang mở để lấy form 22 cột đã điền sẵn PO, rồi chạy các bước còn lại.",
+        "entry": "don-hang-sale-asn"
+      }
+    ]
+  },
+  {
     "version": "1.0.24",
     "date": "2026-08-05",
     "highlights": [

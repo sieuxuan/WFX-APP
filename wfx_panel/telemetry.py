@@ -555,7 +555,7 @@ ERROR_CODE_INFO.update(
         ),
         "SALE_ASN_FILE_HEADERS_INVALID": (
             "Header file Sale ASN không đúng",
-            "Tải form mới và giữ nguyên đủ 19 tên cột.",
+            "Tải form mới và giữ nguyên đủ các tên cột chuẩn.",
         ),
         "SALE_ASN_FILE_INVALID": (
             "File Sale ASN không hợp lệ",
@@ -656,6 +656,26 @@ ERROR_CODE_INFO.update(
         "SALE_ASN_TEMPLATE_EXPORT_FAILED": (
             "Không tạo được form Sale ASN",
             "Chọn thư mục có quyền ghi và thử tải form lại.",
+        ),
+        "SALE_ASN_PRICE_CHECK_FAILED": (
+            "Không check được giá Sale ASN",
+            "Mở đúng Sale ASN, chờ Shipment Details và Summary Total tải xong rồi thử lại.",
+        ),
+        "SALE_ASN_PRICE_EXPORT_FAILED": (
+            "Không xuất được kết quả Check giá Sale ASN",
+            "Chọn thư mục có quyền ghi rồi bấm Xuất kết quả check lại.",
+        ),
+        "SALE_ASN_PRICE_FILE_EMPTY": (
+            "File Sale ASN không còn dữ liệu để Check giá",
+            "Chọn lại file Sale ASN trước khi chạy Check giá.",
+        ),
+        "SALE_ASN_SHIPMENT_DETAILS_EMPTY": (
+            "Shipment Details chưa có dữ liệu",
+            "Mở đúng Sale ASN có Shipment Details rồi thử Check giá lại.",
+        ),
+        "SALE_ASN_SUMMARY_TOTAL_EMPTY": (
+            "Summary Total chưa có dữ liệu",
+            "Chờ Summary Total tải xong rồi thử Check giá lại.",
         ),
         "SAMPLE_NEW_FAILED": (
             "Không thể tạo màn Sample Order mới",

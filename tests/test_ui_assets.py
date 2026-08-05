@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -6,6 +7,20 @@ from playwright.sync_api import sync_playwright
 from wfx_panel import panel_app
 
 UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
+
+
+def test_ui_assets_are_utf8_nfc_and_declare_charset():
+    """Thiếu khai báo charset hoặc lẫn NFD là ra chữ Việt vỡ trên WebView2.
+
+    Manual đã có canh tương tự; ba file UI này cũng chứa chuỗi tiếng Việt hiển
+    thị trực tiếp cho người dùng nên phải chịu cùng ràng buộc.
+    """
+    assert '<meta charset="utf-8">' in (UI / "index.html").read_text(encoding="utf-8")
+    for name in ("index.html", "panel.js", "style.css"):
+        raw = (UI / name).read_bytes()
+        assert not raw.startswith(b"\xef\xbb\xbf"), f"{name} có BOM"
+        text = raw.decode("utf-8")  # ném UnicodeDecodeError nếu không phải UTF-8
+        assert text == unicodedata.normalize("NFC", text), f"{name} có ký tự NFD"
 
 
 def test_style_css_exists_and_scoped_to_root():
@@ -111,10 +126,6 @@ def test_index_html_has_contract_hooks():
         'data-module-action="sale-asn-continue"',
         'data-module-action="sale-asn-skip-step"',
         'data-module-action="sale-asn-continue-export"',
-        'data-module-action="sale-asn-order-export"',
-        'data-module-action="sale-asn-order-import"',
-        'data-module-action="sale-asn-order-cancel"',
-        'data-module-action="sale-asn-order-start"',
         'data-module-action="sale-asn-handoff-documents"',
         'data-sale-asn-stage="po"',
         'data-sale-asn-stage="order_details"',
@@ -200,12 +211,13 @@ def test_sale_asn_workspace_uses_one_flat_guided_flow():
     assert 'class="sale-asn-link-button sale-asn-abandon"' in action
     assert 'data-module-action="sale-asn-review-cancel"' in action
 
-    # Chọn bước và form 8 cột nằm sau khối gấp.
+    # Chọn bước nằm sau khối gấp; luồng 8 cột đã bị bỏ hẳn.
     advanced = workspace[workspace.index('class="sale-asn-advanced"'):]
     for stage in ("po", "order_details", "style_details", "shipping_info"):
         assert f'data-sale-asn-stage="{stage}"' in advanced
-    assert 'data-module-action="sale-asn-order-export"' in advanced
     assert 'data-module-action="sale-asn-new"' in advanced
+    assert "sale-asn-order-export" not in workspace
+    assert "sale-asn-order-import" not in workspace
 
     # Buyer dùng listbox gợi ý thay cho datalist.
     assert "<datalist" not in workspace
@@ -642,6 +654,22 @@ def test_header_alerts_are_labeled_instead_of_ambiguous_red_dots():
     assert "Có tác vụ cần xử lý" not in (
         UI / "panel.js"
     ).read_text(encoding="utf-8")
+
+
+def test_webview_toast_body_opens_the_panel_but_close_only_dismisses():
+    """Toast phải mở lại panel khi bấm thân; nút đóng không được kéo panel lên.
+
+    Nút đóng nằm trong thân toast nên nếu thiếu stopPropagation thì bấm ✕ cũng
+    kích hoạt handler của thân và mở panel ngoài ý muốn.
+    """
+    js = (UI / "notification.js").read_text(encoding="utf-8")
+    css = (UI / "notification.css").read_text(encoding="utf-8")
+
+    assert "window.pywebview?.api?.activate?.()" in js
+    assert "window.pywebview?.api?.dismiss?.()" in js
+    assert "event.stopPropagation()" in js
+    assert 'notification.addEventListener("click"' in js
+    assert "cursor: pointer;" in css
 
 
 def test_external_notification_and_generic_svg_icon_are_present():
