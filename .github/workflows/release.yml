@@ -314,8 +314,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} hoàn thiện luồng Sale ASN nhiều PO/style,
-            Shipping Info và khả năng chạy nền khi người dùng chuyển cửa sổ.
+            WFX Smart ${{ env.VERSION }} hoàn thiện xuất Sale ASN Documents và
+            xử lý Packing List theo từng buyer.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.
@@ -336,10 +336,10 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
-            - Gửi ngày Cargo Ready, Invoice và Shipping Bill đúng định dạng tiếng Anh WFX hiển thị, ví dụ `03 Aug 2026`, không phụ thuộc ngôn ngữ Windows.
-            - Đối chiếu ngày WFX bằng bộ tên tháng tiếng Anh cố định để tránh báo `SALE_ASN_FIELD_VALUE_NOT_CONFIRMED` sai.
-            - Bộ cài chỉ đóng đúng `WFX-Panel.exe` tại thư mục cài đặt; không quét rộng, không đóng bản portable cùng tên và không kết thúc cây tiến trình Chrome.
-            - Chrome làm việc khởi chạy theo cơ chế desktop Windows thông thường để Recent Downloads có thể mở file và hiện file trong thư mục.
+            - Form Sale ASN 21 cột có Goods Description tùy chọn sau HS CODE.
+            - Popup Docs/report do lượt xuất mở tự đóng; file đang mở trong Excel tự lưu tên kế tiếp.
+            - Packing List tự gộp số liệu cho J.Lindeberg và TRUEWERK, giữ số khác 0 và nới đủ các cột số khi xem/in A4.
+            - Bộ cài chỉ đóng đúng `WFX-Panel.exe` tại thư mục cài đặt; không kết thúc cây tiến trình Chrome.
 
             File `.sha256` và chữ ký `.p7s` xác minh gói tải về đúng từ nhà phát hành.
           make_latest: true
