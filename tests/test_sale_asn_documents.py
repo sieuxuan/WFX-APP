@@ -7,10 +7,13 @@ from wfx_panel.automation.sale_asn_documents import (
     _SALE_ASN_SCROLL_TO_JS,
     DOCUMENTS_FRAME_TIMEOUT_SECONDS,
     REPORT_DOWNLOAD_START_TIMEOUT_SECONDS,
+    REPORT_EXCEL_FORMAT_SELECTOR,
+    REPORT_EXCEL_LABEL_SELECTOR,
     REPORT_EXPORT_MENU_TIMEOUT_SECONDS,
     REPORT_READY_TIMEOUT_SECONDS,
     _click_sale_asn_docs,
     _close_sale_asn_document_popups,
+    _find_report_excel_action,
     _merge_sale_asn_row_payloads,
     _sale_asn_horizontal_positions,
     _select_sale_asn_row,
@@ -22,6 +25,97 @@ def test_sale_asn_document_downloads_allow_slow_wfx_reports():
     assert REPORT_READY_TIMEOUT_SECONDS == 180
     assert REPORT_EXPORT_MENU_TIMEOUT_SECONDS == 30
     assert REPORT_DOWNLOAD_START_TIMEOUT_SECONDS == 180
+
+
+def test_report_excel_selector_supports_report_viewer_markup_variants():
+    assert '[onclick*="EXCELOPENXML"]' in REPORT_EXCEL_FORMAT_SELECTOR
+    assert '[href*="EXCELOPENXML"]' in REPORT_EXCEL_FORMAT_SELECTOR
+    assert 'a[title="Excel"]' in REPORT_EXCEL_LABEL_SELECTOR
+
+
+def test_report_excel_action_accepts_hidden_explicit_openxml_link():
+    class FakeAction:
+        def __init__(self, name, visible=False):
+            self.name = name
+            self.visible = visible
+
+        def is_visible(self):
+            return self.visible
+
+    class FakeLocator:
+        def __init__(self, actions):
+            self.actions = actions
+
+        def count(self):
+            return len(self.actions)
+
+        def nth(self, index):
+            return self.actions[index]
+
+    class FakeFrame:
+        def __init__(self, explicit=(), labelled=()):
+            self.explicit = list(explicit)
+            self.labelled = list(labelled)
+
+        def locator(self, selector):
+            if selector == REPORT_EXCEL_FORMAT_SELECTOR:
+                return FakeLocator(self.explicit)
+            if selector == REPORT_EXCEL_LABEL_SELECTOR:
+                return FakeLocator(self.labelled)
+            raise AssertionError(selector)
+
+    hidden_excel = FakeAction("hidden-openxml")
+    report_frame = FakeFrame(explicit=[hidden_excel])
+    page = type("FakePage", (), {"frames": [report_frame]})()
+    context = type("FakeContext", (), {"pages": [page]})()
+
+    found_frame, found_action = _find_report_excel_action(context, report_frame)
+
+    assert found_frame is report_frame
+    assert found_action is hidden_excel
+
+
+def test_report_excel_action_finds_visible_menu_in_another_frame():
+    class FakeAction:
+        def __init__(self, visible):
+            self.visible = visible
+
+        def is_visible(self):
+            return self.visible
+
+    class FakeLocator:
+        def __init__(self, actions):
+            self.actions = actions
+
+        def count(self):
+            return len(self.actions)
+
+        def nth(self, index):
+            return self.actions[index]
+
+    class FakeFrame:
+        def __init__(self, explicit=(), labelled=()):
+            self.explicit = list(explicit)
+            self.labelled = list(labelled)
+
+        def locator(self, selector):
+            actions = (
+                self.explicit
+                if selector == REPORT_EXCEL_FORMAT_SELECTOR
+                else self.labelled
+            )
+            return FakeLocator(actions)
+
+    report_frame = FakeFrame()
+    visible_excel = FakeAction(True)
+    menu_frame = FakeFrame(labelled=[visible_excel])
+    page = type("FakePage", (), {"frames": [report_frame, menu_frame]})()
+    context = type("FakeContext", (), {"pages": [page]})()
+
+    found_frame, found_action = _find_report_excel_action(context, report_frame)
+
+    assert found_frame is menu_frame
+    assert found_action is visible_excel
 
 
 def test_select_exact_invoice_does_not_require_docs_column_to_be_rendered():

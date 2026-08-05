@@ -952,3 +952,12 @@ def test_manual_po_checkpoint_renders_backend_candidates():
         )
     ]
     assert "renderSaleAsnCandidates([]);" in hide
+
+
+def test_completed_sale_asn_scrolls_the_result_into_view():
+    start = JS.index("function renderSaleAsnDone(result) {")
+    body = JS[start : JS.index("\n  function handoffSaleAsnDocuments", start)]
+
+    assert "done.hidden = false;" in body
+    assert 'done.scrollIntoView({ behavior: "smooth", block: "nearest" });' in body
+    assert body.index("done.hidden = false;") < body.index("done.scrollIntoView")

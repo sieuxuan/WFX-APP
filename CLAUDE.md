@@ -83,6 +83,9 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   từng bước ghi dữ liệu và không lặp vô hạn. Các probe chỉ đọc session/Division/
   quyền và ảnh chẩn đoán phải dùng `bring_to_front=False`, không được kéo user
   khỏi tab Costing.
+- Nếu một flow do user kích hoạt phát hiện `CHROME_CLOSED`, app phải tự mở lại
+  trình duyệt làm việc, đăng nhập bằng credential đã lưu và retry toàn bộ flow
+  đúng một lần. Heartbeat nền không tự mở lại Chrome khi user chủ động đóng.
 - Form góp ý chỉ cho gửi từ 5 ký tự và hiển thị bộ đếm trên giới hạn 2.000 ký tự.
 - Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
@@ -443,7 +446,8 @@ Các workflow riêng hiện có:
   không, người dùng kẹt ở trạng thái chờ chọn PO mà chỉ còn nút Tiếp tục. Khi flow trả
   `SALE_ASN_FORM_COMPLETED`, thẻ kết quả liệt kê cảnh báo Shipping Info và có nút
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
-  xuất báo cáo vì user còn phải Save trên WFX.
+  xuất báo cáo vì user còn phải Save trên WFX. Ngay khi thẻ kết quả hiện, UI phải
+  tự scroll thẻ đó vào viewport của module để user không phải kéo xuống tìm.
   Form Excel có đúng 21 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Carton`,
   `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
   `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
@@ -496,10 +500,12 @@ Các workflow riêng hiện có:
   host tồn tại và nhận giá trị là thành công. Consignee Address và Ship To
   lấy option gần đúng tốt nhất duy nhất trong dropdown; không có hoặc đồng hạng
   thì bỏ qua có warning. Shipping Mode sinh Port of Loading/Delivery Terms:
-  AIR → `HAN - Hanoi`/`FCA HANOI, VIETNAM`; SEA → `HPH - Haiphong`/
+  AIR → `HAN - Hanoi`/`FCA HANOI, VIET NAM`; SEA → `HPH - Haiphong`/
   `FOB HAIPHONG, VIETNAM`; COURIER → `HAN - Hanoi`/`EXW`. Field Shipping Info
-  không có option tương ứng được bỏ qua có warning. Luồng luôn dừng trước Save
-  để user kiểm tra trên WFX.
+  không có option tương ứng được bỏ qua có warning. Nếu Country Of Destination
+  không khớp vì WFX dùng tên quốc gia đầy đủ, phải giữ nguyên Final Destination
+  theo giá trị mặc định ban đầu; không được đổi riêng Final Destination. Luồng
+  luôn dừng trước Save để user kiểm tra trên WFX.
   Luồng Documents nhận Invoice No. đang nhập
   hoặc đúng một dòng đang chọn; xác nhận invoice độc lập với cột Docs rồi quét
   ngang AG Grid để tìm/click Docs theo metadata vì mỗi user có thể kéo cột tới

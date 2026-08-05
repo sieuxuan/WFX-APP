@@ -45,9 +45,16 @@ REPORT_EXPORT_SELECTOR = (
     "#rptCustomReportViewer_ctl05_ctl04_ctl00_ButtonLink, "
     'a[title="Export drop down menu"]'
 )
+REPORT_EXCEL_FORMAT_SELECTOR = (
+    'a[onclick*="EXCELOPENXML"], a[href*="EXCELOPENXML"], '
+    '[data-format="EXCELOPENXML"]'
+)
+REPORT_EXCEL_LABEL_SELECTOR = (
+    'a[title="Excel"], a[alt="Excel"], '
+    '[role="menuitem"][title="Excel"], input[value="Excel"]'
+)
 REPORT_EXCEL_SELECTOR = (
-    'a[title="Excel"][onclick*="EXCELOPENXML"], '
-    'a[alt="Excel"][onclick*="EXCELOPENXML"]'
+    f"{REPORT_EXCEL_FORMAT_SELECTOR}, {REPORT_EXCEL_LABEL_SELECTOR}"
 )
 
 
@@ -497,43 +504,118 @@ def _download_report_excel(
     log: Callable[[str], None],
 ) -> None:
     downloads: list[Any] = []
+    attached_pages: list[Page] = []
+
+    def receive(download: Any) -> None:
+        downloads.append(download)
 
     def attach(page: Page) -> None:
-        page.on("download", lambda download: downloads.append(download))
+        if page in attached_pages:
+            return
+        attached_pages.append(page)
+        page.on("download", receive)
 
     for current in context.pages:
         attach(current)
     context.on("page", attach)
-
-    export = report_frame.locator(REPORT_EXPORT_SELECTOR).first
-    export.evaluate("element => element.click()")
-    deadline = time.monotonic() + REPORT_EXPORT_MENU_TIMEOUT_SECONDS
-    excel = None
-    while time.monotonic() < deadline:
-        try:
-            candidate = report_frame.locator(REPORT_EXCEL_SELECTOR)
-            if candidate.count() and candidate.first.is_visible():
-                excel = candidate.first
+    try:
+        export = report_frame.locator(REPORT_EXPORT_SELECTOR).first
+        export.evaluate("element => element.click()")
+        deadline = time.monotonic() + REPORT_EXPORT_MENU_TIMEOUT_SECONDS
+        excel_frame: Frame | None = None
+        excel = None
+        retried_export = False
+        retry_at = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            excel_frame, excel = _find_report_excel_action(
+                context,
+                report_frame,
+            )
+            if excel is not None:
                 break
-        except PlaywrightError:
-            pass
-        _wait(report_frame, 100)
-    if excel is None:
-        raise PlaywrightTimeoutError(f"Menu Excel của {label} chưa hiện.")
+            if not retried_export and time.monotonic() >= retry_at:
+                # WebForms Report Viewer đôi khi bỏ lần click đầu khi toolbar
+                # vừa hết loading. Thử mở menu lại đúng một lần; không toggle
+                # liên tục vì action Excel có thể đang được tạo bất đồng bộ.
+                export.evaluate("element => element.click()")
+                retried_export = True
+            _wait(report_frame, 100)
+        if excel is None or excel_frame is None:
+            raise PlaywrightTimeoutError(
+                f"Không tìm thấy lựa chọn Excel của {label} trong Report Viewer."
+            )
 
-    _write_log(log, f"[SALE ASN DOCS] Đang export Excel: {label}...")
-    excel.evaluate("element => element.click()")
-    deadline = time.monotonic() + REPORT_DOWNLOAD_START_TIMEOUT_SECONDS
-    while time.monotonic() < deadline and not downloads:
-        _wait(report_frame, 100)
-    if not downloads:
-        raise PlaywrightTimeoutError(f"WFX không bắt đầu download {label}.")
-    with cancellation_deferred():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        downloads[0].save_as(target)
-    if not target.is_file() or target.stat().st_size <= 0:
-        raise RuntimeError(f"File {label} tải về bị rỗng.")
-    _write_log(log, f"[SALE ASN DOCS] Đã tải {label}.")
+        _write_log(log, f"[SALE ASN DOCS] Đang export Excel: {label}...")
+        # Link export thường nằm trong menu display:none. DOM click vẫn gọi đúng
+        # exportReport('EXCELOPENXML') và không phụ thuộc menu có kịp hiện hay
+        # không, đồng thời tránh nhầm các format Excel cũ.
+        excel.evaluate("element => element.click()")
+        deadline = time.monotonic() + REPORT_DOWNLOAD_START_TIMEOUT_SECONDS
+        while time.monotonic() < deadline and not downloads:
+            try:
+                _wait(excel_frame, 100)
+            except PlaywrightError:
+                if context.pages:
+                    _wait(context.pages[0], 100)
+        if not downloads:
+            raise PlaywrightTimeoutError(f"WFX không bắt đầu download {label}.")
+        with cancellation_deferred():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            downloads[0].save_as(target)
+        if not target.is_file() or target.stat().st_size <= 0:
+            raise RuntimeError(f"File {label} tải về bị rỗng.")
+        _write_log(log, f"[SALE ASN DOCS] Đã tải {label}.")
+    finally:
+        try:
+            context.remove_listener("page", attach)
+        except Exception:
+            pass
+        for current in attached_pages:
+            try:
+                current.remove_listener("download", receive)
+            except Exception:
+                pass
+
+
+def _find_report_excel_action(
+    context: Any,
+    preferred_frame: Frame,
+) -> tuple[Frame | None, Any | None]:
+    """Tìm action Excel của Report Viewer, kể cả link menu đang bị ẩn.
+
+    SSRS/WFX có nhiều biến thể markup: lệnh ``EXCELOPENXML`` có thể nằm trong
+    ``onclick`` hoặc ``href``; một số bản chỉ gắn nhãn Excel lên menu item. Menu
+    cũng có thể được render ở frame cha, nên phải quét mọi frame nhưng vẫn ưu
+    tiên frame report vừa được xác nhận.
+    """
+
+    frames: list[Frame] = [preferred_frame]
+    for page in reversed(context.pages):
+        for frame in reversed(page.frames):
+            if frame not in frames:
+                frames.append(frame)
+
+    hidden_format_action: tuple[Frame, Any] | None = None
+    for frame in frames:
+        try:
+            format_actions = frame.locator(REPORT_EXCEL_FORMAT_SELECTOR)
+            for index in range(format_actions.count()):
+                candidate = format_actions.nth(index)
+                if candidate.is_visible():
+                    return frame, candidate
+                if hidden_format_action is None:
+                    hidden_format_action = (frame, candidate)
+
+            labelled_actions = frame.locator(REPORT_EXCEL_LABEL_SELECTOR)
+            for index in range(labelled_actions.count()):
+                candidate = labelled_actions.nth(index)
+                if candidate.is_visible():
+                    return frame, candidate
+        except PlaywrightError:
+            continue
+    if hidden_format_action is not None:
+        return hidden_format_action
+    return None, None
 
 
 def _documents_frame(

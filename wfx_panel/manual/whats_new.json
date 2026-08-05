@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.0.24",
+    "date": "2026-08-05",
+    "highlights": [
+      {
+        "title": "Sale ASN điền Shipping Info nhất quán hơn",
+        "body": "Delivery Terms của AIR dùng FCA HANOI, VIET NAM. Nếu Country Of Destination không khớp tên quốc gia đầy đủ trên WFX, Final Destination được giữ nguyên theo giá trị mặc định thay vì bị đổi riêng.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Xuất Invoice + PKL ổn định ngay lần đầu",
+        "body": "Ứng dụng nhận đúng lựa chọn Excel OpenXML kể cả khi Report Viewer còn giữ menu ẩn hoặc đặt menu ở vùng khác, đồng thời tự thử lại bước khởi tạo toolbar một lần.",
+        "entry": "don-hang-sale-asn-documents"
+      },
+      {
+        "title": "Tự phục hồi trình duyệt và hiện kết quả Sale ASN",
+        "body": "Nếu trình duyệt làm việc bị đóng, thao tác trong module tự mở lại trình duyệt, đăng nhập bằng tài khoản đã lưu và tiếp tục một lần. Khi tạo Sale ASN xong, ứng dụng tự đưa thẻ kết quả vào tầm nhìn.",
+        "entry": "bat-dau-trinh-duyet"
+      }
+    ]
+  },
+  {
     "version": "1.0.23",
     "date": "2026-08-04",
     "highlights": [

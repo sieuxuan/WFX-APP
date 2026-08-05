@@ -109,7 +109,7 @@ SESSION_LOST = frozenset(
 )
 LOGIN_CODES = frozenset({"LOGGED_IN", "SESSION_REUSED", "SESSION_ACTIVE"})
 AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
-    {"login", "open_chrome", "check_session", "maintain_session"}
+    {"login", "open_chrome", "maintain_session"}
 )
 
 
@@ -934,13 +934,52 @@ class PanelAPI:
         method_name: str,
         action: Callable[[], dict],
     ) -> dict:
-        """Retry đúng một lần khi action phát hiện phiên WFX đã hết hạn."""
+        """Khôi phục Chrome/phiên rồi retry toàn bộ action đúng một lần."""
         result = action()
         if (
             method_name in AUTO_RELOGIN_EXCLUDED_METHODS
             or not isinstance(result, dict)
-            or str(result.get("code") or "") != "NOT_LOGGED_IN"
         ):
+            return result
+        code = str(result.get("code") or "")
+        if code == "CHROME_CLOSED":
+            self._log(
+                "[BROWSER] Trình duyệt làm việc đã đóng; đang tự mở lại..."
+            )
+            opened = self._login.start_chrome(self._log)
+            if not isinstance(opened, dict) or not opened.get("ok"):
+                return opened if isinstance(opened, dict) else {
+                    "ok": False,
+                    "code": "CHROME_OPEN_FAILED",
+                    "message": "Kết quả mở lại trình duyệt không hợp lệ.",
+                    "chrome_alive": False,
+                }
+            restored = self._restore_expired_session()
+            if restored is None:
+                return {
+                    "ok": False,
+                    "code": "MISSING_CREDENTIALS",
+                    "message": (
+                        "Đã mở lại trình duyệt. Hãy lưu tài khoản WFX để ứng dụng "
+                        "có thể tự đăng nhập và tiếp tục tác vụ."
+                    ),
+                    "chrome_alive": True,
+                    "browser_available": True,
+                    "browser_name": opened.get("browser_name"),
+                }
+            if not restored.get("ok"):
+                return {
+                    **restored,
+                    "chrome_alive": True,
+                    "browser_available": True,
+                    "browser_name": opened.get("browser_name"),
+                }
+            self._log(
+                "[BROWSER] Đã mở lại trình duyệt và khôi phục phiên; "
+                "tiếp tục tác vụ hiện tại."
+            )
+            return action()
+        if code != "NOT_LOGGED_IN":
             return result
         restored = self._restore_expired_session()
         if restored is None:
