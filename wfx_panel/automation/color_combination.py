@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from pathlib import Path
 
 REPORT_ID = "color_combination_production"
 REPORT_NAME = "Color Combination - Production"
@@ -19,6 +20,7 @@ STYLE_CODE_LABEL = "StyleCode"
 SIZE_VISIBILITY_LABEL = "SizeVisibility"
 
 _TRAILING_DIGITS = re.compile(r"(\d+)\s*$")
+_FORBIDDEN_FILE_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
 def _style_code_rank(label: str) -> int | None:
@@ -43,3 +45,24 @@ def pick_style_code(
     if not ranked:
         return cleaned[-1]
     return max(ranked, key=lambda item: (item[0], item[1]))[2]
+
+
+def safe_file_stem(style_ref: str, style_code: str) -> str:
+    """Tên file theo style; ký tự Windows cấm được thay bằng gạch dưới."""
+    reference = str(style_ref or "").strip()
+    code = str(style_code or "").strip()
+    stem = f"{reference} - {code}" if reference and code else (reference or code)
+    stem = _FORBIDDEN_FILE_CHARS.sub("_", stem).strip().rstrip(" .")
+    return stem or "report"
+
+
+def unique_target(
+    directory: Path, stem: str, suffix: str = ".xlsx"
+) -> Path:
+    """Không ghi đè file đã có: thêm hậu tố (2), (3)... như Chrome."""
+    target = Path(directory) / f"{stem}{suffix}"
+    index = 2
+    while target.exists():
+        target = Path(directory) / f"{stem} ({index}){suffix}"
+        index += 1
+    return target
