@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -21,8 +22,11 @@ from wfx_panel.automation.browser import (
 )
 from wfx_panel.automation.reports import (
     REPORTS,
+    _click_view_report,
+    _export_excel,
     _open_report,
     _wait_postback_settled,
+    _wait_report_ready,
     read_select_options,
     read_select_value,
     resolve_controls,
@@ -262,6 +266,148 @@ def load_color_report_options(
     except Exception as error:
         return _result(
             False, "REPORT_LOAD_FAILED", f"{type(error).__name__}: {error}"
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
+
+
+def _view_and_download(page: Page, log: Callable[[str], None]) -> Path:
+    """Chạy report rồi trả về file Chrome vừa tải trong Downloads."""
+    from wfx_panel.automation.runtime import _user_downloads_dir
+
+    _click_view_report(page)
+    _wait_report_ready(page, log)
+    file_name = _export_excel(page)
+    return _user_downloads_dir() / file_name
+
+
+def _run_one_style(
+    page: Page,
+    controls: Mapping[str, str],
+    style_ref: str,
+    output_dir: Path,
+    log: Callable[[str], None],
+) -> dict:
+    """Một style: chọn ref, chọn StyleCode mới nhất, chạy report, lưu file."""
+    current = select_and_settle(
+        page, controls, LEVEL_LABELS["style_ref"], style_ref
+    )
+    style_options = read_select_options(
+        page, current.get(STYLE_CODE_LABEL, "")
+    )
+    picked = pick_style_code(style_options)
+    if picked is None:
+        raise StyleFailure(
+            "COLOR_REPORT_STYLECODE_MISSING",
+            f"Không có StyleCode cho {style_ref}.",
+        )
+    if len(style_options) > 1:
+        current = select_and_settle(
+            page, current, STYLE_CODE_LABEL, picked["value"]
+        )
+    # SizeVisibility luôn phải là Yes; chỉ đặt khi đang khác để tránh
+    # một postback thừa cho mỗi style.
+    size_id = current.get(SIZE_VISIBILITY_LABEL, "")
+    if size_id:
+        for option in read_select_options(page, size_id):
+            if option["label"].strip().casefold() == "yes":
+                if read_select_value(page, size_id) != option["value"]:
+                    current = select_and_settle(
+                        page, current, SIZE_VISIBILITY_LABEL, option["value"]
+                    )
+                break
+    # OCNum giữ nguyên mặc định WFX: nó được nạp lại theo style và
+    # mặc định đã chọn hết PO.
+    source = _view_and_download(page, log)
+    target = unique_target(
+        Path(output_dir), safe_file_stem(style_ref, picked["label"])
+    )
+    try:
+        shutil.copy2(source, target)
+    except OSError as error:
+        raise StyleFailure(
+            "COLOR_REPORT_SAVE_FAILED",
+            f"Không lưu được file cho {style_ref}: {type(error).__name__}",
+        ) from error
+    return {
+        "style_ref": style_ref,
+        "style_code": picked["label"],
+        "file_path": str(target),
+        "file_name": target.name,
+    }
+
+
+def run_color_report_batch(
+    selection: Mapping[str, str],
+    style_refs: list[str],
+    output_dir: str,
+    log: Callable[[str], None] = print,
+    progress: Callable[..., None] | None = None,
+) -> dict:
+    references = [
+        str(item).strip() for item in style_refs or () if str(item).strip()
+    ]
+    if not references:
+        return _result(
+            False,
+            "COLOR_REPORT_NO_STYLE_SELECTED",
+            "Hãy chọn ít nhất một BuyerStyleReference trước khi tải.",
+        )
+    target_dir = Path(str(output_dir or ""))
+    if not str(output_dir or "").strip() or not target_dir.is_dir():
+        return _result(
+            False,
+            "COLOR_REPORT_OUTPUT_DIR_REQUIRED",
+            "Hãy chọn thư mục lưu báo cáo trước khi tải.",
+        )
+    report = REPORTS[REPORT_ID]
+    if not _chrome_is_ready():
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright, bring_to_front=False)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(False, "NOT_LOGGED_IN", "Chưa có phiên WFX đăng nhập.")
+        report_page = _open_report(page, report)
+        _attach_dialog_handler(report_page, log)
+        read_cascade(report_page, selection)
+        controls = resolve_controls(report_page)
+        outcome = batch_styles(
+            references,
+            lambda reference: _run_one_style(
+                report_page, controls, reference, target_dir, log
+            ),
+            progress=progress,
+            log=log,
+        )
+        saved = outcome["saved"]
+        failed = outcome["failed"]
+        if outcome["cancelled"]:
+            return _result(
+                False,
+                "COLOR_REPORT_CANCELLED",
+                f"Đã dừng theo yêu cầu. Đã tải {len(saved)}/{len(references)} style.",
+                saved=saved,
+                failed=failed,
+                output_dir=str(target_dir),
+            )
+        message = f"Đã tải {len(saved)}/{len(references)} style."
+        if failed:
+            message += f" {len(failed)} style lỗi."
+        return _result(
+            True,
+            "COLOR_REPORT_BATCH_DONE",
+            message,
+            saved=saved,
+            failed=failed,
+            output_dir=str(target_dir),
+        )
+    except Exception as error:
+        return _result(
+            False, "REPORT_EXPORT_FAILED", f"{type(error).__name__}: {error}"
         )
     finally:
         if playwright is not None:

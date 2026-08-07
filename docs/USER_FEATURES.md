@@ -347,6 +347,7 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `CODE_FILTER_FAILED` | Không dùng được ô lọc Code | Mở lại Catalog Master rồi thử lại. |
 | `CODE_FILTER_TIMEOUT` | Ô lọc Code phản hồi quá chậm | Chờ bảng Catalog tải xong rồi thử lại. |
 | `COLOR_REPORT_OPTIONS_NOT_READY` | Tham số báo cáo Color Combination chưa nạp xong | Chờ trang WFX ổn định rồi chọn lại OC Division. |
+| `COLOR_REPORT_SAVE_FAILED` | Không lưu được file báo cáo vào thư mục đã chọn | Kiểm tra quyền ghi và dung lượng của thư mục lưu báo cáo. |
 | `COMPANY_FOC_FAILED` | Không thể đổi cấu hình FOC | Mở lại Company Setup và kiểm tra quyền chỉnh sửa. |
 | `COMPANY_FOC_NOT_READY` | Màn cấu hình FOC chưa sẵn sàng | Chờ Miscellaneous Settings tải xong rồi thử lại. |
 | `COMPANY_FOC_SAVE_NOT_CONFIRMED` | WFX chưa xác nhận lưu cấu hình FOC | Kiểm tra trạng thái checkbox và bấm Save lại trên WFX. |

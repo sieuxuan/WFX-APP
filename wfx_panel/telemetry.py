@@ -856,6 +856,10 @@ ERROR_CODE_INFO.update(
             "Tham số báo cáo Color Combination chưa nạp xong",
             "Chờ trang WFX ổn định rồi chọn lại OC Division.",
         ),
+        "COLOR_REPORT_SAVE_FAILED": (
+            "Không lưu được file báo cáo vào thư mục đã chọn",
+            "Kiểm tra quyền ghi và dung lượng của thư mục lưu báo cáo.",
+        ),
     }
 )
 
