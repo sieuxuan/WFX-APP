@@ -47,6 +47,14 @@ def test_color_report_renders_cascade_levels_even_when_style_list_is_empty():
     assert "if (result?.levels) renderColorReportLevels(result)" in body
 
 
+def test_color_report_ignores_a_late_response_from_an_older_request():
+    start = JS.index("async function loadColorReportOptions")
+    body = JS[start : JS.index("\n  async function ", start + 10)]
+
+    assert "colorReportOptionsRevision" in body
+    assert "revision !== colorReportOptionsRevision" in body
+
+
 def _push_log_body():
     start = JS.index("function pushLog(line) {")
     return JS[start : JS.index("\n  window.wfxPushLog", start)]

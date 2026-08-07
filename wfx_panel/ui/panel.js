@@ -169,6 +169,7 @@
   let selectedReportId = "";
   const reportParameterCache = new Map();
   let colorReportRunActive = false;
+  let colorReportOptionsRevision = 0;
   const colorReportState = {
     levels: { division: [], buyer: [], season: [] },
     styleRefs: [],
@@ -3835,6 +3836,7 @@
   }
 
   async function loadColorReportOptions(fromKey = "") {
+    const revision = ++colorReportOptionsRevision;
     if (fromKey) setColorReportLevelsBusy(fromKey);
     if (!fromKey) {
       showReportDetail(
@@ -3842,6 +3844,7 @@
       );
     }
     const result = await call("load_color_report_options", colorReportSelection());
+    if (revision !== colorReportOptionsRevision) return result;
     // Kể cả mùa không có style, backend vẫn trả các cấp cascade để user có
     // thể nhìn thấy và chọn lại Season thay vì bị kẹt ở danh sách cũ.
     if (result?.levels) renderColorReportLevels(result);
