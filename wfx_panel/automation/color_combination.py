@@ -405,6 +405,10 @@ def run_color_report_batch(
             failed=failed,
             output_dir=str(target_dir),
         )
+    except StyleFailure as failure:
+        return _result(False, failure.code, failure.message)
+    except PlaywrightTimeoutError as error:
+        return _result(False, "COLOR_REPORT_OPTIONS_NOT_READY", str(error))
     except Exception as error:
         return _result(
             False, "REPORT_EXPORT_FAILED", f"{type(error).__name__}: {error}"
