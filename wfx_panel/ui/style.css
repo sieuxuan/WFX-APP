@@ -137,58 +137,6 @@ body.compact-mode .compact-launcher .compact-mark {
     .panel-open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0) scale(1); }
     .panel-glow { position: absolute; inset: -180px -120px auto auto; width: 340px; height: 340px; pointer-events: none; border-radius: 50%; background: var(--glow); filter: blur(55px); }
     .panel-header { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 6px 12px 6px 14px; border-bottom: 1px solid var(--border); }
-    .operation-progress {
-      position: absolute;
-      top: 44px;
-      right: 8px;
-      left: 8px;
-      z-index: 20;
-      min-height: 34px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 13px;
-      color: var(--accent-strong);
-      font-size: 12px;
-      font-weight: 680;
-      border-bottom: 1px solid var(--accent-border);
-      border: 1px solid var(--accent-border);
-      border-radius: 9px;
-      background: var(--accent-soft);
-      box-shadow: 0 6px 18px rgba(0,0,0,.12);
-      overflow: hidden;
-    }
-    .operation-progress[hidden] { display: none; }
-    .operation-progress:not([hidden]) { visibility: visible; }
-    .operation-progress::after {
-      content: "";
-      position: absolute;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-      transform: translateX(-100%);
-      animation: operation-track 1.35s ease-in-out infinite;
-    }
-    .operation-enter { animation: operation-enter .16s ease-out both; }
-    .operation-spinner {
-      width: 14px;
-      height: 14px;
-      flex: 0 0 auto;
-      border: 2px solid var(--accent-border);
-      border-top-color: var(--accent-strong);
-      border-radius: 50%;
-      animation: operation-spin var(--spinner-duration) linear infinite;
-    }
-    @keyframes operation-spin { to { transform: rotate(360deg); } }
-    @keyframes operation-track {
-      50%, 100% { transform: translateX(100%); }
-    }
-    @keyframes operation-enter {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
     .brand { display: flex; align-items: center; gap: 9px; }
     .brand-logo { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-soft); }
     .brand-logo svg { width: 21px; fill: none; stroke: var(--accent); stroke-width: 1.4; }
@@ -1037,7 +985,6 @@ body.compact-mode .compact-launcher .compact-mark {
     .module-name { display: block; font-size: 12px; }
     /* Module detail page ------------------------------------------------ */
     .panel-header { order: 0; }
-    .operation-progress { order: 1; }
     .panel-body, .module-page { order: 2; }
     .panel-footer { order: 3; }
     .module-page {

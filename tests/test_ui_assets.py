@@ -54,11 +54,13 @@ def test_color_report_layout_is_compact_and_reserves_style_list_space():
     assert ".color-report-style-list { height: 148px; max-height: 148px;" in css
 
 
-def test_operation_progress_reserves_space_when_hidden():
+def test_operation_status_uses_the_footer_without_a_layout_row():
     css = (UI / "style.css").read_text(encoding="utf-8")
+    html = (UI / "index.html").read_text(encoding="utf-8")
 
-    assert ".operation-progress {\n      position: absolute;" in css
-    assert ".operation-progress[hidden] { display: none; }" in css
+    assert "operation-progress" not in css
+    assert 'class="operation-progress"' not in html
+    assert 'class="footer-status-text"' in html
 
 
 def test_color_report_result_and_progress_cards_start_hidden():
@@ -799,7 +801,6 @@ def test_external_notification_and_generic_svg_icon_are_present():
     assert 'classList.add("notification-visible")' in notification_js
     assert "window.requestAnimationFrame(" not in notification_js
     assert "getBoundingClientRect().height" not in notification_js
-    assert 'class="operation-progress"' in html
     assert 'class="generic-module-icon"' in html
     assert 'class="generic-module-code"' not in html
 
@@ -849,8 +850,6 @@ def test_ui_uses_short_compositor_motion_with_reduced_motion_fallback():
     css = (UI / "style.css").read_text(encoding="utf-8")
     for hook in (
         "@keyframes view-enter",
-        "@keyframes operation-enter",
-        "@keyframes operation-track",
         ".is-action-source",
         "@media (prefers-reduced-motion: reduce)",
     ):
@@ -916,7 +915,7 @@ def test_small_light_theme_text_tokens_meet_wcag_contrast():
 def test_spinners_use_one_calm_cross_device_duration():
     css = (UI / "style.css").read_text(encoding="utf-8")
     assert "--spinner-duration: 1.25s" in css
-    assert css.count("var(--spinner-duration) linear infinite") == 3
+    assert css.count("var(--spinner-duration) linear infinite") == 2
     assert "animation: spin .7s" not in css
 
 

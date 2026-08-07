@@ -547,7 +547,6 @@ def test_bootstrap_has_single_normal_render_and_delayed_fallback():
 def test_short_motion_feedback_is_wired_to_views_and_busy_state():
     for hook in (
         "function replayMotion",
-        'replayMotion(progress, "operation-enter")',
         'replayMotion(page, "view-enter")',
         'replayMotion(panelBody, "view-enter")',
         '"is-action-source"',
@@ -920,7 +919,7 @@ def test_job_history_retry_and_screenshot_are_wired():
 
 def test_running_module_has_visible_progress_and_keeps_close_controls_enabled():
     assert "BUSY_MESSAGES" in JS
-    assert '$(".operation-progress-text").textContent = message' in JS
+    assert 'setStatus("neutral", message)' in JS
     assert 'element.matches(".close-button, .module-back-button")' in JS
     assert '$$("button.is-loading")' in JS
 

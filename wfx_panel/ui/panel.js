@@ -516,7 +516,6 @@
         button.removeAttribute("aria-busy");
       });
     }
-    const progress = $(".operation-progress");
     const stopButton = $(".stop-action-button");
     if (stopButton) {
       stopButton.hidden = !value;
@@ -525,11 +524,7 @@
         stopButton.classList.remove("is-stopping");
       }
     }
-    if (progress) {
-      progress.hidden = !value;
-      $(".operation-progress-text").textContent = message;
-      if (value && !wasBusy) replayMotion(progress, "operation-enter");
-    }
+    if (value && !wasBusy) setStatus("neutral", message);
     $$("button, select, input").forEach((element) => {
       if (element.closest(".settings-overlay")) return;
       if (element.matches(".close-button, .module-back-button")) return;
@@ -2190,7 +2185,7 @@
       count.textContent = `${Math.max(1, Number(progress.step || 1))}/${SALE_ASN_STAGES.length}`;
     }
     if (busy && progress.message) {
-      $(".operation-progress-text").textContent = progress.message;
+      setStatus("neutral", progress.message);
     }
   }
 
@@ -2514,7 +2509,7 @@
     checkpoint.hidden = !["failed", "pending"].includes(state)
       || progress.stage !== "transaction";
     if (busy && progress.message) {
-      $(".operation-progress-text").textContent = progress.message;
+      setStatus("neutral", progress.message);
     }
   }
   // Backend bắn progress cho nhiều flow; rẽ theo method để mỗi thẻ tiến độ chỉ
@@ -3793,7 +3788,7 @@
     $(".color-report-progress-track > i").style.width =
       `${Math.round((step / total) * 100)}%`;
     if (busy && progress.message) {
-      $(".operation-progress-text").textContent = progress.message;
+      setStatus("neutral", progress.message);
     }
   }
 
