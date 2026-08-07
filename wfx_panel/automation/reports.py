@@ -29,6 +29,7 @@ REPORTS = {
     "shipment_summary": {
         "id": "shipment_summary",
         "name": "Shipment Summary",
+        "kind": "simple",
         "custom_report_id": "e440760c-8324-4715-bb21-0e23f6cfb46a",
         "url": (
             "https://prosports.worldfashionexchange.com/WFXBase4.0/"
@@ -37,7 +38,22 @@ REPORTS = {
             "/WFXPSHLIVE/Production%20Reports/Shipment%20Report_Summary&"
             "LoginID=psh45&GUID=f4a2054a-9cba-4cc8-a314-2a098e700ed6&ReportParams="
         ),
-    }
+    },
+    "color_combination_production": {
+        "id": "color_combination_production",
+        "name": "Color Combination - Production",
+        "kind": "cascade_batch",
+        "custom_report_id": "0864e93b-ee5d-4dbc-840e-c83a1b44d728",
+        "url": (
+            "https://prosports.worldfashionexchange.com/WFXBase4.0/"
+            "WFXBICustomReportView.aspx?BICustomReportID="
+            "0864e93b-ee5d-4dbc-840e-c83a1b44d728&Path="
+            "/WFXPSHLIVE/Production%20Reports/"
+            "Color%20combination%20cost%20sheet_Production&"
+            "LoginID=psh45&GUID=cc0170bb-4722-47fa-928e-8d5d6e4c6c03&"
+            "ReportParams="
+        ),
+    },
 }
 PARAMETER_TABLE = "#ParameterTable_rptCustomReportViewer_ctl04"
 REPORT_READY_TIMEOUT_SECONDS = 300
@@ -55,7 +71,11 @@ REPORT_EXCEL_ACTION = (
 
 def report_catalog() -> list[dict[str, str]]:
     return [
-        {"id": item["id"], "name": item["name"]}
+        {
+            "id": item["id"],
+            "name": item["name"],
+            "kind": item.get("kind", "simple"),
+        }
         for item in REPORTS.values()
     ]
 
