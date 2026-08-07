@@ -10,6 +10,43 @@ def test_exposes_python_callable_globals():
         assert f"window.{name}" in JS
 
 
+def test_color_report_progress_is_guarded_by_an_active_flag():
+    start = JS.index("function updateColorReportProgress")
+    body = JS[start : JS.index("\n  function ", start + 10)]
+
+    assert "colorReportRunActive" in body
+    assert "/(\\d+\\/\\d+)\\s*$/" in body
+
+
+def test_color_report_result_card_is_cleared_when_the_module_reopens():
+    start = JS.index("function resetColorReportProgress")
+    body = JS[start : JS.index("\n  function ", start + 10)]
+
+    assert '$(".color-report-result-card").hidden = true' in body
+
+
+def test_color_report_result_does_not_cuon_man_hinh_tu_dong():
+    start = JS.index("function renderColorReportResult")
+    body = JS[start : JS.index("\n  async function ", start + 10)]
+
+    assert "scrollIntoView" not in body
+    assert "failedRefs" in body
+
+
+def test_color_report_select_all_only_touches_visible_rows():
+    start = JS.index("function setColorReportSelection")
+    body = JS[start : JS.index("\n  function ", start + 10)]
+
+    assert "row.hidden" in body
+
+
+def test_color_report_renders_cascade_levels_even_when_style_list_is_empty():
+    start = JS.index("async function loadColorReportOptions")
+    body = JS[start : JS.index("\n  async function ", start + 10)]
+
+    assert "if (result?.levels) renderColorReportLevels(result)" in body
+
+
 def _push_log_body():
     start = JS.index("function pushLog(line) {")
     return JS[start : JS.index("\n  window.wfxPushLog", start)]

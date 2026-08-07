@@ -46,6 +46,8 @@ METHOD_LABELS = {
     "prepare_catalog_costing_import": "Kiểm tra file Costing",
     "apply_catalog_costing": "Áp dụng Costing",
     "clear_catalog_costing_dependencies": "Clear All Dependency",
+    "load_color_report_options": "Tải tham số Color Combination",
+    "run_color_report_batch": "Tải hàng loạt Color Combination",
     "open_sale_asn_new": "Mở Sale ASN mới",
     "open_sample_new": "Mở Sample Order mới",
     "search_oc": "Tìm trong OC List",
@@ -856,6 +858,22 @@ ERROR_CODE_INFO.update(
             "Tham số báo cáo Color Combination chưa nạp xong",
             "Chờ trang WFX ổn định rồi chọn lại OC Division.",
         ),
+        "COLOR_REPORT_STYLE_LIST_EMPTY": (
+            "Mùa đang chọn không có BuyerStyleReference",
+            "Chọn lại OC Division, Buyer hoặc Season rồi tải lại tham số.",
+        ),
+        "COLOR_REPORT_NO_STYLE_SELECTED": (
+            "Chưa chọn style để tải báo cáo",
+            "Tích ít nhất một BuyerStyleReference rồi bấm Tải báo cáo.",
+        ),
+        "COLOR_REPORT_OUTPUT_DIR_REQUIRED": (
+            "Chưa chọn thư mục lưu báo cáo",
+            "Bấm Chọn… để chỉ định thư mục lưu trước khi tải.",
+        ),
+        "COLOR_REPORT_CANCELLED": (
+            "Đã dừng lượt tải Color Combination",
+            "Các file đã tải vẫn được giữ; có thể chạy lại các style còn thiếu.",
+        ),
         "COLOR_REPORT_SAVE_FAILED": (
             "Không lưu được file báo cáo vào thư mục đã chọn",
             "Kiểm tra quyền ghi và dung lượng của thư mục lưu báo cáo.",
@@ -904,6 +922,8 @@ _METHOD_MODULES = {
     "find_buyer": "Buyer List",
     "toggle_company_foc": "Company Setup",
     "run_gdn_dispatch": "(GDN) Dispatch",
+    "load_color_report_options": "Reports",
+    "run_color_report_batch": "Reports",
 }
 _MODULE_NAMES_BY_ID = {
     "0003_6200": "Catalog",

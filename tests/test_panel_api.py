@@ -55,6 +55,39 @@ class FakeLogin:
         self.calls.append(("open_module", module_name, xpath))
         return {"ok": True, "code": "MODULE_OPENED", "message": module_name}
 
+    def report_catalog(self):
+        return [
+            {"id": "shipment_summary", "name": "Shipment Summary"},
+            {
+                "id": "color_combination_production",
+                "name": "Color Combination - Production",
+            },
+        ]
+
+    def load_color_report_options(self, values, log=print):
+        self.calls.append(("load_color_report_options", dict(values)))
+        return {
+            "ok": True,
+            "code": "COLOR_REPORT_OPTIONS_READY",
+            "message": "ok",
+            "levels": {"division": {"options": [], "value": ""}},
+        }
+
+    def run_color_report_batch(
+        self, selection, style_refs, output_dir, log=print, progress=None
+    ):
+        self.calls.append(("run_color_report_batch", dict(selection)))
+        if progress is not None:
+            progress("style", "Đang tải GWSD15176… 1/1", 1, 1)
+        return {
+            "ok": True,
+            "code": "COLOR_REPORT_BATCH_DONE",
+            "message": "ok",
+            "saved": [],
+            "failed": [],
+            "output_dir": output_dir,
+        }
+
     def open_sale_asn_new(self, xpath, log=print):
         self.calls.append(("open_sale_asn_new", xpath))
         return {"ok": True, "code": "SALE_ASN_NEW_READY", "message": "ready"}
@@ -3168,3 +3201,50 @@ def test_user_actions_stay_available_while_reference_sync_is_in_flight(tmp_path,
         syncer.join(timeout=5)
 
     assert during["code"] != "ACTION_IN_PROGRESS"
+
+
+def test_color_report_batch_passes_progress_with_its_own_method(tmp_path):
+    fake = FakeLogin()
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    seen = {}
+    api.set_progress_sink(seen.update)
+
+    api.run_color_report_batch({"division": "d1"}, ["GWSD15176"], str(tmp_path))
+
+    assert seen["method"] == "run_color_report_batch"
+    assert seen["message"].endswith("1/1")
+
+
+def test_color_report_remembers_the_cascade_between_sessions(tmp_path):
+    fake = FakeLogin()
+    api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    api.save_account("psh45", "secret")
+
+    api.run_color_report_batch(
+        {"division": "d1", "buyer": "b1", "season": "s1"},
+        ["GWSD15176"],
+        str(tmp_path),
+    )
+    reopened = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
+    reopened.load_color_report_options({})
+
+    assert fake.calls[-1] == (
+        "load_color_report_options",
+        {"division": "d1", "buyer": "b1", "season": "s1"},
+    )
+
+
+def test_color_report_user_errors_are_not_reported_to_telemetry():
+    for code in (
+        "COLOR_REPORT_NO_STYLE_SELECTED",
+        "COLOR_REPORT_OUTPUT_DIR_REQUIRED",
+        "COLOR_REPORT_STYLE_LIST_EMPTY",
+        "COLOR_REPORT_CANCELLED",
+    ):
+        assert code in panel_api.NON_REPORTABLE_FAILURES
+
+
+def test_reportable_color_report_codes_have_telemetry_guidance():
+    for code in ("COLOR_REPORT_OPTIONS_NOT_READY", "COLOR_REPORT_SAVE_FAILED"):
+        assert code not in panel_api.NON_REPORTABLE_FAILURES
+        assert code in telemetry.ERROR_CODE_INFO

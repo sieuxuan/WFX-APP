@@ -820,12 +820,22 @@
 
         <div class="special-module-workspace reports-workspace" data-module-view="reports" hidden>
           <section class="reports-list" aria-label="Danh sách báo cáo">
+            <div class="reports-screen-heading"><strong>Chọn báo cáo</strong><small>Mỗi báo cáo mở ở màn chi tiết riêng.</small></div>
             <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="report-shipment-summary">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5V3Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
               <span><strong>Shipment Summary</strong><small>Tải tham số, xem và xuất Excel</small></span>
             </button>
+            <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="report-color-combination">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5Z"/><path d="M4 10h16M9 10v9"/></svg>
+              <span><strong>Color Combination - Production</strong><small>Tải hàng loạt theo BuyerStyleReference</small></span>
+            </button>
           </section>
-          <section class="report-parameters" hidden aria-live="polite">
+          <section class="reports-detail" hidden aria-live="polite">
+            <div class="reports-detail-header">
+              <button type="button" class="reports-back-button">← Danh sách báo cáo</button>
+              <div><strong class="reports-detail-title">Chi tiết báo cáo</strong><small>Thiết lập tham số và tải file Excel.</small></div>
+            </div>
+          <section class="report-parameters" hidden>
             <div class="report-parameters-heading">
               <div class="report-parameters-title-row">
                 <strong class="report-parameters-title">Tham số báo cáo</strong>
@@ -838,6 +848,45 @@
               <button type="button" class="module-secondary-button" data-module-action="report-save-parameters">Lưu tham số</button>
               <button type="button" class="special-primary-button report-export-button" data-module-action="report-export-excel">View report &amp; Export Excel</button>
             </div>
+          </section>
+          <section class="color-report-workspace" hidden aria-live="polite">
+            <label class="color-report-level-field"><span>OC Division</span>
+              <select class="color-report-level" data-level="division"></select>
+            </label>
+            <label class="color-report-level-field"><span>Buyer</span>
+              <select class="color-report-level" data-level="buyer" disabled></select>
+            </label>
+            <label class="color-report-level-field"><span>Season</span>
+              <select class="color-report-level" data-level="season" disabled></select>
+            </label>
+            <label class="color-report-batch-row">
+              <input type="checkbox" class="color-report-batch-toggle" checked />
+              <span>Tải hàng loạt</span>
+            </label>
+            <div class="color-report-style-block">
+              <div class="color-report-style-heading"><span>Style</span><small class="color-report-style-count">0/0</small></div>
+              <div class="color-report-style-tools">
+                <button type="button" class="module-secondary-button" data-module-action="color-report-select-all">Chọn tất cả</button>
+                <button type="button" class="module-secondary-button" data-module-action="color-report-clear-all">Bỏ chọn</button>
+                <input type="search" class="color-report-style-filter" placeholder="Lọc style…" aria-label="Lọc danh sách style" />
+              </div>
+              <div class="color-report-style-list" role="group" aria-label="Danh sách BuyerStyleReference"></div>
+            </div>
+            <label class="color-report-level-field color-report-single-style" hidden><span>BuyerStyleReference</span>
+              <select class="color-report-single-select"></select>
+            </label>
+            <div class="color-report-dir-row">
+              <span class="color-report-dir-path">Chưa chọn thư mục lưu</span>
+              <button type="button" class="module-secondary-button" data-module-action="color-report-choose-dir">Chọn…</button>
+            </div>
+            <button type="button" class="special-primary-button" data-module-action="color-report-run">Tải báo cáo</button>
+            <div class="color-report-progress-card" hidden>
+              <div class="color-report-progress-heading"><strong>Đang tải báo cáo</strong><span class="color-report-progress-count">0/0</span></div>
+              <small class="color-report-progress-style"></small>
+              <div class="color-report-progress-track"><i></i></div>
+            </div>
+            <div class="color-report-result-card" hidden></div>
+          </section>
           </section>
         </div>
 

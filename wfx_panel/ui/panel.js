@@ -160,6 +160,7 @@
   const CALL_WATCHDOG_MS = 180000;
   const LONG_CALL_WATCHDOG_MS = 360000;
   const REPORT_CALL_WATCHDOG_MS = 420000;
+  const COLOR_REPORT_BATCH_WATCHDOG_MS = 7200000;
   let busy = false;
   let pointerInsidePanel = false;
   let favoriteModuleIds = new Set();
@@ -167,6 +168,13 @@
   let selectedModule = null;
   let selectedReportId = "";
   const reportParameterCache = new Map();
+  let colorReportRunActive = false;
+  const colorReportState = {
+    levels: { division: [], buyer: [], season: [] },
+    styleRefs: [],
+    selected: new Set(),
+    outputDir: "",
+  };
   let jobs = [];
   let adminAccess = false;
   let adminMode = false;
@@ -248,6 +256,7 @@
     "search_advance_pr", "search_supplier_invoice", "search_expense_invoice",
     "cancel_supplier_invoice", "cancel_supplier_invoice_choice", "open_module_new",
     "load_report_parameters", "export_report_excel",
+    "load_color_report_options", "run_color_report_batch",
     "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
@@ -320,6 +329,8 @@
     switch_division: "Đang đổi Division…",
     load_report_parameters: "Đang tải tham số báo cáo…",
     export_report_excel: "Đang chạy report và export Excel…",
+    load_color_report_options: "Đang tải tham số Color Combination…",
+    run_color_report_batch: "Đang tải báo cáo theo từng style…",
     sync_reference_data: "Đang đồng bộ Article và Style từ server…",
     publish_reference_data: "Đang publish Article và Style lên server…",
     login: "Đang đăng nhập WFX…",
@@ -390,6 +401,8 @@
     switch_division: "Đổi Division",
     load_report_parameters: "Tải tham số báo cáo",
     export_report_excel: "Xuất Excel báo cáo",
+    load_color_report_options: "Tải tham số Color Combination",
+    run_color_report_batch: "Tải hàng loạt Color Combination",
   };
   const jobMethodLabel = (method) =>
     JOB_METHOD_LABELS[String(method || "")] || String(method || "Tác vụ");
@@ -1400,11 +1413,13 @@
     // không resolve), giải phóng UI thay vì để mọi nút disable vĩnh viễn ("đơ").
     // Backend vẫn giữ run lock; kết quả thật (nếu có) sẽ về sau qua result sink.
     let watchdog;
-    const watchdogMs = method === "export_report_excel"
+    const watchdogMs = method === "run_color_report_batch"
+      ? COLOR_REPORT_BATCH_WATCHDOG_MS
+      : (method === "export_report_excel"
       ? REPORT_CALL_WATCHDOG_MS
       : (method === "run_gdn_dispatch"
         ? LONG_CALL_WATCHDOG_MS
-        : CALL_WATCHDOG_MS);
+        : CALL_WATCHDOG_MS));
     const timeout = new Promise((resolve) => {
       watchdog = window.setTimeout(
         () => resolve({ __timeout: true }), watchdogMs
@@ -1490,6 +1505,7 @@
       supplier: ".supplier-category",
       buyer: '[data-module-action="buyer-list"]',
       company_setup: '[data-module-action="company-list"]',
+      reports: '[data-module-action="report-shipment-summary"]',
       generic: ".generic-module-open",
     }[module.kind] || ".generic-module-open";
     if (module.kind === "list_new") {
@@ -1526,7 +1542,7 @@
     } else if (module.kind === "grn_receipt") {
       resetGrnReceipt();
     } else if (module.kind === "reports") {
-      $(".report-parameters").hidden = !selectedReportId;
+      showReportList();
     }
   }
 
@@ -2507,6 +2523,7 @@
     start_sale_asn_create: updateSaleAsnProgress,
     continue_sale_asn_create: updateSaleAsnProgress,
     skip_sale_asn_create_step: updateSaleAsnProgress,
+    run_color_report_batch: updateColorReportProgress,
   };
   window.wfxHandleBackendProgress = (progress) => {
     const handler = BACKEND_PROGRESS_HANDLERS[String(progress?.method || "")];
@@ -2687,9 +2704,14 @@
       ...expenseInvoiceFilterValues(),
     ),
     "report-shipment-summary": loadShipmentSummaryReport,
+    "report-color-combination": () => loadColorReportOptions(""),
     "report-last-month": setReportLastMonth,
     "report-save-parameters": saveSelectedReportParameters,
     "report-export-excel": exportSelectedReport,
+    "color-report-select-all": () => setColorReportSelection(true),
+    "color-report-clear-all": () => setColorReportSelection(false),
+    "color-report-choose-dir": chooseColorReportDir,
+    "color-report-run": () => runColorReportBatch(),
     "list-new-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "list-new-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
     // Supplier là luồng 3 bước; giữ panel mở để người dùng tiếp tục bước kế.
@@ -3516,6 +3538,25 @@
     );
   }
 
+  function showReportList() {
+    selectedReportId = "";
+    $(".reports-list").hidden = false;
+    $(".reports-detail").hidden = true;
+    $(".report-parameters").hidden = true;
+    $(".color-report-workspace").hidden = true;
+    resetColorReportProgress();
+  }
+
+  function showReportDetail(reportId, title) {
+    selectedReportId = reportId;
+    $(".reports-list").hidden = true;
+    $(".reports-detail").hidden = false;
+    $(".reports-detail-title").textContent = title;
+    $(".report-parameters").hidden = reportId !== "shipment_summary";
+    $(".color-report-workspace").hidden =
+      reportId !== "color_combination_production";
+  }
+
   function renderReportParameters(result) {
     selectedReportId = String(result.report_id || "");
     const savedValues = result.saved_parameters || {};
@@ -3628,10 +3669,220 @@
     section.hidden = false;
   }
 
+  function setColorReportLevelsBusy(fromKey) {
+    const order = ["division", "buyer", "season"];
+    const from = order.indexOf(fromKey);
+    order.slice(Math.max(0, from + 1)).forEach((key) => {
+      const select = $(`.color-report-level[data-level="${key}"]`);
+      if (!select) return;
+      select.disabled = true;
+      select.innerHTML = '<option value="">Đang tải…</option>';
+    });
+    colorReportState.styleRefs = [];
+    colorReportState.selected = new Set();
+    renderColorReportStyles();
+  }
+
+  function renderColorReportLevels(result) {
+    const levels = result?.levels || {};
+    ["division", "buyer", "season"].forEach((key) => {
+      const select = $(`.color-report-level[data-level="${key}"]`);
+      if (!select) return;
+      const options = Array.isArray(levels[key]?.options) ? levels[key].options : [];
+      colorReportState.levels[key] = options;
+      select.innerHTML = ['<option value="">— chọn —</option>'].concat(
+        options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`),
+      ).join("");
+      select.value = String(levels[key]?.value || "");
+      select.disabled = options.length === 0;
+    });
+    colorReportState.styleRefs = Array.isArray(levels.style_ref?.options)
+      ? levels.style_ref.options : [];
+    colorReportState.selected = new Set(
+      colorReportState.styleRefs.map((option) => String(option.value)),
+    );
+    renderColorReportStyles();
+  }
+
+  function applyColorReportFilter() {
+    const needle = ($(".color-report-style-filter")?.value || "")
+      .trim().toLocaleLowerCase("vi");
+    $(".color-report-style-list")?.querySelectorAll("label").forEach((row) => {
+      row.hidden = Boolean(needle)
+        && !row.textContent.toLocaleLowerCase("vi").includes(needle);
+    });
+  }
+
+  function updateColorReportCount() {
+    const count = $(".color-report-style-count");
+    if (count) count.textContent =
+      `${colorReportState.selected.size}/${colorReportState.styleRefs.length}`;
+  }
+
+  function renderColorReportStyles() {
+    const list = $(".color-report-style-list");
+    const single = $(".color-report-single-select");
+    const batchToggle = $(".color-report-batch-toggle");
+    if (!list || !single || !batchToggle) return;
+    const batch = batchToggle.checked;
+    list.innerHTML = colorReportState.styleRefs.map((option) => {
+      const value = escapeHtml(option.value);
+      const checked = colorReportState.selected.has(String(option.value));
+      return `<label><input type="checkbox" class="color-report-style" value="${value}"${checked ? " checked" : ""} /><span>${escapeHtml(option.label)}</span></label>`;
+    }).join("");
+    single.innerHTML = ['<option value="">— chọn style —</option>'].concat(
+      colorReportState.styleRefs.map((option) =>
+        `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`),
+    ).join("");
+    $(".color-report-style-block").hidden = !batch;
+    $(".color-report-single-style").hidden = batch;
+    list.querySelectorAll(".color-report-style").forEach((box) =>
+      box.addEventListener("change", () => {
+        if (box.checked) colorReportState.selected.add(box.value);
+        else colorReportState.selected.delete(box.value);
+        updateColorReportCount();
+      }),
+    );
+    applyColorReportFilter();
+    updateColorReportCount();
+  }
+
+  function setColorReportSelection(selected) {
+    $(".color-report-style-list")?.querySelectorAll("label").forEach((row) => {
+      if (row.hidden) return;
+      const box = row.querySelector(".color-report-style");
+      if (!box) return;
+      box.checked = selected;
+      if (selected) colorReportState.selected.add(box.value);
+      else colorReportState.selected.delete(box.value);
+    });
+    updateColorReportCount();
+  }
+
+  function colorReportSelection() {
+    return Object.fromEntries(["division", "buyer", "season"].map((key) => [
+      key,
+      $(`.color-report-level[data-level="${key}"]`)?.value || "",
+    ]));
+  }
+
+  function resetColorReportProgress({ show = false, total = 0 } = {}) {
+    const card = $(".color-report-progress-card");
+    if (card) {
+      card.hidden = !show;
+      $(".color-report-progress-count").textContent = `0/${total}`;
+      $(".color-report-progress-style").textContent = "";
+      $(".color-report-progress-track > i").style.width = "0%";
+    }
+    $(".color-report-result-card").hidden = true;
+    $(".color-report-result-card").innerHTML = "";
+  }
+
+  function updateColorReportProgress(progress) {
+    const card = $(".color-report-progress-card");
+    if (!card || !progress || !colorReportRunActive) return;
+    card.hidden = false;
+    const counter = /(\d+\/\d+)\s*$/.exec(String(progress.message || ""));
+    const step = Math.max(1, Number(progress.step || 1));
+    const total = Math.max(1, Number(progress.total || 1));
+    $(".color-report-progress-count").textContent = counter
+      ? counter[1] : `${step}/${total}`;
+    $(".color-report-progress-style").textContent =
+      String(progress.message || "").replace(/\s*\d+\/\d+\s*$/, "");
+    $(".color-report-progress-track > i").style.width =
+      `${Math.round((step / total) * 100)}%`;
+    if (busy && progress.message) {
+      $(".operation-progress-text").textContent = progress.message;
+    }
+  }
+
+  function renderColorReportResult(result) {
+    const card = $(".color-report-result-card");
+    if (!card || !result) return;
+    $(".color-report-progress-card").hidden = true;
+    const saved = Array.isArray(result.saved) ? result.saved : [];
+    const failed = Array.isArray(result.failed) ? result.failed : [];
+    if (!saved.length && !failed.length) {
+      card.hidden = true;
+      return;
+    }
+    const failedRows = failed.map((item) =>
+      `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}</strong><span>${escapeHtml(item.message)}</span></div>`,
+    ).join("");
+    const savedRows = saved.map((item) =>
+      `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}</strong><span>${escapeHtml(item.file_name)}</span></div>`,
+    ).join("");
+    card.innerHTML = `
+      <div class="color-report-result-row"><span class="chip">${saved.length} thành công</span><span class="chip">${failed.length} lỗi</span></div>
+      ${failedRows}
+      ${saved.length ? `<details><summary>${saved.length} style đã tải</summary>${savedRows}</details>` : ""}
+      <div class="color-report-result-actions">
+        ${failed.length ? `<button type="button" class="module-secondary-button" data-color-report-result-action="retry">Chạy lại ${failed.length} style lỗi</button>` : ""}
+        <button type="button" class="module-secondary-button" data-color-report-result-action="open-dir">Mở thư mục</button>
+      </div>`;
+    card.dataset.failedRefs = JSON.stringify(
+      failed.map((item) => String(item.style_ref)),
+    );
+    card.querySelector('[data-color-report-result-action="retry"]')?.addEventListener(
+      "click", () => runColorReportBatch(
+        JSON.parse(card.dataset.failedRefs || "[]"),
+      ),
+    );
+    card.querySelector('[data-color-report-result-action="open-dir"]')?.addEventListener(
+      "click", () => callQuiet("open_report_export_dir", colorReportState.outputDir),
+    );
+    card.hidden = false;
+  }
+
+  async function loadColorReportOptions(fromKey = "") {
+    if (fromKey) setColorReportLevelsBusy(fromKey);
+    if (!fromKey) {
+      showReportDetail(
+        "color_combination_production", "Color Combination - Production",
+      );
+    }
+    const result = await call("load_color_report_options", colorReportSelection());
+    // Kể cả mùa không có style, backend vẫn trả các cấp cascade để user có
+    // thể nhìn thấy và chọn lại Season thay vì bị kẹt ở danh sách cũ.
+    if (result?.levels) renderColorReportLevels(result);
+    return result;
+  }
+
+  async function chooseColorReportDir() {
+    const result = await callQuiet("choose_report_export_dir");
+    if (result?.ok) {
+      colorReportState.outputDir = String(result.output_dir || "");
+      $(".color-report-dir-path").textContent = colorReportState.outputDir;
+    }
+    return result;
+  }
+
+  async function runColorReportBatch(onlyRefs = null) {
+    const batch = $(".color-report-batch-toggle").checked;
+    const refs = onlyRefs || (batch
+      ? colorReportState.styleRefs.map((option) => String(option.value))
+        .filter((value) => colorReportState.selected.has(value))
+      : [$(".color-report-single-select").value].filter(Boolean));
+    resetColorReportProgress({ show: true, total: refs.length });
+    colorReportRunActive = true;
+    let result = null;
+    try {
+      result = await call(
+        "run_color_report_batch",
+        colorReportSelection(), refs, colorReportState.outputDir,
+      );
+      return result;
+    } finally {
+      colorReportRunActive = false;
+      if (result) renderColorReportResult(result);
+    }
+  }
+
   async function loadShipmentSummaryReport() {
     if (selectedReportId) {
       reportParameterCache.set(selectedReportId, reportParameterValues());
     }
+    showReportDetail("shipment_summary", "Shipment Summary");
     const result = await runSelectedModuleAction(
       "load_report_parameters", "shipment_summary"
     );
@@ -4660,12 +4911,22 @@
       $('[data-module-action="sale-asn-continue"]').disabled =
         busy || event.target.checked !== true;
     });
+    $(".reports-back-button")?.addEventListener("click", showReportList);
     $$("[data-module-action]").forEach((button) =>
       button.addEventListener("click", () =>
         withButtonLoading(
           button,
           () => moduleActions[button.dataset.moduleAction]?.(),
         )));
+    $$(".color-report-level").forEach((select) =>
+      select.addEventListener("change", () =>
+        loadColorReportOptions(select.dataset.level || "")));
+    $(".color-report-style-filter")?.addEventListener(
+      "input", applyColorReportFilter,
+    );
+    $(".color-report-batch-toggle")?.addEventListener(
+      "change", renderColorReportStyles,
+    );
     $$(".module-filter-button").forEach((button) =>
       button.addEventListener("click", () => setModuleFilterKind(
         button.dataset.filterGroup,
@@ -5263,6 +5524,9 @@
       state.focus_chrome_on_module !== false;
     $(".open-excel-file-input").checked =
       state.open_excel_file_after_download !== false;
+    colorReportState.outputDir = String(state.report_export_dir || "");
+    $(".color-report-dir-path").textContent = colorReportState.outputDir
+      || "Chưa chọn thư mục lưu";
     $(".always-on-top-input").checked = state.always_on_top !== false;
     catalogDefaultFolder = state.catalog_default_folder || null;
     const folderLabel =

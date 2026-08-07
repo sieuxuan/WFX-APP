@@ -110,11 +110,12 @@ def _open_report(page: Page, report: Mapping[str, str]) -> Page:
         _report_url(report), wait_until="domcontentloaded", timeout=45_000
     )
     report_page.locator(PARAMETER_TABLE).wait_for(state="attached", timeout=30_000)
-    # ReportViewer gắn class ``hasDatepicker`` và icon lịch bằng javascript
-    # sau khi bảng tham số đã attach. Chờ control hiển thị và cho script WFX
-    # hoàn tất trước khi đọc metadata, nếu không ngày bị coi là ô text.
+    # Mỗi report dùng loại control riêng (Shipment có input/date, Color
+    # Combination dùng select). Chờ control đầu tiên hiển thị rồi cho script
+    # ReportViewer hoàn tất trước khi đọc metadata.
     report_page.locator(
-        f'{PARAMETER_TABLE} input[id$="_txtValue"]'
+        f"{PARAMETER_TABLE} input, {PARAMETER_TABLE} select, "
+        f"{PARAMETER_TABLE} textarea"
     ).first.wait_for(state="visible", timeout=30_000)
     _wait(report_page, 350)
     report_page.bring_to_front()

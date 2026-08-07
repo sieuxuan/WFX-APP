@@ -311,6 +311,10 @@ NON_REPORTABLE_FAILURES = frozenset(
         "COLOR_REPORT_NO_STYLE_SELECTED",
         "COLOR_REPORT_OUTPUT_DIR_REQUIRED",
         "COLOR_REPORT_CANCELLED",
+        "REPORT_DIR_DIALOG_CANCELLED",
+        "REPORT_DIR_DIALOG_UNAVAILABLE",
+        "REPORT_DIR_DIALOG_FAILED",
+        "REPORT_DIR_MISSING",
     }
 )
 
@@ -607,6 +611,7 @@ class PanelAPI:
             "open_costing_folder_after_export": preferences[
                 "open_costing_folder_after_export"
             ],
+            "report_export_dir": preferences["report_export_dir"],
             "catalog_default_folder": (
                 self._catalog.default_folder_for_account(preferences)
             ),
@@ -865,6 +870,8 @@ class PanelAPI:
                 "apply_catalog_costing",
                 "load_report_parameters",
                 "export_report_excel",
+                "load_color_report_options",
+                "run_color_report_batch",
             }
             and hasattr(self._login, "capture_failure_screenshot")
         ):
@@ -1339,6 +1346,71 @@ class PanelAPI:
             "export_report_excel",
             lambda: exporter(str(report_id or ""), safe_values, self._log),
             {"module_id": "reports", "report_id": str(report_id or "")},
+        )
+
+    def load_color_report_options(
+        self, values: Mapping[str, Any] | None = None
+    ) -> dict:
+        loader = getattr(self._login, "load_color_report_options", None)
+        if not callable(loader):
+            return {
+                "ok": False,
+                "code": "REPORT_UNAVAILABLE",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ báo cáo này.",
+            }
+        safe_values = {
+            str(key): str(value)[:500]
+            for key, value in dict(values or {}).items()
+            if isinstance(value, (str, int, float))
+        }
+        if not safe_values:
+            saved = self._saved_report_parameters("color_combination_production")
+            safe_values = {
+                key: str(saved.get(key) or "")
+                for key in ("division", "buyer", "season")
+                if str(saved.get(key) or "")
+            }
+        return self._run(
+            "load_color_report_options",
+            lambda: loader(safe_values, self._log),
+            {"module_id": "reports", "report_id": "color_combination_production"},
+        )
+
+    def run_color_report_batch(
+        self,
+        selection: Mapping[str, Any] | None = None,
+        style_refs: list[str] | None = None,
+        output_dir: str = "",
+    ) -> dict:
+        runner = getattr(self._login, "run_color_report_batch", None)
+        if not callable(runner):
+            return {
+                "ok": False,
+                "code": "REPORT_UNAVAILABLE",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ báo cáo này.",
+            }
+        safe_selection = {
+            str(key): str(value)[:500]
+            for key, value in dict(selection or {}).items()
+            if isinstance(value, (str, int, float))
+        }
+        safe_refs = [
+            str(item)[:200]
+            for item in (style_refs or [])[:500]
+            if str(item).strip()
+        ]
+        method = "run_color_report_batch"
+        self.save_report_parameters("color_combination_production", safe_selection)
+        return self._run(
+            method,
+            lambda: runner(
+                safe_selection,
+                safe_refs,
+                str(output_dir or ""),
+                self._log,
+                progress=self._progress_for(method),
+            ),
+            {"module_id": "reports", "style_count": len(safe_refs)},
         )
 
     def _admin_module_access_error(self, module_id: str) -> dict | None:

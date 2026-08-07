@@ -753,6 +753,78 @@ class PanelApp:
             "file_format": extension.lstrip("."),
         }
 
+    def choose_report_export_dir(self) -> dict:
+        """Chọn thư mục lưu báo cáo hàng loạt và nhớ cho lần sau."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "REPORT_DIR_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ chọn thư mục chưa sẵn sàng.",
+            }
+        saved_directory = str(
+            prefs.load_prefs(self._base_dir).get("report_export_dir") or ""
+        ).strip()
+        if not saved_directory or not Path(saved_directory).is_dir():
+            saved_directory = ""
+        try:
+            selected = self.window.create_file_dialog(
+                webview.FOLDER_DIALOG,
+                directory=saved_directory,
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "REPORT_DIR_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ chọn thư mục: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "REPORT_DIR_DIALOG_CANCELLED",
+                "message": "Đã hủy chọn thư mục lưu báo cáo.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "REPORT_DIR_DIALOG_FAILED",
+                "message": str(error),
+            }
+        try:
+            prefs.save_prefs(self._base_dir, report_export_dir=str(target))
+        except OSError:
+            pass
+        return {
+            "ok": True,
+            "code": "REPORT_DIR_SELECTED",
+            "message": f"Sẽ lưu báo cáo vào {target.name}.",
+            "output_dir": str(target),
+        }
+
+    def open_report_export_dir(self, path: str = "") -> dict:
+        """Mở thư mục chứa các file báo cáo vừa tải."""
+        directory = Path(str(path or "")).expanduser()
+        if not directory.is_dir() or os.name != "nt":
+            return {
+                "ok": False,
+                "code": "REPORT_DIR_MISSING",
+                "message": "Thư mục lưu báo cáo không còn tồn tại.",
+            }
+        try:
+            os.startfile(directory)  # type: ignore[attr-defined]
+        except (OSError, ValueError) as error:
+            return {
+                "ok": False,
+                "code": "REPORT_DIR_MISSING",
+                "message": f"Không mở được thư mục: {type(error).__name__}",
+            }
+        return {
+            "ok": True,
+            "code": "REPORT_DIR_OPENED",
+            "message": f"Đã mở {directory.name}.",
+        }
+
     def choose_oc_upload_file(self, mode: str) -> dict:
         """Chọn file OC New/Revise mà người dùng chủ động cung cấp."""
         selected_mode = str(mode or "").strip().casefold()
@@ -2615,6 +2687,8 @@ class PanelApp:
         self.api.focus_automation_browser = self.focus_automation_browser  # type: ignore[attr-defined]
         self.api.choose_costing_import_file = self.choose_costing_import_file  # type: ignore[attr-defined]
         self.api.choose_costing_export_file = self.choose_costing_export_file  # type: ignore[attr-defined]
+        self.api.choose_report_export_dir = self.choose_report_export_dir  # type: ignore[attr-defined]
+        self.api.open_report_export_dir = self.open_report_export_dir  # type: ignore[attr-defined]
         self.api.choose_oc_upload_file = self.choose_oc_upload_file  # type: ignore[attr-defined]
         self.api.choose_sale_asn_export_file = self.choose_sale_asn_export_file  # type: ignore[attr-defined]
         self.api.choose_sale_asn_price_check_export_file = (  # type: ignore[attr-defined]
