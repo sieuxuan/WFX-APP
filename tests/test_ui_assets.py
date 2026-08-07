@@ -34,6 +34,7 @@ def test_color_report_workspace_exists_with_its_controls():
     html = (UI / "index.html").read_text(encoding="utf-8")
 
     assert 'class="color-report-workspace"' in html
+    assert 'class="color-report-levels-grid"' in html
     for action in (
         "report-color-combination",
         "color-report-select-all",
@@ -42,6 +43,15 @@ def test_color_report_workspace_exists_with_its_controls():
         "color-report-run",
     ):
         assert f'data-module-action="{action}"' in html
+
+
+def test_color_report_layout_is_compact_and_reserves_style_list_space():
+    css = (UI / "style.css").read_text(encoding="utf-8")
+
+    assert ".color-report-levels-grid {" in css
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
+    assert ".color-report-level-field { display: grid;" in css
+    assert ".color-report-style-list { height: 148px; max-height: 148px;" in css
 
 
 def test_color_report_result_and_progress_cards_start_hidden():
