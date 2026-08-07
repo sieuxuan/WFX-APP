@@ -1902,15 +1902,17 @@ git commit -m "feat: khung giao diện workspace Color Combination"
 
 ---
 
-### Task 12: JS cascade, danh sách style và chạy lượt tải
+### Task 12: Toàn bộ giao diện JS của báo cáo
+
+Task này làm trọn phần `panel.js`: cascade, danh sách style, lượt chạy, thẻ tiến độ và thẻ kết quả. Chúng gọi lẫn nhau nên tách ra sẽ để lại hàm rỗng và test đỏ giữa chừng.
 
 **Files:**
-- Modify: `wfx_panel/ui/panel.js` (state ~dòng 168, `BUSY_MESSAGES` ~dòng 321, `METHOD_LABELS` ~dòng 391, `MODULE_ACTIONS` ~dòng 2689, hàm mới cạnh `renderReportParameters` ~dòng 3519, hiển thị workspace ~dòng 1528)
+- Modify: `wfx_panel/ui/panel.js` (state ~dòng 168, `BUSY_MESSAGES` ~dòng 321, `METHOD_LABELS` ~dòng 391, `MODULE_ACTIONS` ~dòng 2689, `BACKEND_PROGRESS_HANDLERS` ~dòng 2505, hàm mới cạnh `renderReportParameters` ~dòng 3519, hiển thị workspace ~dòng 1528, reset khi mở module ~dòng 1513)
 - Test: `tests/test_panel_js.py`
 
 **Interfaces:**
-- Consumes: DOM class từ Task 11; bridge `load_color_report_options`, `run_color_report_batch`, `choose_report_export_dir` từ Task 9–10
-- Produces: `colorReportState` (`{levels, styleRefs, selected: Set, outputDir, running}`), `renderColorReportLevels(result)`, `renderColorReportStyles()`, `resetColorReport()`
+- Consumes: DOM class từ Task 11; bridge `load_color_report_options`, `run_color_report_batch`, `choose_report_export_dir`, `open_report_export_dir` từ Task 9–10
+- Produces: `colorReportState` (`{levels, styleRefs, selected: Set, outputDir}`), `colorReportRunActive`, `renderColorReportLevels(result)`, `renderColorReportStyles()`, `setColorReportSelection(selected)`, `updateColorReportProgress(progress)`, `resetColorReportProgress({show, total})`, `renderColorReportResult(result)`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2168,43 +2170,13 @@ Nếu dispatcher `MODULE_ACTIONS` hiện không truyền element vào handler, s
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Viết tiếp thẻ tiến độ và thẻ kết quả**
 
-Task 12 gọi `resetColorReportProgress` và `renderColorReportResult`, còn thân thật của chúng nằm ở Task 13. Thêm stub ngay bây giờ để module chạy được và test Task 12 xanh; Task 13 sẽ thay bằng bản đầy đủ:
+`runColorReportBatch` ở trên gọi `resetColorReportProgress` và `renderColorReportResult`; viết luôn thân thật của chúng, không dùng stub rỗng. Nội dung ở phần "Thẻ tiến độ và thẻ kết quả" ngay bên dưới.
 
-```js
-  function resetColorReportProgress() {}
-  function renderColorReportResult() {}
-```
+- [ ] **Step 5: Write the failing test cho thẻ tiến độ và kết quả**
 
-```bash
-python -m pytest tests/test_panel_js.py -k "color_report and not progress and not result" -v
-```
-
-Expected: `test_color_report_locks_lower_levels_while_loading` và `test_color_report_select_all_only_touches_visible_rows` PASS. Hai test còn lại (`..._guarded_by_an_active_flag`, `..._reads_the_counter_suffix`) vẫn đỏ và sẽ xanh ở Task 13.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add wfx_panel/ui/panel.js tests/test_panel_js.py
-git commit -m "feat: giao diện cascade và chọn style cho Color Combination"
-```
-
----
-
-### Task 13: Thẻ tiến độ và thẻ kết quả
-
-**Files:**
-- Modify: `wfx_panel/ui/panel.js` (`BACKEND_PROGRESS_HANDLERS` ~dòng 2505, thêm hàm cạnh nhóm ở Task 12; reset khi mở module ~dòng 1513)
-- Test: `tests/test_panel_js.py`
-
-**Interfaces:**
-- Consumes: `colorReportRunActive`, `colorReportState`, `runColorReportBatch` từ Task 12
-- Produces: `updateColorReportProgress(progress)`, `resetColorReportProgress({show, total})`, `renderColorReportResult(result)`
-
-- [ ] **Step 1: Write the failing test**
-
-Các test `color_report` đã viết ở Task 12 (`test_color_report_run_is_guarded_by_an_active_flag`, `test_color_report_progress_reads_the_counter_suffix`) là test cho task này. Thêm thêm:
+Ba test `color_report` đã viết ở Step 1 (`..._guarded_by_an_active_flag`, `..._reads_the_counter_suffix`) là test cho phần này. Thêm hai test nữa:
 
 ```python
 def test_color_report_result_card_is_cleared_when_the_module_reopens():
@@ -2223,7 +2195,7 @@ def test_color_report_result_scrolls_itself_into_view():
     assert "color-report-retry-failed" in body
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 6: Run test to verify it fails**
 
 ```bash
 python -m pytest tests/test_panel_js.py -k color_report -v
@@ -2231,9 +2203,9 @@ python -m pytest tests/test_panel_js.py -k color_report -v
 
 Expected: FAIL với `ValueError: substring not found`
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 7: Thẻ tiến độ và thẻ kết quả**
 
-Thêm vào `wfx_panel/ui/panel.js`, cùng nhóm hàm Task 12:
+Thêm vào `wfx_panel/ui/panel.js`, cùng nhóm hàm ở Step 3:
 
 ```js
   function resetColorReportProgress({ show = false, total = 0 } = {}) {
@@ -2304,8 +2276,6 @@ Thêm vào `wfx_panel/ui/panel.js`, cùng nhóm hàm Task 12:
   }
 ```
 
-Thay `resetColorReportProgress` và `renderColorReportResult` rỗng đã đặt tạm ở Task 12 bằng hai bản trên.
-
 Trong `renderColorReportResult`, ngay trước `card.scrollIntoView(...)`, mở sẵn thư mục khi có file — đúng quy tắc "thư mục chứa file luôn tự mở sau mọi download/export thành công":
 
 ```js
@@ -2333,24 +2303,24 @@ Thêm vào `BACKEND_PROGRESS_HANDLERS`:
 
 Gọi `resetColorReportProgress();` trong nhánh reset khi mở module (cạnh `resetSaleAsnProgress();` dòng ~1513).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 8: Run test to verify it passes**
 
 ```bash
 python -m pytest tests/test_panel_js.py tests/test_ui_assets.py -v && python -m pytest -q
 ```
 
-Expected: toàn bộ test PASS
+Expected: toàn bộ test PASS, không còn test `color_report` nào đỏ
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add wfx_panel/ui/panel.js tests/test_panel_js.py
-git commit -m "feat: thẻ tiến độ và kết quả cho lượt tải hàng loạt"
+git commit -m "feat: giao diện cascade, tiến độ và kết quả cho Color Combination"
 ```
 
 ---
 
-### Task 14: Hướng dẫn người dùng và kiểm tra cuối
+### Task 13: Hướng dẫn người dùng và kiểm tra cuối
 
 **Files:**
 - Modify: `wfx_panel/manual/06-danh-sach/reports.md`
@@ -2450,7 +2420,7 @@ git commit -m "docs: hướng dẫn tải hàng loạt báo cáo Color Combinati
 
 ## Kiểm thử thủ công trước khi phát hành
 
-Test tự động không chạm Chrome thật. Sau Task 14, chạy app từ source và kiểm tra tay:
+Test tự động không chạm Chrome thật. Sau Task 13, chạy app từ source và kiểm tra tay:
 
 1. Mở Chrome làm việc, đăng nhập WFX, mở module `Reports` → `Color Combination - Production`.
 2. Xác nhận ba select nạp đúng và cấp dưới bị khóa trong lúc chờ.
