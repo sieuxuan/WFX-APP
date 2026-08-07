@@ -151,7 +151,10 @@ body.compact-mode .compact-launcher .compact-mark {
       background: var(--accent-soft);
       overflow: hidden;
     }
-    .operation-progress[hidden] { display: none; }
+    /* Giữ chỗ khi thanh tiến trình đang ẩn để các select không bị đẩy xuống
+       lúc user đổi Buyer/Season. */
+    .operation-progress[hidden] { display: flex; visibility: hidden; pointer-events: none; }
+    .operation-progress:not([hidden]) { visibility: visible; }
     .operation-progress::after {
       content: "";
       position: absolute;
