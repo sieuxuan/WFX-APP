@@ -396,6 +396,36 @@ def test_run_one_style_saves_the_native_download_under_the_style_name(
     ) == "excel"
 
 
+def test_run_one_style_uses_the_buyer_style_reference_label_for_filename(
+    monkeypatch, tmp_path
+):
+    source = tmp_path / "downloaded.xlsx"
+    source.write_text("excel", encoding="utf-8")
+    controls = {"BuyerStyleReference": "id::ref", "StyleCode": "id::code"}
+
+    monkeypatch.setattr(
+        color_combination, "select_and_settle", lambda *_a, **_k: controls
+    )
+    monkeypatch.setattr(
+        color_combination,
+        "read_select_options",
+        lambda _page, _id: [{"value": "c1", "label": "SWV0004496"}],
+    )
+    monkeypatch.setattr(color_combination, "read_select_value", lambda *_a: "")
+    monkeypatch.setattr(color_combination, "_view_and_download", lambda *_a: source)
+
+    saved = color_combination._run_one_style(
+        object(),
+        controls,
+        "1",
+        tmp_path,
+        lambda _line: None,
+        "GMOW15193",
+    )
+
+    assert saved["file_name"] == "GMOW15193 - SWV0004496.xlsx"
+
+
 def test_run_one_style_reports_a_missing_style_code(monkeypatch, tmp_path):
     controls = {"BuyerStyleReference": "id::ref", "StyleCode": "id::code"}
     monkeypatch.setattr(
