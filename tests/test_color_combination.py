@@ -81,12 +81,12 @@ def test_clean_style_ref_options_drops_placeholder_but_keeps_duplicate_records()
     ]
 
 
-def test_unique_target_keeps_the_exact_style_filename(tmp_path):
+def test_unique_target_adds_a_counter_without_overwriting(tmp_path):
     (tmp_path / "GWSD15176.xlsx").write_text("x", encoding="utf-8")
 
     target = color_combination.unique_target(tmp_path, "GWSD15176")
 
-    assert target == tmp_path / "GWSD15176.xlsx"
+    assert target == tmp_path / "GWSD15176 (2).xlsx"
 
 
 def test_unique_target_uses_the_plain_name_when_it_is_free(tmp_path):
