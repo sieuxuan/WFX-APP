@@ -997,16 +997,21 @@ def read_cascade(page: Page, values: Mapping[str, str] | None) -> dict:
     """Áp giá trị đã lưu tới cấp còn hợp lệ rồi đọc option của mọi cấp."""
     controls = resolve_controls(page)
     wanted = dict(values or {})
+    # prune_selection duyệt cả chuỗi cascade và dừng ở cấp đầu tiên không hợp
+    # lệ, nên phải truyền map option đã tích lũy tới cấp hiện tại. Truyền map
+    # chỉ có một cấp sẽ làm nó dừng ngay ở cấp trên và luôn trả rỗng.
+    options_by_key: dict[str, list] = {}
     levels: dict[str, dict] = {}
     for key in CASCADE_KEYS:
         label = LEVEL_LABELS[key]
         options = read_select_options(page, controls.get(label, ""))
+        options_by_key[key] = options
         levels[key] = {"options": options, "value": ""}
-        allowed = prune_selection(wanted, {key: options})
-        target = allowed.get(key, "")
+        target = prune_selection(wanted, options_by_key).get(key, "")
         if target and target != read_select_value(page, controls.get(label, "")):
             controls = select_and_settle(page, controls, label, target)
             options = read_select_options(page, controls.get(label, ""))
+            options_by_key[key] = options
             levels[key] = {"options": options, "value": target}
         elif target:
             levels[key]["value"] = target
