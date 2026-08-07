@@ -1,3 +1,5 @@
+import pytest
+
 from wfx_panel.automation import color_combination, reports
 from wfx_panel.automation.runtime import AutomationCancelled
 
@@ -332,3 +334,68 @@ def test_read_cascade_stops_applying_at_the_first_stale_value(monkeypatch):
     )
 
     assert page.selected == {}
+
+
+def test_run_one_style_saves_the_native_download_under_the_style_name(
+    monkeypatch, tmp_path
+):
+    """File native của Chrome được sao chép sang thư mục user chọn."""
+    source = tmp_path / "downloaded.xlsx"
+    source.write_text("excel", encoding="utf-8")
+    controls = {"BuyerStyleReference": "id::ref", "StyleCode": "id::code"}
+
+    monkeypatch.setattr(
+        color_combination, "select_and_settle", lambda *_a, **_k: controls
+    )
+    monkeypatch.setattr(
+        color_combination,
+        "read_select_options",
+        lambda _page, _id: [{"value": "c1", "label": "SWV0003935"}],
+    )
+    monkeypatch.setattr(color_combination, "read_select_value", lambda *_a: "")
+    monkeypatch.setattr(color_combination, "_view_and_download", lambda *_a: source)
+
+    saved = color_combination._run_one_style(
+        object(), controls, "GWSD15176", tmp_path, lambda _line: None
+    )
+
+    assert saved["style_code"] == "SWV0003935"
+    assert saved["file_name"] == "GWSD15176 - SWV0003935.xlsx"
+    assert (tmp_path / "GWSD15176 - SWV0003935.xlsx").read_text(
+        encoding="utf-8"
+    ) == "excel"
+
+
+def test_run_one_style_reports_a_missing_style_code(monkeypatch, tmp_path):
+    controls = {"BuyerStyleReference": "id::ref", "StyleCode": "id::code"}
+    monkeypatch.setattr(
+        color_combination, "select_and_settle", lambda *_a, **_k: controls
+    )
+    monkeypatch.setattr(color_combination, "read_select_options", lambda *_a: [])
+
+    with pytest.raises(color_combination.StyleFailure) as error:
+        color_combination._run_one_style(
+            object(), controls, "GWSD15176", tmp_path, lambda _line: None
+        )
+
+    assert error.value.code == "COLOR_REPORT_STYLECODE_MISSING"
+
+
+def test_batch_requires_a_style_selection(tmp_path):
+    result = color_combination.run_color_report_batch(
+        {"division": "d1"}, [], str(tmp_path), log=lambda _line: None
+    )
+
+    assert result["code"] == "COLOR_REPORT_NO_STYLE_SELECTED"
+    assert result["ok"] is False
+
+
+def test_batch_requires_an_existing_output_directory(tmp_path):
+    result = color_combination.run_color_report_batch(
+        {"division": "d1"},
+        ["GWSD15176"],
+        str(tmp_path / "khong-ton-tai"),
+        log=lambda _line: None,
+    )
+
+    assert result["code"] == "COLOR_REPORT_OUTPUT_DIR_REQUIRED"
