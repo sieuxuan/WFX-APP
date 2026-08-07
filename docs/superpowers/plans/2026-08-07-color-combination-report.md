@@ -1560,7 +1560,21 @@ Trong `wfx_panel/telemetry.py`, thêm vào `ERROR_CODE_INFO` cạnh `REPORT_EXPO
         ),
 ```
 
-Thêm nhãn method vào `METHOD_LABELS` trong `panel_api.py` nếu file có bảng đó (tìm `"export_report_excel":` trong `wfx_panel/panel_app.py` `_METHOD_LABELS` và thêm hai dòng tương ứng: `"load_color_report_options": "Reports · Color Combination"`, `"run_color_report_batch": "Reports · Tải hàng loạt"`).
+Trong `wfx_panel/telemetry.py` còn hai bảng nữa phải khai báo, nếu không telemetry sẽ gửi tên method thô thay vì mô tả:
+
+`METHOD_LABELS` (dòng ~31):
+
+```python
+    "load_color_report_options": "Tải tham số Color Combination",
+    "run_color_report_batch": "Tải hàng loạt Color Combination",
+```
+
+`_METHOD_MODULES` (dòng ~870):
+
+```python
+    "load_color_report_options": "Reports",
+    "run_color_report_batch": "Reports",
+```
 
 - [ ] **Step 4: Run test to verify it passes**
 
