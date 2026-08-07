@@ -57,7 +57,8 @@ def test_color_report_layout_is_compact_and_reserves_style_list_space():
 def test_operation_progress_reserves_space_when_hidden():
     css = (UI / "style.css").read_text(encoding="utf-8")
 
-    assert ".operation-progress[hidden] { display: flex; visibility: hidden;" in css
+    assert ".operation-progress {\n      position: absolute;" in css
+    assert ".operation-progress[hidden] { display: none; }" in css
 
 
 def test_color_report_result_and_progress_cards_start_hidden():
