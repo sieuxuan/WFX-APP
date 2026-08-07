@@ -222,3 +222,43 @@ def test_color_combination_report_points_at_the_wfx_custom_report():
     assert entry["custom_report_id"] == "0864e93b-ee5d-4dbc-840e-c83a1b44d728"
     assert entry["custom_report_id"] in entry["url"]
     assert entry["url"].startswith("https://")
+
+
+class _FakeLocator:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def evaluate(self, _script, *_args):
+        return self._payload
+
+
+class _FakePage:
+    def __init__(self, payload):
+        self._payload = payload
+        self.selectors = []
+
+    def locator(self, selector):
+        self.selectors.append(selector)
+        return _FakeLocator(self._payload)
+
+
+def test_resolve_controls_maps_parameter_labels_to_element_ids():
+    page = _FakePage(
+        {
+            "OC Division": "ctl04_ctl03_ddValue",
+            "BuyerStyleReference": "ctl04_ctl09_ddValue",
+        }
+    )
+
+    controls = reports.resolve_controls(page)
+
+    assert controls["BuyerStyleReference"] == "ctl04_ctl09_ddValue"
+    assert reports.PARAMETER_TABLE in page.selectors[0]
+
+
+def test_read_select_options_returns_value_and_label_pairs():
+    page = _FakePage([{"value": "1", "label": "GWSD15176"}])
+
+    options = reports.read_select_options(page, "ctl04_ctl09_ddValue")
+
+    assert options == [{"value": "1", "label": "GWSD15176"}]

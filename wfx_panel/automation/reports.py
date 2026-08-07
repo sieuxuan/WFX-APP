@@ -121,6 +121,87 @@ def _open_report(page: Page, report: Mapping[str, str]) -> Page:
     return report_page
 
 
+POSTBACK_SETTLE_SECONDS = 0.5
+
+
+def _wait_postback_settled(page: Page, timeout_s: float = 45.0) -> None:
+    """Chờ async postback của ReportViewer xong và ổn định trước khi đọc lại."""
+    deadline = time.monotonic() + timeout_s
+    stable_since = 0.0
+    while time.monotonic() < deadline:
+        checkpoint()
+        now = time.monotonic()
+        try:
+            busy = bool(
+                page.evaluate(
+                    """() => {
+                      const manager = window.Sys?.WebForms?.PageRequestManager
+                        ?.getInstance?.();
+                      if (manager?.get_isInAsyncPostBack?.()) return true;
+                      return [...document.querySelectorAll(
+                        '[id*="AsyncWait"], [aria-busy="true"]'
+                      )].some(element => {
+                        const style = getComputedStyle(element);
+                        const rect = element.getBoundingClientRect();
+                        return style.display !== 'none' &&
+                          style.visibility !== 'hidden' &&
+                          rect.width > 0 && rect.height > 0;
+                      });
+                    }"""
+                )
+            )
+            if busy:
+                stable_since = 0.0
+            elif not stable_since:
+                stable_since = now
+            elif now - stable_since >= POSTBACK_SETTLE_SECONDS:
+                return
+        except PlaywrightError:
+            stable_since = 0.0
+        _wait(page, 100)
+    raise PlaywrightTimeoutError(
+        f"Tham số báo cáo chưa nạp xong sau {int(timeout_s)} giây."
+    )
+
+
+def resolve_controls(page: Page) -> dict[str, str]:
+    """Map nhãn tham số sang element id; id đổi sau mỗi postback nên đọc lại."""
+    return page.locator(PARAMETER_TABLE).evaluate(
+        """table => {
+          const controls = {};
+          for (const element of table.querySelectorAll('input, select')) {
+            if (!element.id || element.type === 'hidden') continue;
+            const valueCell = element.closest('td, th');
+            const label = (valueCell?.previousElementSibling?.textContent || '')
+              .replace(/\\s+/g, ' ').trim();
+            if (label && !(label in controls)) controls[label] = element.id;
+          }
+          return controls;
+        }"""
+    )
+
+
+def read_select_options(page: Page, control_id: str) -> list[dict[str, str]]:
+    cleaned = str(control_id or "").replace(chr(34), "")
+    if not cleaned:
+        return []
+    return page.locator(f'[id="{cleaned}"]').evaluate(
+        """element => [...(element.options || [])].map(option => ({
+          value: option.value,
+          label: (option.textContent || option.value).trim(),
+        })).filter(option => option.label)"""
+    )
+
+
+def read_select_value(page: Page, control_id: str) -> str:
+    cleaned = str(control_id or "").replace(chr(34), "")
+    if not cleaned:
+        return ""
+    return str(
+        page.locator(f'[id="{cleaned}"]').evaluate("element => element.value || ''")
+    )
+
+
 def _date_to_iso(value: Any) -> str:
     cleaned = str(value or "").strip()
     for pattern in ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d"):
