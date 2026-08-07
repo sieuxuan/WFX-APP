@@ -1,4 +1,4 @@
-from wfx_panel.automation import color_combination
+from wfx_panel.automation import color_combination, reports
 from wfx_panel.automation.runtime import AutomationCancelled
 
 
@@ -203,3 +203,22 @@ def test_batch_ignores_blank_style_references():
     )
 
     assert [item["style_ref"] for item in result["saved"]] == ["A"]
+
+
+def test_catalog_exposes_the_kind_so_the_ui_picks_the_right_form():
+    """Shipment Summary dùng form tham số một lượt; báo cáo mới dùng cascade."""
+    catalog = {item["id"]: item for item in reports.report_catalog()}
+
+    assert catalog["shipment_summary"]["kind"] == "simple"
+    assert catalog[color_combination.REPORT_ID]["kind"] == "cascade_batch"
+    assert catalog[color_combination.REPORT_ID]["name"] == (
+        color_combination.REPORT_NAME
+    )
+
+
+def test_color_combination_report_points_at_the_wfx_custom_report():
+    entry = reports.REPORTS[color_combination.REPORT_ID]
+
+    assert entry["custom_report_id"] == "0864e93b-ee5d-4dbc-840e-c83a1b44d728"
+    assert entry["custom_report_id"] in entry["url"]
+    assert entry["url"].startswith("https://")
