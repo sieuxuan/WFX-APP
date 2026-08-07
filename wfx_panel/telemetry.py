@@ -852,6 +852,10 @@ ERROR_CODE_INFO.update(
             "Không lưu được tham số báo cáo",
             "Kiểm tra ổ đĩa hoặc đóng ứng dụng khác đang mở dữ liệu WFX Smart.",
         ),
+        "COLOR_REPORT_OPTIONS_NOT_READY": (
+            "Tham số báo cáo Color Combination chưa nạp xong",
+            "Chờ trang WFX ổn định rồi chọn lại OC Division.",
+        ),
     }
 )
 

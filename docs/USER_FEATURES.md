@@ -346,6 +346,7 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `CHROME_OPEN_FAILED` | Không thể mở trình duyệt làm việc | Kiểm tra cài đặt Chrome/Edge và quyền chạy ứng dụng. |
 | `CODE_FILTER_FAILED` | Không dùng được ô lọc Code | Mở lại Catalog Master rồi thử lại. |
 | `CODE_FILTER_TIMEOUT` | Ô lọc Code phản hồi quá chậm | Chờ bảng Catalog tải xong rồi thử lại. |
+| `COLOR_REPORT_OPTIONS_NOT_READY` | Tham số báo cáo Color Combination chưa nạp xong | Chờ trang WFX ổn định rồi chọn lại OC Division. |
 | `COMPANY_FOC_FAILED` | Không thể đổi cấu hình FOC | Mở lại Company Setup và kiểm tra quyền chỉnh sửa. |
 | `COMPANY_FOC_NOT_READY` | Màn cấu hình FOC chưa sẵn sàng | Chờ Miscellaneous Settings tải xong rồi thử lại. |
 | `COMPANY_FOC_SAVE_NOT_CONFIRMED` | WFX chưa xác nhận lưu cấu hình FOC | Kiểm tra trạng thái checkbox và bấm Save lại trên WFX. |
