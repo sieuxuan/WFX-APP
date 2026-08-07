@@ -2,27 +2,31 @@
 (() => {
   let MODULE_GROUPS = [
     { name: "Operation", accent: "cyan", modules: [
-      { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Tìm Article · Season · Costing/BOM." },
-      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Mở OC List, Upload OC New hoặc Revise OC." },
-      { name: "Sample List", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Mở Sample List, tìm hoặc tạo Sample Order." },
-      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tạo Sale ASN từ Excel, tra cứu, tải Documents." },
-      { name: "(GDN) Dispatch", id: "gdn_dispatch", icon: "GD", kind: "gdn_dispatch", description: "Tạo GDN Dispatch từ Invoice GRN." },
-      { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Mở RMPO List hoặc lọc theo Supplier, RMPO No." },
-      { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Mở Indent List hoặc lọc theo 4 điều kiện." },
-      { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "indent", description: "Mở User Indent List hoặc lọc theo 4 điều kiện." },
-      { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "list_new", description: "Mở QA List hoặc tạo QA Request mới." },
+      { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Quản lý Style, làm và tra cứu Costing, BOM." },
+      { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Quản lý, tạo mới và điều chỉnh đơn đặt hàng OC." },
+      { name: "Sample Order", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Quản lý và tạo mới đơn hàng mẫu." },
+      { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tạo và tra cứu thông báo giao hàng Sale ASN." },
+      { name: "(GDN) Dispatch", id: "gdn_dispatch", icon: "GD", kind: "gdn_dispatch", description: "Tạo phiếu xuất kho GDN từ Invoice GRN." },
+      { name: "(GRN) Nhập kho", id: "grn_receipt", icon: "GR", kind: "grn_receipt", description: "Nhập kho nguyên phụ liệu từ RMPO và tra cứu GRN." },
+      { name: "RMPO List", id: "0005_0050_0020", icon: "RM", kind: "rmpo", description: "Quản lý đơn mua nguyên phụ liệu và theo dõi nhập kho." },
+      { name: "Indent List", id: "0005_0080_0020", icon: "IN", kind: "indent", description: "Quản lý yêu cầu cấp nguyên phụ liệu." },
+      { name: "User Indent", id: "user_indent_list", icon: "UI", kind: "indent", description: "Tra cứu yêu cầu cấp nguyên phụ liệu của người dùng." },
+      { name: "QA List", id: "0063_0030_0020", icon: "QA", kind: "list_new", description: "Quản lý và tạo yêu cầu kiểm tra chất lượng." },
     ]},
     { name: "Finance", accent: "violet", modules: [
-      { name: "Advance PR List", id: "0065_0880_0010_0020", icon: "PR", kind: "advance_pr", description: "Mở, lọc Advance PR hoặc tạo yêu cầu mới." },
-      { name: "Supplier Inv List", id: "0065_0880_0020_0020", icon: "SI", kind: "supplier_invoice", description: "Mở, lọc hoặc Cancel Supplier Invoice." },
-      { name: "Expense Inv List", id: "0065_0880_0030_0020", icon: "EI", kind: "expense_invoice", description: "Mở, lọc Expense Invoice hoặc tạo hóa đơn mới." },
+      { name: "Advance PR", id: "0065_0880_0010_0020", icon: "PR", kind: "advance_pr", description: "Quản lý và tạo đề nghị thanh toán tạm ứng." },
+      { name: "Supplier Inv", id: "0065_0880_0020_0020", icon: "SI", kind: "supplier_invoice", description: "Quản lý, tra cứu và hủy hóa đơn nhà cung cấp." },
+      { name: "Expense Inv", id: "0065_0880_0030_0020", icon: "EI", kind: "expense_invoice", description: "Quản lý và tạo hóa đơn chi phí." },
+    ]},
+    { name: "Reports", accent: "cyan", modules: [
+      { name: "Reports", id: "reports", icon: "RP", kind: "reports", description: "Tải báo cáo WFX với tham số đã chọn." },
     ]},
     { name: "Admin", accent: "amber", modules: [
-      { name: "Org Structure", id: "0090_0001", icon: "OR", kind: "generic", description: "Mở cấu trúc tổ chức." },
-      { name: "System Coding", id: "0090_0250", icon: "SC", kind: "generic", description: "Mở cấu hình mã hệ thống." },
-      { name: "Company Setup", id: "0090_0007", icon: "CO", kind: "company_setup", description: "Mở Company Setup hoặc đổi nơi áp dụng FOC." },
-      { name: "Buyer List", id: "0004_0010_1720", icon: "BU", kind: "buyer", description: "Mở Buyers List hoặc tìm và mở Buyer." },
-      { name: "Supplier List", id: "0005_0010_1290", icon: "SU", kind: "supplier", description: "Mở Supplier theo Category hoặc tìm mọi Category." },
+      { name: "Org Structure", id: "0090_0001", icon: "OR", kind: "generic", description: "Quản lý cơ cấu tổ chức." },
+      { name: "System Coding", id: "0090_0250", icon: "SC", kind: "generic", description: "Quản lý mã dùng trong hệ thống." },
+      { name: "Company Setup", id: "0090_0007", icon: "CO", kind: "company_setup", description: "Quản lý thiết lập công ty và nơi áp dụng FOC." },
+      { name: "Buyer List", id: "0004_0010_1720", icon: "BU", kind: "buyer", description: "Quản lý và tra cứu khách hàng." },
+      { name: "Supplier List", id: "0005_0010_1290", icon: "SU", kind: "supplier", description: "Quản lý và tra cứu nhà cung cấp." },
     ]},
   ];
 
@@ -131,6 +135,7 @@
     SL: '<path d="M9 3h6M10 3v6l-4 7a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 16l-4-7V3"/><path d="M7.5 15h9"/>',
     AS: '<path d="M3 6h11v11H3V6Z"/><path d="M14 10h4l3 3v4h-7v-7Z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
     GD: '<path d="M4 5h11v13H4V5Z"/><path d="M8 9h4M8 13h4"/><path d="M15 10h3l2 3v5h-5v-8Z"/><circle cx="8" cy="19" r="2"/><circle cx="17" cy="19" r="2"/>',
+    GR: '<path d="M4 5h16v14H4V5Z"/><path d="M8 9h8M8 13h5"/><path d="M12 2v7m0 0-3-3m3 3 3-3"/>',
     RM: '<path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/><path d="m9 14 2 2 4-4"/>',
     IN: '<path d="M4 5h16v14H4V5Z"/><path d="M4 14h4l2 3h4l2-3h4"/><path d="M12 3v8m0 0-3-3m3 3 3-3"/>',
     UI: '<path d="M5 4h14v16H5V4Z"/><circle cx="9" cy="10" r="2"/><path d="M6.5 16a2.5 2.5 0 0 1 5 0M14 9h3M14 13h3"/>',
@@ -141,6 +146,7 @@
     OR: '<rect x="9" y="3" width="6" height="4" rx="1"/><rect x="3" y="17" width="6" height="4" rx="1"/><rect x="15" y="17" width="6" height="4" rx="1"/><path d="M12 7v5M6 17v-5h12v5"/>',
     SC: '<path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>',
     CO: '<path d="M4 21V5l8-3 8 3v16M8 7h2m4 0h2M8 11h2m4 0h2M8 15h2m4 0h2M10 21v-3h4v3"/>',
+    RP: '<path d="M5 3h14v18H5V3Z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     BU: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/>',
     SU: '<path d="M3 21V10l6 3v-3l6 3V6l6 3v12H3Z"/><path d="M7 17h2m3 0h2m3 0h2"/>',
   };
@@ -153,12 +159,14 @@
   // của các automation (login + grid settle + filter + mở đích ~ trên phút).
   const CALL_WATCHDOG_MS = 180000;
   const LONG_CALL_WATCHDOG_MS = 360000;
+  const REPORT_CALL_WATCHDOG_MS = 420000;
   let busy = false;
   let pointerInsidePanel = false;
-  let returnToListAfterAction = false;
   let favoriteModuleIds = new Set();
   let hotkeyLabel = "Ctrl + Shift + X";
   let selectedModule = null;
+  let selectedReportId = "";
+  const reportParameterCache = new Map();
   let jobs = [];
   let adminAccess = false;
   let adminMode = false;
@@ -188,6 +196,11 @@
   let saleAsnReviewToken = "";
   let saleAsnDoneInvoice = "";
   let saleAsnPriceCheck = null;
+  let rmpoRows = [];
+  let selectedRmpoChoice = null;
+  let grnReceiptToken = "";
+  let grnLinkedChoiceId = "";
+  let grnLinkedSupplier = "";
   // Progress tới qua evaluate_js từ worker, còn kết quả flow về bằng đường khác;
   // hai luồng không đảm bảo thứ tự. Chỉ nhận progress khi đang có lời gọi chạy,
   // nếu không một payload đến trễ sẽ xóa thẻ kết quả và kéo lùi bộ đếm.
@@ -217,6 +230,7 @@
   const moduleFilterKinds = {
     oc: "oc_no",
     sale_asn: "invoice_no",
+    grn: "invoice",
   };
   const MODULE_RUN_METHODS = new Set([
     "open_chrome", "login", "retry_job", "open_module",
@@ -228,9 +242,12 @@
     "open_sample_new", "search_oc", "search_sample",
     "check_sample_files", "open_sample_file_choice",
     "search_sale_asn", "prepare_sale_asn_documents",
-    "save_sale_asn_documents", "search_rmpo", "search_indent",
+    "save_sale_asn_documents", "search_rmpo", "run_rmpo_action",
+    "prepare_grn_receipt", "continue_grn_receipt", "finalize_grn_receipt",
+    "search_grn", "search_indent",
     "search_advance_pr", "search_supplier_invoice", "search_expense_invoice",
     "cancel_supplier_invoice", "cancel_supplier_invoice_choice", "open_module_new",
+    "load_report_parameters", "export_report_excel",
     "open_supplier_category", "find_supplier",
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
@@ -283,6 +300,11 @@
     prepare_sale_asn_documents: "Đang tải và ghép Documents Sale ASN…",
     save_sale_asn_documents: "Đang lưu file Excel Sale ASN…",
     search_rmpo: "Đang lọc RMPO List…",
+    run_rmpo_action: "Đang mở RMPO đã chọn…",
+    prepare_grn_receipt: "Đang chuẩn bị quy trình nhập kho…",
+    continue_grn_receipt: "Đang tiếp tục tạo GRN…",
+    finalize_grn_receipt: "Đang chọn RMPO và mở New GRN…",
+    search_grn: "Đang tìm GRN…",
     search_indent: "Đang lọc Indent List…",
     search_advance_pr: "Đang lọc Advance PR List…",
     search_supplier_invoice: "Đang lọc Supplier Inv List…",
@@ -296,6 +318,8 @@
     find_buyer: "Đang tìm Buyer…",
     toggle_company_foc: "Đang đổi và lưu cấu hình FOC…",
     switch_division: "Đang đổi Division…",
+    load_report_parameters: "Đang tải tham số báo cáo…",
+    export_report_excel: "Đang chạy report và export Excel…",
     sync_reference_data: "Đang đồng bộ Article và Style từ server…",
     publish_reference_data: "Đang publish Article và Style lên server…",
     login: "Đang đăng nhập WFX…",
@@ -346,6 +370,11 @@
     prepare_sale_asn_documents: "Tải Documents Sale ASN",
     save_sale_asn_documents: "Lưu Documents Sale ASN",
     search_rmpo: "Tìm RMPO",
+    run_rmpo_action: "Thao tác RMPO",
+    prepare_grn_receipt: "Chuẩn bị nhập kho GRN",
+    continue_grn_receipt: "Tiếp tục làm GRN",
+    finalize_grn_receipt: "Mở New GRN",
+    search_grn: "Tìm GRN",
     search_indent: "Tìm Indent",
     search_advance_pr: "Tìm Advance PR",
     search_supplier_invoice: "Tìm Supplier Invoice",
@@ -359,6 +388,8 @@
     find_buyer: "Tìm Buyer",
     toggle_company_foc: "Đổi FOC Company Setup",
     switch_division: "Đổi Division",
+    load_report_parameters: "Tải tham số báo cáo",
+    export_report_excel: "Xuất Excel báo cáo",
   };
   const jobMethodLabel = (method) =>
     JOB_METHOD_LABELS[String(method || "")] || String(method || "Tác vụ");
@@ -503,6 +534,7 @@
       syncCatalogStepButtons();
       syncGdnDispatchAction();
       syncAllInputValidation();
+      syncGrnStepActions();
       syncSaleAsnCreate();
       const continueButton = $('[data-module-action="sale-asn-continue"]');
       const manualCheck = $(".sale-asn-manual-check");
@@ -689,6 +721,8 @@
     if (row) row.hidden = !adminAccess;
     const input = $(".admin-mode-input");
     if (input) input.checked = adminMode;
+    const syncCard = $(".reference-sync-card");
+    if (syncCard) syncCard.hidden = !adminAccess;
     const syncAdmin = $(".reference-sync-admin");
     if (syncAdmin) syncAdmin.hidden = !adminAccess;
     buildModules();
@@ -1243,6 +1277,9 @@
     if (result.code === "SALE_ASN_BUYERS_SCANNED") {
       renderSaleAsnBuyers(result.buyers);
     }
+    if (result.code === "REPORT_PARAMETERS_LOADED") {
+      renderReportParameters(result);
+    }
     if (["SALE_ASN_PO_SELECTION_REQUIRED", "SALE_ASN_FORM_COMPLETED"].includes(result.code) || result.resume_stage) {
       renderSaleAsnRunResult(result);
     }
@@ -1291,6 +1328,14 @@
     } else if (result.code === "SUPPLIER_INVOICE_MULTIPLE_RESULTS") {
       renderSupplierInvoiceCancelResults(result);
     }
+    if ([
+      "RMPO_RESULTS_READY", "RMPO_NO_RESULTS", "RMPO_RESULT_EXPIRED",
+    ].includes(result.code)) {
+      renderRmpoResults(result);
+    }
+    if (String(result.code || "").startsWith("GRN_")) {
+      renderGrnReceiptResult(result);
+    }
     if (result.code === "COSTING_DRY_RUN_READY") {
       showCatalogSpace("costing", { focus: false });
       renderCostingPlan(result);
@@ -1329,7 +1374,7 @@
     if (["MISSING_CREDENTIALS", "PASSWORD_REQUIRED", "USER_ID_REQUIRED",
          "LOGIN_FAILED", "LOGIN_TIMEOUT", "NOT_LOGGED_IN"].includes(result.code)) {
       showCredentialPrompt(result.code, result.message);
-    } else if (["LOGGED_IN", "SESSION_REUSED", "SESSION_ACTIVE"].includes(result.code)) {
+    } else if (["LOGGED_IN", "LOGGED_IN_AFTER_DELAY", "SESSION_REUSED", "SESSION_ACTIVE"].includes(result.code)) {
       clearCredentialPrompt();
     }
   }
@@ -1355,9 +1400,11 @@
     // không resolve), giải phóng UI thay vì để mọi nút disable vĩnh viễn ("đơ").
     // Backend vẫn giữ run lock; kết quả thật (nếu có) sẽ về sau qua result sink.
     let watchdog;
-    const watchdogMs = method === "run_gdn_dispatch"
-      ? LONG_CALL_WATCHDOG_MS
-      : CALL_WATCHDOG_MS;
+    const watchdogMs = method === "export_report_excel"
+      ? REPORT_CALL_WATCHDOG_MS
+      : (method === "run_gdn_dispatch"
+        ? LONG_CALL_WATCHDOG_MS
+        : CALL_WATCHDOG_MS);
     const timeout = new Promise((resolve) => {
       watchdog = window.setTimeout(
         () => resolve({ __timeout: true }), watchdogMs
@@ -1431,6 +1478,7 @@
       catalog: ".catalog-query",
       oc: ".oc-query",
       gdn_dispatch: ".gdn-invoice-query",
+      grn_receipt: ".grn-rmpo-query",
       sample: ".sample-no-query",
       advance_pr: ".advance-pr-buyer-query",
       supplier_invoice: ".supplier-invoice-supplier-query",
@@ -1473,6 +1521,12 @@
         openSaleAsnAdvanced();
       }
       syncSaleAsnCreate();
+    } else if (module.kind === "rmpo") {
+      hideRmpoResults();
+    } else if (module.kind === "grn_receipt") {
+      resetGrnReceipt();
+    } else if (module.kind === "reports") {
+      $(".report-parameters").hidden = !selectedReportId;
     }
   }
 
@@ -1502,36 +1556,17 @@
     moduleReturnFocus = null;
   }
 
-  function dismissAfterSuccessfulModule(result) {
-    // MULTIPLE_RESULTS tuy ok=true nhưng người dùng còn phải chọn 1 Code trong
-    // danh sách ngay trên panel — không được tự thu panel lúc này.
-    if (result && [
-      "MULTIPLE_RESULTS",
-      "SAMPLE_MULTIPLE_RESULTS",
-      "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
-      "CATALOG_FILES_SCANNED",
-      "SALE_ASN_PO_SELECTION_REQUIRED",
-    ].includes(result.code)) return;
-    if (result && result.ok && returnToListAfterAction) {
-      closeModulePage();
-    }
-  }
-
   async function openModule() {
-    if (!selectedModule) return;
-    const result = await call("open_module", selectedModule.id);
-    dismissAfterSuccessfulModule(result);
+    if (!selectedModule) return null;
+    return call("open_module", selectedModule.id);
   }
 
   async function openModuleDirect(moduleId) {
-    const result = await call("open_module", moduleId);
-    dismissAfterSuccessfulModule(result);
-    return result;
+    return call("open_module", moduleId);
   }
 
   async function runSelectedModuleAction(method, ...args) {
     const result = await call(method, ...args);
-    dismissAfterSuccessfulModule(result);
     return result;
   }
 
@@ -1543,6 +1578,10 @@
     sale_asn: {
       invoice_no: "Nhập Invoice No.",
       buyer_order_ref: "Nhập Buyer Order Ref/OC No.",
+    },
+    grn: {
+      invoice: "Nhập số Invoice",
+      rmpo: "Nhập RMPO / Order No.",
     },
   };
 
@@ -1722,7 +1761,6 @@
       prepared.export_token,
       selected.file_path,
     );
-    dismissAfterSuccessfulModule(saved);
     return saved;
   }
 
@@ -2356,7 +2394,6 @@
     const result = await call("start_sale_asn_create", saleAsnReviewToken);
     saleAsnRunActive = false;
     renderSaleAsnRunResult(result);
-    dismissAfterSuccessfulModule(result);
     return result;
   }
 
@@ -2368,7 +2405,6 @@
     const result = await call("continue_sale_asn_create", saleAsnReviewToken);
     saleAsnRunActive = false;
     renderSaleAsnRunResult(result);
-    dismissAfterSuccessfulModule(result);
     return result;
   }
 
@@ -2379,7 +2415,6 @@
     const result = await call("skip_sale_asn_create_step", saleAsnReviewToken);
     saleAsnRunActive = false;
     renderSaleAsnRunResult(result);
-    dismissAfterSuccessfulModule(result);
     return result;
   }
 
@@ -2398,6 +2433,8 @@
     ],
     "sale-asn": [".sale-asn-query"],
     rmpo: [".rmpo-supplier-query", ".rmpo-order-query"],
+    "grn-create": [".grn-rmpo-query"],
+    "grn-search": [".grn-search-query"],
     indent: [
       ".indent-supplier-query", ".indent-article-query",
       ".indent-no-query", ".indent-style-query",
@@ -2594,10 +2631,27 @@
     ),
     "sale-asn-documents": () => downloadSaleAsnDocuments(),
     "rmpo-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
-    "rmpo-search": () => runSelectedModuleAction(
-      "search_rmpo",
-      $(".rmpo-supplier-query").value.trim(),
-      $(".rmpo-order-query").value.trim(),
+    "rmpo-search": () => {
+      hideRmpoResults();
+      return runSelectedModuleAction(
+        "search_rmpo",
+        $(".rmpo-supplier-query").value.trim(),
+        $(".rmpo-order-query").value.trim(),
+      );
+    },
+    "rmpo-check-po": () => runRmpoAction("check_po"),
+    "rmpo-edit-po": () => runRmpoAction("edit_po"),
+    "rmpo-receive": () => runRmpoAction("receive"),
+    "rmpo-check-received": () => runRmpoAction("check_received"),
+    "grn-foreign": () => startGrnReceipt("foreign"),
+    "grn-domestic": () => startGrnReceipt("domestic"),
+    "grn-rmpo-list": () => openModulePage("0005_0050_0020"),
+    "grn-continue": continueGrnReceipt,
+    "grn-next": finalizeGrnReceipt,
+    "grn-search": () => runSelectedModuleAction(
+      "search_grn",
+      moduleFilterKinds.grn,
+      $(".grn-search-query").value.trim(),
     ),
     "indent-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "indent-search": () => selectedModule && runSelectedModuleAction(
@@ -2632,6 +2686,10 @@
       "search_expense_invoice",
       ...expenseInvoiceFilterValues(),
     ),
+    "report-shipment-summary": loadShipmentSummaryReport,
+    "report-last-month": setReportLastMonth,
+    "report-save-parameters": saveSelectedReportParameters,
+    "report-export-excel": exportSelectedReport,
     "list-new-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "list-new-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
     // Supplier là luồng 3 bước; giữ panel mở để người dùng tiếp tục bước kế.
@@ -3458,6 +3516,434 @@
     );
   }
 
+  function renderReportParameters(result) {
+    selectedReportId = String(result.report_id || "");
+    const savedValues = result.saved_parameters || {};
+    if (Object.keys(savedValues).length) {
+      reportParameterCache.set(selectedReportId, savedValues);
+    }
+    const cachedValues = reportParameterCache.get(selectedReportId) || {};
+    const section = $(".report-parameters");
+    const fields = $(".report-parameters-fields");
+    if (!section || !fields || !selectedReportId) return;
+    $(".report-parameters-title").textContent =
+      `Tham số: ${result.report_name || "báo cáo"}`;
+    fields.innerHTML = (Array.isArray(result.parameters) ? result.parameters : [])
+      .map((parameter) => {
+        const key = escapeHtml(parameter.key || "");
+        const label = escapeHtml(parameter.label || parameter.key || "Tham số");
+        const required = parameter.required ? " required" : "";
+        if (["select", "select_popup"].includes(parameter.type)) {
+          const options = (parameter.options || []).map((option) => {
+            const selected = String(option.value) === String(
+              cachedValues[parameter.key] ?? parameter.value ?? ""
+            )
+              ? " selected" : "";
+            return `<option value="${escapeHtml(option.value)}"${selected}>${escapeHtml(option.label)}</option>`;
+          }).join("");
+          return `<label class="report-parameter-field"><span>${label}</span><select data-report-parameter="${key}"${required}>${options}</select></label>`;
+        }
+        if (parameter.type === "multiselect") {
+          const selectedValues = new Set(
+            Array.isArray(cachedValues[parameter.key])
+              ? cachedValues[parameter.key].map(String)
+              : (Array.isArray(parameter.value) ? parameter.value.map(String) : [])
+          );
+          const available = Array.isArray(parameter.options) ? parameter.options : [];
+          const optionRows = available.map((option) => `
+            <label class="report-multi-option-row">
+              <input type="checkbox" class="report-multi-option" value="${escapeHtml(option.value)}"${selectedValues.has(String(option.value)) ? " checked" : ""}/>
+              <span>${escapeHtml(option.label)}</span>
+            </label>`).join("");
+          const allChecked = available.length > 0 && selectedValues.size === available.length;
+          return `<div class="report-parameter-field" data-report-multiselect="${key}">
+            <span>${label}</span>
+            <details class="report-multi-dropdown">
+              <summary><span class="report-multi-summary">Đã chọn ${selectedValues.size}/${available.length}</span></summary>
+              <div class="report-multi-menu">
+                <label class="report-multi-option-row report-multi-all">
+                  <input type="checkbox" class="report-multi-select-all"${allChecked ? " checked" : ""}/>
+                  <span>Chọn tất cả</span>
+                </label>
+                ${optionRows}
+              </div>
+            </details>
+          </div>`;
+        }
+        if (parameter.type === "checkbox") {
+          const checked = cachedValues[parameter.key] ?? parameter.value;
+          return `<label class="report-parameter-field report-parameter-check"><input type="checkbox" data-report-parameter="${key}"${checked ? " checked" : ""}/><span>${label}</span></label>`;
+        }
+        const type = ["date", "number", "text"].includes(parameter.type)
+          ? parameter.type : "text";
+        let value = cachedValues[parameter.key] ?? parameter.value ?? "";
+        if (type === "date") {
+          const match = String(value).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (match) {
+            value = `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+          }
+          return `<label class="report-parameter-field"><span>${label}</span>
+            <span class="report-date-control">
+              <input type="date" data-report-parameter="${key}" value="${escapeHtml(value)}"${required}/>
+              <button type="button" class="report-date-picker-button" data-report-date-picker="${key}" aria-label="Mở lịch chọn ${label}">📅</button>
+            </span>
+          </label>`;
+        }
+        return `<label class="report-parameter-field"><span>${label}</span><input type="${type}" data-report-parameter="${key}" value="${escapeHtml(value)}"${required}/></label>`;
+      }).join("") || "<small>Report này không yêu cầu tham số.</small>";
+    fields.querySelectorAll('[data-report-multiselect]').forEach((wrapper) => {
+      const sync = () => {
+        const options = [...wrapper.querySelectorAll('.report-multi-option')];
+        const checked = options.filter((option) => option.checked).length;
+        wrapper.querySelector('.report-multi-summary').textContent =
+          `Đã chọn ${checked}/${options.length}`;
+        wrapper.querySelector('.report-multi-select-all').checked =
+          options.length > 0 && checked === options.length;
+      };
+      wrapper.querySelector('.report-multi-select-all').addEventListener('change', (event) => {
+        wrapper.querySelectorAll('.report-multi-option').forEach((option) => {
+          option.checked = event.target.checked;
+        });
+        sync();
+      });
+      wrapper.querySelectorAll('.report-multi-option').forEach((option) =>
+        option.addEventListener('change', sync));
+      sync();
+    });
+    fields.querySelectorAll('.report-date-picker-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const input = fields.querySelector(
+          `[data-report-parameter="${CSS.escape(button.dataset.reportDatePicker || "")}"]`
+        );
+        if (!input) return;
+        input.focus();
+        try {
+          if (typeof input.showPicker === "function") input.showPicker();
+          else input.click();
+        } catch (_error) {
+          input.click();
+        }
+      });
+    });
+    section.hidden = false;
+  }
+
+  async function loadShipmentSummaryReport() {
+    if (selectedReportId) {
+      reportParameterCache.set(selectedReportId, reportParameterValues());
+    }
+    const result = await runSelectedModuleAction(
+      "load_report_parameters", "shipment_summary"
+    );
+    if (result?.ok) renderReportParameters(result);
+    return result;
+  }
+
+  function reportParameterValues() {
+    const values = {};
+    $$('[data-report-parameter]').forEach((field) => {
+      values[field.dataset.reportParameter] = field.type === "checkbox"
+        ? field.checked : field.value;
+    });
+    $$('[data-report-multiselect]').forEach((wrapper) => {
+      values[wrapper.dataset.reportMultiselect] = [
+        ...wrapper.querySelectorAll('.report-multi-option:checked')
+      ].map((option) => option.value);
+    });
+    return values;
+  }
+
+  function exportSelectedReport() {
+    if (!selectedReportId) {
+      setStatus("warning", "Hãy chọn báo cáo để tải tham số trước.");
+      return null;
+    }
+    const values = reportParameterValues();
+    reportParameterCache.set(selectedReportId, values);
+    return runSelectedModuleAction("export_report_excel", selectedReportId, values);
+  }
+
+  function setReportLastMonth() {
+    const dateFields = [...$(".report-parameters-fields").querySelectorAll(
+      'input[type="date"][data-report-parameter]'
+    )];
+    if (dateFields.length < 2) {
+      setStatus("warning", "Báo cáo chưa tải đủ hai tham số ngày.");
+      return null;
+    }
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const last = new Date(now.getFullYear(), now.getMonth(), 0);
+    const format = (date) => [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+    dateFields[0].value = format(first);
+    dateFields[dateFields.length - 1].value = format(last);
+    setStatus("success", "Đã chọn toàn bộ tháng trước.");
+    return { ok: true };
+  }
+
+  async function saveSelectedReportParameters() {
+    if (!selectedReportId) {
+      setStatus("warning", "Hãy chọn báo cáo để tải tham số trước.");
+      return null;
+    }
+    const values = reportParameterValues();
+    const result = await call("save_report_parameters", selectedReportId, values);
+    if (result?.ok) reportParameterCache.set(selectedReportId, values);
+    return result;
+  }
+
+  function normaliseRmpoStatus(value) {
+    return String(value || "").trim().toLocaleLowerCase("vi")
+      .replace(/\s+/g, " ");
+  }
+
+  function rmpoStatusTone(value) {
+    const status = normaliseRmpoStatus(value);
+    if (status === "received") return "received";
+    if (status === "part received") return "part-received";
+    return "other";
+  }
+
+  function hideRmpoResults() {
+    rmpoRows = [];
+    selectedRmpoChoice = null;
+    const wrap = $(".rmpo-results");
+    if (!wrap) return;
+    wrap.hidden = true;
+    $(".rmpo-results-count").textContent = "";
+    $(".rmpo-results-body").replaceChildren();
+    $(".rmpo-results-empty").hidden = true;
+    $(".rmpo-table").hidden = false;
+    $(".rmpo-selection").hidden = true;
+  }
+
+  function selectRmpoChoice(choiceId) {
+    const selected = rmpoRows.find(
+      (item) => String(item.choice_id || "") === String(choiceId || ""),
+    );
+    if (!selected) return;
+    selectedRmpoChoice = selected;
+    $$(".rmpo-results-body tr").forEach((row) => {
+      row.setAttribute(
+        "aria-selected",
+        String(row.dataset.rmpoChoiceId === selected.choice_id),
+      );
+    });
+    $(".rmpo-selection-order").textContent = selected.order_no || "—";
+    $(".rmpo-selection-meta").textContent = [
+      selected.status || "Chưa có Status",
+      selected.supplier || "Chưa có Supplier",
+      selected.qty ? `Qty ${selected.qty}` : "",
+    ].filter(Boolean).join(" · ");
+    const status = normaliseRmpoStatus(selected.status);
+    $('[data-module-action="rmpo-receive"]').hidden = status === "received";
+    $('[data-module-action="rmpo-check-received"]').hidden =
+      !["received", "part received"].includes(status);
+    $(".rmpo-selection").hidden = false;
+  }
+
+  function renderRmpoResults(result) {
+    const wrap = $(".rmpo-results");
+    const body = $(".rmpo-results-body");
+    if (!wrap || !body) return;
+    if (result.code === "RMPO_RESULT_EXPIRED") {
+      hideRmpoResults();
+      return;
+    }
+    if (result.code === "RMPO_NO_RESULTS") {
+      rmpoRows = [];
+      selectedRmpoChoice = null;
+      body.replaceChildren();
+      $(".rmpo-results-count").textContent = "0 kết quả";
+      $(".rmpo-table").hidden = true;
+      $(".rmpo-results-empty").hidden = false;
+      $(".rmpo-selection").hidden = true;
+      wrap.hidden = false;
+      return;
+    }
+    if (result.code !== "RMPO_RESULTS_READY" || !Array.isArray(result.rmpos)) {
+      return;
+    }
+    rmpoRows = result.rmpos.filter((item) => item?.choice_id);
+    selectedRmpoChoice = null;
+    $(".rmpo-results-count").textContent =
+      `${Number(result.result_count || rmpoRows.length)} kết quả`;
+    body.innerHTML = rmpoRows.map((item) => `
+      <tr tabindex="0" aria-selected="false"
+        data-rmpo-choice-id="${escapeHtml(item.choice_id)}">
+        <td data-rmpo-status="${rmpoStatusTone(item.status)}"
+          title="${escapeHtml(item.status || "")}">${escapeHtml(item.status || "—")}</td>
+        <td title="${escapeHtml(item.supplier || "")}">${escapeHtml(item.supplier || "—")}</td>
+        <td title="${escapeHtml(item.order_no || "")}">${escapeHtml(item.order_no || "—")}</td>
+        <td title="${escapeHtml(item.last_created || "")}">${escapeHtml(item.last_created || "—")}</td>
+        <td title="${escapeHtml(item.qty || "")}">${escapeHtml(item.qty || "—")}</td>
+      </tr>`).join("");
+    body.querySelectorAll("tr").forEach((row) => {
+      row.addEventListener("click", () => selectRmpoChoice(row.dataset.rmpoChoiceId));
+      row.addEventListener("keydown", (event) => {
+        if (!["Enter", " "].includes(event.key)) return;
+        event.preventDefault();
+        selectRmpoChoice(row.dataset.rmpoChoiceId);
+      });
+    });
+    $(".rmpo-table").hidden = false;
+    $(".rmpo-results-empty").hidden = true;
+    $(".rmpo-selection").hidden = true;
+    wrap.hidden = false;
+  }
+
+  function resetGrnReceipt() {
+    grnReceiptToken = "";
+    grnLinkedChoiceId = "";
+    grnLinkedSupplier = "";
+    const input = $(".grn-rmpo-query");
+    if (input) input.value = "";
+    const context = $(".grn-linked-context");
+    if (context) context.hidden = true;
+    const supplier = $(".grn-linked-supplier");
+    if (supplier) supplier.textContent = "";
+    const checkpoint = $(".grn-sourcing-checkpoint");
+    if (checkpoint) checkpoint.hidden = true;
+    const siteStep = $(".grn-site-step");
+    if (siteStep) siteStep.hidden = true;
+    const site = $(".grn-site-select");
+    if (site) site.replaceChildren(new Option("Chọn Site", ""));
+    const done = $(".grn-done");
+    if (done) done.hidden = true;
+    syncInputValidation("grn-create");
+    syncGrnStepActions();
+  }
+
+  function syncGrnStepActions() {
+    const continueButton = $('[data-module-action="grn-continue"]');
+    const checkpoint = $(".grn-sourcing-checkpoint");
+    if (continueButton) {
+      continueButton.disabled = busy || !grnReceiptToken || checkpoint?.hidden !== false;
+    }
+    const next = $('[data-module-action="grn-next"]');
+    const siteStep = $(".grn-site-step");
+    const site = String($(".grn-site-select")?.value || "").trim();
+    if (next) next.disabled = busy || !grnReceiptToken || !site || siteStep?.hidden !== false;
+  }
+
+  function handoffRmpoToGrn() {
+    if (!selectedRmpoChoice?.choice_id) {
+      setStatus("warning", "Hãy chọn một RMPO trong danh sách trước.");
+      return null;
+    }
+    const choice = { ...selectedRmpoChoice };
+    openModulePage("grn_receipt");
+    grnLinkedChoiceId = choice.choice_id;
+    grnLinkedSupplier = String(choice.supplier || "").trim();
+    $(".grn-rmpo-query").value = choice.order_no || "";
+    $(".grn-linked-supplier").textContent = grnLinkedSupplier
+      ? `Supplier: ${grnLinkedSupplier}`
+      : "App sẽ đọc Supplier từ RMPO List";
+    $(".grn-linked-context").hidden = false;
+    syncInputValidation("grn-create");
+    setStatus("success", "Đã chuyển RMPO sang module (GRN) Nhập kho.");
+    return { ok: true, code: "GRN_RMPO_LINKED" };
+  }
+
+  function renderGrnReceiptResult(result) {
+    if (!result) return;
+    if (["GRN_SESSION_EXPIRED", "GRN_RMPO_SELECTION_EXPIRED"].includes(result.code)) {
+      grnReceiptToken = "";
+      grnLinkedChoiceId = "";
+      $(".grn-sourcing-checkpoint").hidden = true;
+      $(".grn-site-step").hidden = true;
+      return;
+    }
+    if (result.code === "GRN_SOURCING_ASN_READY") {
+      grnReceiptToken = String(result.receipt_token || "");
+      grnLinkedSupplier = String(result.supplier || grnLinkedSupplier || "");
+      $(".grn-sourcing-checkpoint").hidden = false;
+      $(".grn-site-step").hidden = true;
+      $(".grn-done").hidden = true;
+      $(".grn-sourcing-rmpo").textContent = result.rmpo_no || "RMPO đã chọn";
+      syncGrnStepActions();
+      return;
+    }
+    if (result.code === "GRN_SITE_SELECTION_REQUIRED") {
+      grnReceiptToken = String(result.receipt_token || grnReceiptToken || "");
+      const sites = Array.isArray(result.sites) ? result.sites : [];
+      const select = $(".grn-site-select");
+      select.replaceChildren(
+        new Option("Chọn Site", ""),
+        ...sites.map((site) => new Option(String(site), String(site))),
+      );
+      $(".grn-sourcing-checkpoint").hidden = true;
+      $(".grn-site-step").hidden = false;
+      $(".grn-done").hidden = true;
+      syncGrnStepActions();
+      select.focus();
+      return;
+    }
+    if (result.code === "GRN_NEW_READY") {
+      grnReceiptToken = "";
+      $(".grn-site-step").hidden = true;
+      $(".grn-done").hidden = false;
+      syncGrnStepActions();
+    }
+  }
+
+  async function startGrnReceipt(mode) {
+    const rmpo = $(".grn-rmpo-query").value.trim();
+    if (!rmpo) {
+      setStatus("warning", "Hãy nhập RMPO No.");
+      return null;
+    }
+    return runSelectedModuleAction(
+      "prepare_grn_receipt",
+      rmpo,
+      mode,
+      grnLinkedChoiceId,
+    );
+  }
+
+  async function continueGrnReceipt() {
+    if (!grnReceiptToken) {
+      setStatus("warning", "Phiên nhập kho đã hết hiệu lực. Hãy bắt đầu lại.");
+      return null;
+    }
+    if (!window.confirm(
+      "Bạn xác nhận đã nhập đủ thông tin, số lượng và Confirm Sourcing ASN trên WFX?"
+    )) return null;
+    return runSelectedModuleAction(
+      "continue_grn_receipt",
+      grnReceiptToken,
+      true,
+    );
+  }
+
+  async function finalizeGrnReceipt() {
+    const site = $(".grn-site-select").value.trim();
+    if (!grnReceiptToken || !site) {
+      setStatus("warning", "Hãy chọn Site trước khi tiếp tục.");
+      return null;
+    }
+    return runSelectedModuleAction("finalize_grn_receipt", grnReceiptToken, site);
+  }
+
+  async function runRmpoAction(action) {
+    if (!selectedRmpoChoice?.choice_id) {
+      setStatus("warning", "Hãy chọn một RMPO trong danh sách trước.");
+      return null;
+    }
+    if (action === "receive") {
+      return handoffRmpoToGrn();
+    }
+    return runSelectedModuleAction(
+      "run_rmpo_action",
+      selectedRmpoChoice.choice_id,
+      action,
+    );
+  }
+
   function hideSampleFileResults() {
     const wrap = $(".sample-file-results");
     if (!wrap) return;
@@ -3944,6 +4430,22 @@
     }
   }
 
+  async function checkUpdateNow(button) {
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Đang kiểm tra…";
+    const result = await callQuiet("check_for_updates");
+    if (result) {
+      setUpdateState(result);
+      setStatus(
+        result.ok ? "success" : "warning",
+        result.message || "Đã kiểm tra cập nhật.",
+      );
+    }
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+
   async function copyText(text) {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -4231,9 +4733,30 @@
       }));
     $(".sale-asn-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("sale-asn-search"); });
     [".rmpo-supplier-query", ".rmpo-order-query"].forEach((selector) =>
-      $(selector).addEventListener("keydown", (event) => {
-        if (event.key === "Enter") runModuleActionFromKeyboard("rmpo-search");
-      }));
+      {
+        $(selector).addEventListener("input", hideRmpoResults);
+        $(selector).addEventListener("keydown", (event) => {
+          if (event.key === "Enter") runModuleActionFromKeyboard("rmpo-search");
+        });
+      });
+    $(".grn-rmpo-query")?.addEventListener("input", (event) => {
+      const linkedRmpo = selectedRmpoChoice?.order_no || "";
+      if (event.target.value.trim() !== linkedRmpo) {
+        grnLinkedChoiceId = "";
+        grnLinkedSupplier = "";
+        $(".grn-linked-context").hidden = true;
+      }
+      grnReceiptToken = "";
+      $(".grn-sourcing-checkpoint").hidden = true;
+      $(".grn-site-step").hidden = true;
+      $(".grn-done").hidden = true;
+    });
+    $(".grn-search-query")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") runModuleActionFromKeyboard("grn-search");
+    });
+    $(".grn-site-select")?.addEventListener("change", () => {
+      syncGrnStepActions();
+    });
     [
       ".indent-supplier-query",
       ".indent-article-query",
@@ -4483,28 +5006,19 @@
           result.division_name
         );
       }));
-    $(".return-list-input").addEventListener("change", async (event) => {
-      returnToListAfterAction = event.target.checked;
+    $(".open-excel-file-input").addEventListener("change", async () => {
       const result = await callQuiet(
-        "set_return_to_list_after_action",
-        returnToListAfterAction,
-      );
-      if (result?.return_to_list_after_action !== undefined) {
-        returnToListAfterAction =
-          result.return_to_list_after_action === true;
-        event.target.checked = returnToListAfterAction;
-      }
-    });
-    $(".open-costing-file-input").addEventListener("change", async () => {
-      const result = await callQuiet(
-        "set_costing_export_open_options",
-        $(".open-costing-file-input").checked,
-        true,
+        "set_excel_file_after_download",
+        $(".open-excel-file-input").checked,
       );
       if (!result?.ok) return;
-      $(".open-costing-file-input").checked =
-        result.open_costing_file_after_export === true;
+      $(".open-excel-file-input").checked =
+        result.open_excel_file_after_download === true;
     });
+    $(".check-update-button")?.addEventListener(
+      "click",
+      (event) => checkUpdateNow(event.currentTarget),
+    );
     const hotkeyButton = $(".hotkey-button");
     hotkeyButton.addEventListener("click", () => {
       hotkeyButton.dataset.capturing = "true";
@@ -4731,9 +5245,6 @@
     setAccount(state.user_id);
     hasCredentials = state.has_credentials === true;
     applyTheme(state.theme);
-    returnToListAfterAction =
-      state.return_to_list_after_action === true;
-    $(".return-list-input").checked = returnToListAfterAction;
     favoriteModuleIds = new Set(
       Array.isArray(state.favorite_module_ids)
         ? state.favorite_module_ids.map(String)
@@ -4750,8 +5261,8 @@
     $(".toast-input").checked = toastEnabled;
     $(".focus-chrome-input").checked =
       state.focus_chrome_on_module !== false;
-    $(".open-costing-file-input").checked =
-      state.open_costing_file_after_export !== false;
+    $(".open-excel-file-input").checked =
+      state.open_excel_file_after_download !== false;
     $(".always-on-top-input").checked = state.always_on_top !== false;
     catalogDefaultFolder = state.catalog_default_folder || null;
     const folderLabel =

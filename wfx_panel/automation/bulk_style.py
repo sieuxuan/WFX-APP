@@ -6,7 +6,6 @@ chủ động của người dùng, module mới click Save đúng một lần s
 
 from __future__ import annotations
 
-import re
 from typing import Any
 from urllib.parse import urljoin
 
@@ -29,8 +28,9 @@ from wfx_panel.automation.modules import _active_wfx_page
 from wfx_panel.automation.runtime import cancellation_deferred
 
 NEW_STYLE_XPATH = "/html/body/form/table/tbody/tr[3]/td/input"
-COPY_CODE_XPATH = "/html/body/form/table/tbody/tr[8]/td/input"
-COPY_BUYER_REFERENCE_XPATH = "/html/body/form/table/tbody/tr[10]/td/input"
+# WFX đặt ô tìm "ArticleCode/Name" ở dòng 8. Style copy luôn nhận Article Name
+# từ Article List, nên không dùng Buyer Reference (dòng 10) nữa.
+COPY_ARTICLE_CODE_NAME_XPATH = "/html/body/form/table/tbody/tr[8]/td/input"
 COPY_SEARCH_XPATH = "/html/body/form/table/tbody/tr[12]/td/input"
 COPY_COSTSHEET_XPATH = (
     '//*[@id="wfx_ArticleEdit"]/form/table[3]/tbody/tr/td[1]/table/'
@@ -725,19 +725,15 @@ def _prepare_copy(
     log: Callable[[str], None],
 ) -> dict[str, Any] | None:
     source = str(row.get("style_copy") or "").strip()
-    code_search = bool(re.match(r"^(?:SWN|SKN)", source, re.IGNORECASE))
-    input_xpath = COPY_CODE_XPATH if code_search else COPY_BUYER_REFERENCE_XPATH
-    search_input = frame.locator(f"xpath={input_xpath}").first
+    search_input = frame.locator(
+        f"xpath={COPY_ARTICLE_CODE_NAME_XPATH}"
+    ).first
     search_input.wait_for(state="visible", timeout=5_000)
     search_input.fill(source)
     search = frame.locator(f"xpath={COPY_SEARCH_XPATH}").first
     search.wait_for(state="visible", timeout=5_000)
     search.click()
-    _write_log(
-        log,
-        "[STYLE COPY] Đang tìm bằng "
-        + ("Article Code." if code_search else "Buyer Reference."),
-    )
+    _write_log(log, "[STYLE COPY] Đang tìm bằng ArticleCode/Name.")
     result_frame = _copy_result_frame(context)
     choices = list(result_frame.evaluate(_COPY_RESULTS_JS) or [])
     if not choices:

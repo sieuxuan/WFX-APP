@@ -350,7 +350,7 @@ def test_reveal_downloaded_excel_falls_back_to_parent_folder(tmp_path, monkeypat
     assert opened == [target.parent.resolve()]
 
 
-def test_costing_export_always_opens_folder_and_optionally_opens_file(
+def test_excel_export_always_opens_folder_and_optionally_opens_file(
     tmp_path,
     monkeypatch,
 ):
@@ -364,7 +364,7 @@ def test_costing_export_always_opens_folder_and_optionally_opens_file(
         panel_app.prefs,
         "load_prefs",
         lambda _base_dir: {
-            "open_costing_file_after_export": True,
+            "open_excel_file_after_download": True,
             "open_costing_folder_after_export": False,
         },
     )
@@ -390,7 +390,13 @@ def test_sale_asn_export_result_opens_selected_folder(tmp_path, monkeypatch):
     app = panel_app.PanelApp()
     app.window = None
     app._panel_visible = True
+    opened_files = []
     opened_folders = []
+    monkeypatch.setattr(
+        panel_app,
+        "_open_downloaded_file",
+        lambda path: opened_files.append(path) or True,
+    )
     monkeypatch.setattr(
         panel_app,
         "_reveal_downloaded_file",
@@ -400,7 +406,53 @@ def test_sale_asn_export_result_opens_selected_folder(tmp_path, monkeypatch):
 
     app._on_result("save_sale_asn_documents", result, 1.0)
 
+    assert opened_files == [result["export_path"]]
     assert opened_folders == [result["export_path"]]
+
+
+def test_excel_download_option_applies_to_catalog_attachments(tmp_path, monkeypatch):
+    app = panel_app.PanelApp()
+    app._base_dir = tmp_path
+    app.window = None
+    opened_files = []
+    opened_folders = []
+    prefs.save_prefs(tmp_path, open_excel_file_after_download=False)
+    monkeypatch.setattr(
+        panel_app,
+        "_open_downloaded_file",
+        lambda path: opened_files.append(path) or True,
+    )
+    monkeypatch.setattr(
+        panel_app,
+        "_reveal_downloaded_file",
+        lambda path: opened_folders.append(path) or True,
+    )
+    result = {"ok": True, "download_path": str(tmp_path / "Attachment.xlsx")}
+
+    app._on_result("download_catalog_file", result, 1.0)
+
+    assert opened_files == []
+    assert opened_folders == [result["download_path"]]
+
+
+def test_price_check_export_uses_excel_download_option(tmp_path, monkeypatch):
+    app = panel_app.PanelApp()
+    target = tmp_path / "Price Check.xlsx"
+    app._export_sale_asn_price_check = lambda *_args: {
+        "ok": True,
+        "export_path": str(target),
+    }
+    handled = []
+    monkeypatch.setattr(
+        app,
+        "_handle_downloaded_excel",
+        lambda path: handled.append(path) or True,
+    )
+
+    result = app.export_sale_asn_price_check({}, str(target))
+
+    assert result["ok"] is True
+    assert handled == [str(target)]
 
 
 def test_costing_file_dialogs_only_return_supported_user_selection(tmp_path):
@@ -601,6 +653,24 @@ def test_style_template_asks_where_to_save_before_fetching_dropdowns(
 
     assert exported["code"] == "STYLE_TEMPLATE_EXPORTED"
     assert order == ["dialog", "options"]
+
+
+def test_style_copy_list_uses_only_apparel_article_names(monkeypatch):
+    app = panel_app.PanelApp()
+    monkeypatch.setattr(
+        panel_app.article_library,
+        "load_cached",
+        lambda _base_dir: {
+            "sections": [{"options": [
+                {"article_name": "Apparel One", "article_category": "Apparel"},
+                {"article_name": "apparel one", "article_category": "APPAREL"},
+                {"article_name": "Fabric One", "article_category": "Textiles/Fabric"},
+                {"article_name": "", "article_category": "Apparel"},
+            ]}],
+        },
+    )
+
+    assert app._style_copy_article_names() == ["Apparel One"]
 
 
 def test_style_template_cancelled_at_the_dialog_never_touches_wfx(

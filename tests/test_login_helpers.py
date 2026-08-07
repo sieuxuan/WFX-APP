@@ -150,6 +150,45 @@ def test_visible_locator_reacquires_save_from_the_current_frame():
     assert found is save
 
 
+def test_rmpo_grid_falls_back_to_body_when_wfx_splits_header_and_content():
+    class Matches:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+        def count(self):
+            return len(self.candidates)
+
+        def nth(self, index):
+            return self.candidates[index]
+
+    body = SimpleNamespace(is_visible=lambda: True)
+    context = SimpleNamespace(is_visible=lambda: True)
+
+    def locate(selector):
+        if selector == "body":
+            return Matches([body])
+        if "trSearch_td_colOrderNo" in selector:
+            return Matches([context])
+        return Matches([])
+
+    assert modules._rmpo_grid(SimpleNamespace(locator=locate)) is body
+
+
+def test_rmpo_row_reader_reports_loading_even_when_no_records_is_visible(
+    monkeypatch,
+):
+    grid = SimpleNamespace(
+        evaluate=lambda _script: {
+            "rows": [],
+            "noRows": True,
+            "loading": True,
+        }
+    )
+    monkeypatch.setattr(modules, "_rmpo_grid", lambda _frame: grid)
+
+    assert modules._read_rmpo_rows(object()) == ([], True, True)
+
+
 def test_navigation_click_accepts_frame_detach_after_aspnet_navigation(
     monkeypatch,
 ):
@@ -491,13 +530,20 @@ def test_automation_profile_disables_password_manager(tmp_path):
         '{"homepage":"https://example.test","profile":{"name":"WFX"}}',
         encoding="utf-8",
     )
-    login._disable_password_manager(profile)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "user"))
+        login._disable_password_manager(profile)
     loaded = json.loads(preferences.read_text(encoding="utf-8"))
     assert loaded["homepage"] == "https://example.test"
     assert loaded["profile"]["name"] == "WFX"
     assert loaded["profile"]["password_manager_enabled"] is False
     assert loaded["credentials_enable_service"] is False
     assert loaded["password_manager_leak_detection"] is False
+    assert loaded["download"] == {
+        "default_directory": str(tmp_path / "user" / "Downloads"),
+        "directory_upgrade": True,
+        "prompt_for_download": False,
+    }
 
 
 def test_chrome_launch_uses_password_prompt_suppression_flags(

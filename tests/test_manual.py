@@ -232,9 +232,9 @@ def test_bang_ma_loi_co_chi_muc_tim_kiem_khong_dau():
 
 
 def test_helper_trich_dung_so_luong_hien_co():
-    assert len(surface.module_ids()) == 17
+    assert len(surface.module_ids()) == 19
     assert "0003_6200" in surface.module_ids()
-    assert len(surface.module_actions()) == 50
+    assert len(surface.module_actions()) == 64
     assert surface.catalog_actions() == {
         "browse",
         "find",
@@ -259,9 +259,8 @@ def test_helper_trich_dung_so_luong_hien_co():
         "prepare-row",
     }
     assert surface.settings_controls() == {
-        "return-list-input",
         "focus-chrome-input",
-        "open-costing-file-input",
+        "open-excel-file-input",
         "autostart-input",
         "start-hidden-input",
         "admin-mode-input",

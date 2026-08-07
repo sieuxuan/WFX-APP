@@ -13,10 +13,6 @@ hay không.
 ## Mẹo
 
 > [!meo]
-> Bật `Quay về danh sách khi xong` trong Cài đặt, thẻ Tự động hóa, nếu bạn
-> muốn bảng điều khiển quay về danh sách module sau mỗi tác vụ.
-
-> [!meo]
 > Bật `Tự chuyển sang Chrome` nếu bạn muốn chuyển ngay sang cửa sổ WFX
 > khi bấm một nút thao tác.
 

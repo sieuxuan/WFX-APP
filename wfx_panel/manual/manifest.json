@@ -99,7 +99,7 @@
           "file": "02-hang-ngay/thanh-trang-thai.md",
           "keywords": ["trạng thái", "kết nối", "đèn"],
           "covers": {
-            "settings": ["return-list-input", "focus-chrome-input"]
+            "settings": ["focus-chrome-input"]
           }
         },
         {
@@ -114,7 +114,7 @@
               "toast-input",
               "toast-test-button",
               "admin-mode-input",
-              "open-costing-file-input"
+              "open-excel-file-input"
             ]
           }
         }
@@ -543,7 +543,32 @@
           "keywords": ["rmpo", "supplier", "đơn nguyên liệu"],
           "covers": {
             "modules": ["0005_0050_0020"],
-            "actions": ["rmpo-list", "rmpo-search"]
+            "actions": [
+              "rmpo-list",
+              "rmpo-search",
+              "rmpo-check-po",
+              "rmpo-edit-po",
+              "rmpo-receive",
+              "rmpo-check-received"
+            ]
+          }
+        },
+        {
+          "id": "danh-sach-grn-nhap-kho",
+          "title": "(GRN) Nhập kho",
+          "summary": "Nhập kho RMPO nước ngoài/trong nước và tìm GRN.",
+          "file": "06-danh-sach/grn-nhap-kho.md",
+          "keywords": ["grn", "nhập kho", "rmpo", "sourcing asn", "supplier", "site", "invoice"],
+          "covers": {
+            "modules": ["grn_receipt"],
+            "actions": ["grn-rmpo-list", "grn-foreign", "grn-domestic", "grn-continue", "grn-next", "grn-search"],
+            "errors": [
+              "GRN_PREPARE_FAILED",
+              "GRN_RMPO_SUPPLIER_NOT_FOUND",
+              "GRN_CONTINUE_FAILED",
+              "GRN_FINALIZE_FAILED",
+              "GRN_SEARCH_FAILED"
+            ]
           }
         },
         {
@@ -625,6 +650,24 @@
           }
         },
         {
+          "id": "danh-sach-reports",
+          "title": "Reports",
+          "summary": "Chạy Shipment Summary với tham số chọn trong bảng điều khiển và tải Excel.",
+          "file": "06-danh-sach/reports.md",
+          "keywords": ["reports", "shipment summary", "excel", "báo cáo", "tham số"],
+          "covers": {
+            "modules": ["reports"],
+            "actions": ["report-shipment-summary", "report-last-month", "report-save-parameters", "report-export-excel"],
+            "errors": [
+              "REPORT_PARAMETERS_NOT_READY",
+              "REPORT_LOAD_FAILED",
+              "REPORT_EXPORT_FAILED",
+              "REPORT_SAVE_ACCOUNT_REQUIRED",
+              "REPORT_SAVE_FAILED"
+            ]
+          }
+        },
+        {
           "id": "danh-sach-module-khac",
           "title": "Supplier Invoice, Org Structure và System Coding",
           "summary": "Lọc nhiều điều kiện và Cancel Supplier Invoice an toàn.",
@@ -678,7 +721,7 @@
           "summary": "Tải và cài bản mới mà không mất cài đặt cá nhân.",
           "file": "07-su-co/cap-nhat.md",
           "keywords": ["cập nhật", "phiên bản mới", "nâng cấp"],
-          "covers": {}
+          "covers": { "settings": ["check-update-button"] }
         },
         {
           "id": "su-co-tra-ma-loi",

@@ -62,6 +62,11 @@ METHOD_LABELS = {
     "prepare_sale_asn_documents": "Tải Documents Sale ASN",
     "save_sale_asn_documents": "Lưu Documents Sale ASN",
     "search_rmpo": "Tìm trong RMPO List",
+    "run_rmpo_action": "Thao tác RMPO đã chọn",
+    "prepare_grn_receipt": "Chuẩn bị nhập kho RMPO",
+    "continue_grn_receipt": "Tiếp tục làm GRN",
+    "finalize_grn_receipt": "Mở New GRN",
+    "search_grn": "Tìm GRN",
     "search_indent": "Tìm trong Indent List",
     "search_advance_pr": "Tìm trong Advance PR List",
     "search_supplier_invoice": "Tìm trong Supplier Inv List",
@@ -199,7 +204,7 @@ ERROR_CODE_INFO.update(
         ),
         "STYLE_COPY_NOT_FOUND": (
             "Không tìm thấy Style nguồn",
-            "Kiểm tra Article Code hoặc Buyer Reference trong cột Style copy.",
+            "Kiểm tra Article Name trong danh sách Apparel ở cột Style copy.",
         ),
         "STYLE_COPY_RESULT_DETACHED": (
             "Kết quả Style nguồn đã thay đổi",
@@ -724,6 +729,31 @@ ERROR_CODE_INFO.update(
     }
 )
 
+ERROR_CODE_INFO.update(
+    {
+        "GRN_RMPO_SUPPLIER_NOT_FOUND": (
+            "Chưa đọc được Supplier của RMPO",
+            "Mở lại RMPO List, tìm lại dòng đó rồi thử nhập kho.",
+        ),
+        "GRN_PREPARE_FAILED": (
+            "Chưa chuẩn bị được luồng nhập kho",
+            "Kiểm tra RMPO, Supplier và màn hình WFX rồi thử lại.",
+        ),
+        "GRN_CONTINUE_FAILED": (
+            "Chưa mở được GRN sau Sourcing ASN",
+            "Kiểm tra Sourcing ASN đã Confirm rồi bấm Tiếp tục làm GRN lại.",
+        ),
+        "GRN_FINALIZE_FAILED": (
+            "Chưa mở được New GRN",
+            "Kiểm tra Site và dòng PO trên GRN Pending rồi thử lại.",
+        ),
+        "GRN_SEARCH_FAILED": (
+            "Chưa tìm được GRN",
+            "Kiểm tra điều kiện Invoice hoặc RMPO rồi thử lại.",
+        ),
+    }
+)
+
 _URL_PATTERN = re.compile(r"https?://[^\s<>'\"]+", re.IGNORECASE)
 _SECRET_PATTERN = re.compile(
     r"""(?ix)
@@ -798,6 +828,30 @@ ERROR_CODE_INFO.update(
             "Không reload được file XLSX GDN",
             "Kiểm tra file report tải về và dung lượng thư mục tạm.",
         ),
+        "REPORT_PARAMETERS_NOT_READY": (
+            "Tham số báo cáo chưa sẵn sàng",
+            "Chờ WFX tải xong báo cáo rồi bấm lại tên báo cáo.",
+        ),
+        "REPORT_UNKNOWN": (
+            "Báo cáo không còn được hỗ trợ",
+            "Mở lại module Reports và chọn một báo cáo trong danh sách.",
+        ),
+        "REPORT_LOAD_FAILED": (
+            "Không tải được báo cáo WFX",
+            "Kiểm tra phiên WFX và thử lại sau khi trang ổn định.",
+        ),
+        "REPORT_EXPORT_FAILED": (
+            "Không xuất được Excel báo cáo",
+            "Kiểm tra tham số, quyền báo cáo và thanh tải xuống của Chrome.",
+        ),
+        "REPORT_SAVE_ACCOUNT_REQUIRED": (
+            "Chưa có tài khoản để lưu tham số",
+            "Đăng nhập WFX rồi bấm Lưu tham số lại.",
+        ),
+        "REPORT_SAVE_FAILED": (
+            "Không lưu được tham số báo cáo",
+            "Kiểm tra ổ đĩa hoặc đóng ứng dụng khác đang mở dữ liệu WFX Smart.",
+        ),
     }
 )
 
@@ -827,6 +881,11 @@ _METHOD_MODULES = {
     "prepare_sale_asn_documents": "Sale ASN",
     "save_sale_asn_documents": "Sale ASN",
     "search_rmpo": "RMPO List",
+    "run_rmpo_action": "RMPO List",
+    "prepare_grn_receipt": "(GRN) Nhập kho",
+    "continue_grn_receipt": "(GRN) Nhập kho",
+    "finalize_grn_receipt": "(GRN) Nhập kho",
+    "search_grn": "(GRN) Nhập kho",
     "search_advance_pr": "Advance PR List",
     "search_supplier_invoice": "Supplier Inv List",
     "search_expense_invoice": "Expense Inv List",
@@ -897,6 +956,10 @@ _FILTER_LABELS = {
     },
     "cancel_supplier_invoice": {
         "invoice_no": "Invoice No.",
+    },
+    "search_grn": {
+        "invoice": "Số Invoice",
+        "rmpo": "RMPO No.",
     },
 }
 _METHOD_DEFAULT_FILTERS = {

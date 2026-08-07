@@ -690,11 +690,6 @@ def load_prefs(base_dir: Path | None = None) -> dict:
     return {
         "theme": theme if theme in {"light", "dark", "system"} else "light",
         "close_after_module": data.get("close_after_module", True) is not False,
-        # Key mới có chủ đích, không kế thừa close_after_module cũ: mặc định
-        # phải giữ nguyên màn module để người dùng mở panel và làm tiếp.
-        "return_to_list_after_action": data.get(
-            "return_to_list_after_action", False
-        ) is True,
         "favorite_module_ids": favorite_module_ids,
         "hotkey": stored_hotkey,
         "hotkey_label": hotkey_spec.format_label(stored_hotkey),
@@ -738,8 +733,11 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "sale_asn_po_search_fields": _clean_sale_asn_po_search_fields(
             data.get("sale_asn_po_search_fields")
         ),
-        "open_costing_file_after_export": data.get(
-            "open_costing_file_after_export", True
+        # Tùy chọn mới áp dụng cho mọi workbook app tạo/tải. Kế thừa key
+        # Costing cũ để không làm đổi lựa chọn của người dùng sau khi nâng cấp.
+        "open_excel_file_after_download": data.get(
+            "open_excel_file_after_download",
+            data.get("open_costing_file_after_export", True),
         ) is not False,
         "open_costing_folder_after_export": data.get(
             "open_costing_folder_after_export", False
@@ -817,7 +815,6 @@ def save_prefs(
     *,
     theme: str | None = None,
     close_after_module: bool | None = None,
-    return_to_list_after_action: bool | None = None,
     favorite_module_ids: list[str] | None = None,
     hotkey_label: str | None = None,
     hotkey: str | None = None,
@@ -839,7 +836,7 @@ def save_prefs(
     sale_asn_import_dir: str | None = None,
     sale_asn_stages: list[str] | None = None,
     sale_asn_po_search_fields: list[str] | None = None,
-    open_costing_file_after_export: bool | None = None,
+    open_excel_file_after_download: bool | None = None,
     open_costing_folder_after_export: bool | None = None,
     costing_special_options_rescan: bool | None = None,
 ) -> dict:
@@ -849,7 +846,6 @@ def save_prefs(
             base_dir,
             theme=theme,
             close_after_module=close_after_module,
-            return_to_list_after_action=return_to_list_after_action,
             favorite_module_ids=favorite_module_ids,
             hotkey=hotkey,
             autostart=autostart,
@@ -870,7 +866,7 @@ def save_prefs(
             sale_asn_import_dir=sale_asn_import_dir,
             sale_asn_stages=sale_asn_stages,
             sale_asn_po_search_fields=sale_asn_po_search_fields,
-            open_costing_file_after_export=open_costing_file_after_export,
+            open_excel_file_after_download=open_excel_file_after_download,
             open_costing_folder_after_export=open_costing_folder_after_export,
             costing_special_options_rescan=costing_special_options_rescan,
             hotkey_label=hotkey_label,
@@ -882,7 +878,6 @@ def _save_prefs_locked(
     *,
     theme: str | None,
     close_after_module: bool | None,
-    return_to_list_after_action: bool | None,
     favorite_module_ids: list[str] | None,
     hotkey: str | None,
     autostart: bool | None,
@@ -903,7 +898,7 @@ def _save_prefs_locked(
     sale_asn_import_dir: str | None,
     sale_asn_stages: list[str] | None,
     sale_asn_po_search_fields: list[str] | None,
-    open_costing_file_after_export: bool | None,
+    open_excel_file_after_download: bool | None,
     open_costing_folder_after_export: bool | None,
     costing_special_options_rescan: bool | None,
     hotkey_label: str | None,
@@ -913,14 +908,13 @@ def _save_prefs_locked(
         current,
         boolean_values={
             "close_after_module": close_after_module,
-            "return_to_list_after_action": return_to_list_after_action,
             "autostart": autostart,
             "start_hidden": start_hidden,
             "toast_enabled": toast_enabled,
             "focus_chrome_on_module": focus_chrome_on_module,
             "always_on_top": always_on_top,
             "admin_mode": admin_mode,
-            "open_costing_file_after_export": open_costing_file_after_export,
+            "open_excel_file_after_download": open_excel_file_after_download,
             "open_costing_folder_after_export": open_costing_folder_after_export,
             "costing_special_options_rescan": costing_special_options_rescan,
         },

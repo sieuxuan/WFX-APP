@@ -231,6 +231,16 @@ def _open_downloaded_file(value: object) -> bool:
         return False
 
 
+_EXCEL_FILE_SUFFIXES = frozenset({".xlsx", ".xls", ".xlsm", ".xlsb"})
+
+
+def _is_excel_file(value: object) -> bool:
+    try:
+        return Path(str(value or "")).suffix.casefold() in _EXCEL_FILE_SUFFIXES
+    except (OSError, ValueError):
+        return False
+
+
 def _safe_costing_file_stem(value: object) -> str:
     stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', " ", str(value or "").strip())
     stem = re.sub(r"\s+", " ", stem).strip(" .")
@@ -492,7 +502,11 @@ class _BubbleMenuBridge:
 class PanelApp:
     def __init__(self):
         self.api = PanelAPI()
+        self._export_sale_asn_price_check = self.api.export_sale_asn_price_check
         self._base_dir = self.api._base_dir
+        # Bản EXE đóng gói luôn có Article List cạnh resource để khởi tạo cache
+        # dropdown Style copy lần đầu. Source development không ghi cache vào
+        # workspace; dùng cache đã đồng bộ nếu có.
         if getattr(sys, "frozen", False):
             article_library.seed_bundled(
                 self._base_dir,
@@ -596,6 +610,16 @@ class PanelApp:
             )
         except Exception:
             pass
+
+    def _handle_downloaded_excel(self, value: object) -> bool:
+        """Áp dụng tùy chọn mở file chung rồi luôn hiện file trong Explorer."""
+        preferences = prefs.load_prefs(self._base_dir)
+        if preferences.get(
+            "open_excel_file_after_download",
+            preferences.get("open_costing_file_after_export", True),
+        ):
+            _open_downloaded_file(value)
+        return _reveal_downloaded_file(value)
 
     def _on_progress(self, progress: dict) -> None:
         if self.window is None:
@@ -877,6 +901,17 @@ class PanelApp:
             "file_name": target.name,
         }
 
+    def export_sale_asn_price_check(
+        self,
+        price_check: dict,
+        file_path: str,
+    ) -> dict:
+        """Lưu kết quả đối chiếu và áp dụng tùy chọn mở Excel chung."""
+        result = self._export_sale_asn_price_check(price_check, file_path)
+        if result.get("ok") and _is_excel_file(result.get("export_path")):
+            self._handle_downloaded_excel(result.get("export_path"))
+        return result
+
     def choose_sale_asn_import_file(self) -> dict:
         """Chọn workbook tạo Sale ASN do người dùng chủ động cung cấp."""
         if self.window is None:
@@ -1026,12 +1061,15 @@ class PanelApp:
                 return option_result
         try:
             target = _dialog_selected_path(selected)
+            template_options = dict(option_result.get("options") or {})
+            fields = dict(template_options.get("fields") or {})
+            fields["style_copy"] = self._style_copy_article_names()
+            template_options["fields"] = fields
             target = write_style_template(
                 target,
-                options=option_result.get("options") or {},
+                options=template_options,
             )
-            _open_downloaded_file(target)
-            _reveal_downloaded_file(target)
+            self._handle_downloaded_excel(target)
         except Exception as error:
             return {
                 "ok": False,
@@ -1047,6 +1085,24 @@ class PanelApp:
             "file_path": str(target),
             "file_name": target.name,
         }
+
+    def _style_copy_article_names(self) -> list[str]:
+        """Trả Article Name duy nhất của đúng Category Apparel cho Style copy."""
+        cached = article_library.load_cached(self._base_dir)
+        if not cached:
+            return []
+        names: list[str] = []
+        seen: set[str] = set()
+        for section in cached.get("sections") or ():
+            for option in section.get("options") or ():
+                if str(option.get("article_category") or "").strip().casefold() != "apparel":
+                    continue
+                name = str(option.get("article_name") or "").strip()
+                identity = name.casefold()
+                if name and identity not in seen:
+                    seen.add(identity)
+                    names.append(name)
+        return names
 
     def download_oc_template(self) -> dict:
         """Sinh form OC INPUT một header và lưu vào nơi người dùng chọn."""
@@ -1080,8 +1136,7 @@ class PanelApp:
             if target.suffix.casefold() != ".xlsx":
                 target = target.with_suffix(".xlsx")
             write_oc_input_template(target)
-            _open_downloaded_file(target)
-            _reveal_downloaded_file(target)
+            self._handle_downloaded_excel(target)
         except Exception as error:
             return {
                 "ok": False,
@@ -1126,8 +1181,7 @@ class PanelApp:
         try:
             target = _dialog_selected_path(selected)
             target = write_sale_asn_template(target)
-            _open_downloaded_file(target)
-            _reveal_downloaded_file(target)
+            self._handle_downloaded_excel(target)
         except Exception as error:
             return {
                 "ok": False,
@@ -1173,8 +1227,7 @@ class PanelApp:
         try:
             target = _dialog_selected_path(selected)
             target = write_sale_asn_template(target, rows or [])
-            _open_downloaded_file(target)
-            _reveal_downloaded_file(target)
+            self._handle_downloaded_excel(target)
         except Exception as error:
             return {
                 "ok": False,
@@ -2075,19 +2128,18 @@ class PanelApp:
             except Exception:
                 pass
 
-        if method == "download_catalog_file" and result.get("ok"):
-            _reveal_downloaded_file(result.get("download_path"))
-        if method == "export_catalog_costing" and result.get("ok"):
-            preferences = prefs.load_prefs(self._base_dir)
+        revealed_excel = True
+        if result.get("ok"):
+            download_path = result.get("download_path")
             export_path = result.get("export_path")
-            if preferences["open_costing_file_after_export"]:
-                _open_downloaded_file(export_path)
-            _reveal_downloaded_file(export_path)
-        if (
-            method == "save_sale_asn_documents"
-            and result.get("ok")
-            and not _reveal_downloaded_file(result.get("export_path"))
-        ):
+            excel_path = export_path or (
+                download_path if _is_excel_file(download_path) else None
+            )
+            if excel_path and _is_excel_file(excel_path):
+                revealed_excel = self._handle_downloaded_excel(excel_path)
+            elif method == "download_catalog_file":
+                _reveal_downloaded_file(download_path)
+        if method == "save_sale_asn_documents" and result.get("ok") and not revealed_excel:
             self.api._log(
                 "[SALE ASN] Đã lưu file nhưng không mở được thư mục chứa file."
             )
@@ -2567,6 +2619,9 @@ class PanelApp:
         self.api.choose_sale_asn_export_file = self.choose_sale_asn_export_file  # type: ignore[attr-defined]
         self.api.choose_sale_asn_price_check_export_file = (  # type: ignore[attr-defined]
             self.choose_sale_asn_price_check_export_file
+        )
+        self.api.export_sale_asn_price_check = (  # type: ignore[method-assign]
+            self.export_sale_asn_price_check
         )
         self.api.choose_sale_asn_import_file = self.choose_sale_asn_import_file  # type: ignore[attr-defined]
         self.api.choose_style_import_file = self.choose_style_import_file  # type: ignore[attr-defined]

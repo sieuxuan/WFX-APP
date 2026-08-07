@@ -32,7 +32,11 @@ from wfx_panel.automation.modules import (
     _open_list_search_context,
     _search_input_in_frame,
 )
-from wfx_panel.automation.runtime import cancellation_deferred, claim_download
+from wfx_panel.automation.runtime import (
+    cancellation_deferred,
+    save_native_download,
+    snapshot_downloads,
+)
 from wfx_panel.automation.search_specs import SALE_ASN_SEARCH_SPEC
 
 PACKING_LIST_SELECTOR = "#lnkANFPackingList"
@@ -546,6 +550,7 @@ def _download_report_excel(
             )
 
         _write_log(log, f"[SALE ASN DOCS] Đang export Excel: {label}...")
+        downloads_before_click = snapshot_downloads()
         # Link export thường nằm trong menu display:none. DOM click vẫn gọi đúng
         # exportReport('EXCELOPENXML') và không phụ thuộc menu có kịp hiện hay
         # không, đồng thời tránh nhầm các format Excel cũ.
@@ -561,8 +566,11 @@ def _download_report_excel(
             raise PlaywrightTimeoutError(f"WFX không bắt đầu download {label}.")
         with cancellation_deferred():
             target.parent.mkdir(parents=True, exist_ok=True)
-            claim_download(downloads[0])
-            downloads[0].save_as(target)
+            save_native_download(
+                downloads[0],
+                target,
+                downloads_before_click,
+            )
         if not target.is_file() or target.stat().st_size <= 0:
             raise RuntimeError(f"File {label} tải về bị rỗng.")
         _write_log(log, f"[SALE ASN DOCS] Đã tải {label}.")

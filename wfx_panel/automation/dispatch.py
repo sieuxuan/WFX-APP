@@ -34,7 +34,8 @@ from wfx_panel.automation.oc import (
 from wfx_panel.automation.runtime import (
     cancellation_deferred,
     checkpoint,
-    claim_download,
+    save_native_download,
+    snapshot_downloads,
 )
 
 REPORT_URL = (
@@ -294,6 +295,7 @@ def _download_report(
                 "Lựa chọn Excel trong menu Export chưa sẵn sàng.",
             )
         _write_log(log, "[GDN] Đang export report sang Excel...")
+        downloads_before_click = snapshot_downloads()
         _click(excel.first)
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline and not downloads:
@@ -305,8 +307,11 @@ def _download_report(
             )
         with cancellation_deferred():
             target.parent.mkdir(parents=True, exist_ok=True)
-            claim_download(downloads[0])
-            downloads[0].save_as(target)
+            save_native_download(
+                downloads[0],
+                target,
+                downloads_before_click,
+            )
         if not target.is_file() or target.stat().st_size <= 0:
             raise DispatchFlowError(
                 "GDN_REPORT_DOWNLOAD_FAILED",

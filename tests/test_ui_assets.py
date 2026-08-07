@@ -140,7 +140,7 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260804-4"',
+        'src="panel.js?v=20260805-1"',
     ]:
         assert hook in html, hook
     assert "Tìm và mở đúng Style" not in html
@@ -348,6 +348,31 @@ def test_gdn_dispatch_workspace_matches_existing_module_ui():
     assert "GRN ít nhất 15 phút" in html
     assert ".dispatch-warning" in css
     assert ".dispatch-submit-button" in css
+
+
+def test_grn_receipt_workspace_exposes_both_modes_checkpoint_site_and_search():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert 'data-module-view="grn_receipt"' in html
+    for action in (
+        "grn-rmpo-list",
+        "grn-foreign",
+        "grn-domestic",
+        "grn-continue",
+        "grn-next",
+        "grn-search",
+    ):
+        assert f'data-module-action="{action}"' in html
+    assert "Tiếp tục làm GRN" in html
+    heading = html[html.index('<div class="special-section-heading">', html.index('data-module-view="grn_receipt"')) :]
+    heading = heading[: heading.index("</div>")]
+    assert 'class="module-secondary-button grn-rmpo-list-button"' in heading
+    assert ">RMPO List</button>" in heading
+    assert 'class="grn-site-select"' in html
+    assert 'data-filter-kind="invoice"' in html
+    assert 'data-filter-kind="rmpo"' in html
+    assert ".grn-checkpoint" in css
+    assert ".grn-site-step" in css
 
 
 def test_bubble_page_advertises_interactions():
@@ -585,7 +610,7 @@ def test_favorites_scroll_without_moving_module_search():
     ]
     assert 'class="favorites-section"' in modules_scroll
     assert 'class="module-favorite-button"' not in html
-    assert 'class="return-list-input" type="checkbox"' in html
+    assert 'class="open-excel-file-input" type="checkbox"' in html
     favorite_button = css[
         css.index(".module-favorite-button {") : css.index(
             ".module-favorite-button:hover"
@@ -706,6 +731,11 @@ def test_rmpo_indent_invoice_and_list_new_workspaces_are_present():
     for hook in (
         "rmpo-supplier-query",
         "rmpo-order-query",
+        "rmpo-results-body",
+        'data-module-action="rmpo-check-po"',
+        'data-module-action="rmpo-edit-po"',
+        'data-module-action="rmpo-receive"',
+        'data-module-action="rmpo-check-received"',
         "indent-supplier-query",
         "indent-article-query",
         "indent-no-query",
@@ -883,11 +913,11 @@ def test_catalog_has_conditional_chrome_button_and_style_status():
     assert 'class="browser-banner" hidden' in html
 
 
-def test_update_is_only_exposed_as_automatic_outside_banner():
+def test_update_supports_automatic_and_manual_checks():
     html = (UI / "index.html").read_text(encoding="utf-8")
     assert 'class="update-banner"' in html
     assert 'class="update-banner-button"' in html
-    assert 'class="update-check-button"' not in html
+    assert 'class="check-update-button" type="button">Kiểm tra ngay</button>' in html
     assert 'class="update-apply-button"' not in html
     assert 'class="update-channel-input"' not in html
     assert "Có bản cập nhật mới" in html
@@ -997,6 +1027,7 @@ def test_admin_toggle_and_feedback_dialog_have_contract_hooks():
     for hook in [
         'class="setting-row toggle-row admin-mode-row" hidden',
         'class="admin-mode-input"',
+        'class="reference-sync-card" aria-labelledby="reference-sync-title" hidden',
         'class="icon-button feedback-button"',
         'class="settings-overlay feedback-overlay"',
         'class="feedback-message"',
@@ -1009,6 +1040,8 @@ def test_admin_toggle_and_feedback_dialog_have_contract_hooks():
     submit_tag = submit_tag[: submit_tag.index(">")]
     assert "disabled" in submit_tag
     assert "WFX_ERROR_WEBHOOK_URL" not in html
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert ".reference-sync-card[hidden] { display: none !important; }" in css
 
 
 def test_division_switcher_is_visually_compact():

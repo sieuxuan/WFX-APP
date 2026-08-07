@@ -32,6 +32,7 @@ def test_style_template_has_server_dropdowns_and_dependent_subcategory(tmp_path)
         tmp_path / "styles.xlsx",
         options={
             "fields": {
+                "style_copy": ["Style Apparel A", "Style Apparel B"],
                 "material_type": ["KNIT", "WOVEN"],
                 "buyer": ["Buyer A"],
                 "division": ["Division A"],
@@ -49,6 +50,7 @@ def test_style_template_has_server_dropdowns_and_dependent_subcategory(tmp_path)
     workbook = load_workbook(target)
     validations = list(workbook[STYLE_SHEET].data_validations.dataValidation)
     formulas = {item.formula1 for item in validations}
+    assert "=StyleCopy" in formulas
     assert "=StyleBuyer" in formulas
     assert "=StyleProductGroup" in formulas
     assert any("VLOOKUP($F2" in formula for formula in formulas)

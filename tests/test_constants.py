@@ -9,7 +9,7 @@ def test_categories_match_spec():
 
 def test_module_groups_counts():
     counts = {g["name"]: len(g["modules"]) for g in constants.MODULE_GROUPS}
-    assert counts == {"Operation": 9, "Finance": 3, "Admin": 5}
+    assert counts == {"Operation": 10, "Finance": 3, "Reports": 1, "Admin": 5}
 
 
 def test_module_lookup_and_xpath():

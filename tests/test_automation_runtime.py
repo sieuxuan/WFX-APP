@@ -55,12 +55,18 @@ class FakeContext:
 
 
 class FakeDownload:
-    def __init__(self, name="bao-cao.xlsx"):
+    def __init__(self, name="bao-cao.xlsx", artifact_path="artifact-guid"):
         self.suggested_filename = name
+        self.artifact_path = artifact_path
         self.saved_to = None
+        self.path_calls = 0
 
     def save_as(self, target):
         self.saved_to = str(target)
+
+    def path(self):
+        self.path_calls += 1
+        return self.artifact_path
 
 
 class FakeBrowser:
@@ -172,7 +178,10 @@ def test_runtime_reuses_one_cdp_browser_within_a_flow():
     assert chromium.calls == [
         (
             "http://127.0.0.1:9222",
-            {"timeout": runtime.CDP_CONNECT_TIMEOUT_MS},
+            {
+                "timeout": runtime.CDP_CONNECT_TIMEOUT_MS,
+                "no_defaults": True,
+            },
         )
     ]
 
@@ -220,13 +229,8 @@ def test_critical_section_defers_stop_until_next_checkpoint():
         worker.checkpoint()
 
 
-def test_user_download_during_a_flow_is_rescued_to_the_downloads_folder(tmp_path, monkeypatch):
-    """Playwright đổi thư mục tải của Chrome sang temp riêng rồi xóa khi ngắt CDP.
-
-    Người dùng tự bấm tải trên WFX trong lúc flow chạy sẽ mất file thật: Chrome
-    báo tải xong nhưng thư mục Downloads rỗng. Runtime phải lưu lại trước khi
-    nhả driver.
-    """
+def test_user_download_during_a_flow_stays_native_to_chrome(tmp_path, monkeypatch):
+    """Runtime không save_as file user tải, để history giữ đường dẫn native."""
     monkeypatch.setattr(runtime, "_user_downloads_dir", lambda: tmp_path)
     worker = runtime.AutomationRuntime()
     chromium = FakeChromium()
@@ -242,7 +246,38 @@ def test_user_download_during_a_flow_is_rescued_to_the_downloads_folder(tmp_path
     finally:
         worker.shutdown()
 
-    assert download.saved_to == str(tmp_path / "bao-cao.xlsx")
+    assert download.saved_to is None
+    assert download.path_calls == 0
+    assert chromium.calls[0][1]["no_defaults"] is True
+
+
+def test_native_connect_does_not_override_chrome_download_behavior(tmp_path, monkeypatch):
+    """no_defaults giữ nguyên Download Manager và target thật của Chrome."""
+    monkeypatch.setattr(runtime, "_user_downloads_dir", lambda: tmp_path)
+    worker = runtime.AutomationRuntime()
+    chromium = FakeChromium()
+    playwright = type("FakePlaywrightClient", (), {"chromium": chromium})()
+    download = FakeDownload()
+
+    try:
+        def flow():
+            browser = worker.connect_browser(playwright, "http://127.0.0.1:9222")
+            browser.contexts[0].emit("download", download)
+
+        worker.execute(flow)
+    finally:
+        worker.shutdown()
+
+    assert chromium.calls == [
+        (
+            "http://127.0.0.1:9222",
+            {
+                "timeout": runtime.CDP_CONNECT_TIMEOUT_MS,
+                "no_defaults": True,
+            },
+        )
+    ]
+    assert download.saved_to is None
 
 
 def test_download_claimed_by_a_flow_is_not_duplicated_into_downloads(tmp_path, monkeypatch):
@@ -271,8 +306,8 @@ def test_download_claimed_by_a_flow_is_not_duplicated_into_downloads(tmp_path, m
     assert list(tmp_path.iterdir()) == []
 
 
-def test_rescue_keeps_working_on_every_flow_not_just_the_first(tmp_path, monkeypatch):
-    """Việc cứu file phải lặp lại ở mọi flow.
+def test_native_download_tracking_resets_on_every_flow(tmp_path, monkeypatch):
+    """Runtime dọn theo dõi download native sau mỗi flow.
 
     Runtime nhả driver sau từng flow rồi gắn lại listener cho connection mới;
     nếu trạng thái theo dõi không được dọn đúng, chỉ lượt tải đầu được cứu.
@@ -293,13 +328,30 @@ def test_rescue_keeps_working_on_every_flow_not_just_the_first(tmp_path, monkeyp
     finally:
         worker.shutdown()
 
-    assert first.saved_to == str(tmp_path / "mot.xlsx")
-    assert second.saved_to == str(tmp_path / "hai.xlsx")
+    assert first.path_calls == 0
+    assert second.path_calls == 0
+    assert first.saved_to is None
+    assert second.saved_to is None
 
 
-def test_rescued_file_never_overwrites_an_existing_one(tmp_path):
-    (tmp_path / "bao-cao.xlsx").write_text("cu", encoding="utf-8")
+def test_save_native_download_copies_new_chrome_file_to_flow_target(
+    tmp_path,
+    monkeypatch,
+):
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    old = downloads / "bao-cao.xlsx"
+    old.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(runtime, "_user_downloads_dir", lambda: downloads)
+    before = runtime.snapshot_downloads()
+    fresh = downloads / "bao-cao (1).xlsx"
+    fresh.write_text("new", encoding="utf-8")
+    target = tmp_path / "work" / "report.xlsx"
+    download = FakeDownload("bao-cao.xlsx")
 
-    target = runtime._available_download_path(tmp_path, "bao-cao.xlsx")
+    saved = runtime.save_native_download(download, target, before)
 
-    assert target.name == "bao-cao (2).xlsx"
+    assert saved == target
+    assert target.read_text(encoding="utf-8") == "new"
+    assert fresh.read_text(encoding="utf-8") == "new"
+    assert download.path_calls == 0

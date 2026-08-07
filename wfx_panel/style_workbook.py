@@ -190,8 +190,8 @@ def write_style_template(
     ])
     guide.append([
         "Style copy",
-        "Bắt buộc với Copy. Mã bắt đầu SWN/SKN được tìm bằng Article Code; "
-        "giá trị khác được tìm bằng Buyer Reference.",
+        "Bắt buộc với Copy. Chọn Article Name từ danh sách Apparel; "
+        "app tìm trên WFX bằng ArticleCode/Name.",
     ])
     guide.append([
         "Ô trống",
@@ -248,6 +248,7 @@ def write_style_template(
     lists = workbook.create_sheet(LIST_SHEET)
     lists.sheet_state = "veryHidden"
     list_specs = (
+        ("style_copy", "StyleCopy", 2),
         ("material_type", "StyleMaterialType", 3),
         ("buyer", "StyleBuyer", 4),
         ("division", "StyleDivision", 5),

@@ -68,8 +68,7 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   tự cập nhật, nút Manual hiện badge `Mới` có nhãn rõ ràng và mở thẳng phần Có
   gì mới. Nút Log dùng badge cảnh báo `!` màu vàng khi có lỗi mới; không dùng
   chấm đỏ không nhãn dễ bị hiểu là lỗi render.
-- Mặc định app nhớ đúng màn module người dùng đang làm. Setting `Trở về List
-  sau khi thao tác` cho phép đổi sang hành vi quay về danh sách module.
+- App luôn nhớ đúng màn module người dùng đang làm sau khi tác vụ hoàn tất.
 - Module được ghim bằng nút ngôi sao sẽ nằm trong `Yêu thích` ở đầu vùng cuộn,
   ngay sau ô tìm kiếm cố định. Khu vực này dùng chung scrollbar với danh sách;
   module đã ghim không lặp lại trong nhóm bên dưới và luôn giữ cùng độ rộng hai
@@ -115,6 +114,10 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
   process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo
   tên process. Chỉ tải/thay file sau khi PID đã biến mất.
+- Settings hiển thị nút `Kiểm tra ngay` cạnh trạng thái cập nhật tự động để
+  người dùng chủ động kiểm tra release mới, ngoài lịch nền mỗi 4 giờ.
+- Thẻ `Dữ liệu Article & Style` dùng cùng điều kiện hiển thị với `Chế độ quản
+  trị`: tài khoản không có quyền quản trị không thấy cả hai mục.
 - Release phải phát hành song song `WFX-Smart-Setup-v<version>.exe` và ZIP
   portable. Installer dùng AppId cố định, cài per-user vào
   `%LocalAppData%\Programs\WFX Smart`, không yêu cầu Admin, mặc định tạo shortcut
@@ -186,16 +189,14 @@ Mỗi nút trong module là một flow riêng:
    treo Chrome khi đóng tab đó. Việc "dùng lại grid Master đang mở" vẫn chạy vì
    nó tái dùng DOM đang mở trong Chrome, không phụ thuộc Playwright có giữ kết
    nối. Không dùng object Playwright sync từ thread khác.
-8. Playwright attach qua CDP là ĐỔI thư mục tải của chính Chrome sang temp
-   riêng của nó (`Browser.setDownloadBehavior` = `allowAndName`), rồi xóa sạch
-   thư mục đó khi ngắt. Nên trong lúc một flow chạy, file NGƯỜI DÙNG tự bấm tải
-   trên WFX cũng bị nuốt vào đó và mất hẳn — Downloads rỗng, mục trong Chrome
-   Download history trỏ vào đường dẫn đã chết nên bấm mở file/`Show in folder`
-   đều không có tác dụng. Vì vậy runtime theo dõi mọi sự kiện `download` của
-   context và, trong `_release_connections()` TRƯỚC khi nhả driver, lưu các
-   download không có flow nào nhận về `%USERPROFILE%\Downloads` kèm log. Flow
-   nào tự `save_as` phải gọi `claim_download()` ngay trước đó, nếu không mỗi lần
-   xuất báo cáo lại sinh thêm một bản thừa trong Downloads.
+8. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True`; tuyệt đối không
+   gọi `Browser.setDownloadBehavior` cho download thông thường. Chrome phải tự
+   quản lý file theo profile và lưu thẳng vào `%USERPROFILE%\Downloads`, để file
+   thật và Chrome Download history cùng một đường dẫn; `Mở file`/`Hiện trong thư
+   mục` phải hoạt động cả sau khi runtime nhả CDP. Flow cần dùng file vừa tải phải
+   chụp trạng thái bằng `snapshot_downloads()` trước click rồi gọi
+   `save_native_download()` để sao chép file native tới đường dẫn nghiệp vụ; không
+   dùng `download.save_as()` vì nó kéo download trở lại artifact tạm của Playwright.
 9. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
    không thêm cơ chế terminate/close page từ thread UI.
 10. Chỉ tác vụ thật sự chạm Playwright/Chrome mới được bọc `_run()`. Các lời gọi
@@ -240,9 +241,10 @@ Các workflow riêng hiện có:
   file đính kèm và Costing file import/export XLSX.
 - Catalog có workspace `Tạo Style` riêng cho Apparel. User phải quét/chọn một
   node đúng loại Group rồi mới Import form XLSX. Form gồm Type New/Copy, Style
-  copy và các trường Style; mã copy bắt đầu SWN/SKN tìm bằng Article Code, mã
-  khác tìm bằng Buyer Reference. Copy mặc định chọn CostSheet và Copy as
-  Variant; nhiều kết quả phải để user chọn trong app. Mỗi lần chỉ chuẩn bị một
+  copy và các trường Style; Style copy có dropdown lấy Article Name từ Article
+  List, chỉ nhận `Article Category = Apparel`, và luôn tìm trên WFX bằng
+  `ArticleCode/Name` (không tìm Buyer Reference). Copy mặc định chọn CostSheet
+  và Copy as Variant; nhiều kết quả phải để user chọn trong app. Mỗi lần chỉ chuẩn bị một
   dòng, đặt Purchase UOM=Pcs, Price Per=Article và Color Definition=Single
   Colors. Toggle `Tự động Save` luôn mặc định off: khi off, app dừng trước Save
   và chỉ sang dòng kế sau khi user xác nhận đã tự kiểm tra/Save trên WFX; khi on,
@@ -322,8 +324,8 @@ Các workflow riêng hiện có:
   Khi có nhiều tab/popup Costing, phải ưu tiên target đang hoạt động gần nhất,
   không dùng thứ tự tạo trong `context.pages`. Trước hộp thoại export phải quét
   nhanh Style Code/Style Name/status, hiển thị ngay trong thẻ Costing và dùng
-  Style Name đặt tên file. Hộp thoại nhớ thư mục export gần nhất; Settings
-  chỉ cho chọn có mở file Costing sau export hay không. Thư mục chứa file
+  Style Name đặt tên file. Hộp thoại nhớ thư mục export gần nhất; Settings dùng
+  một tùy chọn chung để mở mọi file Excel sau khi tải từ app. Thư mục chứa file
   luôn tự mở sau mọi download/export thành công. Nút `Kiểm tra file` chỉ
   validate XLSX và trả lỗi sheet/ô, không scan WFX hoặc tạo dry-run.
   `Costing` luôn có bộ cột form chuẩn để nhập trực tiếp, chỉ round-trip field
@@ -621,7 +623,44 @@ Các workflow riêng hiện có:
   nhận URL cùng origin, tự xóa khi login/session/Division thay đổi và phải
   fallback về click bình thường ngay nếu route cache không còn hợp lệ.
 - RMPO List: tìm kết hợp theo Supplier và RMPO No. trên đúng grid
-  `gridRMPO`.
+  `gridRMPO`, sau đó đưa các dòng về app với Status, Supplier, Order No., Last
+  Created và Qty để user chọn. `Kiểm tra PO` click `#colOCNo` của đúng dòng;
+  `Sửa PO` click `#colOrderNo`, chờ cửa sổ tải tối đa 3 phút rồi click Revise
+  tại `//*[@id="titlebarRMPO"]/tbody/tr/td[2]/span/div[9]`.
+  RMPO khác Received hiện `Nhập kho` để chuyển RMPO, Supplier và token lựa chọn
+  sang module `(GRN) Nhập kho`. Received và Part Received hiện `Check Received`
+  để click `#colRecv`; Part Received hiện đồng thời cả hai nút.
+- `(GRN) Nhập kho`: nhận RMPO trực tiếp hoặc từ RMPO List. Nếu nhập trực tiếp,
+  phải tra RMPO List và chỉ tiếp tục khi xác định được duy nhất Supplier của đúng
+  Order No.; UI có nút `RMPO List` để chuyển sang màn tìm/chọn RMPO trong app.
+  Nút này là nút phụ nhỏ cùng hàng với tiêu đề `Nhập kho RMPO`. Nếu user chỉ
+  nhập một phần số như `2345`, được dùng Order No. đầy đủ từ kết quả khi và chỉ
+  khi RMPO List trả đúng một dòng chứa chuỗi đó; nhiều dòng phải yêu cầu nhập rõ
+  hơn. Nếu đã tìm đúng Order No. nhưng chưa đọc được Supplier ở dòng đó, phải
+  dừng với `GRN_RMPO_SUPPLIER_NOT_FOUND`, không được đoán hoặc mở GRN. Trước mọi
+  luồng nhập kho, Status `Received` phải trả
+  `GRN_ALREADY_RECEIVED` và không được mở Sourcing ASN/GRN.
+  Khi search, phải nhận diện lớp loading WFX (`blockUI`/progress) và chờ bảng
+  RMPO hoặc trạng thái No records ổn định; không báo thiếu `gridRMPO` khi Header
+  và Content được WFX render thành hai table độc lập. Luồng nước ngoài mở Sourcing ASN New
+  `//*[@id="0005_0105_1200_0010"]/a`, chọn Order Type `RMPO`, Supplier, Add,
+  chọn đúng RMPO theo Order No. trong `#sectionRMPOList` rồi Add & Close. Đây là
+  checkpoint bắt buộc: user tự nhập số lượng/thông tin và Confirm Sourcing ASN;
+  app không tự Confirm và chỉ mở GRN sau khi user xác nhận `Tiếp tục làm GRN`.
+  GRN Pending mở bằng `//*[@id="0050_0020_0380"]/a`: nước ngoài chọn Receipt
+  Type `ASN from Supplier - Against ASN` và Imported; trong nước chọn
+  `ASN from Supplier - Against PO` và không chọn Imported. Cả hai chọn From là
+  Supplier, Search, đọc danh sách Site từ `#CellID11` về app; sau khi user chọn
+  Site, chọn duy nhất dòng có PO No. đúng RMPO trong `#sectionOrderShipment` rồi
+  click New tại `//*[@id="titlebarGRNPending"]/tbody/tr/td[2]/span/div[1]`.
+  Tìm GRN mở `//*[@id="0050_0020_0010"]/a`, nhận Invoice ở `#row_txtDocNum`
+  (checkbox `#chk_8` + ô `#txtDocNum`) hoặc RMPO/Order No. ở
+  `#row_txtOrderNum` (checkbox `#chk_9` + ô `#txtOrderNum`), luôn bỏ tích Date
+  ở dòng `#row_txtFromGRNDate` (checkbox `#chk_6`), Search trong
+  `#ctrlRpt > table` (không phụ thuộc số thứ tự dòng). Bảng kết quả có hai hàng
+  header; không click link `No.` gọi `ReOrder('GRNNum')`. Phải click link GRN
+  của dòng dữ liệu có `onclick="PrintGRN(...)"` và chỉ trả thành công sau khi
+  popup/document GRN mới đã thực sự mở.
 - Indent List/User Indent: tìm kết hợp theo Supplier, Article, Indent No. và
   Style trên đúng grid `gridMOLList`.
 - QA List, Advance PR List và Expense Inv List: List + New; New click trực tiếp

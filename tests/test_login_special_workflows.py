@@ -147,6 +147,21 @@ def test_rmpo_and_indent_support_context_bound_combined_filters():
         "#gridMOLList_tblGridHeader_trSearch_td_ColStyle",
     ):
         assert selector in SOURCE
+
+
+def test_rmpo_results_use_exact_business_columns_and_revise_selector():
+    for selector in (
+        "colStatus",
+        "colSupplier",
+        "colOrderNo",
+        "colLastCreated",
+        "colQty",
+        "colOCNo",
+        "colRecv",
+        '//*[@id="titlebarRMPO"]/tbody/tr/td[2]/span/div[9]',
+    ):
+        assert selector in SOURCE
+    assert "timeout_s=180" in SOURCE
     combined_block = SOURCE[
         SOURCE.index("def _open_multi_field_search_context"):
         SOURCE.index("def _open_list_search_context")
@@ -157,6 +172,49 @@ def test_rmpo_and_indent_support_context_bound_combined_filters():
     assert "_click_module_menu_on_page" in combined_block
     assert "đang tự mở List" in combined_block
     assert '"MODULE_LIST_NOT_OPEN"' not in combined_block
+    assert '"#gridRMPO_tblGridContent", "#gridRMPO"' in SOURCE
+    assert 'frame.locator("body")' in SOURCE
+    assert ".blockUI" in SOURCE
+    assert "colSupplierName" in SOURCE
+    assert "ready = not loading" in SOURCE
+
+
+def test_grn_receipt_workflows_use_exact_wfx_controls_and_safe_checkpoint():
+    for selector in (
+        '//*[@id="0005_0105_1200_0010"]/a',
+        '//*[@id="0050_0020_0380"]/a',
+        "#CellIDSupplier",
+        "#sectionSupplierASNShipmentDetail",
+        "#sectionRMPOList",
+        "#sectionOrderShipment",
+        "#titlebarGRNPending",
+    ):
+        assert selector in SOURCE
+    assert '"ASN from Supplier - Against ASN"' in SOURCE
+    assert '"ASN from Supplier - Against PO"' in SOURCE
+    assert 'if mode == "foreign":\n        _select_imported(frame, log)' in SOURCE
+    assert '"GRN_SOURCING_ASN_READY"' in SOURCE
+    assert "def continue_grn_receipt" in SOURCE
+    assert '"GRN_SITE_SELECTION_REQUIRED"' in SOURCE
+    assert '"GRN_NEW_READY"' in SOURCE
+
+
+def test_grn_search_unchecks_date_and_opens_first_result_number():
+    for selector in (
+        '//*[@id="0050_0020_0010"]/a',
+        "#row_txtDocNum",
+        "#row_txtOrderNum",
+        "#row_txtFromGRNDate",
+        "#chk_6",
+        "#ctrlRpt",
+        "a[onclick*='PrintGRN(']",
+    ):
+        assert selector in SOURCE
+    assert "if (element.checked) element.click()" in SOURCE
+    assert "_set_grn_search_filter(frame, filter_kind, query, enabled=True)" in SOURCE
+    assert "_click_grn_search(frame)" in SOURCE
+    assert "_wait_grn_result_opened" in SOURCE
+    assert "def search_grn_receipt" in SOURCE
 
 
 def test_supplier_and_expense_invoice_support_combined_filters_and_safe_cancel():
