@@ -1472,9 +1472,12 @@ Trong `wfx_panel/panel_api.py`, thêm vào `NON_REPORTABLE_FAILURES`:
 ```python
         "COLOR_REPORT_NO_STYLE_SELECTED",
         "COLOR_REPORT_OUTPUT_DIR_REQUIRED",
-        "COLOR_REPORT_STYLE_LIST_EMPTY",
         "COLOR_REPORT_CANCELLED",
 ```
+
+> `COLOR_REPORT_STYLE_LIST_EMPTY` và `COLOR_REPORT_OPTIONS_NOT_READY` đã được
+> Task 7 đăng ký, vì task đó là nơi phát sinh chúng và suite phải xanh trước mỗi
+> commit. Kiểm tra trước khi thêm, đừng khai báo trùng.
 
 Thêm hai tên method vào set method được gửi telemetry (cạnh `"load_report_parameters"`, `"export_report_excel"` khoảng dòng 862):
 
@@ -1552,13 +1555,9 @@ Thêm method sau `export_report_excel`:
         )
 ```
 
-Trong `wfx_panel/telemetry.py`, thêm vào `ERROR_CODE_INFO` cạnh `REPORT_EXPORT_FAILED`:
+Trong `wfx_panel/telemetry.py`, thêm vào `ERROR_CODE_INFO` cạnh `REPORT_EXPORT_FAILED` (`COLOR_REPORT_OPTIONS_NOT_READY` đã có từ Task 7):
 
 ```python
-        "COLOR_REPORT_OPTIONS_NOT_READY": (
-            "Tham số báo cáo Color Combination chưa nạp xong",
-            "Chờ trang WFX ổn định rồi chọn lại OC Division.",
-        ),
         "COLOR_REPORT_SAVE_FAILED": (
             "Không lưu được file báo cáo vào thư mục đã chọn",
             "Kiểm tra quyền ghi và dung lượng của thư mục lưu báo cáo.",
