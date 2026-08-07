@@ -10,8 +10,10 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 from wfx_panel import (
+    atomic_io,
     autostart,
     constants,
     job_history,
@@ -41,6 +43,7 @@ from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 SESSION_OK = frozenset(
     {
         "LOGGED_IN",
+        "LOGGED_IN_AFTER_DELAY",
         "SESSION_REUSED",
         "SESSION_ACTIVE",
         "SESSION_RESTORED",
@@ -108,7 +111,9 @@ SESSION_LOST = frozenset(
         "SESSION_CHECK_FAILED",
     }
 )
-LOGIN_CODES = frozenset({"LOGGED_IN", "SESSION_REUSED", "SESSION_ACTIVE"})
+LOGIN_CODES = frozenset(
+    {"LOGGED_IN", "LOGGED_IN_AFTER_DELAY", "SESSION_REUSED", "SESSION_ACTIVE"}
+)
 AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
     {"login", "open_chrome", "maintain_session"}
 )
@@ -174,6 +179,24 @@ NON_REPORTABLE_FAILURES = frozenset(
         "CATALOG_RESULT_EXPIRED",
         "SAMPLE_RESULT_EXPIRED",
         "SAMPLE_STYLE_NOT_FOUND",
+        "RMPO_NO_RESULTS",
+        "RMPO_RESULT_EXPIRED",
+        "RMPO_ACTION_INVALID",
+        "RMPO_ACTION_NOT_CONFIRMED",
+        "RMPO_ACTION_NOT_READY",
+        "GRN_RMPO_REQUIRED",
+        "GRN_MODE_INVALID",
+        "GRN_RMPO_NOT_FOUND",
+        "GRN_RMPO_SUPPLIER_NOT_FOUND",
+        "GRN_RMPO_AMBIGUOUS",
+        "GRN_ALREADY_RECEIVED",
+        "GRN_SUPPLIER_AMBIGUOUS",
+        "GRN_RMPO_SELECTION_EXPIRED",
+        "GRN_SESSION_EXPIRED",
+        "GRN_SOURCING_CONFIRM_REQUIRED",
+        "GRN_SITE_REQUIRED",
+        "GRN_SITE_INVALID",
+        "GRN_SEARCH_NO_RESULTS",
         "CATALOG_FILES_CONTEXT_EXPIRED",
         "CATALOG_FILE_EXPIRED",
         "CATALOG_PREPARE_REQUIRED",
@@ -315,6 +338,11 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "search_sale_asn",
         "prepare_sale_asn_documents",
         "search_rmpo",
+        "run_rmpo_action",
+        "prepare_grn_receipt",
+        "continue_grn_receipt",
+        "finalize_grn_receipt",
+        "search_grn",
         "search_indent",
         "search_advance_pr",
         "search_supplier_invoice",
@@ -390,6 +418,12 @@ class PanelAPI:
         # Token hóa dòng Supplier Invoice khi Invoice No. có nhiều kết quả;
         # WebView chỉ nhận token, không nhận row key nội bộ của WFX.
         self._supplier_invoice_cancel_choices: dict[str, dict[str, str]] = {}
+        # Tương tự, lựa chọn RMPO chỉ sống tới lần Search kế tiếp. Mọi action
+        # phải kiểm tra lại row/status trên WFX trước khi click.
+        self._rmpo_choices: dict[str, dict[str, str]] = {}
+        # Phiên nhập kho giữ RMPO/Supplier đã xác thực và danh sách Site giữa
+        # các checkpoint người dùng tự Confirm Sourcing ASN trên WFX.
+        self._grn_receipt_sessions: dict[str, dict[str, Any]] = {}
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -553,9 +587,6 @@ class PanelAPI:
             ),
             "theme": preferences["theme"],
             "close_after_module": preferences["close_after_module"],
-            "return_to_list_after_action": preferences[
-                "return_to_list_after_action"
-            ],
             "favorite_module_ids": preferences["favorite_module_ids"],
             "hotkey": preferences["hotkey"],
             "hotkey_label": preferences["hotkey_label"],
@@ -566,8 +597,8 @@ class PanelAPI:
                 "focus_chrome_on_module"
             ],
             "always_on_top": preferences["always_on_top"],
-            "open_costing_file_after_export": preferences[
-                "open_costing_file_after_export"
+            "open_excel_file_after_download": preferences[
+                "open_excel_file_after_download"
             ],
             "open_costing_folder_after_export": preferences[
                 "open_costing_folder_after_export"
@@ -641,6 +672,7 @@ class PanelAPI:
         if code in SESSION_LOST or code in {
             "DIVISION_CHANGED",
             "LOGGED_IN",
+            "LOGGED_IN_AFTER_DELAY",
             "SESSION_RESTORED",
         }:
             reset_menu_cache = getattr(
@@ -649,7 +681,7 @@ class PanelAPI:
             if callable(reset_menu_cache):
                 reset_menu_cache()
 
-        if code in {"DIVISION_CHANGED", "LOGGED_IN"}:
+        if code in {"DIVISION_CHANGED", "LOGGED_IN", "LOGGED_IN_AFTER_DELAY"}:
             self._catalog.reset_context()
 
         if (
@@ -808,6 +840,11 @@ class PanelAPI:
                 "search_sale_asn",
                 "prepare_sale_asn_documents",
                 "search_rmpo",
+                "run_rmpo_action",
+                "prepare_grn_receipt",
+                "continue_grn_receipt",
+                "finalize_grn_receipt",
+                "search_grn",
                 "search_indent",
                 "search_advance_pr",
                 "open_module_new",
@@ -822,6 +859,8 @@ class PanelAPI:
                 "export_catalog_costing",
                 "prepare_catalog_costing_import",
                 "apply_catalog_costing",
+                "load_report_parameters",
+                "export_report_excel",
             }
             and hasattr(self._login, "capture_failure_screenshot")
         ):
@@ -1157,6 +1196,145 @@ class PanelAPI:
 
         return self._run(
             "open_module", action, {"module_id": module_id}
+        )
+
+    def report_catalog(self) -> dict:
+        catalog = getattr(self._login, "report_catalog", None)
+        reports = catalog() if callable(catalog) else []
+        return {"ok": True, "code": "REPORT_CATALOG_READY", "reports": reports}
+
+    def _report_parameters_path(self) -> Path:
+        return self._base_dir / "report-parameters.json"
+
+    def _saved_report_parameters(self, report_id: str) -> dict[str, Any]:
+        account_key = str(self._account().get("user_id") or "").strip().casefold()
+        if not account_key:
+            return {}
+        try:
+            raw = json.loads(self._report_parameters_path().read_text(encoding="utf-8"))
+            values = raw.get(account_key, {}).get(str(report_id), {})
+        except (OSError, json.JSONDecodeError, AttributeError):
+            return {}
+        if not isinstance(values, dict):
+            return {}
+        cleaned: dict[str, Any] = {}
+        for key, value in values.items():
+            clean_key = str(key)[:240]
+            if isinstance(value, (str, bool, int, float)):
+                cleaned[clean_key] = value
+            elif isinstance(value, list):
+                cleaned[clean_key] = [
+                    str(item)[:500]
+                    for item in value[:500]
+                    if isinstance(item, (str, int, float))
+                ]
+        return cleaned
+
+    def load_report_parameters(self, report_id: str) -> dict:
+        loader = getattr(self._login, "load_report_parameters", None)
+        if not callable(loader):
+            return {
+                "ok": False,
+                "code": "REPORT_UNAVAILABLE",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ Reports.",
+            }
+        cleaned_id = str(report_id or "")
+
+        def action() -> dict:
+            result = loader(cleaned_id, self._log)
+            if result.get("ok"):
+                return {
+                    **result,
+                    "saved_parameters": self._saved_report_parameters(cleaned_id),
+                }
+            return result
+
+        return self._run(
+            "load_report_parameters",
+            action,
+            {"module_id": "reports", "report_id": str(report_id or "")},
+        )
+
+    def save_report_parameters(
+        self, report_id: str, values: Mapping[str, Any] | None = None
+    ) -> dict:
+        cleaned_id = str(report_id or "").strip()
+        allowed = {
+            str(item.get("id") or "")
+            for item in (getattr(self._login, "report_catalog", lambda: [])() or [])
+            if isinstance(item, Mapping)
+        }
+        if not cleaned_id or cleaned_id not in allowed:
+            return {
+                "ok": False,
+                "code": "REPORT_UNKNOWN",
+                "message": "Báo cáo không được hỗ trợ.",
+            }
+        account_key = str(self._account().get("user_id") or "").strip().casefold()
+        if not account_key:
+            return {
+                "ok": False,
+                "code": "REPORT_SAVE_ACCOUNT_REQUIRED",
+                "message": "Hãy đăng nhập WFX trước khi lưu tham số báo cáo.",
+            }
+        clean_values: dict[str, Any] = {}
+        for key, value in dict(values or {}).items():
+            clean_key = str(key).strip()[:240]
+            if not clean_key:
+                continue
+            if isinstance(value, bool):
+                clean_values[clean_key] = value
+            elif isinstance(value, (str, int, float)):
+                clean_values[clean_key] = str(value)[:2_000]
+            elif isinstance(value, list):
+                clean_values[clean_key] = [
+                    str(item)[:500]
+                    for item in value[:500]
+                    if isinstance(item, (str, int, float))
+                ]
+        try:
+            path = self._report_parameters_path()
+            try:
+                stored = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                stored = {}
+            if not isinstance(stored, dict):
+                stored = {}
+            account_reports = stored.setdefault(account_key, {})
+            if not isinstance(account_reports, dict):
+                account_reports = {}
+                stored[account_key] = account_reports
+            account_reports[cleaned_id] = clean_values
+            atomic_io.write_json_atomic(path, stored, separators=(",", ":"))
+        except OSError as error:
+            return {
+                "ok": False,
+                "code": "REPORT_SAVE_FAILED",
+                "message": f"Không lưu được tham số báo cáo: {type(error).__name__}",
+            }
+        return {
+            "ok": True,
+            "code": "REPORT_PARAMETERS_SAVED",
+            "message": "Đã lưu tham số báo cáo để dùng lần sau.",
+            "report_id": cleaned_id,
+            "saved_parameters": clean_values,
+        }
+
+    def export_report_excel(
+        self, report_id: str, values: Mapping[str, Any] | None = None
+    ) -> dict:
+        exporter = getattr(self._login, "export_report_excel", None)
+        if not callable(exporter):
+            return {
+                "ok": False,
+                "code": "REPORT_UNAVAILABLE",
+                "message": "Phiên bản tự động hóa chưa hỗ trợ Reports.",
+            }
+        safe_values = dict(values) if isinstance(values, Mapping) else {}
+        return self._run(
+            "export_report_excel",
+            lambda: exporter(str(report_id or ""), safe_values, self._log),
+            {"module_id": "reports", "report_id": str(report_id or "")},
         )
 
     def _admin_module_access_error(self, module_id: str) -> dict | None:
@@ -1820,15 +1998,276 @@ class PanelAPI:
         order_no: str,
     ) -> dict:
         rmpo = constants.MODULE_BY_ID["0005_0050_0020"]
-        return self._run(
-            "search_rmpo",
-            lambda: self._login.search_rmpo_list(
+
+        def action() -> dict:
+            self._rmpo_choices.clear()
+            result = self._login.search_rmpo_list(
                 rmpo["xpath"],
                 str(supplier or "").strip(),
                 str(order_no or "").strip(),
                 self._log,
-            ),
+            )
+            if result.get("code") != "RMPO_RESULTS_READY":
+                return result
+            public_rows: list[dict[str, str]] = []
+            for raw in result.get("rmpo_rows") or []:
+                if not isinstance(raw, dict):
+                    continue
+                row = {
+                    key: str(raw.get(key) or "").strip()
+                    for key in (
+                        "row_key",
+                        "status",
+                        "supplier",
+                        "order_no",
+                        "last_created",
+                        "qty",
+                    )
+                }
+                if not row["row_key"] or not row["order_no"]:
+                    continue
+                choice_id = secrets.token_urlsafe(18)
+                self._rmpo_choices[choice_id] = row
+                public_rows.append(
+                    {
+                        "choice_id": choice_id,
+                        "status": row["status"],
+                        "supplier": row["supplier"],
+                        "order_no": row["order_no"],
+                        "last_created": row["last_created"],
+                        "qty": row["qty"],
+                    }
+                )
+            if not public_rows:
+                return {
+                    "ok": False,
+                    "code": "RMPO_NO_RESULTS",
+                    "message": "Không đọc được dòng RMPO phù hợp để chọn.",
+                    "rmpos": [],
+                    "result_count": 0,
+                }
+            return {
+                **result,
+                "rmpos": public_rows,
+                "result_count": max(
+                    len(public_rows), int(result.get("result_count") or 0)
+                ),
+            }
+
+        return self._run(
+            "search_rmpo",
+            action,
             {"module_id": "0005_0050_0020"},
+        )
+
+    def run_rmpo_action(self, choice_id: str, action_name: str) -> dict:
+        token = str(choice_id or "").strip()
+        requested_action = str(action_name or "").strip()
+
+        def action() -> dict:
+            choice = self._rmpo_choices.get(token)
+            if choice is None:
+                return {
+                    "ok": False,
+                    "code": "RMPO_RESULT_EXPIRED",
+                    "message": "Lựa chọn RMPO đã hết hiệu lực. Hãy tìm lại.",
+                }
+            return self._login.open_rmpo_result_action(
+                choice["row_key"],
+                choice["order_no"],
+                choice["supplier"],
+                choice["status"],
+                requested_action,
+                self._log,
+            )
+
+        return self._run(
+            "run_rmpo_action",
+            action,
+            {
+                "module_id": "0005_0050_0020",
+                "action": requested_action,
+            },
+        )
+
+    def prepare_grn_receipt(
+        self,
+        rmpo_no: str,
+        mode: str,
+        rmpo_choice_id: str = "",
+    ) -> dict:
+        cleaned_rmpo = " ".join(str(rmpo_no or "").split())
+        cleaned_mode = str(mode or "").strip().casefold()
+        choice_token = str(rmpo_choice_id or "").strip()
+
+        def action() -> dict:
+            supplier = ""
+            if choice_token:
+                choice = self._rmpo_choices.get(choice_token)
+                if (
+                    choice is None
+                    or choice["order_no"].casefold() != cleaned_rmpo.casefold()
+                ):
+                    return {
+                        "ok": False,
+                        "code": "GRN_RMPO_SELECTION_EXPIRED",
+                        "message": "Lựa chọn RMPO đã hết hiệu lực. Hãy chọn lại.",
+                    }
+                if " ".join(choice["status"].casefold().split()) == "received":
+                    return {
+                        "ok": False,
+                        "code": "GRN_ALREADY_RECEIVED",
+                        "message": (
+                            f"RMPO {choice['order_no']} đã nhập kho hết, "
+                            "không thể nhập thêm."
+                        ),
+                    }
+                supplier = choice["supplier"]
+            result = self._login.prepare_grn_receipt(
+                constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
+                cleaned_rmpo,
+                supplier,
+                cleaned_mode,
+                self._log,
+            )
+            if result.get("code") not in {
+                "GRN_SOURCING_ASN_READY",
+                "GRN_SITE_SELECTION_REQUIRED",
+            }:
+                return result
+            receipt_token = secrets.token_urlsafe(24)
+            sites = [
+                " ".join(str(item or "").split())
+                for item in result.get("sites") or []
+                if str(item or "").strip()
+            ]
+            self._grn_receipt_sessions.clear()
+            self._grn_receipt_sessions[receipt_token] = {
+                "rmpo_no": str(result.get("rmpo_no") or cleaned_rmpo),
+                "supplier": str(result.get("supplier") or supplier),
+                "mode": cleaned_mode,
+                "stage": (
+                    "sourcing"
+                    if result.get("code") == "GRN_SOURCING_ASN_READY"
+                    else "site"
+                ),
+                "sites": sites,
+            }
+            return {**result, "receipt_token": receipt_token, "sites": sites}
+
+        return self._run(
+            "prepare_grn_receipt",
+            action,
+            {
+                "module_id": "grn_receipt",
+                "mode": cleaned_mode,
+                "from_rmpo_choice": bool(choice_token),
+            },
+        )
+
+    def continue_grn_receipt(
+        self,
+        receipt_token: str,
+        sourcing_confirmed: bool,
+    ) -> dict:
+        token = str(receipt_token or "").strip()
+
+        def action() -> dict:
+            session = self._grn_receipt_sessions.get(token)
+            if session is None or session.get("stage") != "sourcing":
+                return {
+                    "ok": False,
+                    "code": "GRN_SESSION_EXPIRED",
+                    "message": "Phiên nhập kho đã hết hiệu lực. Hãy bắt đầu lại.",
+                }
+            if sourcing_confirmed is not True:
+                return {
+                    "ok": False,
+                    "code": "GRN_SOURCING_CONFIRM_REQUIRED",
+                    "message": "Chỉ tiếp tục sau khi đã Confirm Sourcing ASN trên WFX.",
+                }
+            result = self._login.continue_grn_receipt(
+                session["supplier"],
+                self._log,
+            )
+            if result.get("code") == "GRN_SITE_SELECTION_REQUIRED":
+                sites = [
+                    " ".join(str(item or "").split())
+                    for item in result.get("sites") or []
+                    if str(item or "").strip()
+                ]
+                session["stage"] = "site"
+                session["sites"] = sites
+                result = {
+                    **result,
+                    "receipt_token": token,
+                    "rmpo_no": session["rmpo_no"],
+                    "supplier": session["supplier"],
+                    "sites": sites,
+                }
+            return result
+
+        return self._run(
+            "continue_grn_receipt",
+            action,
+            {"module_id": "grn_receipt"},
+        )
+
+    def finalize_grn_receipt(self, receipt_token: str, site: str) -> dict:
+        token = str(receipt_token or "").strip()
+        requested_site = " ".join(str(site or "").split())
+
+        def action() -> dict:
+            session = self._grn_receipt_sessions.get(token)
+            if session is None or session.get("stage") != "site":
+                return {
+                    "ok": False,
+                    "code": "GRN_SESSION_EXPIRED",
+                    "message": "Phiên nhập kho đã hết hiệu lực. Hãy bắt đầu lại.",
+                }
+            canonical_site = next(
+                (
+                    item
+                    for item in session.get("sites") or []
+                    if str(item).casefold() == requested_site.casefold()
+                ),
+                None,
+            )
+            if canonical_site is None:
+                return {
+                    "ok": False,
+                    "code": "GRN_SITE_INVALID",
+                    "message": "Site không còn trong danh sách GRN hiện tại.",
+                }
+            result = self._login.finalize_grn_receipt(
+                session["rmpo_no"],
+                canonical_site,
+                self._log,
+            )
+            if result.get("ok"):
+                self._grn_receipt_sessions.pop(token, None)
+            return result
+
+        return self._run(
+            "finalize_grn_receipt",
+            action,
+            {"module_id": "grn_receipt"},
+        )
+
+    def search_grn(self, filter_kind: str, query: str) -> dict:
+        cleaned_kind = str(filter_kind or "").strip().casefold()
+        cleaned_query = " ".join(str(query or "").split())
+        return self._run(
+            "search_grn",
+            lambda: self._login.search_grn_receipt(
+                cleaned_kind,
+                cleaned_query,
+                self._log,
+            ),
+            {
+                "module_id": "grn_receipt",
+                "filter_kind": cleaned_kind,
+            },
         )
 
     def search_indent(
@@ -2756,24 +3195,6 @@ class PanelAPI:
         return {"ok": True, "code": "PREF_SAVED", "message": "Đã lưu",
                 "close_after_module": saved["close_after_module"]}
 
-    def set_return_to_list_after_action(self, enabled: bool) -> dict:
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir,
-            return_to_list_after_action=bool(enabled),
-        )
-        return {
-            "ok": True,
-            "code": "PREF_SAVED",
-            "message": (
-                "Sau khi thao tác xong, app sẽ trở về List."
-                if saved["return_to_list_after_action"]
-                else "App sẽ nhớ màn module đang làm."
-            ),
-            "return_to_list_after_action": saved[
-                "return_to_list_after_action"
-            ],
-        }
-
     def set_sale_asn_stages(self, stages: list[str] | None = None) -> dict:
         """Nhớ các bước Sale ASN user đã chọn giữa các phiên chạy."""
         saved = self._prefs.save_prefs(
@@ -2806,25 +3227,17 @@ class PanelAPI:
             ],
         }
 
-    def set_costing_export_open_options(
-        self,
-        open_file: bool,
-        open_folder: bool,
-    ) -> dict:
+    def set_excel_file_after_download(self, enabled: bool) -> dict:
         saved = self._prefs.save_prefs(
             base_dir=self._base_dir,
-            open_costing_file_after_export=bool(open_file),
-            open_costing_folder_after_export=bool(open_folder),
+            open_excel_file_after_download=bool(enabled),
         )
         return {
             "ok": True,
             "code": "PREF_SAVED",
-            "message": "Đã lưu cách mở file Costing sau khi tải.",
-            "open_costing_file_after_export": saved[
-                "open_costing_file_after_export"
-            ],
-            "open_costing_folder_after_export": saved[
-                "open_costing_folder_after_export"
+            "message": "Đã lưu cách mở file Excel sau khi tải.",
+            "open_excel_file_after_download": saved[
+                "open_excel_file_after_download"
             ],
         }
 

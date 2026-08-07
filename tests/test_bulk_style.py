@@ -5,11 +5,11 @@ from pathlib import Path
 from wfx_panel.automation import bulk_style
 
 
-def test_copy_search_rule_uses_article_code_for_swn_and_skn():
+def test_copy_search_rule_uses_article_code_or_name_only():
     source = Path(bulk_style.__file__).read_text(encoding="utf-8")
-    assert 'r"^(?:SWN|SKN)"' in source
-    assert "COPY_CODE_XPATH" in source
-    assert "COPY_BUYER_REFERENCE_XPATH" in source
+    assert "COPY_ARTICLE_CODE_NAME_XPATH" in source
+    assert "COPY_BUYER_REFERENCE_XPATH" not in source
+    assert "ArticleCode/Name" in source
 
 
 def test_copy_flow_selects_costsheet_then_copy_as_variant():

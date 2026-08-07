@@ -19,6 +19,7 @@ USER_INDENT_XPATH = (
     'and contains(@href,"mnuIndentControlUserList")]'
 )
 GDN_DISPATCH_XPATH = '//*[@id="0040_0020_0100"]/a'
+GRN_RECEIPT_XPATH = '//*[@id="0050_0020_0380"]/a'
 
 DIVISIONS = {
     "woven": {
@@ -51,13 +52,19 @@ MODULE_GROUPS = [
         "modules": [
             {"name": "Catalog", "id": "0003_6200", "icon": "CA"},
             {"name": "OC List", "id": "0004_0050_0020", "icon": "OC"},
-            {"name": "Sample List", "id": "0004_0056_4070", "icon": "SL"},
+            {"name": "Sample Order", "id": "0004_0056_4070", "icon": "SL"},
             {"name": "Sale ASN", "id": "0004_0070_0020", "icon": "AS"},
             {
                 "name": "(GDN) Dispatch",
                 "id": "gdn_dispatch",
                 "icon": "GD",
                 "xpath": GDN_DISPATCH_XPATH,
+            },
+            {
+                "name": "(GRN) Nhập kho",
+                "id": "grn_receipt",
+                "icon": "GR",
+                "xpath": GRN_RECEIPT_XPATH,
             },
             {"name": "RMPO List", "id": "0005_0050_0020", "icon": "RM"},
             {"name": "Indent List", "id": "0005_0080_0020", "icon": "IN"},
@@ -74,9 +81,16 @@ MODULE_GROUPS = [
         "name": "Finance",
         "accent": "violet",
         "modules": [
-            {"name": "Advance PR List", "id": "0065_0880_0010_0020", "icon": "PR"},
-            {"name": "Supplier Inv List", "id": "0065_0880_0020_0020", "icon": "SI"},
-            {"name": "Expense Inv List", "id": "0065_0880_0030_0020", "icon": "EI"},
+            {"name": "Advance PR", "id": "0065_0880_0010_0020", "icon": "PR"},
+            {"name": "Supplier Inv", "id": "0065_0880_0020_0020", "icon": "SI"},
+            {"name": "Expense Inv", "id": "0065_0880_0030_0020", "icon": "EI"},
+        ],
+    },
+    {
+        "name": "Reports",
+        "accent": "cyan",
+        "modules": [
+            {"name": "Reports", "id": "reports", "icon": "RP"},
         ],
     },
     {

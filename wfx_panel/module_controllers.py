@@ -40,19 +40,19 @@ class ModuleController:
 class CatalogModule(ModuleController):
     module_id = "0003_6200"
     kind = "catalog"
-    description = "Tìm Style · Season · Costing/BOM."
+    description = "Quản lý Style, làm và tra cứu Costing, BOM."
 
 
 class OCListModule(ModuleController):
     module_id = "0004_0050_0020"
     kind = "oc"
-    description = "Mở/tìm OC List, tạo Upload OC New hoặc Revise OC."
+    description = "Quản lý, tạo mới và điều chỉnh đơn đặt hàng OC."
 
 
 class SampleListModule(ModuleController):
     module_id = "0004_0056_4070"
     kind = "sample"
-    description = "Mở Sample List, tìm Sample hoặc tạo Sample Order mới."
+    description = "Quản lý và tạo mới đơn hàng mẫu."
 
     def open(self, login_module: Any, log: Callable[[str], None]) -> dict:
         opener = getattr(login_module, "open_module_with_floating_filter", None)
@@ -64,7 +64,7 @@ class SampleListModule(ModuleController):
 class SaleASNModule(ModuleController):
     module_id = "0004_0070_0020"
     kind = "sale_asn"
-    description = "Tạo Sale ASN nhiều PO từ Excel, tra cứu và tải Documents."
+    description = "Tạo và tra cứu thông báo giao hàng Sale ASN."
 
     def open(self, login_module: Any, log: Callable[[str], None]) -> dict:
         opener = getattr(login_module, "open_module_with_floating_filter", None)
@@ -76,77 +76,89 @@ class SaleASNModule(ModuleController):
 class GDNDispatchModule(ModuleController):
     module_id = "gdn_dispatch"
     kind = "gdn_dispatch"
-    description = "Tạo GDN Dispatch từ Invoice GRN sau thời gian chờ bắt buộc."
+    description = "Tạo phiếu xuất kho GDN từ Invoice GRN."
+
+
+class GRNReceiptModule(ModuleController):
+    module_id = "grn_receipt"
+    kind = "grn_receipt"
+    description = "Nhập kho nguyên phụ liệu từ RMPO và tra cứu GRN."
 
 
 class RMPOListModule(ModuleController):
     module_id = "0005_0050_0020"
     kind = "rmpo"
-    description = "Mở RMPO List hoặc lọc kết hợp theo Supplier và RMPO No."
+    description = "Quản lý đơn mua nguyên phụ liệu và theo dõi nhập kho."
 
 
 class IndentListModule(ModuleController):
     module_id = "0005_0080_0020"
     kind = "indent"
-    description = "Mở Indent List hoặc lọc kết hợp theo 4 điều kiện."
+    description = "Quản lý yêu cầu cấp nguyên phụ liệu."
 
 
 class UserIndentModule(ModuleController):
     module_id = "user_indent_list"
     kind = "indent"
-    description = "Mở User Indent List hoặc lọc kết hợp theo 4 điều kiện."
+    description = "Tra cứu yêu cầu cấp nguyên phụ liệu của người dùng."
 
 
 class QAListModule(ModuleController):
     module_id = "0063_0030_0020"
     kind = "list_new"
-    description = "Mở QA List hoặc tạo QA Request mới."
+    description = "Quản lý và tạo yêu cầu kiểm tra chất lượng."
 
 
 class AdvancePRListModule(ModuleController):
     module_id = "0065_0880_0010_0020"
     kind = "advance_pr"
-    description = "Mở, lọc Advance PR hoặc tạo yêu cầu mới."
+    description = "Quản lý và tạo đề nghị thanh toán tạm ứng."
 
 
 class SupplierInvoiceListModule(ModuleController):
     module_id = "0065_0880_0020_0020"
     kind = "supplier_invoice"
-    description = "Mở, lọc và Cancel Supplier Invoice an toàn."
+    description = "Quản lý, tra cứu và hủy hóa đơn nhà cung cấp."
 
 
 class ExpenseInvoiceListModule(ModuleController):
     module_id = "0065_0880_0030_0020"
     kind = "expense_invoice"
-    description = "Mở, lọc Expense Invoice hoặc tạo hóa đơn mới."
+    description = "Quản lý và tạo hóa đơn chi phí."
+
+
+class ReportsModule(ModuleController):
+    module_id = "reports"
+    kind = "reports"
+    description = "Tải báo cáo WFX với tham số đã chọn."
 
 
 class OrgStructureModule(ModuleController):
     module_id = "0090_0001"
-    description = "Mở cấu trúc tổ chức."
+    description = "Quản lý cơ cấu tổ chức."
 
 
 class SystemCodingModule(ModuleController):
     module_id = "0090_0250"
-    description = "Mở cấu hình mã hệ thống."
+    description = "Quản lý mã dùng trong hệ thống."
 
 
 class CompanySetupModule(ModuleController):
     module_id = "0090_0007"
     kind = "company_setup"
-    description = "Mở thiết lập công ty hoặc đổi nơi áp dụng FOC."
+    description = "Quản lý thiết lập công ty và nơi áp dụng FOC."
 
 
 class BuyerListModule(ModuleController):
     module_id = "0004_0010_1720"
     kind = "buyer"
-    description = "Mở Buyers List hoặc tìm và mở Buyer đầu tiên phù hợp."
+    description = "Quản lý và tra cứu khách hàng."
 
 
 class SupplierListModule(ModuleController):
     module_id = "0005_0010_1290"
     kind = "supplier"
-    description = "Mở Supplier theo Category hoặc tìm Supplier trên mọi Category."
+    description = "Quản lý và tra cứu nhà cung cấp."
 
 
 CONTROLLER_TYPES = (
@@ -155,6 +167,7 @@ CONTROLLER_TYPES = (
     SampleListModule,
     SaleASNModule,
     GDNDispatchModule,
+    GRNReceiptModule,
     RMPOListModule,
     IndentListModule,
     UserIndentModule,
@@ -162,6 +175,7 @@ CONTROLLER_TYPES = (
     AdvancePRListModule,
     SupplierInvoiceListModule,
     ExpenseInvoiceListModule,
+    ReportsModule,
     OrgStructureModule,
     SystemCodingModule,
     CompanySetupModule,

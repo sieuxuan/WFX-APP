@@ -25,10 +25,9 @@ def test_prefs_defaults(tmp_path: Path):
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["theme"] == "light"
     assert loaded["close_after_module"] is True
-    assert loaded["return_to_list_after_action"] is False
     assert loaded["favorite_module_ids"] == []
     assert loaded["hotkey_label"] == "Ctrl + Shift + X"
-    assert loaded["open_costing_file_after_export"] is True
+    assert loaded["open_excel_file_after_download"] is True
     assert loaded["open_costing_folder_after_export"] is False
     assert loaded["sale_asn_po_search_fields"] == [
         "po",
@@ -64,13 +63,11 @@ def test_prefs_partial_update_preserves_others(tmp_path: Path):
     prefs.save_prefs(
         base_dir=tmp_path,
         close_after_module=False,
-        return_to_list_after_action=True,
         favorite_module_ids=["0003_6200", "0003_6200", "0004_0050_0020"],
     )
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["theme"] == "dark"
     assert loaded["close_after_module"] is False
-    assert loaded["return_to_list_after_action"] is True
     assert loaded["favorite_module_ids"] == ["0003_6200", "0004_0050_0020"]
 
 
@@ -88,16 +85,27 @@ def test_costing_export_directory_round_trip(tmp_path: Path):
     )
 
 
-def test_costing_export_open_options_round_trip(tmp_path: Path):
+def test_excel_download_open_option_round_trip(tmp_path: Path):
     prefs.save_prefs(
         base_dir=tmp_path,
-        open_costing_file_after_export=False,
+        open_excel_file_after_download=False,
         open_costing_folder_after_export=True,
     )
 
     loaded = prefs.load_prefs(base_dir=tmp_path)
-    assert loaded["open_costing_file_after_export"] is False
+    assert loaded["open_excel_file_after_download"] is False
     assert loaded["open_costing_folder_after_export"] is True
+
+
+def test_excel_download_option_migrates_from_costing_key(tmp_path: Path):
+    (tmp_path / "prefs.json").write_text(
+        '{"open_costing_file_after_export": false}',
+        encoding="utf-8",
+    )
+
+    assert prefs.load_prefs(base_dir=tmp_path)[
+        "open_excel_file_after_download"
+    ] is False
 
 
 def test_save_account_temp_file_uses_dot_env_tmp_suffix(tmp_path: Path):
@@ -461,7 +469,6 @@ def test_old_settings_survive_new_update_fields(tmp_path):
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["theme"] == "dark"
     assert loaded["close_after_module"] is False
-    assert loaded["return_to_list_after_action"] is False
     assert loaded["hotkey"] == "alt+shift+k"
     assert loaded["autostart"] is True
     assert loaded["update_channel"] == "stable"

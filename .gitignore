@@ -11,6 +11,10 @@ __pycache__/
 /dist/
 /build-next/
 /dist-next/
+/build-fixed/
+/dist-fixed/
+/build-report-fix/
+/dist-report-fix/
 /.worktrees/
 
 # Runtime artifacts: ảnh lỗi WFX + file xuất ra chứa dữ liệu nghiệp vụ thật

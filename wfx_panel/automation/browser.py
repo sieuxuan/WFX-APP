@@ -159,11 +159,12 @@ def _wait_for_chrome_ready(timeout_s: float) -> bool:
 
 
 def _disable_password_manager(profile_dir: Path) -> None:
-    """Tắt Password Manager chỉ trong profile automation của WFX.
+    """Cấu hình Password Manager và Downloads cho profile automation WFX.
 
     Không thay đổi profile Chrome/Edge cá nhân. Chromium đọc các preference
     này trước khi tạo cửa sổ đầu tiên, vì vậy popup Save/Remember password
-    không xuất hiện sau thao tác login tự động.
+    không xuất hiện sau thao tác login tự động và Downloads history luôn có
+    một thư mục thật để mở file hoặc hiện trong Explorer.
     """
     preferences_path = profile_dir / "Default" / "Preferences"
     preferences_path.parent.mkdir(parents=True, exist_ok=True)
@@ -183,6 +184,20 @@ def _disable_password_manager(profile_dir: Path) -> None:
     profile["password_manager_enabled"] = False
     preferences["credentials_enable_service"] = False
     preferences["password_manager_leak_detection"] = False
+    downloads_dir = Path(
+        os.getenv("USERPROFILE") or str(Path.home())
+    ) / "Downloads"
+    try:
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    download = preferences.setdefault("download", {})
+    if not isinstance(download, dict):
+        download = {}
+        preferences["download"] = download
+    download["default_directory"] = str(downloads_dir)
+    download["directory_upgrade"] = True
+    download["prompt_for_download"] = False
 
     write_json_atomic(preferences_path, preferences, separators=(",", ":"))
 

@@ -165,7 +165,97 @@ class FakeLogin:
 
     def search_rmpo_list(self, xpath, supplier, order_no, log=print):
         self.calls.append(("search_rmpo", xpath, supplier, order_no))
-        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
+        return {
+            "ok": True,
+            "code": "RMPO_RESULTS_READY",
+            "message": "found",
+            "result_count": 1,
+            "rmpo_rows": [
+                {
+                    "row_key": "row-1",
+                    "status": "Part Received",
+                    "supplier": "Acme",
+                    "order_no": "RM-42",
+                    "last_created": "05/08/2026",
+                    "qty": "120",
+                }
+            ],
+        }
+
+    def open_rmpo_result_action(
+        self,
+        row_key,
+        order_no,
+        supplier,
+        expected_status,
+        action,
+        log=print,
+    ):
+        self.calls.append((
+            "open_rmpo_result_action",
+            row_key,
+            order_no,
+            supplier,
+            expected_status,
+            action,
+        ))
+        return {
+            "ok": True,
+            "code": "RMPO_PO_OPENED",
+            "message": "opened",
+        }
+
+    def prepare_grn_receipt(
+        self, xpath, rmpo_no, supplier, mode, log=print
+    ):
+        self.calls.append(("prepare_grn_receipt", xpath, rmpo_no, supplier, mode))
+        if mode == "foreign":
+            return {
+                "ok": True,
+                "code": "GRN_SOURCING_ASN_READY",
+                "message": "ready",
+                "rmpo_no": rmpo_no,
+                "supplier": supplier or "Acme",
+                "mode": mode,
+            }
+        return {
+            "ok": True,
+            "code": "GRN_SITE_SELECTION_REQUIRED",
+            "message": "choose site",
+            "rmpo_no": rmpo_no,
+            "supplier": supplier or "Acme",
+            "mode": mode,
+            "sites": [" Hanoi ", "HCM"],
+        }
+
+    def continue_grn_receipt(self, supplier, log=print):
+        self.calls.append(("continue_grn_receipt", supplier))
+        return {
+            "ok": True,
+            "code": "GRN_SITE_SELECTION_REQUIRED",
+            "message": "choose site",
+            "supplier": supplier,
+            "mode": "foreign",
+            "sites": ["Hanoi", "HCM"],
+        }
+
+    def finalize_grn_receipt(self, rmpo_no, site, log=print):
+        self.calls.append(("finalize_grn_receipt", rmpo_no, site))
+        return {
+            "ok": True,
+            "code": "GRN_NEW_READY",
+            "message": "ready",
+            "rmpo_no": rmpo_no,
+            "site": site,
+        }
+
+    def search_grn_receipt(self, filter_kind, query, log=print):
+        self.calls.append(("search_grn_receipt", filter_kind, query))
+        return {
+            "ok": True,
+            "code": "GRN_SEARCH_OPENED",
+            "message": "opened",
+        }
 
     def search_indent_list(
         self, xpath, module_name, supplier, article, indent_no, style, log=print
@@ -2090,12 +2180,8 @@ def test_toggle_prefs_persist(tmp_path):
     assert loaded["toast_enabled"] is False
 
 
-def test_return_to_list_and_module_favorites_persist(tmp_path):
+def test_module_favorites_persist(tmp_path):
     api, _ = make_api(tmp_path)
-    assert api.get_initial_state()["return_to_list_after_action"] is False
-    result = api.set_return_to_list_after_action(True)
-    assert result["return_to_list_after_action"] is True
-
     pinned = api.set_module_favorite("0003_6200", True)
     assert pinned["favorite_module_ids"] == ["0003_6200"]
     assert api.get_initial_state()["favorite_module_ids"] == ["0003_6200"]
@@ -2111,19 +2197,17 @@ def test_focus_chrome_on_module_defaults_on_and_persists(tmp_path):
     assert prefs.load_prefs(base_dir=tmp_path)["focus_chrome_on_module"] is False
 
 
-def test_costing_export_open_options_are_exposed_and_persisted(tmp_path):
+def test_excel_download_open_option_is_exposed_and_persisted(tmp_path):
     api, _ = make_api(tmp_path)
     initial = api.get_initial_state()
-    assert initial["open_costing_file_after_export"] is True
+    assert initial["open_excel_file_after_download"] is True
     assert initial["open_costing_folder_after_export"] is False
 
-    saved = api.set_costing_export_open_options(False, True)
+    saved = api.set_excel_file_after_download(False)
 
-    assert saved["open_costing_file_after_export"] is False
-    assert saved["open_costing_folder_after_export"] is True
+    assert saved["open_excel_file_after_download"] is False
     loaded = prefs.load_prefs(base_dir=tmp_path)
-    assert loaded["open_costing_file_after_export"] is False
-    assert loaded["open_costing_folder_after_export"] is True
+    assert loaded["open_excel_file_after_download"] is False
 
 
 def test_initial_state_exposes_new_fields(tmp_path):
@@ -2135,10 +2219,9 @@ def test_initial_state_exposes_new_fields(tmp_path):
         "autostart",
         "start_hidden",
         "toast_enabled",
-        "return_to_list_after_action",
         "favorite_module_ids",
         "focus_chrome_on_module",
-        "open_costing_file_after_export",
+        "open_excel_file_after_download",
         "open_costing_folder_after_export",
         "chrome_alive",
         "session_active",
@@ -2595,7 +2678,22 @@ def test_sale_asn_documents_use_next_name_when_selected_file_is_open(
 def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):
     api, fake = make_api(tmp_path)
 
-    assert api.search_rmpo(" Acme ", " RM-42 ")["ok"] is True
+    rmpo_result = api.search_rmpo(" Acme ", " RM-42 ")
+    assert rmpo_result["ok"] is True
+    assert rmpo_result["code"] == "RMPO_RESULTS_READY"
+    assert rmpo_result["rmpos"][0] == {
+        "choice_id": rmpo_result["rmpos"][0]["choice_id"],
+        "status": "Part Received",
+        "supplier": "Acme",
+        "order_no": "RM-42",
+        "last_created": "05/08/2026",
+        "qty": "120",
+    }
+    selected = api.run_rmpo_action(
+        rmpo_result["rmpos"][0]["choice_id"],
+        "check_po",
+    )
+    assert selected["code"] == "RMPO_PO_OPENED"
     assert api.search_indent(
         "0005_0080_0020",
         " Acme ",
@@ -2619,6 +2717,14 @@ def test_rmpo_indent_and_list_new_workflows_delegate(tmp_path):
         constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
         "Acme",
         "RM-42",
+    ) in fake.calls
+    assert (
+        "open_rmpo_result_action",
+        "row-1",
+        "RM-42",
+        "Acme",
+        "Part Received",
+        "check_po",
     ) in fake.calls
     assert (
         "search_indent",
@@ -2683,6 +2789,71 @@ def test_finance_searches_delegate_multiple_filters(tmp_path):
         "INV-01",
         "ORD-01",
     ) in fake.calls
+
+
+def test_grn_foreign_handoff_keeps_supplier_and_requires_user_confirmation(tmp_path):
+    api, fake = make_api(tmp_path)
+    rmpo = api.search_rmpo("", "RM-42")["rmpos"][0]
+
+    prepared = api.prepare_grn_receipt(
+        rmpo["order_no"], "foreign", rmpo["choice_id"]
+    )
+
+    assert prepared["code"] == "GRN_SOURCING_ASN_READY"
+    assert prepared["supplier"] == "Acme"
+    token = prepared["receipt_token"]
+    rejected = api.continue_grn_receipt(token, False)
+    assert rejected["code"] == "GRN_SOURCING_CONFIRM_REQUIRED"
+
+    continued = api.continue_grn_receipt(token, True)
+    assert continued["code"] == "GRN_SITE_SELECTION_REQUIRED"
+    assert continued["sites"] == ["Hanoi", "HCM"]
+    completed = api.finalize_grn_receipt(token, " hanoi ")
+    assert completed["code"] == "GRN_NEW_READY"
+    assert api.finalize_grn_receipt(token, "Hanoi")["code"] == "GRN_SESSION_EXPIRED"
+    assert (
+        "prepare_grn_receipt",
+        constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
+        "RM-42",
+        "Acme",
+        "foreign",
+    ) in fake.calls
+    assert ("continue_grn_receipt", "Acme") in fake.calls
+    assert ("finalize_grn_receipt", "RM-42", "Hanoi") in fake.calls
+
+
+def test_grn_domestic_direct_input_and_search_delegate(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    prepared = api.prepare_grn_receipt(" RM-77 ", "domestic")
+
+    assert prepared["code"] == "GRN_SITE_SELECTION_REQUIRED"
+    assert prepared["sites"] == ["Hanoi", "HCM"]
+    assert api.finalize_grn_receipt(
+        prepared["receipt_token"], "unknown"
+    )["code"] == "GRN_SITE_INVALID"
+    assert api.search_grn(" invoice ", " INV-9 ")["code"] == "GRN_SEARCH_OPENED"
+    assert (
+        "prepare_grn_receipt",
+        constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
+        "RM-77",
+        "",
+        "domestic",
+    ) in fake.calls
+    assert ("search_grn_receipt", "invoice", "INV-9") in fake.calls
+
+
+def test_grn_handoff_rejects_a_received_rmpo_before_automation(tmp_path):
+    api, fake = make_api(tmp_path)
+    found = api.search_rmpo("", "RM-42")
+    choice_id = found["rmpos"][0]["choice_id"]
+    api._rmpo_choices[choice_id]["status"] = " Received "
+
+    result = api.prepare_grn_receipt("RM-42", "domestic", choice_id)
+
+    assert result["code"] == "GRN_ALREADY_RECEIVED"
+    assert "không thể nhập thêm" in result["message"]
+    assert not any(call[0] == "prepare_grn_receipt" for call in fake.calls)
 
 
 def test_supplier_invoice_cancel_tokens_multiple_results_before_choice(tmp_path):

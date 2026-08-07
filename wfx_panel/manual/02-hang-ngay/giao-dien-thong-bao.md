@@ -22,12 +22,13 @@ Chọn cách WFX Smart hiển thị và quyết định những thông báo bạ
 > Chọn `Tự động` để giao diện đi theo chế độ sáng hoặc tối của Windows.
 
 > [!meo]
-> Bật `Mở file Costing sau khi tải` trong thẻ Tự động hóa nếu bạn muốn file
-> vừa xuất tự mở bằng Excel hoặc ứng dụng mặc định.
+> Bật `Mở file Excel sau khi tải` trong thẻ Tự động hóa nếu bạn muốn mọi file
+> Excel vừa tải từ ứng dụng tự mở bằng Excel hoặc ứng dụng mặc định.
 
 > [!luuy]
 > `Chế độ quản trị` chỉ hiện khi tài khoản được cấp quyền. Bật mục này để xem
-> các module Admin dành cho bạn.
+> các module Admin dành cho bạn. Phần `Dữ liệu Article & Style` cũng chỉ hiện
+> với tài khoản có quyền quản trị.
 
 ## Gặp lỗi thì sao
 

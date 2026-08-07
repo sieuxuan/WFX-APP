@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import os
 import queue
+import shutil
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -21,6 +23,7 @@ from playwright.sync_api import sync_playwright as _sync_playwright
 
 T = TypeVar("T")
 CDP_CONNECT_TIMEOUT_MS = 10_000
+NATIVE_DOWNLOAD_TIMEOUT_SECONDS = 180
 
 
 def _user_downloads_dir() -> Path:
@@ -30,19 +33,106 @@ def _user_downloads_dir() -> Path:
     return Path(profile) / "Downloads"
 
 
-def _available_download_path(directory: Path, file_name: str) -> Path:
-    """Không ghi đè file sẵn có: thêm hậu tố (2), (3)… như Chrome."""
+DownloadSnapshot = dict[Path, tuple[int, int]]
 
-    directory.mkdir(parents=True, exist_ok=True)
-    target = directory / file_name
-    if not target.exists():
-        return target
-    stem, suffix = target.stem, target.suffix
-    for index in range(2, 1000):
-        candidate = directory / f"{stem} ({index}){suffix}"
-        if not candidate.exists():
-            return candidate
-    return directory / f"{stem} ({os.getpid()}){suffix}"
+
+def snapshot_downloads() -> DownloadSnapshot:
+    """Ghi nhận file hiện có để nhận đúng file Chrome vừa tải sau một click."""
+
+    directory = _user_downloads_dir()
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return {}
+    snapshot: DownloadSnapshot = {}
+    try:
+        files = list(directory.iterdir())
+    except OSError:
+        return snapshot
+    for path in files:
+        try:
+            if path.is_file():
+                stat = path.stat()
+                snapshot[path] = (stat.st_size, stat.st_mtime_ns)
+        except OSError:
+            continue
+    return snapshot
+
+
+def _matches_chrome_download_name(path: Path, suggested_name: str) -> bool:
+    """Nhận cả tên gốc và hậu tố chống trùng ``(1)``, ``(2)`` của Chrome."""
+
+    if path.name.casefold() == suggested_name.casefold():
+        return True
+    suggested = Path(suggested_name)
+    name = path.name
+    if suggested.suffix and not name.casefold().endswith(suggested.suffix.casefold()):
+        return False
+    without_suffix = name[: -len(suggested.suffix)] if suggested.suffix else name
+    prefix = f"{suggested.stem} ("
+    if not without_suffix.casefold().startswith(prefix.casefold()):
+        return False
+    number = without_suffix[len(prefix) :]
+    return number.endswith(")") and number[:-1].isdigit()
+
+
+def save_native_download(
+    download: Any,
+    target: str | Path,
+    before: DownloadSnapshot | None = None,
+) -> Path:
+    """Sao chép file Chrome tải native tới nơi flow cần dùng.
+
+    ``no_defaults=True`` giữ file gốc trong Downloads để nút Mở/Hiện trong thư
+    mục của Chrome hoạt động. Những flow cần một đường dẫn riêng nhận bản sao,
+    thay vì buộc Chrome tải vào thư mục artifact rồi xóa khi CDP ngắt.
+    """
+
+    claim_download(download)
+    directory = _user_downloads_dir()
+    suggested_name = str(download.suggested_filename or "").strip()
+    deadline = time.monotonic() + NATIVE_DOWNLOAD_TIMEOUT_SECONDS
+    stable: tuple[Path, tuple[int, int]] | None = None
+    source: Path | None = None
+    while time.monotonic() < deadline:
+        try:
+            files = list(directory.iterdir())
+        except OSError as error:
+            raise FileNotFoundError("Không đọc được thư mục Downloads.") from error
+        candidates: list[tuple[int, Path, tuple[int, int]]] = []
+        for path in files:
+            try:
+                if not path.is_file() or not _matches_chrome_download_name(
+                    path, suggested_name
+                ):
+                    continue
+                stat = path.stat()
+                current = (stat.st_size, stat.st_mtime_ns)
+                if before is not None and before.get(path) == current:
+                    continue
+                candidates.append((stat.st_mtime_ns, path, current))
+            except OSError:
+                continue
+        if candidates:
+            _, candidate, current = max(candidates, key=lambda item: item[0])
+            if stable == (candidate, current):
+                source = candidate
+                break
+            stable = (candidate, current)
+        time.sleep(0.1)
+    if source is None:
+        raise FileNotFoundError(
+            f"Không tìm thấy file Chrome vừa tải: {suggested_name or 'download'}."
+        )
+    destination = Path(target)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        same_file = source.resolve() == destination.resolve()
+    except OSError:
+        same_file = False
+    if not same_file:
+        shutil.copy2(source, destination)
+    return destination
 
 
 class AutomationCancelled(BaseException):
@@ -94,9 +184,9 @@ class AutomationRuntime:
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._closed = False
-        # Playwright đổi thư mục tải của Chrome sang temp riêng của nó rồi xóa
-        # sạch khi ngắt CDP. Download nào flow không nhận là của người dùng tự
-        # bấm; phải trả về Downloads thật, nếu không họ tải xong mà mất file.
+        # Kết nối CDP dùng no_defaults=True nên Chrome tự quản lý Downloads.
+        # Ta vẫn theo dõi để log file người dùng tự tải và phân biệt với file
+        # mà flow đã claim để xử lý tiếp.
         self._unclaimed_downloads: list[Any] = []
         self._tracked_contexts: set[int] = set()
         self.log_sink: Callable[[str], None] | None = None
@@ -198,29 +288,28 @@ class AutomationRuntime:
                 del self._unclaimed_downloads[index]
                 return
 
-    def _rescue_unclaimed_downloads(self) -> None:
-        """Lưu file người dùng tự tải trước khi Playwright xóa thư mục tạm."""
+    def _finish_unclaimed_downloads(self) -> None:
+        """Ghi log download native; Chrome tự hoàn tất sau khi CDP đã nhả."""
         pending = list(self._unclaimed_downloads)
         self._unclaimed_downloads.clear()
         self._tracked_contexts.clear()
-        if not pending:
-            return
         directory = _user_downloads_dir()
         for download in pending:
             try:
                 name = str(download.suggested_filename or "").strip()
-                target = _available_download_path(directory, name or "wfx-download")
-                download.save_as(str(target))
+                self._log(
+                    "[DOWNLOAD] Chrome đã lưu file bạn tải về "
+                    f"{directory / (name or 'wfx-download')}."
+                )
             except Exception:
                 continue
-            self._log(f"[DOWNLOAD] Đã lưu file bạn tải về {target}.")
 
     def _release_connections(self) -> None:
         """Nhả driver sau mỗi flow; Chrome ngoài vẫn mở và giữ phiên đăng nhập."""
-        # Phải chạy TRƯỚC khi nhả driver: playwright.stop() xóa thư mục artifacts
-        # chứa file tạm, sau đó không cứu được nữa.
+        # Không chờ Download.path(): ở native mode, Chrome có thể tiếp tục tải
+        # bình thường sau khi CDP ngắt và Playwright không sở hữu artifact.
         try:
-            self._rescue_unclaimed_downloads()
+            self._finish_unclaimed_downloads()
         except Exception:
             pass
         self._browser = None
@@ -287,6 +376,7 @@ class AutomationRuntime:
             return playwright.chromium.connect_over_cdp(
                 cdp_url,
                 timeout=CDP_CONNECT_TIMEOUT_MS,
+                no_defaults=True,
             )
         self.checkpoint()
         if self._browser is not None:
@@ -299,6 +389,7 @@ class AutomationRuntime:
         self._browser = playwright.chromium.connect_over_cdp(
             cdp_url,
             timeout=CDP_CONNECT_TIMEOUT_MS,
+            no_defaults=True,
         )
         self._track_downloads(self._browser)
         return self._browser

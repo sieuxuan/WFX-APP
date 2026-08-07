@@ -227,18 +227,75 @@ def _catalog_grid_frame(
     previous_frame: Frame | None = None,
     timeout_seconds: float = 15,
 ) -> Frame:
-    """Chờ Angular AG Grid nằm trong frame right của Catalog."""
+    """Chờ đúng AG Grid Catalog đang hiển thị ở body frame.
+
+    Khi người dùng chuyển sang module khác, Chromium đôi lúc vẫn giữ Frame
+    Catalog cũ trong ``page.frames`` vài giây. URL và DOM của frame đó còn nguyên
+    nhưng phần tử đã bị ẩn/detach, nên click toolbar sẽ timeout mãi. Không dùng
+    identity ``previous_frame`` làm điều kiện mới vì WFX cũng có thể reload tài
+    liệu *trong cùng* Frame object.
+    """
+    _ = previous_frame
     deadline = time.monotonic() + max(0.1, timeout_seconds)
     while time.monotonic() < deadline:
-        for frame in page.frames:
-            if frame != previous_frame and "wfxcataloglist" in frame.url.lower():
-                try:
-                    if frame.locator(".ag-root-wrapper").count() > 0:
-                        return frame
-                except PlaywrightError:
-                    pass
+        for frame in reversed(page.frames):
+            if "wfxcataloglist" not in frame.url.lower():
+                continue
+            if _catalog_grid_is_interactive(frame):
+                return frame
         _wait(page, 250)
     raise PlaywrightTimeoutError("Không tìm thấy AG Grid của Catalog.")
+
+
+def _catalog_grid_is_interactive(frame: Frame) -> bool:
+    """Chỉ nhận grid còn gắn với frame đang nhìn thấy trên màn hình."""
+    frame_element = None
+    try:
+        if frame.is_detached():
+            return False
+        root = frame.locator(".ag-root-wrapper").first
+        if root.count() != 1:
+            return False
+        grid_visible = bool(
+            root.evaluate(
+                """root => {
+                    const style = getComputedStyle(root);
+                    const rect = root.getBoundingClientRect();
+                    return document.visibilityState !== 'hidden'
+                        && style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && rect.width > 0 && rect.height > 0;
+                }"""
+            )
+        )
+        if not grid_visible:
+            return False
+        # URL/DOM của document cũ đôi khi vẫn đọc được sau khi người dùng chuyển
+        # module. Kiểm tra cả HTMLFrameElement ở cha để loại grid nằm trong pane
+        # đã bị hidden. Main frame không có frame element thì coi như hợp lệ.
+        try:
+            frame_element = frame.frame_element()
+        except PlaywrightError:
+            return True
+        return bool(
+            frame_element.evaluate(
+                """element => {
+                    const style = getComputedStyle(element);
+                    const rect = element.getBoundingClientRect();
+                    return style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && rect.width > 0 && rect.height > 0;
+                }"""
+            )
+        )
+    except PlaywrightError:
+        return False
+    finally:
+        if frame_element is not None:
+            try:
+                frame_element.dispose()
+            except PlaywrightError:
+                pass
 
 
 def _wait_catalog_grid_data_ready(
@@ -293,19 +350,26 @@ def _wait_catalog_grid_data_ready(
 
 
 def _catalog_filter_row_active(grid: Frame) -> bool:
-    """Floating Filter là trạng thái của header, không phải riêng cột Code."""
+    """Chỉ coi filter bật khi có ô nhập thực sự dùng được trong grid hiện tại."""
     try:
         root = grid.locator(".ag-root-wrapper").first
         return bool(
             root.evaluate(
                 """root => [...root.querySelectorAll(
-                    '.ag-header-row-column-filter, .ag-floating-filter'
-                )].some(row => {
+                    '.ag-floating-filter input, .ag-header-row-column-filter input'
+                )].some(input => {
+                    const row = input.closest(
+                        '.ag-header-row-column-filter, .ag-floating-filter'
+                    );
+                    if (!row || input.disabled) return false;
                     const style = getComputedStyle(row);
                     const rect = row.getBoundingClientRect();
+                    const inputRect = input.getBoundingClientRect();
                     return style.display !== 'none'
                         && style.visibility !== 'hidden'
-                        && rect.height >= 16;
+                        && rect.height >= 16
+                        && inputRect.width >= 8
+                        && inputRect.height >= 12;
                 })"""
             )
         )
@@ -323,6 +387,8 @@ def _show_catalog_floating_filter(
     deadline = time.monotonic() + max(0.1, timeout_seconds)
     excluded_frame = previous_frame
     last_error: Exception | None = None
+    clicked_grid_id: int | None = None
+    clicked_at = 0.0
     while time.monotonic() < deadline:
         try:
             remaining = max(0.1, deadline - time.monotonic())
@@ -341,34 +407,43 @@ def _show_catalog_floating_filter(
                     _wait_catalog_grid_data_ready(grid)
                 _write_log(log, "[FILTER] Floating Filter đã sẵn sàng, dùng lại grid.")
                 return grid
-            show_button = grid.locator("#showfloatingfilter")
-            if show_button.count() > 0 and show_button.is_visible():
-                _write_log(log, "[FILTER] Đang bật Show Floating Filters...")
-                remaining_ms = max(
-                    100,
-                    min(3_000, int((deadline - time.monotonic()) * 1_000)),
-                )
-                show_button.click(timeout=remaining_ms)
-            while (
-                time.monotonic() < deadline
-                and not _catalog_filter_row_active(grid)
+            grid_id = id(grid)
+            show_button = grid.locator("#showfloatingfilter").first
+            # Click Playwright bị lớp loading/blockUI chặn dù handler của WFX đã
+            # sẵn sàng. Dispatch native click trực tiếp; button là toggle nên chỉ
+            # cho phép một lần trên cùng grid, tránh retry biến thành tắt filter.
+            if (
+                show_button.count() == 1
+                and show_button.is_visible()
+                and (clicked_grid_id != grid_id or not clicked_at)
             ):
-                _wait(grid, 150)
-            if not _catalog_filter_row_active(grid):
-                raise PlaywrightTimeoutError(
-                    "Hàng Floating Filter chưa hiển thị sau khi bật."
+                _write_log(log, "[FILTER] Đang bật Show Floating Filters...")
+                show_button.evaluate(
+                    """button => {
+                        button.dispatchEvent(new MouseEvent('click', {
+                            bubbles: true, cancelable: true, view: window
+                        }));
+                    }"""
                 )
-            if require_data_ready:
-                _wait_catalog_grid_data_ready(
-                    grid,
-                    timeout_seconds=max(0.1, deadline - time.monotonic()),
-                )
-            _write_log(log, "[FILTER] Đã sẵn sàng hàng Floating Filter.")
-            return grid
+                clicked_grid_id = grid_id
+                clicked_at = time.monotonic()
+            # Chờ DOM re-render bằng các lát nhỏ. Nếu frame/grid bị thay trong
+            # lúc đó, vòng ngoài sẽ tự chọn grid mới và mới được click một lần.
+            if _catalog_filter_row_active(grid):
+                if require_data_ready:
+                    _wait_catalog_grid_data_ready(
+                        grid,
+                        timeout_seconds=max(0.1, deadline - time.monotonic()),
+                    )
+                _write_log(log, "[FILTER] Đã sẵn sàng hàng Floating Filter.")
+                return grid
+            _wait(grid, 150)
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             last_error = exc
             # Angular/WFX có thể thay frame một lần nữa sau khi Master load.
             excluded_frame = None
+            clicked_grid_id = None
+            clicked_at = 0.0
             if time.monotonic() < deadline:
                 _wait(page, min(300, int((deadline - time.monotonic()) * 1_000)))
     raise PlaywrightTimeoutError(f"Floating Filter chưa sẵn sàng: {last_error}")

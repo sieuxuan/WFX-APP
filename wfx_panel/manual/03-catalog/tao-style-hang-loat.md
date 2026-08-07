@@ -24,7 +24,7 @@ khi muốn app Save ngay sau khi điền xong từng dòng.
 | Cột | Cách dùng |
 |---|---|
 | Type | Chọn `New` hoặc `Copy`. |
-| Style copy | Bắt buộc với `Copy`. Mã bắt đầu bằng SWN/SKN được tìm theo Article Code; giá trị khác được tìm theo Buyer Reference. |
+| Style copy | Bắt buộc với `Copy`. Dropdown lấy `Article Name` trong Article List có `Article Category = Apparel`; app tìm trên WFX bằng `ArticleCode/Name`. |
 | Material Type | Chọn `KNIT` hoặc `WOVEN`. |
 | Các cột còn lại | `New` cần điền đủ. Với `Copy`, ô trống giữ nguyên dữ liệu Style nguồn. |
 
@@ -63,6 +63,6 @@ Card, Size Range và Season có dropdown lấy từ cache dùng chung. Sub-Categ
 | Chưa quét được dropdown | Giữ Chrome đăng nhập, chọn Group có quyền tạo Style rồi tải lại form. App vẫn ưu tiên cache gần nhất khi server hoặc WFX tạm lỗi. |
 | File báo sai header | Tải form mới và sao chép dữ liệu vào đúng cột. |
 | New báo thiếu trường | Điền đủ các cột từ Material Type đến Internal Style Ref. |
-| Không tìm thấy Style nguồn | Kiểm tra `Style copy`; SWN/SKN phải là Article Code, giá trị khác phải là Buyer Reference. |
-| Một danh sách Style nguồn xuất hiện | Chọn đúng dòng theo Article Code và Buyer Reference. |
+| Không tìm thấy Style nguồn | Kiểm tra `Style copy` theo đúng Article Name trong danh sách Apparel. |
+| Một danh sách Style nguồn xuất hiện | Chọn đúng dòng theo Article Code hoặc Article Name. |
 | Không điền được một trường | Giữ nguyên màn hình WFX, chụp ảnh lỗi trong Lịch sử và gửi cho nhóm hỗ trợ. |

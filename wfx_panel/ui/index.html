@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260804-2">
+  <link rel="stylesheet" href="style.css?v=20260805-1">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -435,11 +435,74 @@
           </section>
         </div>
 
+        <div class="special-module-workspace grn-workspace" data-module-view="grn_receipt" hidden>
+          <section class="oc-upload-card grn-create-card">
+            <div class="special-section-heading">
+              <span><strong>Nhập kho RMPO</strong></span>
+              <button type="button" class="module-secondary-button grn-rmpo-list-button" data-module-action="grn-rmpo-list">RMPO List</button>
+            </div>
+            <label class="module-multi-filter-field">
+              <span>RMPO No.</span>
+              <input class="grn-rmpo-query" type="text" autocomplete="off" placeholder="Nhập đầy đủ hoặc phần số, ví dụ 2345" aria-label="RMPO cần nhập kho" />
+            </label>
+            <div class="grn-linked-context" aria-live="polite" hidden>
+              <span>Đã nhận từ RMPO List</span>
+              <strong class="grn-linked-supplier"></strong>
+            </div>
+            <div class="workflow-choice-grid grn-mode-grid">
+              <button type="button" class="workflow-choice" data-module-action="grn-foreign" data-validation-group="grn-create" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v10H3V7Z"/><path d="M14 10h4l3 3v4h-7v-7Z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+                <span><strong>Đơn hàng nước ngoài</strong><small>Tạo Sourcing ASN rồi GRN Against ASN</small></span>
+              </button>
+              <button type="button" class="workflow-choice" data-module-action="grn-domestic" data-validation-group="grn-create" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5Z"/><path d="M8 9h8M8 13h5"/><path d="m15 16 2 2 4-5"/></svg>
+                <span><strong>Đơn hàng trong nước</strong><small>Đi thẳng tới GRN Against PO</small></span>
+              </button>
+            </div>
+
+            <section class="grn-checkpoint grn-sourcing-checkpoint" aria-live="polite" hidden>
+              <div>
+                <strong>Hoàn tất Sourcing ASN trên WFX</strong>
+                <span>RMPO <b class="grn-sourcing-rmpo"></b> đã được thêm. Hãy tự nhập đủ thông tin, số lượng và bấm Confirm.</span>
+              </div>
+              <button type="button" class="special-primary-button" data-module-action="grn-continue">Tiếp tục làm GRN</button>
+            </section>
+
+            <section class="grn-checkpoint grn-site-step" aria-live="polite" hidden>
+              <label class="module-multi-filter-field">
+                <span>Site</span>
+                <select class="grn-site-select" aria-label="Site nhận kho"><option value="">Chọn Site</option></select>
+              </label>
+              <button type="button" class="special-primary-button" data-module-action="grn-next" disabled>Next — mở New GRN</button>
+            </section>
+
+            <section class="grn-done" aria-live="polite" hidden>
+              <strong>Đã mở New GRN</strong>
+              <span>Đúng RMPO đã được chọn trên WFX. Hãy kiểm tra và hoàn tất phiếu nhập.</span>
+            </section>
+          </section>
+
+          <section class="module-search-block grn-search-block">
+            <div class="special-section-heading">
+              <span><strong>Tìm GRN</strong></span>
+            </div>
+            <div class="segmented module-filter-segmented" role="group" aria-label="Kiểu tìm GRN">
+              <button type="button" class="seg-button module-filter-button" data-filter-group="grn" data-filter-kind="invoice" aria-pressed="true">Số Invoice</button>
+              <button type="button" class="seg-button module-filter-button" data-filter-group="grn" data-filter-kind="rmpo" aria-pressed="false">RMPO / Order No.</button>
+            </div>
+            <div class="module-query-row">
+              <input class="grn-search-query" type="text" autocomplete="off" placeholder="Nhập số Invoice" aria-label="Nội dung tìm GRN" />
+              <button type="button" class="special-primary-button" data-module-action="grn-search" data-validation-group="grn-search" disabled>Tìm và mở GRN</button>
+            </div>
+            <small class="module-validation-hint" data-validation-hint="grn-search">Nhập số Invoice hoặc RMPO.</small>
+          </section>
+        </div>
+
         <div class="special-module-workspace" data-module-view="sample" hidden>
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="sample-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>Sample List</strong><small>Mở danh sách, bật ô lọc</small></span>
+              <span><strong>Sample Order</strong><small>Mở danh sách, bật ô lọc</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="sample-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -632,6 +695,34 @@
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="rmpo-search" data-validation-group="rmpo" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="rmpo">Nhập Supplier hoặc RMPO No.</small>
           </div>
+          <section class="rmpo-results" aria-live="polite" hidden>
+            <div class="catalog-results-heading">
+              <span class="rmpo-results-title">Kết quả RMPO</span>
+              <span class="rmpo-results-count"></span>
+            </div>
+            <div class="rmpo-table-wrap">
+              <table class="rmpo-table">
+                <thead>
+                  <tr><th>Status</th><th>Supplier</th><th>Order No.</th><th>Last Created</th><th>Qty</th></tr>
+                </thead>
+                <tbody class="rmpo-results-body"></tbody>
+              </table>
+              <div class="rmpo-results-empty" hidden>Không tìm thấy RMPO phù hợp.</div>
+            </div>
+            <div class="rmpo-selection" hidden>
+              <div class="rmpo-selection-copy">
+                <small>RMPO đã chọn</small>
+                <strong class="rmpo-selection-order"></strong>
+                <span class="rmpo-selection-meta"></span>
+              </div>
+              <div class="rmpo-selection-actions">
+                <button type="button" class="sale-asn-secondary-button" data-module-action="rmpo-check-po">Kiểm tra PO</button>
+                <button type="button" class="special-primary-button" data-module-action="rmpo-edit-po">Sửa PO</button>
+                <button type="button" class="special-primary-button" data-module-action="rmpo-receive">Nhập kho</button>
+                <button type="button" class="sale-asn-secondary-button" data-module-action="rmpo-check-received">Check Received</button>
+              </div>
+            </div>
+          </section>
         </div>
 
         <div class="special-module-workspace" data-module-view="indent" hidden>
@@ -655,7 +746,7 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="advance-pr-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>Advance PR List</strong><small>Mở danh sách, bật ô lọc</small></span>
+              <span><strong>Advance PR</strong><small>Mở danh sách, bật ô lọc</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="advance-pr-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -677,7 +768,7 @@
         <div class="special-module-workspace" data-module-view="supplier_invoice" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="supplier-invoice-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>Supplier Inv List</strong><small>Mở danh sách, bật ô lọc</small></span>
+            <span><strong>Supplier Inv</strong><small>Mở danh sách, bật ô lọc</small></span>
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
@@ -708,7 +799,7 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="expense-invoice-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>Expense Inv List</strong><small>Mở danh sách, bật ô lọc</small></span>
+              <span><strong>Expense Inv</strong><small>Mở danh sách, bật ô lọc</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="expense-invoice-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -725,6 +816,29 @@
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="expense-invoice-search" data-validation-group="expense-invoice" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="expense-invoice">Nhập ít nhất một điều kiện.</small>
           </div>
+        </div>
+
+        <div class="special-module-workspace reports-workspace" data-module-view="reports" hidden>
+          <section class="reports-list" aria-label="Danh sách báo cáo">
+            <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="report-shipment-summary">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5V3Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+              <span><strong>Shipment Summary</strong><small>Tải tham số, xem và xuất Excel</small></span>
+            </button>
+          </section>
+          <section class="report-parameters" hidden aria-live="polite">
+            <div class="report-parameters-heading">
+              <div class="report-parameters-title-row">
+                <strong class="report-parameters-title">Tham số báo cáo</strong>
+                <button type="button" class="report-last-month-button" data-module-action="report-last-month">Last month</button>
+              </div>
+              <small>Các giá trị được giữ lại khi bạn quay lại Reports.</small>
+            </div>
+            <div class="report-parameters-fields"></div>
+            <div class="report-parameter-actions">
+              <button type="button" class="module-secondary-button" data-module-action="report-save-parameters">Lưu tham số</button>
+              <button type="button" class="special-primary-button report-export-button" data-module-action="report-export-excel">View report &amp; Export Excel</button>
+            </div>
+          </section>
         </div>
 
         <div class="special-module-workspace" data-module-view="list_new" hidden>
@@ -861,8 +975,7 @@
         <section class="settings-panel settings-automation-panel" data-settings-panel="automation">
           <div class="settings-section-heading"><span>Khi chạy tác vụ</span></div>
           <label class="setting-row toggle-row"><div><strong>Tự chuyển sang Chrome</strong><span>Bật: hiện WFX ngay khi chạy.</span></div><input class="focus-chrome-input" type="checkbox" checked /><i></i></label>
-          <label class="setting-row toggle-row"><div><strong>Quay về danh sách khi xong</strong><span>Bật: về danh sách. Tắt: ở lại màn này.</span></div><input class="return-list-input" type="checkbox" /><i></i></label>
-          <label class="setting-row toggle-row"><div><strong>Mở file Costing sau khi tải</strong><span>Mở bằng Excel hoặc app mặc định.</span></div><input class="open-costing-file-input" type="checkbox" checked /><i></i></label>
+          <label class="setting-row toggle-row"><div><strong>Mở file Excel sau khi tải</strong><span>Áp dụng cho mọi file Excel tải từ ứng dụng.</span></div><input class="open-excel-file-input" type="checkbox" checked /><i></i></label>
 
           <div class="settings-section-heading"><span>Khởi động</span></div>
           <div class="setting-row hotkey-row"><div><strong>Phím tắt mở bảng điều khiển</strong><span>Bấm nút rồi nhấn tổ hợp mới.</span></div><button class="hotkey-button" type="button">Ctrl + Shift + X</button></div>
@@ -872,10 +985,13 @@
           <div class="settings-section-heading"><span>Cập nhật &amp; dữ liệu</span></div>
           <div class="setting-row update-info-row">
             <div><strong>Cập nhật tự động</strong><span>Tự kiểm tra mỗi 4 giờ.</span></div>
-            <span class="settings-version-badge">v1.0</span>
+            <div class="update-info-actions">
+              <span class="settings-version-badge">v1.0</span>
+              <button class="check-update-button" type="button">Kiểm tra ngay</button>
+            </div>
           </div>
           <label class="setting-row toggle-row admin-mode-row" hidden><div><strong>Chế độ quản trị</strong><span>Hiện thêm module quản trị.</span></div><input class="admin-mode-input" type="checkbox" /><i></i></label>
-          <section class="reference-sync-card" aria-labelledby="reference-sync-title">
+          <section class="reference-sync-card" aria-labelledby="reference-sync-title" hidden>
             <div class="reference-sync-heading">
               <span>
                 <strong id="reference-sync-title">Dữ liệu Article &amp; Style</strong>
@@ -965,6 +1081,6 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260804-4"></script>
+  <script src="panel.js?v=20260805-1"></script>
 </body>
 </html>

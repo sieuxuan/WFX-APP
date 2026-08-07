@@ -66,6 +66,33 @@ def test_wires_all_catalog_actions():
     assert '"scan_catalog_folders"' in JS
 
 
+def test_rmpo_results_and_status_actions_are_wired():
+    assert '"RMPO_RESULTS_READY"' in JS
+    assert '"run_rmpo_action"' in JS
+    assert 'runRmpoAction("check_po")' in JS
+    assert 'runRmpoAction("edit_po")' in JS
+    assert 'runRmpoAction("check_received")' in JS
+    assert 'status === "received"' in JS
+    assert '["received", "part received"]' in JS
+
+
+def test_grn_handoff_checkpoint_site_and_search_are_wired():
+    for method in (
+        "prepare_grn_receipt",
+        "continue_grn_receipt",
+        "finalize_grn_receipt",
+        "search_grn",
+    ):
+        assert f'"{method}"' in JS
+    assert "handoffRmpoToGrn" in JS
+    assert 'openModulePage("grn_receipt")' in JS
+    assert '"grn-rmpo-list": () => openModulePage("0005_0050_0020")' in JS
+    assert "GRN_SOURCING_ASN_READY" in JS
+    assert "GRN_SITE_SELECTION_REQUIRED" in JS
+    assert "Bạn xác nhận đã nhập đủ thông tin" in JS
+    assert "moduleFilterKinds.grn" in JS
+
+
 def test_wires_bulk_style_review_and_manual_save_flow():
     for method in [
         "download_style_template",
@@ -341,10 +368,10 @@ def test_sale_asn_existing_po_flow_passes_only_selected_stages():
     assert "selected.file_path,\n      buyer,\n      stages," in JS
 
 
-def test_return_to_list_is_opt_in_and_current_module_is_preserved():
-    assert "returnToListAfterAction = false" in JS
-    assert "result.ok && returnToListAfterAction" in JS
-    assert "set_return_to_list_after_action" in JS
+def test_completed_actions_preserve_current_module():
+    assert "returnToListAfterAction" not in JS
+    assert "set_return_to_list_after_action" not in JS
+    assert "dismissAfterSuccessfulModule" not in JS
     assert 'if (!$(".module-page").hidden)' in JS
 
 
@@ -882,6 +909,17 @@ def test_auto_update_banner_uses_one_click_installer():
     assert "installUpdate(event.currentTarget)" in JS
     assert '"Cập nhật ngay"' in JS
     assert "commit" not in JS.lower()
+
+
+def test_settings_can_check_for_updates_immediately():
+    assert 'callQuiet("check_for_updates")' in JS
+    assert '".check-update-button"' in JS
+    assert "checkUpdateNow" in JS
+
+
+def test_reference_data_uses_admin_visibility():
+    assert 'const syncCard = $(".reference-sync-card")' in JS
+    assert "syncCard.hidden = !adminAccess" in JS
 
 
 def test_panel_auto_hides_when_focus_leaves_the_app():
