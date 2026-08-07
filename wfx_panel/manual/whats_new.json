@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.0.26",
+    "date": "2026-08-07",
+    "highlights": [
+      {
+        "title": "Reports mở trong màn hình riêng",
+        "body": "Reports có màn hình riêng với danh sách báo cáo và phần tham số tách biệt. Báo cáo mở ở tab WFX khác nên bạn vẫn có thể tiếp tục làm việc ở tab chính.",
+        "entry": "danh-sach-reports"
+      },
+      {
+        "title": "Shipment Summary chọn tham số dễ hơn",
+        "body": "Các tham số của Shipment Summary được đọc trực tiếp từ WFX và hiển thị bằng dropdown, ô chọn ngày và nút Last month; có thể lưu lại để dùng cho lần sau rồi View report và Export Excel.",
+        "entry": "danh-sach-reports"
+      },
+      {
+        "title": "Color Combination - Production xuất hàng loạt",
+        "body": "Chọn OC Division, Buyer, Season và nhiều BuyerStyleReference/StyleCode để ứng dụng lần lượt view report, chờ WFX tải xong, xuất Excel và lưu tên theo BuyerStyleReference - StyleCode. File trùng tên tự thêm hậu tố (2), (3)... thay vì ghi đè.",
+        "entry": "danh-sach-reports"
+      },
+      {
+        "title": "Giao diện báo cáo gọn và ổn định hơn",
+        "body": "Các dropdown cascade không còn nhảy vị trí khi chọn Buyer hoặc Season. Tiến trình dùng chung ở footer, tránh lặp lại status và giữ khu vực chọn báo cáo luôn cố định.",
+        "entry": "danh-sach-reports"
+      }
+    ]
+  },
+  {
     "version": "1.0.25",
     "date": "2026-08-05",
     "highlights": [
