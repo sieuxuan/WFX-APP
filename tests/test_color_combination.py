@@ -1,4 +1,5 @@
 from wfx_panel.automation import color_combination
+from wfx_panel.automation.runtime import AutomationCancelled
 
 
 def _options(*labels):
@@ -108,3 +109,97 @@ def test_prune_drops_lower_levels_once_one_is_stale():
 
 def test_prune_returns_nothing_when_the_first_level_is_missing():
     assert color_combination.prune_selection({}, {}) == {}
+
+
+def _saved(style_ref):
+    return {
+        "style_ref": style_ref,
+        "style_code": "SWV0000001",
+        "file_path": f"D:/out/{style_ref}.xlsx",
+        "file_name": f"{style_ref}.xlsx",
+    }
+
+
+def test_batch_continues_after_a_style_fails():
+    """50 style một lượt: một style hỏng không được giết cả lượt chạy."""
+
+    def run_one(style_ref):
+        if style_ref == "B":
+            raise color_combination.StyleFailure(
+                "COLOR_REPORT_STYLECODE_MISSING", "Không có StyleCode."
+            )
+        return _saved(style_ref)
+
+    result = color_combination.batch_styles(
+        ["A", "B", "C"], run_one, log=lambda _line: None
+    )
+
+    assert [item["style_ref"] for item in result["saved"]] == ["A", "C"]
+    assert result["failed"] == [
+        {
+            "style_ref": "B",
+            "code": "COLOR_REPORT_STYLECODE_MISSING",
+            "message": "Không có StyleCode.",
+        }
+    ]
+    assert result["cancelled"] is False
+
+
+def test_batch_labels_unexpected_errors_with_a_generic_code():
+    def run_one(_style_ref):
+        raise ValueError("frame detached")
+
+    result = color_combination.batch_styles(
+        ["A"], run_one, log=lambda _line: None
+    )
+
+    assert result["failed"][0]["code"] == "COLOR_REPORT_STYLE_FAILED"
+    assert "frame detached" in result["failed"][0]["message"]
+
+
+def test_batch_keeps_saved_files_when_the_user_presses_stop():
+    """Stop giữa lượt vẫn phải trả về file đã tải, không mất trắng."""
+
+    def run_one(style_ref):
+        if style_ref == "C":
+            raise AutomationCancelled("ACTION_CANCELLED")
+        return _saved(style_ref)
+
+    result = color_combination.batch_styles(
+        ["A", "B", "C", "D"], run_one, log=lambda _line: None
+    )
+
+    assert [item["style_ref"] for item in result["saved"]] == ["A", "B"]
+    assert result["cancelled"] is True
+
+
+def test_batch_progress_messages_end_with_the_counter_suffix():
+    """UI đọc hậu tố n/m để hiện bộ đếm; đổi định dạng là hỏng thẻ tiến độ."""
+    seen = []
+
+    color_combination.batch_styles(
+        ["A", "B"],
+        _saved,
+        progress=lambda stage, message, step, total: seen.append(
+            (stage, message, step, total)
+        ),
+        log=lambda _line: None,
+    )
+
+    assert [
+        item[1].endswith(suffix)
+        for item, suffix in zip(seen, ("1/2", "2/2"), strict=True)
+    ] == [
+        True,
+        True,
+    ]
+    assert seen[0][0] == "style"
+    assert seen[1][2:] == (2, 2)
+
+
+def test_batch_ignores_blank_style_references():
+    result = color_combination.batch_styles(
+        ["A", "  ", ""], _saved, log=lambda _line: None
+    )
+
+    assert [item["style_ref"] for item in result["saved"]] == ["A"]
