@@ -103,8 +103,13 @@ def clean_style_ref_options(
 def unique_target(
     directory: Path, stem: str, suffix: str = ".xlsx"
 ) -> Path:
-    """Trả về tên cố định; lần chạy sau ghi đè đúng file style đó."""
-    return Path(directory) / f"{stem}{suffix}"
+    """Không ghi đè file đã có: thêm hậu tố (2), (3)..."""
+    target = Path(directory) / f"{stem}{suffix}"
+    index = 2
+    while target.exists():
+        target = Path(directory) / f"{stem} ({index}){suffix}"
+        index += 1
+    return target
 
 
 def prune_selection(
