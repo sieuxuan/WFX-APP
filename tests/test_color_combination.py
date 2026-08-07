@@ -76,3 +76,35 @@ def test_unique_target_uses_the_plain_name_when_it_is_free(tmp_path):
     target = color_combination.unique_target(tmp_path, "GWSD15176")
 
     assert target == tmp_path / "GWSD15176.xlsx"
+
+
+def test_prune_keeps_every_level_that_still_exists():
+    values = {"division": "d1", "buyer": "b1", "season": "s1"}
+    options = {
+        "division": _options("d1"),
+        "buyer": _options("b1"),
+        "season": _options("s1"),
+    }
+    options["division"][0]["value"] = "d1"
+    options["buyer"][0]["value"] = "b1"
+    options["season"][0]["value"] = "s1"
+
+    assert color_combination.prune_selection(values, options) == values
+
+
+def test_prune_drops_lower_levels_once_one_is_stale():
+    """Buyer đổi thì Season của buyer cũ không còn ý nghĩa."""
+    values = {"division": "d1", "buyer": "gone", "season": "s1"}
+    options = {
+        "division": [{"value": "d1", "label": "D1"}],
+        "buyer": [{"value": "b1", "label": "B1"}],
+        "season": [{"value": "s1", "label": "S1"}],
+    }
+
+    assert color_combination.prune_selection(values, options) == {
+        "division": "d1"
+    }
+
+
+def test_prune_returns_nothing_when_the_first_level_is_missing():
+    assert color_combination.prune_selection({}, {}) == {}

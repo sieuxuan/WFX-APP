@@ -66,3 +66,21 @@ def unique_target(
         target = Path(directory) / f"{stem} ({index}){suffix}"
         index += 1
     return target
+
+
+def prune_selection(
+    values: Mapping[str, str],
+    options_by_key: Mapping[str, list[Mapping[str, str]]],
+) -> dict[str, str]:
+    """Giữ các cấp cascade còn hợp lệ; gặp cấp hỏng thì bỏ luôn cấp dưới."""
+    cleaned: dict[str, str] = {}
+    for key in CASCADE_KEYS:
+        available = {
+            str(option.get("value") or "")
+            for option in options_by_key.get(key) or ()
+        }
+        current = str((values or {}).get(key) or "")
+        if not current or current not in available:
+            break
+        cleaned[key] = current
+    return cleaned
