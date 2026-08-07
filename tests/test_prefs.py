@@ -555,3 +555,13 @@ def test_manual_seen_version_luu_duoc(tmp_path):
     prefs.save_prefs(tmp_path, manual_seen_version="1.0.9")
 
     assert prefs.load_prefs(tmp_path)["manual_seen_version"] == "1.0.9"
+
+
+def test_report_export_dir_round_trips(tmp_path):
+    prefs.save_prefs(tmp_path, report_export_dir="D:\\Reports")
+
+    assert prefs.load_prefs(tmp_path)["report_export_dir"] == "D:\\Reports"
+
+
+def test_report_export_dir_defaults_to_empty(tmp_path):
+    assert prefs.load_prefs(tmp_path)["report_export_dir"] == ""

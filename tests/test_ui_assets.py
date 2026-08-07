@@ -30,6 +30,76 @@ def test_style_css_exists_and_scoped_to_root():
     assert ":host" not in css  # đã đổi hết sang :root
 
 
+def test_color_report_workspace_exists_with_its_controls():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+
+    assert 'class="color-report-workspace"' in html
+    for action in (
+        "report-color-combination",
+        "color-report-select-all",
+        "color-report-clear-all",
+        "color-report-choose-dir",
+        "color-report-run",
+    ):
+        assert f'data-module-action="{action}"' in html
+
+
+def test_color_report_result_and_progress_cards_start_hidden():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+
+    for block in ("color-report-progress-card", "color-report-result-card"):
+        marker = html.index(block)
+        assert "hidden" in html[marker : marker + 200]
+
+
+def test_report_screens_respect_hidden_despite_layout_display_rules():
+    """Class display:grid/flex không được làm hai màn Reports cùng hiện."""
+    css = (UI / "style.css").read_text(encoding="utf-8")
+
+    for selector in (
+        ".reports-list[hidden]",
+        ".reports-detail[hidden]",
+        ".report-parameters[hidden]",
+        ".color-report-workspace[hidden]",
+    ):
+        assert selector in css
+    hidden_rule = css[css.index(".reports-list[hidden]") :]
+    assert "display: none !important" in hidden_rule[:300]
+
+    markup = f"""
+      <style>{css}</style>
+      <section class="reports-list">Danh sách</section>
+      <section class="reports-detail" hidden>Chi tiết</section>
+      <section class="report-parameters" hidden>Shipment</section>
+      <section class="color-report-workspace" hidden>Color</section>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            assert page.locator(".reports-list").is_visible()
+            assert not page.locator(".reports-detail").is_visible()
+            assert not page.locator(".report-parameters").is_visible()
+            assert not page.locator(".color-report-workspace").is_visible()
+
+            page.locator(".reports-list").evaluate(
+                "node => { node.hidden = true; }"
+            )
+            page.locator(".reports-detail").evaluate(
+                "node => { node.hidden = false; }"
+            )
+            page.locator(".color-report-workspace").evaluate(
+                "node => { node.hidden = false; }"
+            )
+            assert not page.locator(".reports-list").is_visible()
+            assert page.locator(".reports-detail").is_visible()
+            assert page.locator(".color-report-workspace").is_visible()
+            assert not page.locator(".report-parameters").is_visible()
+        finally:
+            browser.close()
+
+
 def test_desktop_override_forces_panel_visible():
     """Layout gốc ẩn panel bằng `opacity`/`visibility`/`pointer-events`.
     Desktop panel không dùng class trượt `.panel-open` — nếu khối

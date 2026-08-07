@@ -66,13 +66,27 @@ def test_file_stem_never_ends_with_a_dot_or_space():
     assert color_combination.safe_file_stem("GWSD15176.", "") == "GWSD15176"
 
 
-def test_unique_target_adds_a_counter_when_the_name_is_taken(tmp_path):
+def test_clean_style_ref_options_drops_placeholder_but_keeps_duplicate_records():
+    options = [
+        {"value": "0", "label": "<Select\xa0a\xa0Value>"},
+        {"value": "1", "label": "GMOW15193"},
+        {"value": "3", "label": "GMOW15193"},
+        {"value": "2", "label": "GWSD15176"},
+    ]
+
+    assert color_combination.clean_style_ref_options(options) == [
+        {"value": "1", "label": "GMOW15193"},
+        {"value": "3", "label": "GMOW15193"},
+        {"value": "2", "label": "GWSD15176"},
+    ]
+
+
+def test_unique_target_keeps_the_exact_style_filename(tmp_path):
     (tmp_path / "GWSD15176.xlsx").write_text("x", encoding="utf-8")
-    (tmp_path / "GWSD15176 (2).xlsx").write_text("x", encoding="utf-8")
 
     target = color_combination.unique_target(tmp_path, "GWSD15176")
 
-    assert target == tmp_path / "GWSD15176 (3).xlsx"
+    assert target == tmp_path / "GWSD15176.xlsx"
 
 
 def test_unique_target_uses_the_plain_name_when_it_is_free(tmp_path):
@@ -334,6 +348,22 @@ def test_read_cascade_stops_applying_at_the_first_stale_value(monkeypatch):
     )
 
     assert page.selected == {}
+
+
+def test_read_cascade_does_not_treat_wfx_default_season_as_user_selection(
+    monkeypatch,
+):
+    """WFX có thể tự chọn option đầu nhưng app vẫn phải cho user chọn Season."""
+    page = _CascadePage()
+    page.selected["Season"] = "s1"
+    _install_cascade_fakes(monkeypatch, page)
+
+    levels = color_combination.read_cascade(
+        page, {"division": "d1", "buyer": "b1", "season": ""}
+    )["levels"]
+
+    assert levels["season"]["options"] == _CascadePage.OPTIONS["Season"]
+    assert levels["season"]["value"] == ""
 
 
 def test_run_one_style_saves_the_native_download_under_the_style_name(

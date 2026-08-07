@@ -652,18 +652,24 @@
         {
           "id": "danh-sach-reports",
           "title": "Reports",
-          "summary": "Chạy Shipment Summary với tham số chọn trong bảng điều khiển và tải Excel.",
+          "summary": "Chạy Shipment Summary hoặc Color Combination - Production và tải Excel.",
           "file": "06-danh-sach/reports.md",
-          "keywords": ["reports", "shipment summary", "excel", "báo cáo", "tham số"],
+          "keywords": ["reports", "shipment summary", "color combination", "hàng loạt", "buyerstylereference", "excel", "báo cáo", "tham số"],
           "covers": {
             "modules": ["reports"],
-            "actions": ["report-shipment-summary", "report-last-month", "report-save-parameters", "report-export-excel"],
+            "actions": ["report-shipment-summary", "report-color-combination", "report-last-month", "report-save-parameters", "report-export-excel", "color-report-select-all", "color-report-clear-all", "color-report-choose-dir", "color-report-run"],
             "errors": [
               "REPORT_PARAMETERS_NOT_READY",
               "REPORT_LOAD_FAILED",
               "REPORT_EXPORT_FAILED",
               "REPORT_SAVE_ACCOUNT_REQUIRED",
-              "REPORT_SAVE_FAILED"
+              "REPORT_SAVE_FAILED",
+              "COLOR_REPORT_OPTIONS_NOT_READY",
+              "COLOR_REPORT_SAVE_FAILED",
+              "COLOR_REPORT_STYLE_LIST_EMPTY",
+              "COLOR_REPORT_NO_STYLE_SELECTED",
+              "COLOR_REPORT_OUTPUT_DIR_REQUIRED",
+              "COLOR_REPORT_CANCELLED"
             ]
           }
         },

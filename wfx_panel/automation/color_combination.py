@@ -84,16 +84,27 @@ def safe_file_stem(style_ref: str, style_code: str) -> str:
     return stem or "report"
 
 
+def clean_style_ref_options(
+    options: list[Mapping[str, str]] | None,
+) -> list[dict[str, str]]:
+    """Bỏ placeholder nhưng giữ mọi record, kể cả label bị lặp."""
+    cleaned: list[dict[str, str]] = []
+    for raw in options or ():
+        option = dict(raw or {})
+        value = str(option.get("value") or "").strip()
+        label = str(option.get("label") or "").replace("\xa0", " ").strip()
+        normalized = " ".join(label.split()).casefold()
+        if not value or normalized.startswith("<select"):
+            continue
+        cleaned.append({"value": value, "label": label})
+    return cleaned
+
+
 def unique_target(
     directory: Path, stem: str, suffix: str = ".xlsx"
 ) -> Path:
-    """Không ghi đè file đã có: thêm hậu tố (2), (3)... như Chrome."""
-    target = Path(directory) / f"{stem}{suffix}"
-    index = 2
-    while target.exists():
-        target = Path(directory) / f"{stem} ({index}){suffix}"
-        index += 1
-    return target
+    """Trả về tên cố định; lần chạy sau ghi đè đúng file style đó."""
+    return Path(directory) / f"{stem}{suffix}"
 
 
 def prune_selection(
@@ -214,12 +225,15 @@ def read_cascade(page: Page, values: Mapping[str, str] | None) -> dict:
         else:
             # Cấp này không áp được thì các cấp dưới là của lựa chọn khác.
             wanted = {}
-        levels[key]["value"] = levels[key]["value"] or read_select_value(
-            page, controls.get(label, "")
-        )
+        # Chỉ phản hồi lựa chọn mà app thực sự gửi lên. ReportViewer đôi khi
+        # tự chọn option đầu tiên sau postback; nếu trả giá trị đó về UI thì
+        # app hiểu nhầm user đã chọn Season và kiểm tra style quá sớm.
+        levels[key]["value"] = target
     style_label = LEVEL_LABELS["style_ref"]
     levels["style_ref"] = {
-        "options": read_select_options(page, controls.get(style_label, "")),
+        "options": clean_style_ref_options(
+            read_select_options(page, controls.get(style_label, ""))
+        ),
         "value": read_select_value(page, controls.get(style_label, "")),
     }
     return {"levels": levels}
@@ -249,6 +263,9 @@ def load_color_report_options(
                 False,
                 "COLOR_REPORT_STYLE_LIST_EMPTY",
                 "Mùa đang chọn không có BuyerStyleReference nào.",
+                report_id=REPORT_ID,
+                report_name=report["name"],
+                **cascade,
             )
         _write_log(log, f"[COLOR] Đã đọc {len(styles)} style.")
         return _result(

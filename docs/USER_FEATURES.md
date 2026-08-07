@@ -272,9 +272,9 @@ Dùng để làm gì Mở Company Setup và chuyển nơi áp dụng FOC giữa 
 
 ### Reports
 
-Chạy Shipment Summary với tham số chọn trong bảng điều khiển và tải Excel.
+Chạy Shipment Summary hoặc Color Combination - Production và tải Excel.
 
-Dùng để làm gì Màn hình Reports giúp bạn chạy báo cáo WFX và tải file Excel. Hiện có báo cáo Shipment Summary . Các bước Mở module Reports . Bấm Shipment Summary để ứng dụng tải các tham số của báo cáo. Chọn hoặc nhập các giá trị cần thiết trong phần Tham số . Bấm Last month nếu muốn chọn nhanh từ ngày đầu tới ngày cuối của tháng trước. Bấm Lưu tham số nếu muốn dùng lại các giá trị này ở lần sau. Bấm View report & Export Excel . Ứng dụng chờ WFX tải báo cáo tối đa 5 phút, sau đó Chrome tải file Excel để bạn mở hoặc lưu. Mẹo Bấm Lưu tham số để giữ các giá trị sau khi đóng ứng dụng. Lần chạy sau chỉ cần chỉnh phần thay đổi. Dropdown nhiều lựa chọn có nút Chọn tất cả . Tham số ngày mở lịch để bạn chọn thay vì phải gõ định dạng ngày của WFX. Gặp lỗi thì sao Nếu báo WFX chưa tải xong tham số báo cáo , hãy chờ trang WFX ổn định rồi bấm lại Shipment Summary .
+Dùng để làm gì Màn hình Reports giúp bạn chạy báo cáo WFX và tải file Excel. Hiện có báo cáo Shipment Summary . Các bước Mở module Reports . Bấm Shipment Summary để ứng dụng tải các tham số của báo cáo. Chọn hoặc nhập các giá trị cần thiết trong phần Tham số . Bấm Last month nếu muốn chọn nhanh từ ngày đầu tới ngày cuối của tháng trước. Bấm Lưu tham số nếu muốn dùng lại các giá trị này ở lần sau. Bấm View report & Export Excel . Ứng dụng chờ WFX tải báo cáo tối đa 5 phút, sau đó Chrome tải file Excel để bạn mở hoặc lưu. Mẹo Bấm Lưu tham số để giữ các giá trị sau khi đóng ứng dụng. Lần chạy sau chỉ cần chỉnh phần thay đổi. Dropdown nhiều lựa chọn có nút Chọn tất cả . Tham số ngày mở lịch để bạn chọn thay vì phải gõ định dạng ngày của WFX. Gặp lỗi thì sao Nếu báo WFX chưa tải xong tham số báo cáo , hãy chờ trang WFX ổn định rồi bấm lại Shipment Summary . Color Combination - Production Báo cáo này chỉ xuất được một style mỗi lần chạy trên WFX. Ứng dụng tự lặp qua danh sách style để bạn không phải chọn lại từng cái. Mở module Reports rồi bấm Color Combination - Production . Chọn OC Division , Buyer , Season . Mỗi lần chọn, ứng dụng chờ WFX nạp danh sách kế tiếp nên các ô bên dưới tạm khóa vài giây. Danh sách Style hiện toàn bộ BuyerStyleReference của mùa và mặc định chọn hết. Bỏ tích những style không cần, hoặc gõ vào ô lọc rồi bấm Chọn tất cả để chọn nhanh nhóm đang hiện. Bấm Chọn… để chỉ định thư mục lưu. Ứng dụng nhớ thư mục này cho lần sau. Bấm Tải báo cáo . Mỗi style được lưu thành một file BuyerStyleReference - StyleCode.xlsx . Chạy xong, thẻ kết quả cho biết bao nhiêu style thành công và bao nhiêu lỗi. Mẹo Tắt Tải hàng loạt nếu chỉ cần đúng một style. Ứng dụng tự chọn StyleCode có số lớn nhất, tức bản style mới nhất. SizeVisibility luôn được đặt Yes , còn OCNum giữ nguyên mặc định của WFX. Bấm Stop ở thanh dưới cùng để dừng; các file đã tải vẫn được giữ. Gặp lỗi thì sao Tham số báo cáo Color Combination chưa nạp xong : WFX đang chậm. Chờ trang ổn định rồi chọn lại OC Division . Không lưu được file báo cáo vào thư mục đã chọn : kiểm tra quyền ghi và dung lượng của thư mục lưu. Style lỗi lẻ tẻ không làm dừng cả lượt; bấm Chạy lại n style lỗi ở thẻ kết quả.
 
 ### Supplier Invoice, Org Structure và System Coding
 
@@ -346,8 +346,12 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `CHROME_OPEN_FAILED` | Không thể mở trình duyệt làm việc | Kiểm tra cài đặt Chrome/Edge và quyền chạy ứng dụng. |
 | `CODE_FILTER_FAILED` | Không dùng được ô lọc Code | Mở lại Catalog Master rồi thử lại. |
 | `CODE_FILTER_TIMEOUT` | Ô lọc Code phản hồi quá chậm | Chờ bảng Catalog tải xong rồi thử lại. |
+| `COLOR_REPORT_CANCELLED` | Đã dừng lượt tải Color Combination | Các file đã tải vẫn được giữ; có thể chạy lại các style còn thiếu. |
+| `COLOR_REPORT_NO_STYLE_SELECTED` | Chưa chọn style để tải báo cáo | Tích ít nhất một BuyerStyleReference rồi bấm Tải báo cáo. |
 | `COLOR_REPORT_OPTIONS_NOT_READY` | Tham số báo cáo Color Combination chưa nạp xong | Chờ trang WFX ổn định rồi chọn lại OC Division. |
+| `COLOR_REPORT_OUTPUT_DIR_REQUIRED` | Chưa chọn thư mục lưu báo cáo | Bấm Chọn… để chỉ định thư mục lưu trước khi tải. |
 | `COLOR_REPORT_SAVE_FAILED` | Không lưu được file báo cáo vào thư mục đã chọn | Kiểm tra quyền ghi và dung lượng của thư mục lưu báo cáo. |
+| `COLOR_REPORT_STYLE_LIST_EMPTY` | Mùa đang chọn không có BuyerStyleReference | Chọn lại OC Division, Buyer hoặc Season rồi tải lại tham số. |
 | `COMPANY_FOC_FAILED` | Không thể đổi cấu hình FOC | Mở lại Company Setup và kiểm tra quyền chỉnh sửa. |
 | `COMPANY_FOC_NOT_READY` | Màn cấu hình FOC chưa sẵn sàng | Chờ Miscellaneous Settings tải xong rồi thử lại. |
 | `COMPANY_FOC_SAVE_NOT_CONFIRMED` | WFX chưa xác nhận lưu cấu hình FOC | Kiểm tra trạng thái checkbox và bấm Save lại trên WFX. |
