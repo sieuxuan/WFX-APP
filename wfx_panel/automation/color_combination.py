@@ -310,6 +310,7 @@ def _run_one_style(
     style_ref: str,
     output_dir: Path,
     log: Callable[[str], None],
+    style_ref_label: str | None = None,
 ) -> dict:
     """Một style: chọn ref, chọn StyleCode mới nhất, chạy report, lưu file."""
     current = select_and_settle(
@@ -342,18 +343,19 @@ def _run_one_style(
     # OCNum giữ nguyên mặc định WFX: nó được nạp lại theo style và
     # mặc định đã chọn hết PO.
     source = _view_and_download(page, log)
+    display_ref = str(style_ref_label or style_ref).strip() or str(style_ref)
     target = unique_target(
-        Path(output_dir), safe_file_stem(style_ref, picked["label"])
+        Path(output_dir), safe_file_stem(display_ref, picked["label"])
     )
     try:
         shutil.copy2(source, target)
     except OSError as error:
         raise StyleFailure(
             "COLOR_REPORT_SAVE_FAILED",
-            f"Không lưu được file cho {style_ref}: {type(error).__name__}",
+            f"Không lưu được file cho {display_ref}: {type(error).__name__}",
         ) from error
     return {
-        "style_ref": style_ref,
+        "style_ref": display_ref,
         "style_code": picked["label"],
         "file_path": str(target),
         "file_name": target.name,
@@ -395,12 +397,21 @@ def run_color_report_batch(
             return _result(False, "NOT_LOGGED_IN", "Chưa có phiên WFX đăng nhập.")
         report_page = _open_report(page, report)
         _attach_dialog_handler(report_page, log)
-        read_cascade(report_page, selection)
+        cascade = read_cascade(report_page, selection)
+        style_labels = {
+            str(option.get("value")): str(option.get("label") or "")
+            for option in cascade["levels"]["style_ref"]["options"]
+        }
         controls = resolve_controls(report_page)
         outcome = batch_styles(
             references,
             lambda reference: _run_one_style(
-                report_page, controls, reference, target_dir, log
+                report_page,
+                controls,
+                reference,
+                target_dir,
+                log,
+                style_labels.get(reference),
             ),
             progress=progress,
             log=log,
