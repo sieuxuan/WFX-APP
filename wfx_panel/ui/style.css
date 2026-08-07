@@ -2343,17 +2343,19 @@ body.compact-mode .compact-launcher .compact-mark {
     .report-multi-option-row input { width: auto; margin-top: 2px; }
     .report-multi-all { position: sticky; top: 0; background: var(--surface); font-weight: 800; }
 
-    .color-report-workspace { display: flex; flex-direction: column; gap: 10px; }
-    .color-report-level-field { display: flex; flex-direction: column; gap: 4px; color: var(--text-2); font-size: 12px; font-weight: 700; }
+    .color-report-workspace { display: flex; flex-direction: column; gap: 8px; }
+    .color-report-levels-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; }
+    .color-report-level-field { display: grid; grid-template-columns: minmax(86px, auto) minmax(0, 1fr); gap: 6px; align-items: center; min-width: 0; color: var(--text-2); font-size: 12px; font-weight: 700; }
+    .color-report-level-field > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .color-report-level-field select { width: 100%; min-width: 0; }
     .color-report-level-field select:disabled { opacity: .55; }
-    .color-report-batch-row { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; font-weight: 700; }
+    .color-report-batch-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; font-weight: 700; }
     .color-report-style-block { padding: 9px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
     .color-report-style-heading { display: flex; justify-content: space-between; align-items: baseline; color: var(--text-2); font-size: 12px; font-weight: 800; }
     .color-report-style-tools { display: flex; gap: 6px; align-items: center; margin: 7px 0; }
     .color-report-style-tools .module-secondary-button { flex: 0 0 auto; padding: 6px 8px; font-size: 11px; }
     .color-report-style-tools .color-report-style-filter { flex: 1 1 auto; min-width: 0; }
-    .color-report-style-list { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+    .color-report-style-list { height: 148px; max-height: 148px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
     .color-report-style-list label { display: flex; gap: 8px; align-items: center; padding: 4px; border-radius: 6px; color: var(--text-2); font-size: 12px; }
     .color-report-style-list label:hover { background: var(--accent-soft); }
     .color-report-style-list label[hidden] { display: none; }
@@ -2369,6 +2371,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .color-report-result-actions { display: flex; gap: 8px; margin-top: 2px; }
     .color-report-result-actions > * { flex: 1; }
     @media (prefers-reduced-motion: reduce) { .color-report-progress-track > i { transition: none; } }
+    @media (max-width: 560px) { .color-report-levels-grid { grid-template-columns: 1fr; } .color-report-batch-row { grid-column: auto; } }
 
     .search-box {
       min-height: 38px;
