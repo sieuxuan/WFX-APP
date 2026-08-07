@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
+
+from wfx_panel.automation.runtime import AutomationCancelled, checkpoint
 
 REPORT_ID = "color_combination_production"
 REPORT_NAME = "Color Combination - Production"
@@ -84,3 +86,59 @@ def prune_selection(
             break
         cleaned[key] = current
     return cleaned
+
+
+class StyleFailure(Exception):
+    """Lỗi ở mức một style; vòng lặp ghi lại rồi chạy tiếp style kế."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = str(code)
+        self.message = str(message)
+
+
+def batch_styles(
+    style_refs: list[str],
+    run_one: Callable[[str], dict],
+    progress: Callable[..., None] | None = None,
+    log: Callable[[str], None] = print,
+) -> dict:
+    """Chạy từng style, bỏ qua style lỗi, và giữ kết quả khi user bấm Stop."""
+    references = [
+        str(reference).strip()
+        for reference in style_refs or ()
+        if str(reference).strip()
+    ]
+    total = len(references)
+    saved: list[dict] = []
+    failed: list[dict] = []
+    for index, reference in enumerate(references, start=1):
+        try:
+            checkpoint()
+            if progress is not None:
+                progress(
+                    "style", f"Đang tải {reference}… {index}/{total}", index, total
+                )
+            saved.append(run_one(reference))
+        except AutomationCancelled:
+            log(f"[COLOR] Đã dừng theo yêu cầu sau {len(saved)}/{total} style.")
+            return {"saved": saved, "failed": failed, "cancelled": True}
+        except StyleFailure as failure:
+            log(f"[COLOR] Bỏ qua {reference}: {failure.message}")
+            failed.append(
+                {
+                    "style_ref": reference,
+                    "code": failure.code,
+                    "message": failure.message,
+                }
+            )
+        except Exception as error:
+            log(f"[COLOR] Bỏ qua {reference}: {type(error).__name__}: {error}")
+            failed.append(
+                {
+                    "style_ref": reference,
+                    "code": "COLOR_REPORT_STYLE_FAILED",
+                    "message": f"{type(error).__name__}: {error}",
+                }
+            )
+    return {"saved": saved, "failed": failed, "cancelled": False}
