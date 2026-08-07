@@ -262,3 +262,73 @@ def test_read_select_options_returns_value_and_label_pairs():
     options = reports.read_select_options(page, "ctl04_ctl09_ddValue")
 
     assert options == [{"value": "1", "label": "GWSD15176"}]
+
+
+class _CascadePage:
+    """Giả lập ReportViewer: đổi một cấp thì cấp dưới đổi theo."""
+
+    OPTIONS = {
+        "OC Division": [{"value": "d1", "label": "PRO SPORTS - WOVEN HANOI"}],
+        "Buyer": [{"value": "b1", "label": "J.LINDEBERG"}],
+        "Season": [{"value": "s1", "label": "WH25"}],
+        "BuyerStyleReference": [
+            {"value": "r1", "label": "GWSD15176"},
+            {"value": "r2", "label": "GWSD15177"},
+        ],
+    }
+
+    def __init__(self):
+        self.selected = {}
+        self.settled = 0
+
+
+def _install_cascade_fakes(monkeypatch, page):
+    monkeypatch.setattr(
+        color_combination, "resolve_controls", lambda _page: {
+            label: f"id::{label}" for label in _CascadePage.OPTIONS
+        }
+    )
+    monkeypatch.setattr(
+        color_combination,
+        "read_select_options",
+        lambda _page, control_id: _CascadePage.OPTIONS[control_id.split("::")[1]],
+    )
+    monkeypatch.setattr(
+        color_combination,
+        "read_select_value",
+        lambda _page, control_id: page.selected.get(control_id.split("::")[1], ""),
+    )
+
+    def fake_select(_page, controls, label, value):
+        page.selected[label] = value
+        page.settled += 1
+        return controls
+
+    monkeypatch.setattr(color_combination, "select_and_settle", fake_select)
+
+
+def test_read_cascade_applies_saved_values_and_returns_every_level(monkeypatch):
+    page = _CascadePage()
+    _install_cascade_fakes(monkeypatch, page)
+
+    levels = color_combination.read_cascade(
+        page, {"division": "d1", "buyer": "b1", "season": "s1"}
+    )["levels"]
+
+    assert page.selected["Season"] == "s1"
+    assert levels["style_ref"]["options"] == _CascadePage.OPTIONS[
+        "BuyerStyleReference"
+    ]
+    assert levels["division"]["value"] == "d1"
+
+
+def test_read_cascade_stops_applying_at_the_first_stale_value(monkeypatch):
+    """Division cũ không còn thì không được áp Buyer/Season của lần trước."""
+    page = _CascadePage()
+    _install_cascade_fakes(monkeypatch, page)
+
+    color_combination.read_cascade(
+        page, {"division": "gone", "buyer": "b1", "season": "s1"}
+    )
+
+    assert page.selected == {}

@@ -6,7 +6,29 @@ import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from wfx_panel.automation._common import (
+    Page,
+    Playwright,
+    PlaywrightTimeoutError,
+    _result,
+    _write_log,
+    sync_playwright,
+)
+from wfx_panel.automation.browser import (
+    _attach_dialog_handler,
+    _chrome_is_ready,
+    _connect_to_chrome,
+)
+from wfx_panel.automation.reports import (
+    REPORTS,
+    _open_report,
+    _wait_postback_settled,
+    read_select_options,
+    read_select_value,
+    resolve_controls,
+)
 from wfx_panel.automation.runtime import AutomationCancelled, checkpoint
+from wfx_panel.automation.session import _session_is_active
 
 REPORT_ID = "color_combination_production"
 REPORT_NAME = "Color Combination - Production"
@@ -142,3 +164,105 @@ def batch_styles(
                 }
             )
     return {"saved": saved, "failed": failed, "cancelled": False}
+
+
+def select_and_settle(
+    page: Page,
+    controls: Mapping[str, str],
+    label: str,
+    value: str,
+) -> dict[str, str]:
+    """Đặt một select rồi chờ WFX nạp xong các tham số phía dưới."""
+    checkpoint()
+    control_id = str(controls.get(label) or "").replace(chr(34), "")
+    if not control_id:
+        raise StyleFailure(
+            "COLOR_REPORT_OPTIONS_NOT_READY",
+            f"Không tìm thấy tham số {label} trên báo cáo.",
+        )
+    page.locator(f'[id="{control_id}"]').select_option(str(value))
+    _wait_postback_settled(page, POSTBACK_TIMEOUT_SECONDS)
+    return resolve_controls(page)
+
+
+def read_cascade(page: Page, values: Mapping[str, str] | None) -> dict:
+    """Áp giá trị đã lưu tới cấp còn hợp lệ rồi đọc option của mọi cấp."""
+    controls = resolve_controls(page)
+    wanted = dict(values or {})
+    # prune_selection duyệt cả chuỗi cascade và dừng ở cấp đầu tiên không hợp
+    # lệ, nên phải truyền map option đã tích lũy tới cấp hiện tại. Truyền map
+    # chỉ có một cấp sẽ làm nó dừng ngay ở cấp trên và luôn trả rỗng.
+    options_by_key: dict[str, list] = {}
+    levels: dict[str, dict] = {}
+    for key in CASCADE_KEYS:
+        label = LEVEL_LABELS[key]
+        options = read_select_options(page, controls.get(label, ""))
+        options_by_key[key] = options
+        levels[key] = {"options": options, "value": ""}
+        target = prune_selection(wanted, options_by_key).get(key, "")
+        if target and target != read_select_value(page, controls.get(label, "")):
+            controls = select_and_settle(page, controls, label, target)
+            options = read_select_options(page, controls.get(label, ""))
+            options_by_key[key] = options
+            levels[key] = {"options": options, "value": target}
+        elif target:
+            levels[key]["value"] = target
+        else:
+            # Cấp này không áp được thì các cấp dưới là của lựa chọn khác.
+            wanted = {}
+        levels[key]["value"] = levels[key]["value"] or read_select_value(
+            page, controls.get(label, "")
+        )
+    style_label = LEVEL_LABELS["style_ref"]
+    levels["style_ref"] = {
+        "options": read_select_options(page, controls.get(style_label, "")),
+        "value": read_select_value(page, controls.get(style_label, "")),
+    }
+    return {"levels": levels}
+
+
+def load_color_report_options(
+    values: Mapping[str, str] | None = None,
+    log: Callable[[str], None] = print,
+) -> dict:
+    report = REPORTS[REPORT_ID]
+    if not _chrome_is_ready():
+        return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _connect_to_chrome(playwright, bring_to_front=False)
+        _attach_dialog_handler(page, log)
+        if not _session_is_active(page):
+            return _result(False, "NOT_LOGGED_IN", "Chưa có phiên WFX đăng nhập.")
+        _write_log(log, f"[COLOR] Đang tải tham số {report['name']}...")
+        report_page = _open_report(page, report)
+        _attach_dialog_handler(report_page, log)
+        cascade = read_cascade(report_page, values)
+        styles = cascade["levels"]["style_ref"]["options"]
+        if cascade["levels"]["season"]["value"] and not styles:
+            return _result(
+                False,
+                "COLOR_REPORT_STYLE_LIST_EMPTY",
+                "Mùa đang chọn không có BuyerStyleReference nào.",
+            )
+        _write_log(log, f"[COLOR] Đã đọc {len(styles)} style.")
+        return _result(
+            True,
+            "COLOR_REPORT_OPTIONS_READY",
+            f"Đã tải tham số cho {report['name']}.",
+            report_id=REPORT_ID,
+            report_name=report["name"],
+            **cascade,
+        )
+    except StyleFailure as failure:
+        return _result(False, failure.code, failure.message)
+    except PlaywrightTimeoutError as error:
+        return _result(False, "COLOR_REPORT_OPTIONS_NOT_READY", str(error))
+    except Exception as error:
+        return _result(
+            False, "REPORT_LOAD_FAILED", f"{type(error).__name__}: {error}"
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
