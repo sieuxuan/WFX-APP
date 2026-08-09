@@ -449,6 +449,31 @@ def _show_catalog_floating_filter(
     raise PlaywrightTimeoutError(f"Floating Filter chưa sẵn sàng: {last_error}")
 
 
+def _reuse_prepared_catalog_master(
+    page: Page,
+    category_value: str,
+    log: Callable[[str], None],
+) -> bool:
+    """Fast-path chỉ nhận đúng Category + grid đang hiển thị và đã ổn định."""
+    try:
+        tree = _catalog_tree_frame_now(page)
+        if tree is None:
+            return False
+        if tree.locator("#ddlCategory").input_value(timeout=500) != category_value:
+            return False
+        grid = _catalog_grid_frame(page, timeout_seconds=0.75)
+        if not _catalog_filter_row_active(grid):
+            return False
+        _wait_catalog_grid_data_ready(grid, timeout_seconds=3.0)
+        _write_log(
+            log,
+            "[CATALOG] Master và Floating Filter còn sẵn sàng, dùng lại context.",
+        )
+        return True
+    except (PlaywrightError, PlaywrightTimeoutError):
+        return False
+
+
 def _select_catalog_category_on_page(
     page: Page,
     category_name: str,
@@ -947,7 +972,6 @@ def _filter_grid_and_maybe_open(
             "FILTER_VALUE_NOT_CONFIRMED",
             f"WFX chưa xác nhận giá trị {spec.label}.",
         )
-    _wait(grid, 1_000)
 
     root = grid.locator(".ag-root-wrapper").first
     read_rows_js = """(root, args) => {
@@ -1312,29 +1336,6 @@ def open_catalog_destination(
     finally:
         if playwright is not None:
             playwright.stop()
-
-
-def _article_page(
-    context: Any,
-    timeout_seconds: float = 20,
-) -> tuple[Page, Frame]:
-    """Chờ popup Article và frame điều hướng ``ArticleTop`` của style."""
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        for candidate in reversed(context.pages):
-            article_top = candidate.frame(name="ArticleTop")
-            if article_top is None:
-                continue
-            try:
-                article_top.locator("body").wait_for(
-                    state="attached",
-                    timeout=500,
-                )
-                return candidate, article_top
-            except PlaywrightError:
-                continue
-        _sleep(0.2)
-    raise PlaywrightTimeoutError("Không tìm thấy popup ArticleTop của style.")
 
 
 def _article_page_for_code(
@@ -2205,6 +2206,15 @@ def prepare_catalog_master(
                 False,
                 "NOT_LOGGED_IN",
                 "Phiên chưa đăng nhập hoặc đã hết hạn.",
+            )
+
+        if _reuse_prepared_catalog_master(page, category_value, log):
+            return _result(
+                True,
+                "CATEGORY_SELECTED",
+                f"Đã chuẩn bị {category_name} > Master để tìm kiếm.",
+                category=category_name,
+                value=category_value,
             )
 
         previous_grid = next(

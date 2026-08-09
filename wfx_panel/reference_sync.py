@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from urllib.request import Request, urlopen
 
 from wfx_panel import article_library, prefs, style_options
 from wfx_panel.atomic_io import write_json_atomic
+from wfx_panel.coercion import nonnegative_float
 
 DEFAULT_READ_URL = "https://n8n.itx.io.vn/webhook/wfx-sync-latest"
 DEFAULT_PUBLISH_URL = "https://n8n.itx.io.vn/webhook/wfx-sync-publish"
@@ -32,6 +34,7 @@ ENV_READ_URL = "WFX_SYNC_READ_URL"
 ENV_PUBLISH_URL = "WFX_SYNC_PUBLISH_URL"
 ENV_COMPANY_ID = "WFX_SYNC_COMPANY_ID"
 ENV_DIVISION_KEY = "WFX_SYNC_DIVISION_KEY"
+_SYNC_LOCK = threading.RLock()
 
 
 def _safe_https_url(value: str) -> str:
@@ -103,16 +106,19 @@ def _load_state(base_dir: Path) -> dict[str, Any]:
 
 
 def _save_state(base_dir: Path, **updates: Any) -> dict[str, Any]:
-    state = {**_load_state(base_dir), **updates}
-    target = _state_path(base_dir)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    write_json_atomic(target, state, separators=(",", ":"))
-    return state
+    # Đây là read-modify-write; atomic replace chỉ chống file ghi dở, không
+    # chống lost update nếu sync/publish cùng đọc một state cũ.
+    with _SYNC_LOCK:
+        state = {**_load_state(base_dir), **updates}
+        target = _state_path(base_dir)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write_json_atomic(target, state, separators=(",", ":"))
+        return state
 
 
 def status(base_dir: Path) -> dict[str, Any]:
     state = _load_state(base_dir)
-    last_success = float(state.get("last_success") or 0)
+    last_success = nonnegative_float(state.get("last_success"))
     article_state = article_library.status(base_dir)
     style_state = style_options.status(base_dir)
     config = _config(base_dir)
@@ -143,6 +149,27 @@ def _request_json(request: Request) -> dict[str, Any]:
 
 
 def sync_latest(
+    base_dir: Path,
+    log: Callable[[str], None] = print,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Tuần tự hóa cả bundle Article + Style + state, không chờ khóa UI."""
+
+    if not _SYNC_LOCK.acquire(blocking=False):
+        return {
+            "ok": True,
+            "code": "REFERENCE_SYNC_IN_PROGRESS",
+            "message": "Dữ liệu Article/Style đang được đồng bộ ở tác vụ khác.",
+            **status(base_dir),
+        }
+    try:
+        return _sync_latest_unlocked(base_dir, log, force=force)
+    finally:
+        _SYNC_LOCK.release()
+
+
+def _sync_latest_unlocked(
     base_dir: Path,
     log: Callable[[str], None] = print,
     *,
@@ -291,6 +318,25 @@ def _current_bundle(base_dir: Path) -> tuple[list[dict], list[dict], list[dict]]
 
 
 def publish_current(
+    base_dir: Path,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Publish tuần tự với sync để snapshot không trộn hai version."""
+
+    if not _SYNC_LOCK.acquire(blocking=False):
+        return {
+            "ok": False,
+            "code": "REFERENCE_SYNC_IN_PROGRESS",
+            "message": "Dữ liệu Article/Style đang được đồng bộ; hãy thử lại sau.",
+            **status(base_dir),
+        }
+    try:
+        return _publish_current_unlocked(base_dir, log)
+    finally:
+        _SYNC_LOCK.release()
+
+
+def _publish_current_unlocked(
     base_dir: Path,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:

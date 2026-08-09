@@ -40,6 +40,41 @@ def test_catalog_master_waits_for_data_and_recovers_phantom_empty_filter():
     assert "filter_reapplied = True" in source
 
 
+def test_catalog_prepare_reuses_only_valid_ready_master(monkeypatch):
+    category = SimpleNamespace(input_value=lambda timeout: "01")
+    tree = SimpleNamespace(locator=lambda selector: category)
+    grid = object()
+    calls = []
+    monkeypatch.setattr(catalog, "_catalog_tree_frame_now", lambda _page: tree)
+    monkeypatch.setattr(
+        catalog,
+        "_catalog_grid_frame",
+        lambda _page, timeout_seconds: (
+            calls.append(("grid", timeout_seconds)) or grid
+        ),
+    )
+    monkeypatch.setattr(catalog, "_catalog_filter_row_active", lambda item: item is grid)
+    monkeypatch.setattr(
+        catalog,
+        "_wait_catalog_grid_data_ready",
+        lambda item, timeout_seconds: calls.append(("ready", item, timeout_seconds)),
+    )
+
+    reused = catalog._reuse_prepared_catalog_master(
+        object(), "01", lambda line: calls.append(("log", line))
+    )
+
+    assert reused is True
+    assert ("grid", 0.75) in calls
+    assert ("ready", grid, 3.0) in calls
+
+
+def test_catalog_filter_starts_polling_without_fixed_one_second_delay():
+    source = inspect.getsource(catalog._filter_grid_and_maybe_open)
+
+    assert "_wait(grid, 1_000)" not in source
+
+
 def test_style_status_suffix_includes_both_grid_fields():
     suffix = login._style_status_suffix(
         {
@@ -508,6 +543,37 @@ def test_start_chrome_explains_when_no_compatible_browser(monkeypatch):
     assert "Edge" in result["message"]
 
 
+def test_close_chrome_uses_graceful_browser_cdp_command(monkeypatch):
+    calls = []
+    readiness = iter((True, False))
+    session = SimpleNamespace(send=lambda method: calls.append(("send", method)))
+    connected = SimpleNamespace(new_browser_cdp_session=lambda: session)
+    playwright = SimpleNamespace(stop=lambda: calls.append(("stop",)))
+    monkeypatch.setattr(browser, "_chrome_is_ready", lambda: next(readiness))
+    monkeypatch.setattr(
+        browser,
+        "sync_playwright",
+        lambda: SimpleNamespace(start=lambda: playwright),
+    )
+    monkeypatch.setattr(
+        browser,
+        "_connect_to_chrome",
+        lambda *_args, **_kwargs: (connected, object()),
+    )
+    monkeypatch.setattr(
+        browser,
+        "invalidate_browser",
+        lambda value: calls.append(("invalidate", value)),
+    )
+
+    result = browser.close_chrome(lambda _line: None)
+
+    assert result["code"] == "CHROME_CLOSED"
+    assert ("send", "Browser.close") in calls
+    assert ("invalidate", connected) in calls
+    assert ("stop",) in calls
+
+
 def test_automation_browser_pid_reads_cdp_listener(monkeypatch):
     class Completed:
         stdout = (
@@ -530,8 +596,9 @@ def test_automation_profile_disables_password_manager(tmp_path):
         '{"homepage":"https://example.test","profile":{"name":"WFX"}}',
         encoding="utf-8",
     )
+    downloads = tmp_path / "redirected" / "Downloads"
     with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setenv("USERPROFILE", str(tmp_path / "user"))
+        monkeypatch.setattr(browser, "_user_downloads_dir", lambda: downloads)
         login._disable_password_manager(profile)
     loaded = json.loads(preferences.read_text(encoding="utf-8"))
     assert loaded["homepage"] == "https://example.test"
@@ -540,7 +607,7 @@ def test_automation_profile_disables_password_manager(tmp_path):
     assert loaded["credentials_enable_service"] is False
     assert loaded["password_manager_leak_detection"] is False
     assert loaded["download"] == {
-        "default_directory": str(tmp_path / "user" / "Downloads"),
+        "default_directory": str(downloads),
         "directory_upgrade": True,
         "prompt_for_download": False,
     }

@@ -50,6 +50,22 @@ def test_expired_style_options_remain_available_as_offline_fallback(tmp_path):
     assert style_options.status(tmp_path)["fresh"] is False
 
 
+def test_style_cache_invalid_timestamp_is_treated_as_expired(tmp_path):
+    payload = _snapshot()
+    payload["generated_at"] = "invalid"
+    payload["saved_at"] = ["invalid"]
+    (tmp_path / "style-options.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+    loaded = style_options.load_cached(tmp_path)
+
+    assert loaded is not None
+    assert loaded["generated_at"] == 0
+    assert style_options.status(tmp_path)["fresh"] is False
+
+
 def test_remote_style_options_replace_older_cache(tmp_path, monkeypatch):
     style_options.save_snapshot(tmp_path, _snapshot(time.time() - 100))
     remote = _snapshot(time.time())

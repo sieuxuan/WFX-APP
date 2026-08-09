@@ -92,6 +92,38 @@ def test_bundled_csv_seeds_only_an_empty_cache(tmp_path):
     assert article_library.status(cache_dir)["article_count"] == 2
 
 
+def test_cached_article_invalid_timestamp_does_not_escape(tmp_path):
+    (tmp_path / "article-library.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "remote_version": "v1",
+                "generated_at": "",
+                "synced_at": ["invalid"],
+                "sha256": "",
+                "sections": [
+                    {
+                        "section_key": "*",
+                        "section_name": "All",
+                        "options": [
+                            {
+                                "article_code": "A1",
+                                "article_name": "Article",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = article_library.load_cached(tmp_path)
+
+    assert loaded is not None
+    assert loaded["synced_at"] == 0
+
+
 def test_server_sync_checks_checksum_and_keeps_versioned_cache(
     tmp_path,
     monkeypatch,

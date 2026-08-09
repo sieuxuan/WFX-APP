@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from wfx_panel.automation._common import (
@@ -22,7 +23,13 @@ from wfx_panel.automation.browser import (
     _chrome_is_ready,
     _connect_to_chrome,
 )
-from wfx_panel.automation.runtime import checkpoint, snapshot_downloads
+from wfx_panel.automation.runtime import (
+    checkpoint,
+    claim_download,
+    native_download_candidate,
+    snapshot_downloads,
+    wait_for_native_download,
+)
 from wfx_panel.automation.session import _session_is_active
 
 REPORTS = {
@@ -97,13 +104,49 @@ def _is_report_page(page: Page, report: Mapping[str, str]) -> bool:
     )
 
 
+def _is_any_report_page(page: Page) -> bool:
+    return "wfxbicustomreportview.aspx" in str(page.url or "").casefold()
+
+
+def _report_page_ready(page: Page) -> bool:
+    """Probe nhanh report hiện tại; lỗi/stale luôn fallback về reload."""
+    try:
+        if page.is_closed():
+            return False
+        table = page.locator(PARAMETER_TABLE)
+        if table.count() != 1:
+            return False
+        controls = page.locator(
+            f"{PARAMETER_TABLE} input, {PARAMETER_TABLE} select, "
+            f"{PARAMETER_TABLE} textarea"
+        )
+        return controls.count() > 0 and controls.first.is_visible()
+    except PlaywrightError:
+        return False
+
+
 def _open_report(page: Page, report: Mapping[str, str]) -> Page:
-    """Mở/chạy report trong tab riêng, tuyệt đối không điều hướng tab WFX chính."""
+    """Mở report trong một tab dùng chung, không điều hướng tab WFX chính."""
     context = page.context
     report_page = next(
         (item for item in reversed(context.pages) if _is_report_page(item, report)),
         None,
     )
+
+    # Report đã tải xong thì giữ nguyên DOM và lựa chọn cascade hiện tại. Đây
+    # là fast-path quan trọng cho Shipment mở lại và Color đổi cấp tham số.
+    if report_page is not None and _report_page_ready(report_page):
+        report_page.bring_to_front()
+        _wait(report_page, 350)
+        return report_page
+
+    # Khi đổi loại report, tái sử dụng tab report gần nhất thay vì tích lũy một
+    # tab/heap cho từng report. Không bao giờ lấy tab WFX chính làm target.
+    if report_page is None:
+        report_page = next(
+            (item for item in reversed(context.pages) if _is_any_report_page(item)),
+            None,
+        )
     if report_page is None:
         report_page = context.new_page()
     report_page.goto(
@@ -412,6 +455,11 @@ def _set_parameters(page: Page, values: Mapping[str, Any]) -> None:
                 if isinstance(value, list)
                 else str(value)
             )
+            # ReportViewer có thể thay toàn bộ vùng tham số bằng ASP.NET
+            # async postback. Không dùng locator/control kế tiếp khi DOM cũ
+            # vẫn đang bị thay, nếu không nút View Report có thể bị overlay
+            # chặn tới hết timeout của Playwright.
+            _wait_postback_settled(page)
         elif isinstance(value, list) and locator.get_attribute("readonly") is not None:
             button_id = str(key).removesuffix("_txtValue") + "_ddDropDownButton"
             root_id = str(key).removesuffix("_txtValue") + "_divDropDown"
@@ -430,6 +478,7 @@ def _set_parameters(page: Page, values: Mapping[str, Any]) -> None:
                         str(option.get_attribute("id") or "") in selected
                     )
             button.click()
+            _wait_postback_settled(page)
         elif locator.get_attribute("readonly") is not None:
             button_id = str(key).removesuffix("_txtValue") + "_ddDropDownButton"
             button = page.locator(f'#{button_id}')
@@ -440,28 +489,48 @@ def _set_parameters(page: Page, values: Mapping[str, Any]) -> None:
                 if target.count():
                     target.set_checked(True)
                 button.click()
+                _wait_postback_settled(page)
         elif input_type == "checkbox":
             locator.set_checked(bool(value))
         else:
             cleaned = str(value or "")
             locator.fill(cleaned)
+    # Một số control chỉ bắt đầu postback sau khi popup đóng hoặc mất focus.
+    # Chốt thêm một lần trước khi caller bấm View Report.
+    _wait_postback_settled(page)
 
 
 def _click_view_report(page: Page) -> None:
+    _wait_postback_settled(page)
     candidates = (
-        'input[type="submit"][value*="View"]',
-        'input[type="button"][value*="View"]',
+        "#rptCustomReportViewer_ctl04_ctl00",
+        'input[type="submit"][value="View Report" i]',
+        'input[type="button"][value="View Report" i]',
         'button:has-text("View Report")',
         'a:has-text("View Report")',
     )
-    for selector in candidates:
-        locator = page.locator(selector)
-        try:
-            if locator.count() and locator.first.is_visible():
-                locator.first.click()
+    deadline = time.monotonic() + 12.0
+    found = False
+    last_error: PlaywrightError | None = None
+    while time.monotonic() < deadline:
+        checkpoint()
+        for selector in candidates:
+            locator = page.locator(selector)
+            try:
+                if not locator.count():
+                    continue
+                found = True
+                button = locator.first
+                if not button.is_visible() or not button.is_enabled():
+                    continue
+                button.click(timeout=3_000)
                 return
-        except PlaywrightError:
-            continue
+            except PlaywrightError as exc:
+                last_error = exc
+        _wait(page, 150)
+    if found:
+        detail = str(last_error or "nút chưa sẵn sàng").splitlines()[0]
+        raise RuntimeError(f"REPORT_VIEW_BUTTON_NOT_READY: {detail}")
     raise RuntimeError("REPORT_VIEW_BUTTON_NOT_FOUND")
 
 
@@ -546,7 +615,7 @@ def _wait_report_ready(
     )
 
 
-def _export_excel(page: Page) -> str:
+def _export_excel(page: Page) -> Path:
     downloads: list[Any] = []
     attached_pages: list[Page] = []
     downloads_before_click = snapshot_downloads()
@@ -573,30 +642,29 @@ def _export_excel(page: Page) -> str:
         # exportReport('EXCELOPENXML') ổn định hơn việc chờ menu animation.
         excel.evaluate("element => element.click()")
         deadline = time.monotonic() + REPORT_DOWNLOAD_TIMEOUT_SECONDS
-        stable_file: tuple[Any, tuple[int, int]] | None = None
+        stable_file: tuple[Path, tuple[int, int]] | None = None
         while time.monotonic() < deadline:
             if downloads:
-                return str(downloads[0].suggested_filename or "report.xlsx")
+                download = downloads[0]
+                claim_download(download)
+                suggested_name = str(
+                    download.suggested_filename or "report.xlsx"
+                ).strip()
+                return wait_for_native_download(
+                    downloads_before_click,
+                    suggested_name=suggested_name,
+                    timeout=max(0.1, deadline - time.monotonic()),
+                )
             # Chrome chạy với download native có thể đã lưu file nhưng CDP
             # không phát event ``download``. Đối chiếu snapshot để không báo
             # lỗi giả khi file thực tế đã nằm trong Downloads.
-            current_downloads = snapshot_downloads()
-            candidates = [
-                (path, state)
-                for path, state in current_downloads.items()
-                if path.suffix.casefold() in {".xls", ".xlsx"}
-                and downloads_before_click.get(path) != state
-            ]
-            if candidates:
-                candidate = max(
-                    candidates,
-                    key=lambda item: item[1][1],
-                )
-                if stable_file == candidate:
-                    return candidate[0].name
-                stable_file = candidate
-            else:
-                stable_file = None
+            candidate = native_download_candidate(
+                downloads_before_click,
+                suffixes={".xls", ".xlsx"},
+            )
+            if candidate is not None and stable_file == candidate:
+                return candidate[0]
+            stable_file = candidate
             _wait(page, 100)
         raise RuntimeError("REPORT_DOWNLOAD_NOT_STARTED")
     finally:
@@ -635,14 +703,16 @@ def export_report_excel(
         _click_view_report(report_page)
         _wait_report_ready(report_page, log)
         _write_log(log, "[REPORT] Đang export Excel...")
-        filename = _export_excel(report_page)
+        download_path = _export_excel(report_page)
+        filename = download_path.name
         return _result(
             True,
             "REPORT_EXPORTED",
-            f"Đã tải {filename}. Chrome sẽ hiển thị file để bạn lưu hoặc mở.",
+            f"Đã tải xong {filename}.",
             report_id=report["id"],
             report_name=report["name"],
             file_name=filename,
+            download_path=str(download_path),
         )
     except Exception as exc:
         return _result(False, "REPORT_EXPORT_FAILED", f"{type(exc).__name__}: {exc}")

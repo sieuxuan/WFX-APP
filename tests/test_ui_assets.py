@@ -770,37 +770,9 @@ def test_header_alerts_are_labeled_instead_of_ambiguous_red_dots():
     ).read_text(encoding="utf-8")
 
 
-def test_webview_toast_body_opens_the_panel_but_close_only_dismisses():
-    """Toast phải mở lại panel khi bấm thân; nút đóng không được kéo panel lên.
-
-    Nút đóng nằm trong thân toast nên nếu thiếu stopPropagation thì bấm ✕ cũng
-    kích hoạt handler của thân và mở panel ngoài ý muốn.
-    """
-    js = (UI / "notification.js").read_text(encoding="utf-8")
-    css = (UI / "notification.css").read_text(encoding="utf-8")
-
-    assert "window.pywebview?.api?.activate?.()" in js
-    assert "window.pywebview?.api?.dismiss?.()" in js
-    assert "event.stopPropagation()" in js
-    assert 'notification.addEventListener("click"' in js
-    assert "cursor: pointer;" in css
-
-
-def test_external_notification_and_generic_svg_icon_are_present():
+def test_generic_svg_icon_is_present():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    notification = (UI / "notification.html").read_text(encoding="utf-8")
-    notification_js = (UI / "notification.js").read_text(encoding="utf-8")
     assert 'class="toast-stack"' not in html
-    assert 'class="notification notification-success"' in notification
-    assert "window.wfxShowNotification" in notification_js
-    assert "textContent = payload.message" in notification_js
-    assert 'class="notification-detail"' in notification
-    assert "-webkit-line-clamp" not in (
-        UI / "notification.css"
-    ).read_text(encoding="utf-8")
-    assert 'classList.add("notification-visible")' in notification_js
-    assert "window.requestAnimationFrame(" not in notification_js
-    assert "getBoundingClientRect().height" not in notification_js
     assert 'class="generic-module-icon"' in html
     assert 'class="generic-module-code"' not in html
 
@@ -873,15 +845,11 @@ def test_button_states_are_consistent_and_keyboard_visible():
             UI / "manual.css",
             UI / "bubble.css",
             UI / "bubble_menu.css",
-            UI / "notification.css",
         )
     }
     assert "button:focus-visible" in supporting_css["manual.css"]
     assert ".bubble:focus-visible" in supporting_css["bubble.css"]
     assert "button:focus-visible" in supporting_css["bubble_menu.css"]
-    assert ".notification-close:focus-visible" in supporting_css[
-        "notification.css"
-    ]
 
 
 def test_small_light_theme_text_tokens_meet_wcag_contrast():

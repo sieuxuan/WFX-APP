@@ -1153,6 +1153,7 @@ def test_server_article_library_drives_dropdowns_and_code_suggestions(tmp_path):
         "Apparel",
         "buyer_reference",
         "buy-c",
+        limit="invalid",
     )
     exported = api.export_catalog_costing(
         "Apparel",
@@ -2211,6 +2212,38 @@ def test_toggle_prefs_persist(tmp_path):
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["start_hidden"] is True
     assert loaded["toast_enabled"] is False
+
+
+def test_bridge_boolean_strings_do_not_turn_false_into_true(tmp_path):
+    api, _ = make_api(tmp_path)
+
+    assert api.set_start_hidden("false")["start_hidden"] is False
+    assert (
+        api.set_excel_file_after_download("false")[
+            "open_excel_file_after_download"
+        ]
+        is False
+    )
+
+
+def test_bridge_rejects_invalid_collection_shapes(tmp_path):
+    api, _ = make_api(tmp_path)
+
+    assert api.set_sale_asn_stages(123)["code"] == (
+        "SALE_ASN_CREATE_STEPS_INVALID"
+    )
+    assert api.set_sale_asn_po_search_fields("po")["code"] == (
+        "SALE_ASN_PO_SEARCH_FIELDS_INVALID"
+    )
+    assert api.prepare_sale_asn_create("unused.xlsx", "Buyer", 123)["code"] == (
+        "SALE_ASN_CREATE_STEPS_INVALID"
+    )
+    assert api.run_color_report_batch([], [], str(tmp_path))["code"] == (
+        "REPORT_PARAMETERS_INVALID"
+    )
+    assert api.apply_catalog_costing("token", ["invalid"])["code"] == (
+        "COSTING_ARTICLE_RESOLUTIONS_INVALID"
+    )
 
 
 def test_module_favorites_persist(tmp_path):

@@ -4,7 +4,7 @@
 > sửa nội dung trong `wfx_panel/manual/` rồi chạy
 > `python scripts/generate_user_features.py`.
 
-Phiên bản: 1.0.26
+Phiên bản: 1.0.27
 
 ## 1. Bắt đầu
 
@@ -14,7 +14,7 @@ Cài đặt, mở ứng dụng và kết nối tài khoản WFX.
 
 Ba cách gọi WFX Smart ra màn hình.
 
-Dùng để làm gì WFX Smart nằm sẵn bên cạnh trình duyệt để bạn gọi ra bất cứ lúc nào mà không phải tìm trong Start Menu. Các bước Nhấn tổ hợp phím Ctrl + Shift + X ở bất kỳ đâu, kể cả khi bạn đang làm việc trong màn hình WFX trên trình duyệt. Bảng điều khiển hiện ra ở mép phải màn hình. Nhấn lại tổ hợp đó, hoặc bấm nút dấu nhân ở góc trên, để thu bảng lại. Hai cách gọi khác: Bấm vào biểu tượng tròn nhỏ luôn nổi trên màn hình. Bấm đúp vào biểu tượng WFX Smart ở khay hệ thống, cạnh đồng hồ Windows. Mẹo Mẹo Bảng điều khiển tự thu lại khi bạn bấm sang cửa sổ khác, kể cả khi một tác vụ đang chạy. Task vẫn tiếp tục bình thường nên bạn có thể chuyển sang Chrome để theo dõi thao tác trên WFX; bấm bubble hoặc Ctrl + Shift + X để mở lại tiến độ. Mẹo Đổi tổ hợp phím trong Cài đặt, thẻ Tự động hóa, dòng `Phím tắt mở bảng điều khiển`. Lưu ý Bật Mở ẩn ở khay hệ thống nếu bạn muốn ứng dụng khởi động yên lặng cùng Windows và chỉ hiện khi được gọi. Mẹo Bật Luôn trên cùng trong Cài đặt, thẻ Giao diện, nếu bạn muốn bảng điều khiển không bị cửa sổ khác che mất. Gặp lỗi thì sao Hiện tượng Cách xử lý Nhấn phím tắt không thấy gì Cửa sổ đang dùng chạy quyền quản trị cao hơn ứng dụng. Bấm biểu tượng tròn nổi hoặc biểu tượng ở khay hệ thống. Không thấy biểu tượng ở khay Bấm mũi tên mở rộng cạnh đồng hồ Windows để xem các biểu tượng bị ẩn.
+Dùng để làm gì WFX Smart nằm sẵn bên cạnh trình duyệt để bạn gọi ra bất cứ lúc nào mà không phải tìm trong Start Menu. Các bước Nhấn tổ hợp phím Ctrl + Shift + X ở bất kỳ đâu, kể cả khi bạn đang làm việc trong màn hình WFX trên trình duyệt. Bảng điều khiển hiện ra ở mép phải màn hình. Nhấn lại tổ hợp đó, hoặc bấm nút dấu nhân ở góc trên, để thu bảng lại. Hai cách gọi khác: Bấm vào biểu tượng tròn nhỏ luôn nổi trên màn hình. Bấm đúp vào biểu tượng WFX Smart ở khay hệ thống, cạnh đồng hồ Windows. Khi muốn thoát hẳn, bấm chuột phải biểu tượng ở khay hệ thống: Thoát và đóng trình duyệt : đóng cả WFX Smart và trình duyệt làm việc để giải phóng RAM. Thoát, giữ trình duyệt : đóng WFX Smart nhưng giữ nguyên Chrome nếu bạn còn cần thao tác WFX thủ công. Mẹo Mẹo Bảng điều khiển tự thu lại khi bạn bấm sang cửa sổ khác, kể cả khi một tác vụ đang chạy. Task vẫn tiếp tục bình thường nên bạn có thể chuyển sang Chrome để theo dõi thao tác trên WFX; bấm bubble hoặc Ctrl + Shift + X để mở lại tiến độ. Mẹo Đổi tổ hợp phím trong Cài đặt, thẻ Tự động hóa, dòng `Phím tắt mở bảng điều khiển`. Lưu ý Bật Mở ẩn ở khay hệ thống nếu bạn muốn ứng dụng khởi động yên lặng cùng Windows và chỉ hiện khi được gọi. Mẹo Bật Luôn trên cùng trong Cài đặt, thẻ Giao diện, nếu bạn muốn bảng điều khiển không bị cửa sổ khác che mất. Gặp lỗi thì sao Hiện tượng Cách xử lý Nhấn phím tắt không thấy gì Cửa sổ đang dùng chạy quyền quản trị cao hơn ứng dụng. Bấm biểu tượng tròn nổi hoặc biểu tượng ở khay hệ thống. Không thấy biểu tượng ở khay Bấm mũi tên mở rộng cạnh đồng hồ Windows để xem các biểu tượng bị ẩn.
 
 ### Đăng nhập tài khoản WFX
 
@@ -343,6 +343,8 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `CATALOG_NOT_OPEN` | Catalog Master chưa sẵn sàng | Bấm Mở Catalog và chờ bảng Master hiện ra. |
 | `CATALOG_SEARCH_FAILED` | Không thể tìm trong Catalog | Mở lại Catalog Master rồi thử tìm lại. |
 | `CATEGORY_FAILED` | Không thể chọn Category | Mở lại module và kiểm tra quyền Category của tài khoản. |
+| `CHROME_CLOSE_FAILED` | Không thể đóng trình duyệt làm việc | Đóng cửa sổ Chrome WFX thủ công nếu bạn cần giải phóng RAM. |
+| `CHROME_CLOSE_TIMEOUT` | Trình duyệt làm việc phản hồi chậm khi đóng | Chờ vài giây rồi đóng cửa sổ Chrome WFX thủ công nếu nó còn mở. |
 | `CHROME_OPEN_FAILED` | Không thể mở trình duyệt làm việc | Kiểm tra cài đặt Chrome/Edge và quyền chạy ứng dụng. |
 | `CODE_FILTER_FAILED` | Không dùng được ô lọc Code | Mở lại Catalog Master rồi thử lại. |
 | `CODE_FILTER_TIMEOUT` | Ô lọc Code phản hồi quá chậm | Chờ bảng Catalog tải xong rồi thử lại. |

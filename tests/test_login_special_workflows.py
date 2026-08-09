@@ -44,9 +44,10 @@ def test_chrome_launch_does_not_force_a_window_size():
 
 
 def test_chrome_launch_caps_renderer_count_for_8gb_machines():
-    assert '"--renderer-process-limit=4"' in SOURCE
+    assert '"--renderer-process-limit=3"' in SOURCE
     assert '"--process-per-site"' in SOURCE
     assert '"--disable-background-networking"' in SOURCE
+    assert '"--disable-extensions"' in SOURCE
 
 
 def test_sale_asn_new_keeps_or_selects_required_values():

@@ -20,6 +20,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from wfx_panel.atomic_io import write_json_atomic
+from wfx_panel.coercion import nonnegative_float
 
 SCHEMA_VERSION = 1
 CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -90,11 +91,17 @@ def normalise_snapshot(raw: object) -> dict[str, Any] | None:
                 dependencies[key] = values
     if not dependencies:
         return None
-    generated_at = float(raw.get("generated_at") or 0)
-    saved_at = float(raw.get("saved_at") or generated_at or time.time())
+    generated_at = nonnegative_float(raw.get("generated_at"))
+    saved_at = nonnegative_float(
+        raw.get("saved_at"),
+        generated_at or time.time(),
+    )
     return {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": generated_at or saved_at,
+        # Freshness phải dựa trên timestamp nguồn. Nếu cache hợp lệ về JSON
+        # nhưng field này sai kiểu, coi là hết hạn thay vì biến saved_at local
+        # thành thời điểm publish và giữ cache hỏng thêm 30 ngày.
+        "generated_at": generated_at,
         "saved_at": saved_at,
         "source": str(raw.get("source") or "cache")[:80],
         "company_id": str(raw.get("company_id") or "")[:80],

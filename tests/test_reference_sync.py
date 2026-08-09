@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -138,6 +139,88 @@ def test_monthly_cache_skips_network_when_fresh(tmp_path, monkeypatch):
     )
     result = reference_sync.sync_latest(tmp_path, lambda _line: None)
     assert result["code"] == "REFERENCE_SYNC_CURRENT"
+
+
+def test_reference_state_invalid_timestamp_does_not_break_status(
+    tmp_path,
+    monkeypatch,
+):
+    _configure(tmp_path, monkeypatch)
+    _seed_caches(tmp_path)
+    (tmp_path / "reference-sync.json").write_text(
+        json.dumps({"last_success": "invalid", "version": "v1"}),
+        encoding="utf-8",
+    )
+
+    current = reference_sync.status(tmp_path)
+
+    assert current["last_success"] == 0
+    assert current["fresh"] is False
+
+
+def test_manual_and_background_sync_cannot_write_bundle_concurrently(
+    tmp_path,
+    monkeypatch,
+):
+    _configure(tmp_path, monkeypatch)
+    _seed_caches(tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    first_result = []
+
+    def request_json(_request):
+        entered.set()
+        assert release.wait(timeout=2)
+        return {
+            "ok": True,
+            "version": "v2",
+            "published_at": "2026-08-09T00:00:00Z",
+            "articles": [
+                {
+                    "article_code": "SWN-2",
+                    "article_name": "New",
+                    "buyer_reference": "BUY-2",
+                }
+            ],
+            "style_options": [
+                {"field_name": "material_type", "option_value": "KNIT"},
+                {"field_name": "buyer", "option_value": "Buyer A"},
+                {"field_name": "division", "option_value": "Division A"},
+                {"field_name": "product_group", "option_value": "TEE"},
+                {"field_name": "color_card", "option_value": "Card A"},
+                {"field_name": "size_range", "option_value": "S-XL"},
+                {"field_name": "season", "option_value": "SS26"},
+            ],
+            "style_subcategories": [
+                {"product_group": "TEE", "sub_category": "T-SHIRT"}
+            ],
+        }
+
+    monkeypatch.setattr(reference_sync, "_request_json", request_json)
+    worker = threading.Thread(
+        target=lambda: first_result.append(
+            reference_sync.sync_latest(
+                tmp_path,
+                lambda _line: None,
+                force=True,
+            )
+        )
+    )
+    worker.start()
+    assert entered.wait(timeout=1)
+
+    overlapping = reference_sync.sync_latest(
+        tmp_path,
+        lambda _line: None,
+        force=True,
+    )
+
+    assert overlapping["code"] == "REFERENCE_SYNC_IN_PROGRESS"
+    release.set()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert first_result[0]["code"] == "REFERENCE_SYNC_UPDATED"
+    assert reference_sync.status(tmp_path)["version"] == "v2"
 
 
 def test_admin_publish_uses_current_cache(tmp_path, monkeypatch):

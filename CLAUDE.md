@@ -47,6 +47,9 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   Windows Run key sau khi giữ được single-instance lock. Nếu người dùng đã tắt
   thì phải giữ nguyên lựa chọn đó. Chạy source development không được tự đăng
   ký Python/Pythonw vào startup.
+- Menu khay hệ thống có hai lựa chọn thoát rõ ràng: `Thoát và đóng trình duyệt`
+  gửi CDP `Browser.close` tới đúng Chrome automation để giải phóng RAM, còn
+  `Thoát, giữ trình duyệt` chỉ đóng app. Không kill process theo tên.
 - Panel tự thu khi mất focus, kể cả khi automation đang chạy, để user có thể
   thu nhỏ UI hoặc chuyển sang Chrome theo dõi WFX mà không dừng task. Ngoài
   `window.blur`, monitor foreground Win32 là fallback bắt buộc vì WebView2 đôi
@@ -100,16 +103,14 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   không thêm log RUN và không thay footer.
 - Toast hoàn tất phải hiện khi foreground đang ở WFX, kể cả panel chưa kịp đổi
   cờ sang hidden; không hiện trùng khi panel thật sự đang foreground. Nếu
-  tray Windows đã sẵn sàng, ưu tiên notification native để không phụ thuộc
-  WebView2 hidden và vẫn lưu ở Notification Center; WebView notification là
-  fallback, giữ thông báo mới nhất nếu chưa load. Settings có nút thử toast,
-  toast không được lấy focus.
+  tray Windows đã sẵn sàng, dùng notification native để không tốn thêm một
+  WebView2 hidden và vẫn lưu ở Notification Center. Nếu tray chưa sẵn sàng,
+  giữ thông báo mới nhất rồi phát ngay sau callback setup. Settings có nút thử
+  toast; toast không được lấy focus.
   Bấm vào THÂN toast phải mở lại panel qua `show_from_tray()`, vì đó là lý do
   người dùng bấm. Toast native gửi `NIN_BALLOONUSERCLICK` (`0x0405`) chứ không
   phải `WM_LBUTTONUP`, và pystray không xử lý message này, nên
-  `_WfxTrayIcon._on_notify` phải tự bắt. Toast WebView bắt click trên chính
-  `.notification` và gọi bridge `activate()`; nút đóng nằm bên trong nên bắt
-  buộc `stopPropagation()` để bấm ✕ chỉ đóng chứ không kéo panel lên.
+  `_WfxTrayIcon._on_notify` phải tự bắt.
 - Updater chờ instance hiện tại tự đóng 15 giây. Nếu pywebview/WebView2 còn giữ
   process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
   process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo
@@ -132,6 +133,10 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   Costing; không bắt người dùng cuộn xuống dưới form tìm kiếm. Hai workspace
   không có hero/block hướng dẫn lặp lại. Nút mở List luôn ghi `Mở Catalog`;
   vị trí Apparel mặc định được chỉnh bằng nút icon nhỏ nằm cạnh nút này.
+- Khi bấm lại `Mở Catalog` cho cùng Category, automation được tái sử dụng
+  Master hiện tại chỉ khi đã xác nhận đúng Category, Catalog Grid còn tương tác,
+  Floating Filter đang bật và dữ liệu đã ổn định. Nếu bất kỳ probe nào không
+  đạt (đặc biệt sau khi user chuyển module/màn hình), phải mở lại đầy đủ.
 - Sau khi tìm Article để mở Costing/BOM, popup phải được xác nhận bằng exact
   Article Code trong `#lblArticleNameValue`; không chờ cứng khi header đã đúng.
   Probe popup hiện tại tối đa 3–4 giây, sau đó recycle CDP không activate tab
@@ -191,8 +196,9 @@ Mỗi nút trong module là một flow riêng:
    nối. Không dùng object Playwright sync từ thread khác.
 8. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True`; tuyệt đối không
    gọi `Browser.setDownloadBehavior` cho download thông thường. Chrome phải tự
-   quản lý file theo profile và lưu thẳng vào `%USERPROFILE%\Downloads`, để file
-   thật và Chrome Download history cùng một đường dẫn; `Mở file`/`Hiện trong thư
+   quản lý file theo profile và lưu thẳng vào Windows Known Folder Downloads
+   (kể cả khi đã redirect/OneDrive), để file thật và Chrome Download history
+   cùng một đường dẫn; `Mở file`/`Hiện trong thư
    mục` phải hoạt động cả sau khi runtime nhả CDP. Flow cần dùng file vừa tải phải
    chụp trạng thái bằng `snapshot_downloads()` trước click rồi gọi
    `save_native_download()` để sao chép file native tới đường dẫn nghiệp vụ; không
@@ -206,17 +212,26 @@ Mỗi nút trong module là một flow riêng:
    dùng, còn ở lúc khởi động thì auto-login giữ lock khiến chính lượt sync bị bỏ
    qua tới lần poll sau. Chúng cũng không được đẩy dòng nền vào `job_history`,
    vì trần 200 dòng phải dành cho job thật.
+   Riêng bundle Reference Sync phải có khóa non-blocking riêng bao phủ toàn bộ
+   lần ghi Article + Style + state; lượt manual/background đến sau trả
+   `REFERENCE_SYNC_IN_PROGRESS`, không được ghi xen kẽ hai version.
 
 ### Giới hạn bộ nhớ
 
-- Chrome automation chạy `--process-per-site`, tối đa 4 renderer và tắt các
-  dịch vụ nền không cần cho WFX; không giới hạn V8 heap cứng vì grid lớn có thể
-  cần bộ nhớ đột biến.
-- WebView2 của panel/bubble/menu/notification dùng tối đa 3 renderer qua
+- Chrome automation chạy `--process-per-site`, tối đa 3 renderer, không nạp
+  extension và tắt các dịch vụ nền không cần cho WFX; không giới hạn V8 heap
+  cứng vì grid lớn có thể cần bộ nhớ đột biến. Trước khi nhả CDP sau mỗi flow,
+  runtime yêu cầu GC cho từng page nhưng không reload/đóng tab.
+- Reports chỉ dùng một tab report riêng ngoài tab WFX chính. Nếu đúng report
+  đang mở và bảng tham số còn sẵn sàng thì phải tái sử dụng DOM hiện tại; khi
+  đổi report, điều hướng tab report đó thay vì tạo thêm tab. Probe stale/lỗi
+  phải fallback về reload đầy đủ, không được trả thành công từ context cũ.
+- WebView2 của panel/bubble dùng tối đa 3 renderer qua
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. Dùng `setdefault` để cấu hình quản trị
   viên vẫn có quyền override.
 - Bubble phải có fallback Win32 bắt chuột phải, không chỉ dựa vào sự kiện
-  `contextmenu` của WebView. Menu chuột phải là tool-window pywebview riêng;
+  `contextmenu` của WebView. Menu chuột phải là tool-window pywebview riêng
+  nhưng chỉ được tạo khi người dùng mở lần đầu, không tạo sẵn lúc startup;
   không dùng `TrackPopupMenu` đồng bộ từ worker/WebView thread vì Windows có thể
   dismiss ngay. Poll loop phải bỏ qua click mở menu, sau đó tự đóng menu khi
   người dùng click ra ngoài. Mọi spinner UI dùng chung chu kỳ 1,25 giây/vòng.
@@ -226,7 +241,7 @@ Mỗi nút trong module là một flow riêng:
   popup Article (Costing, BOM hoặc File), KHÔNG dựng lại driver/CDP vô điều
   kiện: mỗi `connect_over_cdp` mới re-attach mọi tab và làm Chrome nhấp banner
   "đang bị điều khiển", gây lag. Thay vào đó phải probe popup trên CDP hiện tại
-  trước (`_open_article_destination`/`_article_page`); chỉ khi probe ngắn timeout
+  trước (`_open_article_destination`/`_article_page_for_code`); chỉ khi probe ngắn timeout
   mới `recycle_playwright` đúng một lần rồi thử lại, và không đóng Chrome. Khi
   driver cũ không thấy popup trong `context.pages`, vẫn phải recycle: không được
   dùng chính danh sách target stale đó để bỏ qua recovery.

@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "installer" / "WFX-Smart.iss"
 BUILD_SCRIPT = ROOT / "build-installer.ps1"
+PANEL_BUILD_SCRIPT = ROOT / "build-panel.ps1"
 
 
 def test_installer_is_per_user_and_keeps_user_data_outside_install_tree():
@@ -78,6 +79,28 @@ def test_installer_contains_complete_pyinstaller_onedir_build():
     assert "from wfx_panel.version import APP_VERSION" in build
     assert "JRSoftware.InnoSetup" in build
     assert 'Join-Path $env:LOCALAPPDATA "Programs\\Inno Setup 6\\ISCC.exe"' in build
+
+
+def test_panel_build_uses_isolated_python_312_environment():
+    source = PANEL_BUILD_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'Join-Path $projectRoot ".build-venv"' in source
+    assert 'uv.Source venv --python 3.12' in source
+    assert 'uv.Source pip install' in source
+    assert '$pythonVersion -ne "3.12"' in source
+    assert '& $BuildPython -m PyInstaller' in source
+    assert '--workpath (Join-Path $projectRoot "build")' in source
+    assert '--distpath (Join-Path $projectRoot "dist")' in source
+    assert 'Name = \'WFX-Panel.exe\'' in source
+    assert 'Join-Path $runtimeDir "python312.dll"' in source
+    assert '$buildSizeMb -gt 180' in source
+
+
+def test_panel_spec_resolves_project_from_spec_location():
+    source = (ROOT / "wfx_panel" / "wfx-panel.spec").read_text(encoding="utf-8")
+
+    assert "project = Path(SPECPATH).parent" in source
+    assert "project = Path.cwd()" not in source
 
 
 def test_spec_dong_goi_noi_dung_huong_dan():

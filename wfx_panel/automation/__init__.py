@@ -51,6 +51,7 @@ from wfx_panel.automation.browser import (  # noqa: F401
     _start_persistent_chrome,
     automation_browser_pid,
     browser_status,
+    close_chrome,
     detect_browser,
     start_chrome,
 )
@@ -262,6 +263,7 @@ __all__ = [
     'check_module_access',
     'check_session',
     'choose_latest_pending_row',
+    'close_chrome',
     'clear_active_costing_dependencies',
     'costing_forbidden_selectors',
     'continue_grn_receipt',

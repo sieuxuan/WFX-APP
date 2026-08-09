@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wfx_panel import article_library, constants, style_options
+from wfx_panel.coercion import boolean, bounded_int
 from wfx_panel.costing_planner import CostingPlanError, build_costing_plan
 from wfx_panel.costing_workbook import (
     CostingWorkbookError,
@@ -464,6 +465,15 @@ class CatalogController:
                 "code": "STYLE_ROW_INVALID",
                 "message": "Không tìm thấy dòng Excel cần chuẩn bị.",
             }
+        if copy_choice is not None:
+            try:
+                copy_choice = int(copy_choice)
+            except (TypeError, ValueError, OverflowError):
+                return {
+                    "ok": False,
+                    "code": "STYLE_COPY_CHOICE_INVALID",
+                    "message": "Lựa chọn Style nguồn không hợp lệ.",
+                }
 
         panel = self._panel
 
@@ -1406,7 +1416,7 @@ class CatalogController:
     def set_costing_special_options_rescan(self, value: bool) -> dict:
         preferences = self._panel._prefs.save_prefs(
             base_dir=self._panel._base_dir,
-            costing_special_options_rescan=bool(value),
+            costing_special_options_rescan=boolean(value),
         )
         state = self.costing_special_options_state(preferences)
         return {
@@ -1522,7 +1532,7 @@ class CatalogController:
                 **self.article_library_status(),
             }
         needle = value.casefold()
-        maximum = max(1, min(50, int(limit)))
+        maximum = bounded_int(limit, 20, minimum=1, maximum=50)
         field_by_kind = {
             "code": "article_code",
             "buyer_reference": "buyer_reference",
@@ -2036,6 +2046,15 @@ class CatalogController:
         article_resolutions: dict | None = None,
     ) -> dict:
         """Áp dụng đúng plan server-side; WebView không được gửi selector/field."""
+        if article_resolutions is not None and not isinstance(
+            article_resolutions,
+            Mapping,
+        ):
+            return {
+                "ok": False,
+                "code": "COSTING_ARTICLE_RESOLUTIONS_INVALID",
+                "message": "Danh sách Article đã chọn không hợp lệ.",
+            }
         return self._panel.run_composite(
             lambda: self._apply_costing_steps(plan_token, article_resolutions)
         )
