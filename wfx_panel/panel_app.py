@@ -47,16 +47,12 @@ from wfx_panel.win32_window import (
     BUBBLE_MENU_TITLE,
     BUBBLE_WINDOW_TITLE,
     MAIN_WINDOW_TITLE,
-    NOTIFICATION_HEIGHT,
-    NOTIFICATION_TITLE,
-    NOTIFICATION_WIDTH,
     _bring_process_window_to_front,
     _clamp_to_work_area,
     _find_window_hwnd,
     _foreground_process_id,
     _foreground_window_hwnd,
     _mouse_buttons_state_over_hwnd,
-    _native_notification_visibility,
     _native_popup_visibility,
     _native_window_visibility,
     _right_mouse_state_over_hwnd,
@@ -95,7 +91,6 @@ WFX_MANUAL_URL = (
 )
 ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
-NOTIFICATION_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
 BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
 BUBBLE_MENU_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble_menu.html"
 MANUAL_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "manual.html"
@@ -113,10 +108,6 @@ BUBBLE_PANEL_GAP = 10
 BUBBLE_MENU_WIDTH = 184
 BUBBLE_MENU_HEIGHT = 82
 BUBBLE_MENU_GAP = 8
-# NOTIFICATION_TITLE/WIDTH/HEIGHT sống ở win32_window (lớp native cần chúng);
-# import lại phía trên để _notification_position và create_window dùng chung.
-NOTIFICATION_MARGIN = 10
-NOTIFICATION_SECONDS = 4.2
 MODULE_NOTIFICATION_METHODS = frozenset(
     {
         "open_module",
@@ -332,94 +323,6 @@ def _top_right_position() -> tuple[int, int]:
     return x, y
 
 
-def _notification_position() -> tuple[int, int]:
-    """Neo toast quanh bubble và giữ trọn trong đúng màn hình của bubble."""
-    notification_width, notification_height = _logical_size_on_bubble_monitor(
-        NOTIFICATION_WIDTH,
-        NOTIFICATION_HEIGHT,
-    )
-    left, top, right, bottom = (0, 0, 1920, 1080)
-    if os.name == "nt":
-        try:
-            import ctypes
-
-            class Rect(ctypes.Structure):
-                _fields_ = [
-                    ("left", ctypes.c_long),
-                    ("top", ctypes.c_long),
-                    ("right", ctypes.c_long),
-                    ("bottom", ctypes.c_long),
-                ]
-
-            rect = Rect()
-            if ctypes.windll.user32.SystemParametersInfoW(
-                0x0030, 0, ctypes.byref(rect), 0
-            ):
-                left, top, right, bottom = (
-                    rect.left, rect.top, rect.right, rect.bottom
-                )
-        except Exception:
-            pass
-    else:
-        try:
-            screen = webview.screens[0]
-            right, bottom = int(screen.width), int(screen.height)
-        except Exception:
-            pass
-
-    # Neo toast quanh bubble (luôn hiển thị): ưu tiên nổi phía trên bubble,
-    # canh phải mép bubble; nếu không đủ chỗ phía trên thì nổi ngay dưới.
-    bubble = _window_rect_by_title(BUBBLE_WINDOW_TITLE)
-    if bubble is not None:
-        bubble_area = _work_area_for_window_title(BUBBLE_WINDOW_TITLE)
-        if bubble_area is not None:
-            left, top, right, bottom = bubble_area
-        x = bubble[2] - notification_width
-        above = bubble[1] - notification_height - 8
-        y = above if above >= top + NOTIFICATION_MARGIN else bubble[3] + 8
-    else:
-        x = right - notification_width - NOTIFICATION_MARGIN
-        y = bottom - notification_height - NOTIFICATION_MARGIN
-    return (
-        max(
-            left + NOTIFICATION_MARGIN,
-            min(x, right - notification_width - NOTIFICATION_MARGIN),
-        ),
-        max(
-            top + NOTIFICATION_MARGIN,
-            min(y, bottom - notification_height - NOTIFICATION_MARGIN),
-        ),
-    )
-
-
-def _logical_size_on_bubble_monitor(
-    width: int,
-    height: int,
-) -> tuple[int, int]:
-    """Physical size giữ nguyên logical viewport ở mọi Windows Scale."""
-    return _scale_logical_size(
-        width,
-        height,
-        _window_dpi_by_title(BUBBLE_WINDOW_TITLE),
-    )
-
-
-class _NotificationBridge:
-    def __init__(self, app: PanelApp):
-        self._app = app
-
-    def dismiss(self) -> dict:
-        self._app._hide_notification()
-        return {"ok": True}
-
-    def activate(self) -> dict:
-        """Bấm vào thân toast: đóng toast rồi mở lại panel để xem kết quả."""
-
-        self._app._hide_notification()
-        self._app.show_from_tray()
-        return {"ok": True}
-
-
 class _BubbleBridge:
     """Cầu nối JS cho cửa sổ bubble (icon nổi thường trực)."""
 
@@ -513,7 +416,6 @@ class PanelApp:
                 prefs.RESOURCE_DIR / "Article List.csv",
             )
         self.window = None
-        self.notification_window = None
         self.tray = None
         preferences = prefs.load_prefs()
         self._hotkey = preferences["hotkey"]
@@ -560,10 +462,11 @@ class PanelApp:
         self._bubble_menu_lock = threading.Lock()
         self._bubble_menu_visible = False
         self._bubble_menu_last_opened = 0.0
-        self._notification_ready = threading.Event()
-        self._notification_lock = threading.Lock()
-        self._notification_generation = 0
-        self._pending_notification: tuple[dict, str, float | None] | None = None
+        self._bubble_menu_destroying = False
+        self._bubble_menu_destroyed = threading.Event()
+        self._bubble_menu_destroyed.set()
+        self._tray_ready = threading.Event()
+        self._pending_native_notification: tuple[str, str] | None = None
         self._quitting = False
         self._chrome_alive: bool | None = None
         self._last_update_notice = preferences["last_update_notice"]
@@ -614,12 +517,21 @@ class PanelApp:
     def _handle_downloaded_excel(self, value: object) -> bool:
         """Áp dụng tùy chọn mở file chung rồi luôn hiện file trong Explorer."""
         preferences = prefs.load_prefs(self._base_dir)
-        if preferences.get(
+        should_open = preferences.get(
             "open_excel_file_after_download",
             preferences.get("open_costing_file_after_export", True),
-        ):
-            _open_downloaded_file(value)
-        return _reveal_downloaded_file(value)
+        )
+        if should_open and not _open_downloaded_file(value):
+            self.api._log(
+                "[DOWNLOAD] File đã tải nhưng Windows không mở được bằng "
+                "ứng dụng mặc định."
+            )
+        revealed = _reveal_downloaded_file(value)
+        if not revealed:
+            self.api._log(
+                "[DOWNLOAD] File đã tải nhưng Explorer không hiện được vị trí file."
+            )
+        return revealed
 
     def _on_progress(self, progress: dict) -> None:
         if self.window is None:
@@ -1576,6 +1488,56 @@ class PanelApp:
             "y": y,
         }
 
+    def _ensure_bubble_menu_window(self) -> bool:
+        """Chỉ tạo WebView menu khi user thật sự bấm chuột phải bubble."""
+        if self.bubble_menu_window is not None:
+            return True
+        if not self._bubble_menu_destroyed.wait(timeout=2):
+            return False
+        created: list[object] = []
+        errors: list[Exception] = []
+        ready = threading.Event()
+
+        def create_menu_window() -> None:
+            try:
+                window = webview.create_window(
+                    BUBBLE_MENU_TITLE,
+                    url=str(BUBBLE_MENU_INDEX),
+                    js_api=_BubbleMenuBridge(self),
+                    width=BUBBLE_MENU_WIDTH,
+                    height=BUBBLE_MENU_HEIGHT,
+                    x=-32000,
+                    y=-32000,
+                    min_size=(1, 1),
+                    resizable=False,
+                    frameless=True,
+                    easy_drag=False,
+                    on_top=True,
+                    hidden=True,
+                    background_color="#f7fafb",
+                    shadow=False,
+                )
+                created.append(window)
+            except Exception as error:
+                errors.append(error)
+            finally:
+                ready.set()
+
+        threading.Thread(
+            target=create_menu_window,
+            name="wfx-bubble-menu-create",
+            daemon=True,
+        ).start()
+        if not ready.wait(5) or not created:
+            detail = type(errors[0]).__name__ if errors else "Timeout"
+            self.api._log(f"[BUBBLE] Không tạo được menu: {detail}.")
+            return False
+        window = created[0]
+        self.bubble_menu_window = window
+        window.events.loaded += self._on_bubble_menu_loaded
+        window.events.closing += self._on_bubble_menu_closing
+        return True
+
     def bubble_context_menu(self) -> dict:
         """Hiện popup menu tách riêng để không bị Win32 dismiss tức thì."""
         if not self._bubble_menu_lock.acquire(blocking=False):
@@ -1592,7 +1554,7 @@ class PanelApp:
                     "code": "MENU_ALREADY_OPEN",
                     "message": "Menu bubble đang mở.",
                 }
-            if self.bubble_menu_window is None:
+            if not self._ensure_bubble_menu_window():
                 return {
                     "ok": False,
                     "code": "MENU_NOT_READY",
@@ -1659,11 +1621,29 @@ class PanelApp:
 
     def dismiss_bubble_menu(self) -> dict:
         _native_popup_visibility(BUBBLE_MENU_TITLE, False)
-        if self.bubble_menu_window is not None:
+        window, self.bubble_menu_window = self.bubble_menu_window, None
+        if window is not None:
             try:
-                self.bubble_menu_window.hide()
+                window.hide()
             except Exception:
                 pass
+            self._bubble_menu_destroying = True
+            self._bubble_menu_destroyed.clear()
+
+            def destroy_menu() -> None:
+                try:
+                    window.destroy()
+                except Exception:
+                    pass
+                finally:
+                    self._bubble_menu_destroying = False
+                    self._bubble_menu_destroyed.set()
+
+            threading.Thread(
+                target=destroy_menu,
+                name="wfx-bubble-menu-destroy",
+                daemon=True,
+            ).start()
         self._bubble_menu_visible = False
         return {"ok": True, "code": "MENU_DISMISSED", "message": "Đã đóng menu."}
 
@@ -1986,35 +1966,27 @@ class PanelApp:
             ),
         }
 
-    def _notification_loaded(self) -> None:
-        first_load = not self._notification_ready.is_set()
-        self._notification_ready.set()
-        # WebView2 có thể phát loaded thêm lần nữa khi một cửa sổ hidden được
-        # show. Không được ẩn toast đang hiện ở lần callback lặp đó.
-        if not first_load:
-            return
-        _native_notification_visibility(False)
-        pending = self._pending_notification
-        self._pending_notification = None
-        if pending is not None:
-            result, method, elapsed = pending
-            self._show_notification(result, method=method, elapsed=elapsed)
-
-    def _hide_notification(self, generation: int | None = None) -> None:
-        with self._notification_lock:
-            if (
-                generation is not None
-                and generation != self._notification_generation
-            ):
-                return
-            self._notification_generation += 1
-        if _native_notification_visibility(False):
-            return
-        if self.notification_window is not None:
+    def _hide_notification(self) -> None:
+        self._pending_native_notification = None
+        if self.tray is not None:
             try:
-                self.notification_window.hide()
+                self.tray.remove_notification()
             except Exception:
                 pass
+
+    def _notify_native(self, message: str, title: str) -> bool:
+        if self.tray is None or not self._tray_ready.is_set():
+            self._pending_native_notification = (message, title)
+            return True
+        try:
+            self.tray.notify(message, title)
+            return True
+        except Exception as error:
+            self.api._log(
+                "[NOTIFICATION] Windows toast lỗi: "
+                f"{type(error).__name__}: {error}"
+            )
+            return False
 
     def _show_notification(
         self,
@@ -2027,127 +1999,10 @@ class PanelApp:
             return False
         action_label = NOTIFICATION_ACTION_LABELS.get(method, "WFX Smart")
         status_label = "Hoàn thành" if result.get("ok") else "Cần kiểm tra"
-        # Notification native của Windows ổn định hơn cửa sổ WebView2 hidden,
-        # không lấy focus và vẫn vào Notification Center. WebView phía dưới là
-        # fallback cho giai đoạn tray chưa khởi tạo hoặc API native bị lỗi.
-        if self.tray is not None:
-            try:
-                self.tray.notify(
-                    str(result.get("message") or "Đã xong."),
-                    f"{action_label} · {status_label}",
-                )
-                return True
-            except Exception as error:
-                self.api._log(
-                    "[NOTIFICATION] Windows toast lỗi, chuyển sang WebView: "
-                    f"{type(error).__name__}: {error}"
-                )
-        if self.notification_window is None:
-            return False
-        if not self._notification_ready.is_set():
-            # WebView notification thường load sau panel. Giữ đúng thông báo
-            # mới nhất thay vì im lặng bỏ mất tác vụ hoàn tất sớm lúc startup.
-            # Với WebView2, cửa sổ tạo hidden có thể chưa phát ``loaded`` cho
-            # tới lần show đầu tiên. Show bằng API pywebview để khởi tạo phần
-            # web; callback _notification_loaded sẽ ẩn nền trống rồi render
-            # chính payload đang chờ ngay sau đó.
-            self._pending_notification = (dict(result), method, elapsed)
-            try:
-                x, y = _notification_position()
-                self.notification_window.resize(
-                    NOTIFICATION_WIDTH,
-                    NOTIFICATION_HEIGHT,
-                )
-                self.notification_window.move(x, y)
-                self.notification_window.show()
-            except Exception as error:
-                self._pending_notification = None
-                self.api._log(
-                    "[NOTIFICATION] Không thể khởi tạo toast: "
-                    f"{type(error).__name__}: {error}"
-                )
-                return False
-            return True
-        import json
-
-        tone = "success" if result.get("ok") else "error"
-        details = []
-        article_code = str(result.get("article_code") or "").strip()
-        if article_code:
-            details.append(f"Style {article_code}")
-        folder = result.get("folder")
-        if isinstance(folder, dict):
-            path_label = str(folder.get("path_label") or "").strip()
-            if path_label:
-                details.append(path_label)
-        categories = result.get("categories")
-        if isinstance(categories, list) and categories:
-            details.append(
-                "Category: "
-                + ", ".join(str(value) for value in categories[:3])
-                + ("…" if len(categories) > 3 else "")
-            )
-        elif result.get("category"):
-            details.append(f"Category: {result['category']}")
-        if elapsed is not None:
-            details.append(
-                "< 1 giây"
-                if elapsed < 1
-                else f"{elapsed:.1f} giây".replace(".", ",")
-            )
-        payload = {
-            "tone": tone,
-            "title": f"{action_label} · {status_label}",
-            "message": str(result.get("message") or "Đã xong."),
-            "detail": " · ".join(details),
-            "theme": prefs.load_prefs()["theme"],
-        }
-        try:
-            self.notification_window.evaluate_js(
-                "window.wfxShowNotification("
-                f"{json.dumps(payload, ensure_ascii=False)})"
-            )
-            x, y = _notification_position()
-            width, height = _logical_size_on_bubble_monitor(
-                NOTIFICATION_WIDTH,
-                NOTIFICATION_HEIGHT,
-            )
-            # Đồng bộ trạng thái visible của cả pywebview lẫn HWND. Chỉ gọi
-            # ShowWindow native khiến pywebview vẫn coi cửa sổ là hidden và có
-            # thể ẩn ngược toast ngay sau khi API trả về.
-            self.notification_window.resize(
-                NOTIFICATION_WIDTH,
-                NOTIFICATION_HEIGHT,
-            )
-            self.notification_window.move(x, y)
-            self.notification_window.show()
-            _native_notification_visibility(
-                True,
-                x,
-                y,
-                width,
-                height,
-            )
-        except Exception as error:
-            self.api._log(
-                "[NOTIFICATION] Không thể hiển thị toast: "
-                f"{type(error).__name__}: {error}"
-            )
-            return False
-        with self._notification_lock:
-            self._notification_generation += 1
-            generation = self._notification_generation
-        timer = threading.Timer(
-            min(
-                10.0,
-                NOTIFICATION_SECONDS + len(payload["message"]) / 45,
-            ),
-            self._hide_notification,
-            args=(generation,),
+        return self._notify_native(
+            str(result.get("message") or "Đã xong."),
+            f"{action_label} · {status_label}",
         )
-        timer.daemon = True
-        timer.start()
-        return True
 
     def _apply_always_on_top(self, enabled: bool) -> None:
         self._always_on_top = bool(enabled)
@@ -2462,7 +2317,7 @@ class PanelApp:
         return False
 
     def _on_bubble_menu_closing(self):
-        if self._quitting:
+        if self._quitting or self._bubble_menu_destroying:
             return None
         self.dismiss_bubble_menu()
         return False
@@ -2530,7 +2385,11 @@ class PanelApp:
         image = Image.open(ICON_PATH)
         menu = pystray.Menu(
             pystray.MenuItem("Hiện WFX Smart", lambda: self.show_from_tray()),
-            pystray.MenuItem("Thoát", lambda: self.quit()),
+            pystray.MenuItem(
+                "Thoát và đóng trình duyệt",
+                lambda: self.quit(close_browser=True),
+            ),
+            pystray.MenuItem("Thoát, giữ trình duyệt", lambda: self.quit()),
         )
         self.tray = _WfxTrayIcon(
             "wfx-panel",
@@ -2540,7 +2399,16 @@ class PanelApp:
             on_context_menu=self._note_tray_context_menu,
             on_activate=self.show_from_tray,
         )
-        self.tray.run()  # blocking → chạy trong thread riêng
+        self.tray.run(setup=self._on_tray_ready)  # blocking → thread riêng
+
+    def _on_tray_ready(self, icon) -> None:
+        """Hiện tray rồi phát thông báo sớm nhất đã xếp hàng lúc startup."""
+        icon.visible = True
+        self._tray_ready.set()
+        pending = self._pending_native_notification
+        self._pending_native_notification = None
+        if pending is not None and self._toast_enabled:
+            self._notify_native(*pending)
 
     def _note_tray_context_menu(self) -> None:
         """Chặn tray right-click bị taskbar monitor hiểu nhầm là bubble."""
@@ -2549,13 +2417,13 @@ class PanelApp:
             time.monotonic() + BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS
         )
 
-    def quit(self):
+    def quit(self, close_browser: bool = False):
         self._quitting = True
         crash_log.clean_shutdown("user_exit")
         self._stop_status.set()
         shutdown = getattr(self.api, "shutdown", None)
         if callable(shutdown):
-            shutdown()
+            shutdown(close_browser=close_browser)
         try:
             keyboard.remove_hotkey(self._hotkey)
         except (KeyError, ValueError):
@@ -2569,7 +2437,6 @@ class PanelApp:
         # sổ Manual — là vòng lặp thông điệp không bao giờ kết thúc, webview.start()
         # không trả về và process vẫn sống sau khi user bấm Thoát.
         for window in (
-            self.notification_window,
             self.bubble_menu_window,
             self.manual_window,
             self.bubble_window,
@@ -2658,9 +2525,9 @@ class PanelApp:
         self._schedule_bubble_native_bounds()
 
     def _on_bubble_menu_loaded(self) -> None:
-        _native_popup_visibility(BUBBLE_MENU_TITLE, False)
+        # Menu giờ chỉ được tạo đúng lúc user mở. Không ẩn trong callback
+        # loaded: lần show đầu tiên có thể phát loaded muộn và tự đóng menu.
         _set_smooth_corners_by_title(BUBBLE_MENU_TITLE)
-        self._bubble_menu_visible = False
 
     def run(self):
         if not ICON_PATH.exists():
@@ -2785,47 +2652,6 @@ class PanelApp:
         self.bubble_window.events.closing += self._on_bubble_closing
         self.bubble_window.events.minimized += self._on_bubble_minimized
         self.bubble_window.events.restored += self._on_bubble_restored
-
-        # Menu chuột phải là một tool-window riêng. TrackPopupMenu đồng bộ bị
-        # Windows dismiss ngay khi gọi từ thread WebView/worker trên một số máy.
-        self.bubble_menu_window = webview.create_window(
-            BUBBLE_MENU_TITLE,
-            url=str(BUBBLE_MENU_INDEX),
-            js_api=_BubbleMenuBridge(self),
-            width=BUBBLE_MENU_WIDTH,
-            height=BUBBLE_MENU_HEIGHT,
-            x=-32000,
-            y=-32000,
-            min_size=(1, 1),
-            resizable=False,
-            frameless=True,
-            easy_drag=False,
-            on_top=True,
-            hidden=True,
-            background_color="#f7fafb",
-            shadow=False,
-        )
-        self.bubble_menu_window.events.loaded += self._on_bubble_menu_loaded
-        self.bubble_menu_window.events.closing += self._on_bubble_menu_closing
-
-        notification_x, notification_y = _notification_position()
-        self.notification_window = webview.create_window(
-            NOTIFICATION_TITLE,
-            url=str(NOTIFICATION_INDEX),
-            js_api=_NotificationBridge(self),
-            width=NOTIFICATION_WIDTH,
-            height=NOTIFICATION_HEIGHT,
-            x=notification_x,
-            y=notification_y,
-            resizable=False,
-            frameless=True,
-            easy_drag=False,
-            focus=False,
-            on_top=True,
-            hidden=True,
-            background_color="#f4f8fa",
-        )
-        self.notification_window.events.loaded += self._notification_loaded
 
         def background():
             # Chạy song song lúc trang đang tải; window.wfxSetStatus/wfxPushLog

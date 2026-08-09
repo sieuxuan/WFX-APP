@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 
@@ -45,6 +46,7 @@ class FakeFactory:
 class FakeContext:
     def __init__(self):
         self.handlers = {}
+        self.pages = []
 
     def on(self, event, handler):
         self.handlers.setdefault(event, []).append(handler)
@@ -75,6 +77,32 @@ class FakeBrowser:
 
     def is_connected(self):
         return True
+
+
+class FakePage:
+    def __init__(self, *, explode=False):
+        self.explode = explode
+        self.gc_calls = 0
+
+    def request_gc(self):
+        self.gc_calls += 1
+        if self.explode:
+            raise RuntimeError("page closed")
+
+
+def test_runtime_requests_chrome_gc_before_releasing_cdp():
+    worker = runtime.AutomationRuntime()
+    good = FakePage()
+    closed = FakePage(explode=True)
+    browser = FakeBrowser()
+    browser.contexts[0].pages = [good, closed]
+    worker._browser = browser
+
+    worker._release_connections()
+
+    assert good.gc_calls == 1
+    assert closed.gc_calls == 1
+    assert worker._browser is None
 
 
 class FakeChromium:
@@ -355,3 +383,41 @@ def test_save_native_download_copies_new_chrome_file_to_flow_target(
     assert target.read_text(encoding="utf-8") == "new"
     assert fresh.read_text(encoding="utf-8") == "new"
     assert download.path_calls == 0
+
+
+def test_download_dir_prefers_automation_profile_setting(tmp_path, monkeypatch):
+    local_app_data = tmp_path / "LocalAppData"
+    preferences = (
+        local_app_data
+        / "WFX-Automation"
+        / "ChromeProfile"
+        / "Default"
+        / "Preferences"
+    )
+    redirected = tmp_path / "OneDrive" / "Tai xuong"
+    preferences.parent.mkdir(parents=True)
+    preferences.write_text(
+        json.dumps({"download": {"default_directory": str(redirected)}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    assert runtime._user_downloads_dir() == redirected
+
+
+def test_wait_for_native_download_returns_completed_absolute_path(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(runtime, "_user_downloads_dir", lambda: tmp_path)
+    before = runtime.snapshot_downloads()
+    target = tmp_path / "report.xlsx"
+    target.write_bytes(b"xlsx")
+
+    found = runtime.wait_for_native_download(
+        before,
+        suggested_name="report.xlsx",
+        timeout=1,
+    )
+
+    assert found == target

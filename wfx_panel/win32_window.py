@@ -14,15 +14,11 @@ import os
 # Tiêu đề cửa sổ pywebview — dùng để lọc đúng cửa sổ của app trong EnumWindows.
 # panel_app import lại các hằng này để đặt title lúc create_window, đảm bảo khớp.
 MAIN_WINDOW_TITLE = "WFX Smart"
-NOTIFICATION_TITLE = "WFX Smart Notification"
 BUBBLE_WINDOW_TITLE = "WFX Smart Bubble"
 BUBBLE_MENU_TITLE = "WFX Smart Bubble Menu"
 
 # Kích thước ổn định: không resize WebView trong callback automation vì có thể
 # làm nghẽn GUI thread. Phần tử bên trong vẫn nhỏ, dành đủ chỗ cho nội dung.
-NOTIFICATION_WIDTH = 232
-NOTIFICATION_HEIGHT = 88
-COMPACT_EDGE_MARGIN = 12
 DEFAULT_DPI = 96
 
 
@@ -105,9 +101,9 @@ def _window_priority(process_id: int, title: str) -> int | None:
         return 1
     if title == MAIN_WINDOW_TITLE:
         return 0
-    # Toast và bubble bị loại khỏi việc chọn "cửa sổ chính" (panel) khi
+    # Bubble/menu bị loại khỏi việc chọn "cửa sổ chính" (panel) khi
     # enumerate — nếu không, các helper rect/bounds/front sẽ nhắm nhầm.
-    if title in (NOTIFICATION_TITLE, BUBBLE_WINDOW_TITLE, BUBBLE_MENU_TITLE):
+    if title in (BUBBLE_WINDOW_TITLE, BUBBLE_MENU_TITLE):
         return None
     return 2
 
@@ -204,58 +200,6 @@ def _bring_process_window_to_front(
         return False
 
 
-def _window_rect_for_process(
-    process_id: int | None,
-) -> tuple[int, int, int, int] | None:
-    """Rect của cửa sổ chính thuộc PID, bỏ qua notification cùng process."""
-    if os.name != "nt" or not process_id:
-        return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        found: list[
-            tuple[int, int, tuple[int, int, int, int]]
-        ] = []
-        callback_type = ctypes.WINFUNCTYPE(
-            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
-        )
-
-        class Rect(ctypes.Structure):
-            _fields_ = [
-                ("left", ctypes.c_long),
-                ("top", ctypes.c_long),
-                ("right", ctypes.c_long),
-                ("bottom", ctypes.c_long),
-            ]
-
-        @callback_type
-        def visit(hwnd, _lparam):
-            pid = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if pid.value == int(process_id) and user32.IsWindowVisible(hwnd):
-                rect = Rect()
-                if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-                    priority = _window_priority(
-                        int(process_id), _native_window_text(user32, hwnd)
-                    )
-                    if priority is not None:
-                        bounds = (
-                            rect.left, rect.top, rect.right, rect.bottom
-                        )
-                        area = max(0, rect.right - rect.left) * max(
-                            0, rect.bottom - rect.top
-                        )
-                        found.append((priority, -area, bounds))
-            return True
-
-        user32.EnumWindows(visit, 0)
-        return min(found, key=lambda item: (item[0], item[1]))[2] if found else None
-    except Exception:
-        return None
-
-
 def _work_area_for_process_window(
     process_id: int | None,
 ) -> tuple[int, int, int, int] | None:
@@ -346,62 +290,6 @@ def _work_area_for_hwnd(
         return None
 
 
-def _work_area_for_point(
-    x: int,
-    y: int,
-) -> tuple[int, int, int, int] | None:
-    """Work area của màn hình chứa điểm physical ``(x, y)``.
-
-    Dùng khi kéo bubble để màn hình đích thay đổi ngay lúc con trỏ đi qua ranh
-    giới monitor. ``MONITOR_DEFAULTTONEAREST`` cũng xử lý được khoảng trống
-    giữa các màn hình trong một layout không thẳng hàng.
-    """
-    if os.name != "nt":
-        return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-
-        class Point(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-        class Rect(ctypes.Structure):
-            _fields_ = [
-                ("left", ctypes.c_long),
-                ("top", ctypes.c_long),
-                ("right", ctypes.c_long),
-                ("bottom", ctypes.c_long),
-            ]
-
-        class MonitorInfo(ctypes.Structure):
-            _fields_ = [
-                ("cbSize", wintypes.DWORD),
-                ("rcMonitor", Rect),
-                ("rcWork", Rect),
-                ("dwFlags", wintypes.DWORD),
-            ]
-
-        monitor_from_point = user32.MonitorFromPoint
-        monitor_from_point.argtypes = [Point, wintypes.DWORD]
-        monitor_from_point.restype = wintypes.HANDLE
-        monitor = monitor_from_point(
-            Point(int(x), int(y)), 2
-        )  # MONITOR_DEFAULTTONEAREST
-        if not monitor:
-            return None
-
-        info = MonitorInfo()
-        info.cbSize = ctypes.sizeof(MonitorInfo)
-        if not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
-            return None
-        work = info.rcWork
-        return (work.left, work.top, work.right, work.bottom)
-    except Exception:
-        return None
-
-
 def _work_area_for_window_title(
     title: str,
 ) -> tuple[int, int, int, int] | None:
@@ -471,37 +359,6 @@ def _set_process_window_bounds(
         return False
 
 
-def _native_cursor_position() -> tuple[int, int] | None:
-    """Tọa độ con trỏ theo physical screen coordinates của Win32."""
-    if os.name != "nt":
-        return None
-    try:
-        import ctypes
-
-        user32 = ctypes.windll.user32
-        class Point(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-        point = Point()
-        if not user32.GetCursorPos(ctypes.byref(point)):
-            return None
-        return int(point.x), int(point.y)
-    except Exception:
-        return None
-
-
-def _native_left_button_down() -> bool:
-    """Đọc trực tiếp trạng thái chuột trái, không phụ thuộc WebView events."""
-    if os.name != "nt":
-        return False
-    try:
-        import ctypes
-
-        return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
-    except Exception:
-        return False
-
-
 def _clamp_to_work_area(
     x: int,
     y: int,
@@ -523,60 +380,6 @@ def _clamp_to_work_area(
     clamped_x = left if max_x < left else min(max(x, left), max_x)
     clamped_y = top if max_y < top else min(max(y, top), max_y)
     return int(clamped_x), int(clamped_y)
-
-
-def _snap_to_nearest_edge(
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    area: tuple[int, int, int, int] | None,
-    margin: int = COMPACT_EDGE_MARGIN,
-) -> tuple[int, int]:
-    """Dính rect vào mép work area gần nhất (trái/phải/trên/dưới).
-
-    Chỉ đổi tọa độ trên trục của mép gần nhất, giữ nguyên trục còn lại rồi
-    clamp lại — để icon luôn nằm gọn trong màn hình sau khi dính.
-    """
-    if area is None:
-        return int(x), int(y)
-    left, top, right, bottom = area
-    x, y = _clamp_to_work_area(x, y, width, height, area)
-    distances = {
-        "left": x - left,
-        "right": (right - width) - x,
-        "top": y - top,
-        "bottom": (bottom - height) - y,
-    }
-    nearest = min(distances, key=distances.get)  # type: ignore[arg-type]
-    if nearest == "left":
-        x = left + margin
-    elif nearest == "right":
-        x = right - width - margin
-    elif nearest == "top":
-        y = top + margin
-    else:
-        y = bottom - height - margin
-    return _clamp_to_work_area(x, y, width, height, area)
-
-
-def _native_notification_visibility(
-    visible: bool,
-    x: int = 0,
-    y: int = 0,
-    width: int = NOTIFICATION_WIDTH,
-    height: int = NOTIFICATION_HEIGHT,
-) -> bool:
-    """Hiện toast không lấy focus và không tạo thêm icon taskbar."""
-    return _native_popup_visibility(
-        NOTIFICATION_TITLE,
-        visible,
-        x,
-        y,
-        width,
-        height,
-        activate=False,
-    )
 
 
 def _native_popup_visibility(
@@ -718,75 +521,6 @@ def _mouse_buttons_state_over_hwnd(hwnd: int | None) -> tuple[bool, bool]:
     return _mouse_state_over_hwnd(hwnd, (0x01, 0x02))  # VK_LBUTTON / VK_RBUTTON
 
 
-def _native_compact_context_choice(
-    _always_on_top: bool,
-    title: str = MAIN_WINDOW_TITLE,
-) -> str | None:
-    """Hiện menu chuột phải native cạnh con trỏ cho cửa sổ ``title``."""
-    if os.name != "nt":
-        return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        found: list[int] = []
-        callback_type = ctypes.WINFUNCTYPE(
-            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
-        )
-
-        @callback_type
-        def visit(hwnd, _lparam):
-            pid = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if (
-                pid.value == os.getpid()
-                and user32.IsWindowVisible(hwnd)
-                and _native_window_text(user32, hwnd) == title
-            ):
-                found.append(int(hwnd))
-                return False
-            return True
-
-        user32.EnumWindows(visit, 0)
-        if not found:
-            return None
-
-        class Point(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-        point = Point()
-        if not user32.GetCursorPos(ctypes.byref(point)):
-            return None
-        menu = user32.CreatePopupMenu()
-        if not menu:
-            return None
-        try:
-            user32.AppendMenuW(menu, 0, 1, "Ẩn xuống taskbar")
-            user32.AppendMenuW(menu, 0x0800, 0, "")  # MF_SEPARATOR
-            user32.AppendMenuW(menu, 0, 2, "Thu vào system tray")
-            hwnd = wintypes.HWND(found[0])
-            user32.SetForegroundWindow(hwnd)
-            selected = user32.TrackPopupMenu(
-                menu,
-                0x0100 | 0x0002,  # TPM_RETURNCMD | TPM_RIGHTBUTTON
-                point.x,
-                point.y,
-                0,
-                hwnd,
-                None,
-            )
-            user32.PostMessageW(hwnd, 0, 0, 0)  # WM_NULL đóng menu sạch trên Win32
-            return {
-                1: "taskbar",
-                2: "tray",
-            }.get(int(selected))
-        finally:
-            user32.DestroyMenu(menu)
-    except Exception:
-        return None
-
-
 def _find_window_hwnd_impl(
     title: str,
     *,
@@ -825,12 +559,7 @@ def _find_window_hwnd_impl(
 
 
 def _find_window_hwnd(title: str) -> int | None:
-    """HWND cửa sổ hiển thị của process này có đúng tiêu đề ``title``.
-
-    Dùng để cache HWND của bubble MỘT lần lúc bắt đầu kéo, rồi ``_move_hwnd``
-    thẳng vào HWND đó mỗi frame — không EnumWindows lại mỗi lần (nguyên nhân lag
-    khi kéo trước đây).
-    """
+    """HWND cửa sổ hiển thị của process này có đúng tiêu đề ``title``."""
     return _find_window_hwnd_impl(title, visible_only=True)
 
 
@@ -910,32 +639,6 @@ def _window_rect_for_hwnd(
         return None
     except Exception:
         return None
-
-
-def _move_hwnd(hwnd: int | None, x: int, y: int) -> bool:
-    """Dời một HWND đã biết bằng SetWindowPos rẻ (NOSIZE|NOZORDER|NOACTIVATE).
-
-    Không enumerate — dùng trong vòng kéo bubble để mượt, không giật.
-    """
-    if os.name != "nt" or not hwnd:
-        return False
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        return bool(
-            ctypes.windll.user32.SetWindowPos(
-                wintypes.HWND(int(hwnd)),
-                None,
-                int(x),
-                int(y),
-                0,
-                0,
-                0x0001 | 0x0004 | 0x0010,  # NOSIZE | NOZORDER | NOACTIVATE
-            )
-        )
-    except Exception:
-        return False
 
 
 def _set_bounds_by_title(

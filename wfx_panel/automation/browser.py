@@ -28,10 +28,15 @@ from wfx_panel.automation._common import (
     os,
     shutil,
     subprocess,
+    sync_playwright,
     time,
     urlopen,
 )
-from wfx_panel.automation.runtime import connect_browser, invalidate_browser
+from wfx_panel.automation.runtime import (
+    _user_downloads_dir,
+    connect_browser,
+    invalidate_browser,
+)
 
 
 @dataclass(frozen=True)
@@ -184,9 +189,7 @@ def _disable_password_manager(profile_dir: Path) -> None:
     profile["password_manager_enabled"] = False
     preferences["credentials_enable_service"] = False
     preferences["password_manager_leak_detection"] = False
-    downloads_dir = Path(
-        os.getenv("USERPROFILE") or str(Path.home())
-    ) / "Downloads"
+    downloads_dir = _user_downloads_dir()
     try:
         downloads_dir.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -245,11 +248,12 @@ def _start_persistent_chrome(
             "--disable-background-networking",
             "--disable-component-update",
             "--disable-default-apps",
+            "--disable-extensions",
             "--disable-sync",
             "--metrics-recording-only",
             "--no-service-autorun",
             "--process-per-site",
-            "--renderer-process-limit=4",
+            "--renderer-process-limit=3",
             "--disable-features=PasswordManagerOnboarding,PasswordManagerEnableAccountStorage,PasswordLeakDetection,MediaRouter,OptimizationHints",
             URL,
         ],
@@ -307,6 +311,71 @@ def start_chrome(log: Callable[[str], None] = print) -> dict[str, Any]:
             message,
             chrome_alive=False,
         )
+
+
+def close_chrome(log: Callable[[str], None] = print) -> dict[str, Any]:
+    """Đóng graceful đúng browser automation qua CDP, không kill theo tên."""
+    if not _chrome_is_ready():
+        return _result(
+            True,
+            "CHROME_ALREADY_CLOSED",
+            "Trình duyệt làm việc đã đóng.",
+            chrome_alive=False,
+        )
+
+    playwright: Playwright | None = None
+    connected_browser: Browser | None = None
+    try:
+        playwright = sync_playwright().start()
+        connected_browser, _page = _connect_to_chrome(
+            playwright,
+            bring_to_front=False,
+        )
+        session = connected_browser.new_browser_cdp_session()
+        session.send("Browser.close")
+        invalidate_browser(connected_browser)
+
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline:
+            if not _chrome_is_ready():
+                _write_log(log, "Đã đóng trình duyệt làm việc để giải phóng RAM.")
+                return _result(
+                    True,
+                    "CHROME_CLOSED",
+                    "Đã đóng trình duyệt làm việc.",
+                    chrome_alive=False,
+                )
+            time.sleep(0.1)
+        return _result(
+            False,
+            "CHROME_CLOSE_TIMEOUT",
+            "Trình duyệt làm việc chưa đóng sau 8 giây.",
+            chrome_alive=True,
+        )
+    except Exception as exc:
+        # CDP thường ngắt ngay khi nhận Browser.close; nếu endpoint đã biến mất
+        # thì mục tiêu đã đạt, không biến việc disconnect thành lỗi giả.
+        if not _chrome_is_ready():
+            if connected_browser is not None:
+                invalidate_browser(connected_browser)
+            return _result(
+                True,
+                "CHROME_CLOSED",
+                "Đã đóng trình duyệt làm việc.",
+                chrome_alive=False,
+            )
+        return _result(
+            False,
+            "CHROME_CLOSE_FAILED",
+            f"{type(exc).__name__}: {exc}",
+            chrome_alive=True,
+        )
+    finally:
+        if playwright is not None:
+            try:
+                playwright.stop()
+            except Exception:
+                pass
 
 
 def browser_status() -> dict[str, Any]:

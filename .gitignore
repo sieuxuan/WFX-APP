@@ -18,6 +18,7 @@ __pycache__/
 /build-*/
 /dist-*/
 /.worktrees/
+/.build-venv/
 
 # Runtime artifacts: ảnh lỗi WFX + file xuất ra chứa dữ liệu nghiệp vụ thật
 job-screenshots/

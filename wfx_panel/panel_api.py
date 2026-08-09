@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import secrets
 import shutil
@@ -13,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from wfx_panel import (
-    atomic_io,
     autostart,
     constants,
     job_history,
@@ -32,7 +30,10 @@ from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.automation.runtime import RUNTIME as AUTOMATION_RUNTIME
 from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.catalog_controller import CatalogController
+from wfx_panel.coercion import boolean
 from wfx_panel.oc_workbook import OCWorkbookError, prepare_oc_workbook
+from wfx_panel.report_parameters import ReportParameterStore
+from wfx_panel.sale_asn_buyers import SaleASNBuyerStore, normalise_buyers
 from wfx_panel.sale_asn_workbook import (
     SaleASNWorkbookError,
     read_sale_asn_workbook,
@@ -381,6 +382,12 @@ class PanelAPI:
         self._login = login_module
         self._prefs = prefs_module or prefs_default
         self._base_dir = base_dir or self._prefs.DATA_DIR
+        self._report_parameters = ReportParameterStore(
+            self._base_dir / "report-parameters.json"
+        )
+        self._sale_asn_buyer_store = SaleASNBuyerStore(
+            self._base_dir / "sale-asn-buyers.json"
+        )
         self._logs: list[str] = []
         self._sink: Callable[[str], None] | None = None
         self._result_sink: Callable[[str, dict, float], None] | None = None
@@ -422,7 +429,7 @@ class PanelAPI:
         # WFX trả nhiều dòng, user có thể chọn thủ công rồi tiếp tục đúng dòng
         # kế mà không đọc lại file hoặc đảo thứ tự.
         self._sale_asn_create_reviews: dict[str, dict] = {}
-        self._sale_asn_buyers: list[dict[str, str]] = self._load_sale_asn_buyers()
+        self._sale_asn_buyers = self._sale_asn_buyer_store.load()
         # Token hóa dòng Supplier Invoice khi Invoice No. có nhiều kết quả;
         # WebView chỉ nhận token, không nhận row key nội bộ của WFX.
         self._supplier_invoice_cancel_choices: dict[str, dict[str, str]] = {}
@@ -594,7 +601,6 @@ class PanelAPI:
                 account["user_id"].strip() and account["password"].strip()
             ),
             "theme": preferences["theme"],
-            "close_after_module": preferences["close_after_module"],
             "favorite_module_ids": preferences["favorite_module_ids"],
             "hotkey": preferences["hotkey"],
             "hotkey_label": preferences["hotkey_label"],
@@ -1097,7 +1103,20 @@ class PanelAPI:
         with self._run_depth_lock:
             return self._run_depth > 0
 
-    def shutdown(self) -> None:
+    def shutdown(self, close_browser: bool = False) -> None:
+        if close_browser:
+            closer = getattr(self._login, "close_chrome", None)
+            if callable(closer):
+                # Nếu user thoát giữa flow, dừng ở checkpoint rồi đóng Chrome
+                # trên chính automation worker để không tạo race CDP.
+                AUTOMATION_RUNTIME.request_cancel()
+                try:
+                    AUTOMATION_RUNTIME.execute(lambda: closer(self._log))
+                except Exception as exc:
+                    self._log(
+                        "Không đóng được trình duyệt làm việc khi thoát: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
         automation_runtime.shutdown()
 
     # -- automation --------------------------------------------------------
@@ -1214,32 +1233,9 @@ class PanelAPI:
         reports = catalog() if callable(catalog) else []
         return {"ok": True, "code": "REPORT_CATALOG_READY", "reports": reports}
 
-    def _report_parameters_path(self) -> Path:
-        return self._base_dir / "report-parameters.json"
-
     def _saved_report_parameters(self, report_id: str) -> dict[str, Any]:
         account_key = str(self._account().get("user_id") or "").strip().casefold()
-        if not account_key:
-            return {}
-        try:
-            raw = json.loads(self._report_parameters_path().read_text(encoding="utf-8"))
-            values = raw.get(account_key, {}).get(str(report_id), {})
-        except (OSError, json.JSONDecodeError, AttributeError):
-            return {}
-        if not isinstance(values, dict):
-            return {}
-        cleaned: dict[str, Any] = {}
-        for key, value in values.items():
-            clean_key = str(key)[:240]
-            if isinstance(value, (str, bool, int, float)):
-                cleaned[clean_key] = value
-            elif isinstance(value, list):
-                cleaned[clean_key] = [
-                    str(item)[:500]
-                    for item in value[:500]
-                    if isinstance(item, (str, int, float))
-                ]
-        return cleaned
+        return self._report_parameters.load(account_key, str(report_id))
 
     def load_report_parameters(self, report_id: str) -> dict:
         loader = getattr(self._login, "load_report_parameters", None)
@@ -1288,35 +1284,18 @@ class PanelAPI:
                 "code": "REPORT_SAVE_ACCOUNT_REQUIRED",
                 "message": "Hãy đăng nhập WFX trước khi lưu tham số báo cáo.",
             }
-        clean_values: dict[str, Any] = {}
-        for key, value in dict(values or {}).items():
-            clean_key = str(key).strip()[:240]
-            if not clean_key:
-                continue
-            if isinstance(value, bool):
-                clean_values[clean_key] = value
-            elif isinstance(value, (str, int, float)):
-                clean_values[clean_key] = str(value)[:2_000]
-            elif isinstance(value, list):
-                clean_values[clean_key] = [
-                    str(item)[:500]
-                    for item in value[:500]
-                    if isinstance(item, (str, int, float))
-                ]
+        if values is not None and not isinstance(values, Mapping):
+            return {
+                "ok": False,
+                "code": "REPORT_PARAMETERS_INVALID",
+                "message": "Tham số báo cáo phải là một object hợp lệ.",
+            }
         try:
-            path = self._report_parameters_path()
-            try:
-                stored = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                stored = {}
-            if not isinstance(stored, dict):
-                stored = {}
-            account_reports = stored.setdefault(account_key, {})
-            if not isinstance(account_reports, dict):
-                account_reports = {}
-                stored[account_key] = account_reports
-            account_reports[cleaned_id] = clean_values
-            atomic_io.write_json_atomic(path, stored, separators=(",", ":"))
+            clean_values = self._report_parameters.save(
+                account_key,
+                cleaned_id,
+                dict(values or {}),
+            )
         except OSError as error:
             return {
                 "ok": False,
@@ -1341,7 +1320,13 @@ class PanelAPI:
                 "code": "REPORT_UNAVAILABLE",
                 "message": "Phiên bản tự động hóa chưa hỗ trợ Reports.",
             }
-        safe_values = dict(values) if isinstance(values, Mapping) else {}
+        if values is not None and not isinstance(values, Mapping):
+            return {
+                "ok": False,
+                "code": "REPORT_PARAMETERS_INVALID",
+                "message": "Tham số báo cáo phải là một object hợp lệ.",
+            }
+        safe_values = dict(values or {})
         return self._run(
             "export_report_excel",
             lambda: exporter(str(report_id or ""), safe_values, self._log),
@@ -1357,6 +1342,12 @@ class PanelAPI:
                 "ok": False,
                 "code": "REPORT_UNAVAILABLE",
                 "message": "Phiên bản tự động hóa chưa hỗ trợ báo cáo này.",
+            }
+        if values is not None and not isinstance(values, Mapping):
+            return {
+                "ok": False,
+                "code": "REPORT_PARAMETERS_INVALID",
+                "message": "Tham số báo cáo phải là một object hợp lệ.",
             }
         safe_values = {
             str(key): str(value)[:500]
@@ -1389,6 +1380,18 @@ class PanelAPI:
                 "code": "REPORT_UNAVAILABLE",
                 "message": "Phiên bản tự động hóa chưa hỗ trợ báo cáo này.",
             }
+        if selection is not None and not isinstance(selection, Mapping):
+            return {
+                "ok": False,
+                "code": "REPORT_PARAMETERS_INVALID",
+                "message": "Lựa chọn báo cáo phải là một object hợp lệ.",
+            }
+        if style_refs is not None and not isinstance(style_refs, (list, tuple)):
+            return {
+                "ok": False,
+                "code": "REPORT_STYLE_REFS_INVALID",
+                "message": "Danh sách Style của báo cáo không hợp lệ.",
+            }
         safe_selection = {
             str(key): str(value)[:500]
             for key, value in dict(selection or {}).items()
@@ -1396,7 +1399,7 @@ class PanelAPI:
         }
         safe_refs = [
             str(item)[:200]
-            for item in (style_refs or [])[:500]
+            for item in list(style_refs or ())[:500]
             if str(item).strip()
         ]
         method = "run_color_report_batch"
@@ -1436,51 +1439,6 @@ class PanelAPI:
 
         return self._run("open_sale_asn_new", action)
 
-    def _sale_asn_buyer_cache_path(self) -> Path:
-        return self._base_dir / "sale-asn-buyers.json"
-
-    def _load_sale_asn_buyers(self) -> list[dict[str, str]]:
-        try:
-            raw = json.loads(
-                self._sale_asn_buyer_cache_path().read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError, TypeError):
-            return []
-        items = raw.get("buyers") if isinstance(raw, Mapping) else None
-        if not isinstance(items, list):
-            return []
-        buyers: list[dict[str, str]] = []
-        seen: set[str] = set()
-        for item in items:
-            if not isinstance(item, Mapping):
-                continue
-            label = str(item.get("label") or "").strip()
-            identity = label.casefold()
-            if not label or identity in seen:
-                continue
-            seen.add(identity)
-            buyers.append(
-                {"label": label, "value": str(item.get("value") or "")}
-            )
-        return buyers
-
-    def _save_sale_asn_buyers(self, buyers: list[dict[str, str]]) -> None:
-        target = self._sale_asn_buyer_cache_path()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps(
-                {
-                    "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "buyers": buyers,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        os.replace(temporary, target)
-
     def scan_sale_asn_buyers(self) -> dict:
         scanner = getattr(self._login, "scan_sale_asn_buyers", None)
         if not callable(scanner):
@@ -1494,16 +1452,11 @@ class PanelAPI:
             lambda: scanner(constants.SALE_ASN_NEW_XPATH, self._log),
         )
         if result.get("ok") and isinstance(result.get("buyers"), list):
-            self._sale_asn_buyers = [
-                {
-                    "label": str(item.get("label") or "").strip(),
-                    "value": str(item.get("value") or ""),
-                }
-                for item in result["buyers"]
-                if isinstance(item, Mapping) and str(item.get("label") or "").strip()
-            ]
+            self._sale_asn_buyers = normalise_buyers(result["buyers"])
             try:
-                self._save_sale_asn_buyers(self._sale_asn_buyers)
+                self._sale_asn_buyers = self._sale_asn_buyer_store.save(
+                    self._sale_asn_buyers
+                )
             except OSError as error:
                 self._log(
                     "[SALE ASN] Không lưu được cache Buyer: "
@@ -1554,7 +1507,20 @@ class PanelAPI:
             "style_details",
             "shipping_info",
         )
-        requested = set(selected_stages or stage_order)
+        if selected_stages is not None and not isinstance(
+            selected_stages,
+            (list, tuple),
+        ):
+            return {
+                "ok": False,
+                "code": "SALE_ASN_CREATE_STEPS_INVALID",
+                "message": "Danh sách bước Sale ASN không hợp lệ.",
+            }
+        requested = {
+            str(stage or "").strip()
+            for stage in (selected_stages or stage_order)
+            if isinstance(stage, str)
+        }
         stages = tuple(stage for stage in stage_order if stage in requested)
         if not stages:
             return {
@@ -2247,6 +2213,7 @@ class PanelAPI:
         sourcing_confirmed: bool,
     ) -> dict:
         token = str(receipt_token or "").strip()
+        confirmed = boolean(sourcing_confirmed)
 
         def action() -> dict:
             session = self._grn_receipt_sessions.get(token)
@@ -2256,7 +2223,7 @@ class PanelAPI:
                     "code": "GRN_SESSION_EXPIRED",
                     "message": "Phiên nhập kho đã hết hiệu lực. Hãy bắt đầu lại.",
                 }
-            if sourcing_confirmed is not True:
+            if not confirmed:
                 return {
                     "ok": False,
                     "code": "GRN_SOURCING_CONFIRM_REQUIRED",
@@ -2699,7 +2666,7 @@ class PanelAPI:
     def scan_catalog_folders(
         self, category_name: str, force: bool = False
     ) -> dict:
-        return self._catalog.scan_folders(category_name, force)
+        return self._catalog.scan_folders(category_name, boolean(force))
 
     def set_catalog_default_folder(
         self, category_name: str, node_id: str
@@ -2727,7 +2694,7 @@ class PanelAPI:
         group_id: str,
         force: bool = False,
     ) -> dict:
-        return self._catalog.ensure_style_options(group_id, bool(force))
+        return self._catalog.ensure_style_options(group_id, boolean(force))
 
     def prepare_catalog_style_row(
         self,
@@ -2740,7 +2707,7 @@ class PanelAPI:
             review_token,
             source_row,
             copy_choice,
-            bool(auto_save),
+            boolean(auto_save),
         )
 
     def find_code(
@@ -2797,7 +2764,7 @@ class PanelAPI:
             filter_kind,
             query,
             file_path,
-            bool(scan_article_options),
+            boolean(scan_article_options),
         )
 
     def check_sample_files(
@@ -2831,7 +2798,7 @@ class PanelAPI:
         grn_wait_confirmed: bool = False,
     ) -> dict:
         invoice_value = " ".join(str(invoice or "").split())
-        if not bool(grn_wait_confirmed):
+        if not boolean(grn_wait_confirmed):
             return {
                 "ok": False,
                 "code": "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
@@ -3119,7 +3086,7 @@ class PanelAPI:
         return reference_sync.sync_latest(
             self._base_dir,
             self._log,
-            force=bool(force),
+            force=boolean(force, True),
         )
 
     def save_sync_admin_key(self, admin_key: str) -> dict:
@@ -3266,16 +3233,21 @@ class PanelAPI:
         saved = self._prefs.save_prefs(base_dir=self._base_dir, theme=theme)
         return {"ok": True, "code": "THEME_SAVED", "message": "Đã đổi giao diện", "theme": saved["theme"]}
 
-    def set_close_after_module(self, value: bool) -> dict:
-        saved = self._prefs.save_prefs(base_dir=self._base_dir, close_after_module=bool(value))
-        return {"ok": True, "code": "PREF_SAVED", "message": "Đã lưu",
-                "close_after_module": saved["close_after_module"]}
-
     def set_sale_asn_stages(self, stages: list[str] | None = None) -> dict:
         """Nhớ các bước Sale ASN user đã chọn giữa các phiên chạy."""
+        if stages is not None and not isinstance(stages, (list, tuple)):
+            return {
+                "ok": False,
+                "code": "SALE_ASN_CREATE_STEPS_INVALID",
+                "message": "Danh sách bước Sale ASN không hợp lệ.",
+            }
         saved = self._prefs.save_prefs(
             base_dir=self._base_dir,
-            sale_asn_stages=list(stages or []),
+            sale_asn_stages=[
+                str(stage or "").strip()
+                for stage in (stages or ())
+                if isinstance(stage, str)
+            ],
         )
         return {
             "ok": True,
@@ -3290,9 +3262,20 @@ class PanelAPI:
     ) -> dict:
         """Nhớ các tiêu chí Add PO và luôn trả danh sách đã chuẩn hóa."""
 
+        if fields is not None and not isinstance(fields, (list, tuple)):
+            return {
+                "ok": False,
+                "code": "SALE_ASN_PO_SEARCH_FIELDS_INVALID",
+                "message": "Danh sách tiêu chí tìm PO không hợp lệ.",
+            }
+
         saved = self._prefs.save_prefs(
             base_dir=self._base_dir,
-            sale_asn_po_search_fields=list(fields or []),
+            sale_asn_po_search_fields=[
+                str(field or "").strip()
+                for field in (fields or ())
+                if isinstance(field, str)
+            ],
         )
         return {
             "ok": True,
@@ -3306,7 +3289,7 @@ class PanelAPI:
     def set_excel_file_after_download(self, enabled: bool) -> dict:
         saved = self._prefs.save_prefs(
             base_dir=self._base_dir,
-            open_excel_file_after_download=bool(enabled),
+            open_excel_file_after_download=boolean(enabled),
         )
         return {
             "ok": True,
@@ -3327,9 +3310,10 @@ class PanelAPI:
             }
         preferences = self._prefs.load_prefs(base_dir=self._base_dir)
         ids = list(preferences["favorite_module_ids"])
-        if favorite and module_id not in ids:
+        wanted = boolean(favorite)
+        if wanted and module_id not in ids:
             ids.append(module_id)
-        elif not favorite:
+        elif not wanted:
             ids = [value for value in ids if value != module_id]
         saved = self._prefs.save_prefs(
             base_dir=self._base_dir,
@@ -3341,7 +3325,7 @@ class PanelAPI:
             "code": "MODULE_FAVORITE_SAVED",
             "message": (
                 f"Đã ghim {module_name} lên đầu."
-                if favorite
+                if wanted
                 else f"Đã bỏ ghim {module_name}."
             ),
             "favorite_module_ids": saved["favorite_module_ids"],
@@ -3387,7 +3371,7 @@ class PanelAPI:
         }
 
     def set_autostart(self, enabled: bool) -> dict:
-        wanted = bool(enabled)
+        wanted = boolean(enabled)
         actual = autostart.sync(wanted)
         self._prefs.save_prefs(
             base_dir=self._base_dir, autostart=actual
@@ -3412,7 +3396,7 @@ class PanelAPI:
 
     def set_start_hidden(self, enabled: bool) -> dict:
         saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, start_hidden=bool(enabled)
+            base_dir=self._base_dir, start_hidden=boolean(enabled)
         )
         return {
             "ok": True,
@@ -3427,7 +3411,7 @@ class PanelAPI:
 
     def set_toast_enabled(self, enabled: bool) -> dict:
         saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, toast_enabled=bool(enabled)
+            base_dir=self._base_dir, toast_enabled=boolean(enabled)
         )
         return {
             "ok": True,
@@ -3443,7 +3427,7 @@ class PanelAPI:
     def set_focus_chrome_on_module(self, enabled: bool) -> dict:
         saved = self._prefs.save_prefs(
             base_dir=self._base_dir,
-            focus_chrome_on_module=bool(enabled),
+            focus_chrome_on_module=boolean(enabled),
         )
         return {
             "ok": True,
@@ -3459,7 +3443,7 @@ class PanelAPI:
         }
 
     def set_always_on_top(self, enabled: bool) -> dict:
-        value = bool(enabled)
+        value = boolean(enabled)
         saved = self._prefs.save_prefs(
             base_dir=self._base_dir, always_on_top=value
         )
@@ -3477,7 +3461,7 @@ class PanelAPI:
         }
 
     def set_admin_mode(self, enabled: bool) -> dict:
-        wanted = bool(enabled)
+        wanted = boolean(enabled)
         if wanted:
             self._refresh_admin_access()
         if wanted and self._admin_access is not True:
@@ -3526,6 +3510,7 @@ class PanelAPI:
                 "code": "FEEDBACK_TOO_LONG",
                 "message": "Nội dung góp ý tối đa 2.000 ký tự.",
             }
+        include_diagnostics = boolean(include_diagnostics, True)
         event = {
             "event_type": "user_feedback",
             "kind": kind,

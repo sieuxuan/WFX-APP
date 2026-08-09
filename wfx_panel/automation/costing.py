@@ -2132,66 +2132,6 @@ def _ensure_dependency_mapping_fields(document: dict[str, Any]) -> None:
     fields.extend(additions)
 
 
-def _scan_multiselect_field_options(
-    frame: Frame,
-    field: dict[str, Any],
-) -> None:
-    editor_ids = {
-        "colmaterialcolorlist": "ddlMaterialColorList",
-        "colmaterialsizelist": "ddlMaterialSizeList",
-    }
-    editor_id = editor_ids.get(_base_costing_field_key(field))
-    if editor_id is None:
-        return
-    control = _resolve_live_field(frame, field)
-    live = field.get("_live") or {}
-    grid = _visible_costing_grid(frame)
-    if grid is None:
-        return
-    rows = grid.locator(":scope > tbody > tr")
-    row_index = int(live.get("row_index") or 0)
-    if row_index < 0 or row_index >= rows.count():
-        return
-    row = rows.nth(row_index)
-    editor = None
-    try:
-        control.click(timeout=2_000)
-        editor = row.locator(f"#{editor_id}:visible")
-        editor.wait_for(state="visible", timeout=2_000)
-        editor.click(timeout=3_000)
-        option_list = frame.locator(f"#{editor_id}ListItems:visible")
-        option_list.wait_for(state="visible", timeout=4_000)
-        options = option_list.locator("li.clsMultiSelectContent")
-        labels: list[str] = []
-        values: list[str] = []
-        for index in range(options.count()):
-            option = options.nth(index)
-            anchor = option.locator("a")
-            label = str(
-                (anchor.get_attribute("title") if anchor.count() else "")
-                or option.inner_text()
-                or ""
-            ).strip()
-            checkbox = option.locator("input[type='checkbox']")
-            value = str(
-                checkbox.get_attribute("value") if checkbox.count() else ""
-            ).strip()
-            if label:
-                labels.append(label)
-                values.append(value or label)
-        field["options"] = list(dict.fromkeys(labels))
-        live["option_values"] = values
-    finally:
-        try:
-            if editor is not None and editor.count() and editor.is_visible():
-                editor.click(timeout=1_000)
-                editor.press("Tab")
-            else:
-                frame.locator("body").press("Escape")
-        except PlaywrightError:
-            pass
-
-
 def _scan_costing_item_options(
     frame: Frame,
     document: dict[str, Any],

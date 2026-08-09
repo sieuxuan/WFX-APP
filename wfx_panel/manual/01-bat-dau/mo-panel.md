@@ -15,6 +15,13 @@ Hai cách gọi khác:
 - Bấm vào biểu tượng tròn nhỏ luôn nổi trên màn hình.
 - Bấm đúp vào biểu tượng WFX Smart ở khay hệ thống, cạnh đồng hồ Windows.
 
+Khi muốn thoát hẳn, bấm chuột phải biểu tượng ở khay hệ thống:
+
+- **Thoát và đóng trình duyệt**: đóng cả WFX Smart và trình duyệt làm việc để
+  giải phóng RAM.
+- **Thoát, giữ trình duyệt**: đóng WFX Smart nhưng giữ nguyên Chrome nếu bạn
+  còn cần thao tác WFX thủ công.
+
 ## Mẹo
 
 > [!meo]

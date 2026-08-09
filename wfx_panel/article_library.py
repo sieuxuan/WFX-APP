@@ -26,6 +26,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 from wfx_panel.atomic_io import write_json_atomic
+from wfx_panel.coercion import nonnegative_float
 
 ENV_MANIFEST_URL = "WFX_ARTICLE_LIBRARY_MANIFEST_URL"
 DEFAULT_MANIFEST_URL = (
@@ -336,7 +337,7 @@ def load_cached(base_dir: Path) -> dict[str, Any] | None:
         "schema_version": SCHEMA_VERSION,
         "remote_version": str(raw.get("remote_version") or "")[:120],
         "generated_at": str(raw.get("generated_at") or "")[:120],
-        "synced_at": float(raw.get("synced_at") or 0),
+        "synced_at": nonnegative_float(raw.get("synced_at")),
         "sha256": str(raw.get("sha256") or "").casefold(),
         "sections": sections,
     }

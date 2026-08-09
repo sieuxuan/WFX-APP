@@ -11,6 +11,7 @@ from pathlib import Path
 from wfx_panel import hotkey as hotkey_spec
 from wfx_panel import secret
 from wfx_panel.atomic_io import write_json_atomic, write_text_atomic
+from wfx_panel.coercion import nonnegative_float
 from wfx_panel.version import APP_VERSION
 
 # save_prefs là read-modify-write. Nó được gọi từ UI thread (Settings), từ
@@ -202,6 +203,8 @@ def load_catalog_folder_cache(
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
     owner = str(data.get("user_id") or "").strip()
     requested_user = str(user_id or "").strip()
     if (
@@ -307,9 +310,11 @@ def load_costing_article_cache(
         )
     except (OSError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
     owner = str(data.get("user_id") or "").strip()
     requested_user = str(user_id or "").strip()
-    saved_at = float(data.get("saved_at") or 0)
+    saved_at = nonnegative_float(data.get("saved_at"))
     if (
         not requested_user
         or owner.casefold() != requested_user.casefold()
@@ -317,9 +322,12 @@ def load_costing_article_cache(
         or time.time() - saved_at > max(0, int(max_age_seconds))
     ):
         return None
+    raw_sections = data.get("sections")
+    if not isinstance(raw_sections, list):
+        return None
     sections = [
         section
-        for raw in (data.get("sections") or [])[:100]
+        for raw in raw_sections[:100]
         if (section := _normalise_costing_article_section(raw)) is not None
     ]
     return sections or None
@@ -398,11 +406,13 @@ def load_costing_special_options_cache(
         )
     except (OSError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
     owner = str(data.get("user_id") or "").strip()
     division = str(data.get("division_key") or "").strip()
     requested_user = str(user_id or "").strip()
     requested_division = str(division_key or "").strip()
-    saved_at = float(data.get("saved_at") or 0)
+    saved_at = nonnegative_float(data.get("saved_at"))
     if (
         not requested_user
         or not requested_division
@@ -412,9 +422,12 @@ def load_costing_special_options_cache(
         or time.time() - saved_at > max(0, int(max_age_seconds))
     ):
         return None
+    raw_sections = data.get("sections")
+    if not isinstance(raw_sections, list):
+        return None
     sections = [
         section
-        for raw in (data.get("sections") or [])[:10]
+        for raw in raw_sections[:10]
         if (section := _normalise_costing_special_section(raw)) is not None
     ]
     if {section["section_key"] for section in sections} != (
@@ -663,6 +676,8 @@ def load_prefs(base_dir: Path | None = None) -> dict:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             data = {}
+    if not isinstance(data, dict):
+        data = {}
     stored_hotkey = str(data.get("hotkey") or hotkey_spec.DEFAULT)
     if not hotkey_spec.is_valid(stored_hotkey):
         stored_hotkey = hotkey_spec.DEFAULT
@@ -689,7 +704,6 @@ def load_prefs(base_dir: Path | None = None) -> dict:
             break
     return {
         "theme": theme if theme in {"light", "dark", "system"} else "light",
-        "close_after_module": data.get("close_after_module", True) is not False,
         "favorite_module_ids": favorite_module_ids,
         "hotkey": stored_hotkey,
         "hotkey_label": hotkey_spec.format_label(stored_hotkey),
@@ -817,7 +831,6 @@ def save_prefs(
     base_dir: Path | None = None,
     *,
     theme: str | None = None,
-    close_after_module: bool | None = None,
     favorite_module_ids: list[str] | None = None,
     hotkey_label: str | None = None,
     hotkey: str | None = None,
@@ -849,7 +862,6 @@ def save_prefs(
         return _save_prefs_locked(
             base_dir,
             theme=theme,
-            close_after_module=close_after_module,
             favorite_module_ids=favorite_module_ids,
             hotkey=hotkey,
             autostart=autostart,
@@ -882,7 +894,6 @@ def _save_prefs_locked(
     base_dir: Path,
     *,
     theme: str | None,
-    close_after_module: bool | None,
     favorite_module_ids: list[str] | None,
     hotkey: str | None,
     autostart: bool | None,
@@ -913,7 +924,6 @@ def _save_prefs_locked(
     _apply_simple_preference_updates(
         current,
         boolean_values={
-            "close_after_module": close_after_module,
             "autostart": autostart,
             "start_hidden": start_hidden,
             "toast_enabled": toast_enabled,

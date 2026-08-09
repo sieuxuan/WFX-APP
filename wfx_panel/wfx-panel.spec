@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
 
-project = Path.cwd()
+# SPECPATH do PyInstaller cung cấp và luôn trỏ tới thư mục chứa spec. Nhờ đó
+# build-panel.ps1 có thể được gọi từ bất kỳ working directory nào mà pathex vẫn
+# là project root, không vô tình import/package file ở thư mục đang đứng.
+project = Path(SPECPATH).parent
 datas = [
     ("ui", "wfx_panel/ui"),
     ("manual", "wfx_panel/manual"),

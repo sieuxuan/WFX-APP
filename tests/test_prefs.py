@@ -24,7 +24,6 @@ def test_load_account_missing_returns_empty(tmp_path: Path):
 def test_prefs_defaults(tmp_path: Path):
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["theme"] == "light"
-    assert loaded["close_after_module"] is True
     assert loaded["favorite_module_ids"] == []
     assert loaded["hotkey_label"] == "Ctrl + Shift + X"
     assert loaded["open_excel_file_after_download"] is True
@@ -34,6 +33,15 @@ def test_prefs_defaults(tmp_path: Path):
         "style",
         "destination",
     ]
+
+
+def test_valid_json_with_wrong_root_type_uses_defaults(tmp_path: Path):
+    (tmp_path / "prefs.json").write_text("[]", encoding="utf-8")
+
+    loaded = prefs.load_prefs(tmp_path)
+
+    assert loaded["theme"] == "light"
+    assert loaded["hotkey"] == prefs.hotkey_spec.DEFAULT
 
 
 def test_sale_asn_po_search_fields_are_canonical_and_never_empty(tmp_path: Path):
@@ -62,12 +70,10 @@ def test_prefs_partial_update_preserves_others(tmp_path: Path):
     prefs.save_prefs(base_dir=tmp_path, theme="dark")
     prefs.save_prefs(
         base_dir=tmp_path,
-        close_after_module=False,
         favorite_module_ids=["0003_6200", "0003_6200", "0004_0050_0020"],
     )
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["theme"] == "dark"
-    assert loaded["close_after_module"] is False
     assert loaded["favorite_module_ids"] == ["0003_6200", "0004_0050_0020"]
 
 
@@ -308,6 +314,28 @@ def test_costing_article_cache_round_trip_is_scoped_and_expires(
     ) is None
 
 
+def test_costing_caches_reject_valid_json_with_invalid_types(tmp_path):
+    (tmp_path / "costing-article-options.json").write_text(
+        '{"user_id":"alice","saved_at":[],"sections":{}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "costing-special-options.json").write_text(
+        '{"user_id":"alice","division_key":"woven",'
+        '"saved_at":"invalid","sections":{}}',
+        encoding="utf-8",
+    )
+
+    assert prefs.load_costing_article_cache("alice", base_dir=tmp_path) is None
+    assert (
+        prefs.load_costing_special_options_cache(
+            "alice",
+            "woven",
+            base_dir=tmp_path,
+        )
+        is None
+    )
+
+
 def test_costing_special_options_cache_is_complete_scoped_and_weekly(
     tmp_path,
     monkeypatch,
@@ -468,7 +496,7 @@ def test_old_settings_survive_new_update_fields(tmp_path):
     )
     loaded = prefs.load_prefs(base_dir=tmp_path)
     assert loaded["theme"] == "dark"
-    assert loaded["close_after_module"] is False
+    assert "close_after_module" not in loaded
     assert loaded["hotkey"] == "alt+shift+k"
     assert loaded["autostart"] is True
     assert loaded["update_channel"] == "stable"
@@ -479,9 +507,11 @@ def test_old_settings_survive_new_update_fields(tmp_path):
         last_update_notice="abc123",
     )
     again = prefs.load_prefs(base_dir=tmp_path)
+    persisted = json.loads((tmp_path / "prefs.json").read_text(encoding="utf-8"))
     assert again["theme"] == "dark"
     assert again["hotkey"] == "alt+shift+k"
     assert again["update_channel"] == "current"
+    assert "close_after_module" not in persisted
 
 
 def test_legacy_settings_migrate_once_without_overwrite(tmp_path):

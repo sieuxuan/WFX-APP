@@ -7,9 +7,11 @@ toàn cho các workflow dài.
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import shutil
+import stat as stat_module
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -24,11 +26,63 @@ from playwright.sync_api import sync_playwright as _sync_playwright
 T = TypeVar("T")
 CDP_CONNECT_TIMEOUT_MS = 10_000
 NATIVE_DOWNLOAD_TIMEOUT_SECONDS = 180
+_DOWNLOAD_PREFERENCES_RELATIVE = Path("Default") / "Preferences"
+
+
+def _automation_profile_dir() -> Path:
+    local_app_data = os.getenv("LOCALAPPDATA") or str(Path.home())
+    return Path(local_app_data) / "WFX-Automation" / "ChromeProfile"
+
+
+def _profile_downloads_dir() -> Path | None:
+    """Đọc đúng download.default_directory của profile Chrome automation."""
+
+    preferences_path = _automation_profile_dir() / _DOWNLOAD_PREFERENCES_RELATIVE
+    try:
+        raw = json.loads(preferences_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    download = raw.get("download")
+    if not isinstance(download, dict):
+        return None
+    value = os.path.expandvars(str(download.get("default_directory") or "").strip())
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else None
+
+
+def _windows_downloads_dir() -> Path | None:
+    """Resolve Windows Known Folder Downloads, kể cả khi đã redirect/OneDrive."""
+
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+
+        key_path = (
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+        )
+        downloads_guid = "{374DE290-123F-4565-9164-39C4925E467B}"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            value, _value_type = winreg.QueryValueEx(key, downloads_guid)
+        path = Path(os.path.expandvars(str(value))).expanduser()
+        return path if path.is_absolute() else None
+    except (OSError, ValueError):
+        return None
 
 
 def _user_downloads_dir() -> Path:
-    """Thư mục Downloads thật của người dùng, nơi Chrome vốn lưu file."""
+    """Thư mục download thật mà profile Chrome automation đang sử dụng."""
 
+    configured = _profile_downloads_dir()
+    if configured is not None:
+        return configured
+    known_folder = _windows_downloads_dir()
+    if known_folder is not None:
+        return known_folder
     profile = os.getenv("USERPROFILE") or str(Path.home())
     return Path(profile) / "Downloads"
 
@@ -46,16 +100,15 @@ def snapshot_downloads() -> DownloadSnapshot:
         return {}
     snapshot: DownloadSnapshot = {}
     try:
-        files = list(directory.iterdir())
+        for path in directory.iterdir():
+            try:
+                stat = path.stat()
+                if stat_module.S_ISREG(stat.st_mode):
+                    snapshot[path] = (stat.st_size, stat.st_mtime_ns)
+            except OSError:
+                continue
     except OSError:
         return snapshot
-    for path in files:
-        try:
-            if path.is_file():
-                stat = path.stat()
-                snapshot[path] = (stat.st_size, stat.st_mtime_ns)
-        except OSError:
-            continue
     return snapshot
 
 
@@ -76,6 +129,86 @@ def _matches_chrome_download_name(path: Path, suggested_name: str) -> bool:
     return number.endswith(")") and number[:-1].isdigit()
 
 
+def native_download_candidate(
+    before: DownloadSnapshot | None = None,
+    *,
+    suggested_name: str = "",
+    suffixes: set[str] | frozenset[str] | None = None,
+) -> tuple[Path, tuple[int, int]] | None:
+    """Trả file native mới nhất khớp snapshot, không chờ và không copy."""
+
+    directory = _user_downloads_dir()
+    allowed_suffixes = {
+        str(value).casefold()
+        for value in (suffixes or ())
+        if str(value).strip()
+    }
+    newest: tuple[int, Path, tuple[int, int]] | None = None
+    try:
+        for path in directory.iterdir():
+            try:
+                # Lọc bằng tên Path trước mọi syscall. Downloads có thể chứa
+                # hàng chục nghìn file; gọi is_file()/stat() cho tất cả ở mỗi
+                # poll 100 ms là nguồn I/O lớn nhất của luồng export.
+                if suggested_name and not _matches_chrome_download_name(
+                    path,
+                    suggested_name,
+                ):
+                    continue
+                if (
+                    not suggested_name
+                    and allowed_suffixes
+                    and path.suffix.casefold() not in allowed_suffixes
+                ):
+                    continue
+                stat = path.stat()
+                if not stat_module.S_ISREG(stat.st_mode):
+                    continue
+                current = (stat.st_size, stat.st_mtime_ns)
+                if before is not None and before.get(path) == current:
+                    continue
+                candidate = (stat.st_mtime_ns, path, current)
+                if newest is None or candidate[0] > newest[0]:
+                    newest = candidate
+            except OSError:
+                continue
+    except OSError:
+        return None
+    if newest is None:
+        return None
+    _modified, path, state = newest
+    return path, state
+
+
+def wait_for_native_download(
+    before: DownloadSnapshot | None = None,
+    *,
+    suggested_name: str = "",
+    suffixes: set[str] | frozenset[str] | None = None,
+    timeout: float = NATIVE_DOWNLOAD_TIMEOUT_SECONDS,
+) -> Path:
+    """Chờ file Chrome native xuất hiện và ổn định qua hai lần quan sát."""
+
+    started = time.monotonic()
+    deadline = started + max(0.1, float(timeout))
+    stable: tuple[Path, tuple[int, int]] | None = None
+    while time.monotonic() < deadline:
+        checkpoint()
+        candidate = native_download_candidate(
+            before,
+            suggested_name=suggested_name,
+            suffixes=suffixes,
+        )
+        if candidate is not None and stable == candidate:
+            return candidate[0]
+        stable = candidate
+        elapsed = time.monotonic() - started
+        poll_seconds = 0.1 if elapsed < 2 else 0.25 if elapsed < 10 else 0.5
+        time.sleep(min(poll_seconds, max(0.01, deadline - time.monotonic())))
+    label = suggested_name or "file vừa tải"
+    raise FileNotFoundError(f"Không tìm thấy file Chrome vừa tải: {label}.")
+
+
 def save_native_download(
     download: Any,
     target: str | Path,
@@ -89,41 +222,11 @@ def save_native_download(
     """
 
     claim_download(download)
-    directory = _user_downloads_dir()
     suggested_name = str(download.suggested_filename or "").strip()
-    deadline = time.monotonic() + NATIVE_DOWNLOAD_TIMEOUT_SECONDS
-    stable: tuple[Path, tuple[int, int]] | None = None
-    source: Path | None = None
-    while time.monotonic() < deadline:
-        try:
-            files = list(directory.iterdir())
-        except OSError as error:
-            raise FileNotFoundError("Không đọc được thư mục Downloads.") from error
-        candidates: list[tuple[int, Path, tuple[int, int]]] = []
-        for path in files:
-            try:
-                if not path.is_file() or not _matches_chrome_download_name(
-                    path, suggested_name
-                ):
-                    continue
-                stat = path.stat()
-                current = (stat.st_size, stat.st_mtime_ns)
-                if before is not None and before.get(path) == current:
-                    continue
-                candidates.append((stat.st_mtime_ns, path, current))
-            except OSError:
-                continue
-        if candidates:
-            _, candidate, current = max(candidates, key=lambda item: item[0])
-            if stable == (candidate, current):
-                source = candidate
-                break
-            stable = (candidate, current)
-        time.sleep(0.1)
-    if source is None:
-        raise FileNotFoundError(
-            f"Không tìm thấy file Chrome vừa tải: {suggested_name or 'download'}."
-        )
+    source = wait_for_native_download(
+        before,
+        suggested_name=suggested_name,
+    )
     destination = Path(target)
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -312,6 +415,25 @@ class AutomationRuntime:
             self._finish_unclaimed_downloads()
         except Exception:
             pass
+        # WFX là SPA lớn và các grid/report tạo nhiều object JS tạm. Yêu cầu
+        # Chromium thu gom heap trước khi nhả CDP giúp session Chrome sống cả
+        # ngày không phình dần sau mỗi workflow. Đây chỉ là GC, không reload,
+        # không đóng tab và không làm mất state/form người dùng đang xem.
+        if self._browser is not None:
+            try:
+                contexts = list(self._browser.contexts)
+            except Exception:
+                contexts = []
+            for context in contexts:
+                try:
+                    pages = list(context.pages)
+                except Exception:
+                    continue
+                for page in pages:
+                    try:
+                        page.request_gc()
+                    except Exception:
+                        continue
         self._browser = None
         if self._playwright is not None:
             try:

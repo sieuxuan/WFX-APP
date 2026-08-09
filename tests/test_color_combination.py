@@ -338,6 +338,22 @@ def test_read_cascade_applies_saved_values_and_returns_every_level(monkeypatch):
     assert levels["division"]["value"] == "d1"
 
 
+def test_read_cascade_keeps_current_values_without_replaying_postbacks(monkeypatch):
+    """Fast-path report phải chỉ postback cấp user vừa thay đổi."""
+    page = _CascadePage()
+    page.selected.update(
+        {"OC Division": "d1", "Buyer": "b1", "Season": "s1"}
+    )
+    _install_cascade_fakes(monkeypatch, page)
+
+    levels = color_combination.read_cascade(
+        page, {"division": "d1", "buyer": "b1", "season": "s1"}
+    )["levels"]
+
+    assert page.settled == 0
+    assert levels["season"]["value"] == "s1"
+
+
 def test_read_cascade_stops_applying_at_the_first_stale_value(monkeypatch):
     """Division cũ không còn thì không được áp Buyer/Season của lần trước."""
     page = _CascadePage()

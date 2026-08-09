@@ -13,12 +13,7 @@ def test_icon_and_ui_paths_resolve_under_resource_dir():
         panel_app.ICON_PATH == prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
     )
     assert panel_app.UI_INDEX == prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
-    assert (
-        panel_app.NOTIFICATION_INDEX
-        == prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "notification.html"
-    )
     assert panel_app.UI_INDEX.exists()
-    assert panel_app.NOTIFICATION_INDEX.exists()
 
 
 def test_manual_exposes_official_wfx_system_manual_link():
@@ -209,57 +204,36 @@ def test_module_result_shows_toast_when_wfx_has_foreground(monkeypatch):
     assert sent == [(result, {"method": "find_code", "elapsed": 0.4})]
 
 
-def test_notification_queues_latest_result_until_webview_is_ready():
+def test_notification_queues_latest_result_until_tray_is_ready():
     app = panel_app.PanelApp()
-    primed = []
-
-    class FakeWindow:
-        def resize(self, width, height):
-            primed.append(("resize", width, height))
-
-        def move(self, x, y):
-            primed.append(("move", x, y))
-
-        def show(self):
-            primed.append(("show",))
-
-    app.notification_window = FakeWindow()
     app._toast_enabled = True
+    notices = []
 
-    app._show_notification(
+    shown = app._show_notification(
         {"ok": True, "message": "xong sớm"},
         method="find_code",
         elapsed=0.2,
     )
 
-    assert app._pending_notification == (
-        {"ok": True, "message": "xong sớm"},
-        "find_code",
-        0.2,
-    )
-    assert primed[0] == (
-        "resize",
-        panel_app.NOTIFICATION_WIDTH,
-        panel_app.NOTIFICATION_HEIGHT,
-    )
-    assert primed[-1] == ("show",)
-
-
-def test_repeated_notification_loaded_event_does_not_hide_active_toast(
-    monkeypatch,
-):
-    app = panel_app.PanelApp()
-    visibility = []
-    monkeypatch.setattr(
-        panel_app,
-        "_native_notification_visibility",
-        lambda *args: visibility.append(args) or True,
+    assert shown is True
+    assert app._pending_native_notification == (
+        "xong sớm",
+        "Tìm Article Code · Hoàn thành",
     )
 
-    app._notification_loaded()
-    app._notification_loaded()
+    class FakeTray:
+        visible = False
 
-    assert visibility == [(False,)]
+        def notify(self, message, title):
+            notices.append((message, title))
+
+    tray = FakeTray()
+    app.tray = tray
+    app._on_tray_ready(tray)
+
+    assert tray.visible is True
+    assert app._pending_native_notification is None
+    assert notices == [("xong sớm", "Tìm Article Code · Hoàn thành")]
 
 
 def test_notification_prefers_windows_tray_toast():
@@ -271,7 +245,7 @@ def test_notification_prefers_windows_tray_toast():
             notices.append((message, title))
 
     app.tray = FakeTray()
-    app.notification_window = None
+    app._tray_ready.set()
     app._toast_enabled = True
 
     shown = app._show_notification(
@@ -408,6 +382,28 @@ def test_sale_asn_export_result_opens_selected_folder(tmp_path, monkeypatch):
 
     assert opened_files == [result["export_path"]]
     assert opened_folders == [result["export_path"]]
+
+
+def test_excel_open_failure_is_logged_but_folder_is_still_revealed(
+    tmp_path,
+    monkeypatch,
+):
+    app = panel_app.PanelApp()
+    app._base_dir = tmp_path
+    target = tmp_path / "Report.xlsx"
+    target.write_bytes(b"xlsx")
+    logs = []
+    app.api._log = logs.append
+    monkeypatch.setattr(
+        panel_app.prefs,
+        "load_prefs",
+        lambda _base_dir: {"open_excel_file_after_download": True},
+    )
+    monkeypatch.setattr(panel_app, "_open_downloaded_file", lambda _path: False)
+    monkeypatch.setattr(panel_app, "_reveal_downloaded_file", lambda _path: True)
+
+    assert app._handle_downloaded_excel(target) is True
+    assert any("Windows không mở được" in line for line in logs)
 
 
 def test_excel_download_option_applies_to_catalog_attachments(tmp_path, monkeypatch):
@@ -697,89 +693,18 @@ def test_style_template_cancelled_at_the_dialog_never_touches_wfx(
     assert calls == []
 
 
-def test_notification_shows_full_action_detail_without_resizing_webview(
-    monkeypatch,
-):
-    import wfx_panel.panel_app as module
+def test_external_notification_failure_never_breaks_result_flow():
+    app = panel_app.PanelApp()
 
-    app = module.PanelApp()
-    scripts = []
-    moved = []
-    native_calls = []
+    class ExplodingTray:
+        def notify(self, _message, _title):
+            raise RuntimeError("tray hỏng")
 
-    class FakeWindow:
-        def evaluate_js(self, script):
-            scripts.append(script)
-
-        def resize(self, width, height):
-            moved.append(("resize", width, height))
-
-        def move(self, x, y):
-            moved.append((x, y))
-
-        def show(self):
-            pass
-
-    class FakeTimer:
-        daemon = False
-
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def start(self):
-            pass
-
-    app.notification_window = FakeWindow()
-    app._notification_ready.set()
+    app.tray = ExplodingTray()
+    app._tray_ready.set()
     app._toast_enabled = True
-    monkeypatch.setattr(
-        module,
-        "_native_notification_visibility",
-        lambda *args: native_calls.append(args) or False,
-    )
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
-    monkeypatch.setattr(module.threading, "Timer", FakeTimer)
 
-    app._show_notification(
-        {
-            "ok": True,
-            "message": "Đã mở đầy đủ thông tin Costing cho style.",
-            "article_code": "ABC123",
-        },
-        method="catalog_action",
-        elapsed=2.5,
-    )
-
-    assert '"title": "Catalog · Hoàn thành"' in scripts[0]
-    assert '"detail": "Style ABC123 · 2,5 giây"' in scripts[0]
-    assert "Đã mở đầy đủ thông tin Costing cho style." in scripts[0]
-    assert native_calls and native_calls[0][3:] == (
-        module.NOTIFICATION_WIDTH,
-        module.NOTIFICATION_HEIGHT,
-    )
-    assert (
-        "resize",
-        module.NOTIFICATION_WIDTH,
-        module.NOTIFICATION_HEIGHT,
-    ) in moved
-    assert moved
-
-
-def test_external_notification_failure_never_breaks_result_flow(monkeypatch):
-    import wfx_panel.panel_app as module
-    from wfx_panel.panel_app import PanelApp
-
-    app = PanelApp()
-
-    class ExplodingWindow:
-        def evaluate_js(self, _script):
-            raise RuntimeError("webview hỏng")
-
-    app.notification_window = ExplodingWindow()
-    app._notification_ready.set()
-    app._toast_enabled = True
-    monkeypatch.setattr(module, "_native_notification_visibility", lambda *_args: False)
-    app._show_notification({"ok": True, "message": "xong"})
+    assert app._show_notification({"ok": True, "message": "xong"}) is False
 
 
 def test_apply_hotkey_returns_error_message_on_failure(monkeypatch):
@@ -1048,54 +973,6 @@ def test_panel_no_longer_has_browser_docking_behavior():
     assert not hasattr(app, "_dock_to_browser")
     assert not hasattr(app, "_apply_stick_to_browser")
     assert not hasattr(app, "_stick_to_browser")
-
-
-def test_notification_is_anchored_above_bubble(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (900, 500, 948, 548)
-    )
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
-    x, y = module._notification_position()
-    # Canh phải mép bubble, nổi phía trên.
-    assert x == 948 - module.NOTIFICATION_WIDTH
-    assert y == 500 - module.NOTIFICATION_HEIGHT - 8
-
-
-def test_notification_drops_below_bubble_when_no_room_above(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    # Bubble sát đỉnh màn hình → không đủ chỗ phía trên → nổi ngay dưới bubble.
-    monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (900, 5, 948, 53)
-    )
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
-    x, y = module._notification_position()
-    assert x == 948 - module.NOTIFICATION_WIDTH
-    assert y == 53 + 8
-
-
-def test_notification_keeps_logical_size_at_150_percent_scale(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    monkeypatch.setattr(
-        module,
-        "_window_rect_by_title",
-        lambda _title: (900, 500, 948, 548),
-    )
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 144)
-
-    x, y = module._notification_position()
-
-    width, height = module._scale_logical_size(
-        module.NOTIFICATION_WIDTH,
-        module.NOTIFICATION_HEIGHT,
-        144,
-    )
-    assert (width, height) == (348, 132)
-    assert x == 948 - width
-    assert y == 500 - height - 8
 
 
 def test_native_drag_saves_final_bubble_position(monkeypatch):
@@ -1698,6 +1575,83 @@ def test_bubble_context_menu_shows_dedicated_dpi_aware_popup(monkeypatch):
     assert app._bubble_menu_visible is True
 
 
+def test_bubble_menu_webview_is_created_only_on_first_use(monkeypatch):
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    calls = []
+
+    class Event:
+        def __iadd__(self, handler):
+            return self
+
+    class FakeWindow:
+        events = type("Events", (), {"loaded": Event(), "closing": Event()})()
+
+    class ImmediateThread:
+        def __init__(self, *, target, **_kwargs):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(module.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(
+        module.webview,
+        "create_window",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or FakeWindow(),
+    )
+
+    assert app.bubble_menu_window is None
+    assert app._ensure_bubble_menu_window() is True
+    assert app._ensure_bubble_menu_window() is True
+    assert len(calls) == 1
+    assert calls[0][1]["hidden"] is True
+
+
+def test_dismiss_bubble_menu_destroys_its_temporary_webview():
+    app = panel_app.PanelApp()
+    calls = []
+
+    class FakeWindow:
+        def hide(self):
+            calls.append("hide")
+
+        def destroy(self):
+            calls.append("destroy")
+
+    app.bubble_menu_window = FakeWindow()
+    app._bubble_menu_visible = True
+
+    result = app.dismiss_bubble_menu()
+
+    assert result["code"] == "MENU_DISMISSED"
+    assert app._bubble_menu_destroyed.wait(timeout=1)
+    assert calls == ["hide", "destroy"]
+    assert app.bubble_menu_window is None
+
+
+def test_late_bubble_menu_loaded_event_does_not_hide_open_menu(monkeypatch):
+    calls = []
+    app = panel_app.PanelApp()
+    app._bubble_menu_visible = True
+    monkeypatch.setattr(
+        panel_app,
+        "_native_popup_visibility",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        panel_app,
+        "_set_smooth_corners_by_title",
+        lambda title: calls.append((title,)),
+    )
+
+    app._on_bubble_menu_loaded()
+
+    assert app._bubble_menu_visible is True
+    assert calls == [(panel_app.BUBBLE_MENU_TITLE,)]
+
+
 def test_requested_taskbar_minimize_event_does_not_reopen_panel(monkeypatch):
     import wfx_panel.panel_app as module
 
@@ -1845,8 +1799,9 @@ def test_tray_menu_has_commands_without_a_default_open_action(monkeypatch):
         def __init__(self, _name, _image, _title, menu, **_options):
             menu_values.extend(menu)
 
-        def run(self):
-            pass
+        def run(self, setup=None):
+            if setup is not None:
+                setup(self)
 
     monkeypatch.setattr(module.Image, "open", lambda _path: object())
     monkeypatch.setattr(module.pystray, "MenuItem", menu_item)
@@ -1857,10 +1812,11 @@ def test_tray_menu_has_commands_without_a_default_open_action(monkeypatch):
 
     assert [label for label, _action, _options in items] == [
         "Hiện WFX Smart",
-        "Thoát",
+        "Thoát và đóng trình duyệt",
+        "Thoát, giữ trình duyệt",
     ]
     assert all(options.get("default") is not True for _, _, options in items)
-    assert len(menu_values) == 2
+    assert len(menu_values) == 3
 
 
 def test_tray_right_click_suppresses_taskbar_activation(monkeypatch):
@@ -1947,22 +1903,6 @@ def test_native_tray_balloon_click_opens_the_panel(monkeypatch):
     icon._on_notify(12, module.TRAY_BALLOON_USER_CLICK)
 
     assert calls == [("activate",)]
-
-
-def test_webview_toast_click_opens_the_panel_and_dismisses_itself():
-    """Fallback WebView cũng phải mở panel, không chỉ có nút đóng."""
-
-    import wfx_panel.panel_app as module
-
-    calls = []
-    app = object.__new__(module.PanelApp)
-    app._hide_notification = lambda: calls.append("hide")
-    app.show_from_tray = lambda: calls.append("show") or {"ok": True}
-
-    result = module._NotificationBridge(app).activate()
-
-    assert result["ok"] is True
-    assert calls == ["hide", "show"]
 
 
 class _FakeEvents:
@@ -2261,12 +2201,12 @@ def test_focus_automation_browser_respects_default_on_setting(monkeypatch):
     assert focused == [(922200, None)]
 
 
-def test_bubble_and_notification_windows_are_created():
+def test_only_panel_and_bubble_webviews_are_created_at_startup():
     source = Path(panel_app.__file__).read_text(encoding="utf-8")
-    assert "url=str(NOTIFICATION_INDEX)" in source
     assert "url=str(BUBBLE_INDEX)" in source
     assert "url=str(BUBBLE_MENU_INDEX)" in source
-    assert "focus=False" in source
+    assert "def _ensure_bubble_menu_window" in source
+    assert "self.notification_window" not in source
     # Bubble bắt sự kiện đóng để thu vào tray thay vì huỷ.
     assert "self.bubble_window.events.closing += self._on_bubble_closing" in source
     # Click taskbar phải mở đầy đủ UI, cả khi Windows phát minimize/restore
@@ -2394,7 +2334,6 @@ def test_quit_destroys_every_window_so_the_process_can_exit(monkeypatch):
     app.window = FakeWindow("panel")
     app.bubble_window = FakeWindow("bubble")
     app.bubble_menu_window = FakeWindow("bubble_menu")
-    app.notification_window = FakeWindow("notification")
     app.manual_window = FakeWindow("manual")
     app.tray = None
     app.lock = None
@@ -2406,9 +2345,31 @@ def test_quit_destroys_every_window_so_the_process_can_exit(monkeypatch):
         "bubble",
         "bubble_menu",
         "manual",
-        "notification",
         "panel",
     ]
+
+
+def test_quit_can_request_closing_the_work_browser(monkeypatch):
+    app = panel_app.PanelApp()
+    calls = []
+
+    class FakeAPI:
+        @staticmethod
+        def shutdown(close_browser=False):
+            calls.append(close_browser)
+
+    app.api = FakeAPI()
+    app.window = None
+    app.bubble_window = None
+    app.bubble_menu_window = None
+    app.manual_window = None
+    app.tray = None
+    app.lock = None
+    monkeypatch.setattr(panel_app.keyboard, "remove_hotkey", lambda _hotkey: None)
+
+    app.quit(close_browser=True)
+
+    assert calls == [True]
 
 
 def test_quit_survives_a_window_that_fails_to_destroy(monkeypatch):
@@ -2430,7 +2391,6 @@ def test_quit_survives_a_window_that_fails_to_destroy(monkeypatch):
     app.window = FakeWindow("panel")
     app.bubble_window = BrokenWindow()
     app.bubble_menu_window = FakeWindow("bubble_menu")
-    app.notification_window = FakeWindow("notification")
     app.manual_window = None
     app.tray = None
     app.lock = None
@@ -2438,4 +2398,4 @@ def test_quit_survives_a_window_that_fails_to_destroy(monkeypatch):
 
     app.quit()
 
-    assert sorted(destroyed) == ["bubble_menu", "notification", "panel"]
+    assert sorted(destroyed) == ["bubble_menu", "panel"]

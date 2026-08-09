@@ -356,6 +356,14 @@ ERROR_CODE_INFO.update(
             "Không thể mở trình duyệt làm việc",
             "Kiểm tra cài đặt Chrome/Edge và quyền chạy ứng dụng.",
         ),
+        "CHROME_CLOSE_FAILED": (
+            "Không thể đóng trình duyệt làm việc",
+            "Đóng cửa sổ Chrome WFX thủ công nếu bạn cần giải phóng RAM.",
+        ),
+        "CHROME_CLOSE_TIMEOUT": (
+            "Trình duyệt làm việc phản hồi chậm khi đóng",
+            "Chờ vài giây rồi đóng cửa sổ Chrome WFX thủ công nếu nó còn mở.",
+        ),
         "CODE_FILTER_FAILED": (
             "Không dùng được ô lọc Code",
             "Mở lại Catalog Master rồi thử lại.",
