@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.0.28",
+    "date": "2026-08-10",
+    "highlights": [
+      {
+        "title": "Xuất Invoice + PKL nhận đủ hai report",
+        "body": "Sale ASN tiếp tục nhận file Excel native khi Chrome đã tải xong nhưng CDP không phát sự kiện download, nhờ đó Buyer Invoice và Packing List vẫn được ghép, tự xuống dòng và gộp số liệu theo buyer.",
+        "entry": "don-hang-sale-asn-documents"
+      },
+      {
+        "title": "Factory chờ đúng tên đầy đủ",
+        "body": "Khi WFX đang tải dần danh sách Factory, ứng dụng không còn chọn sớm một tên chung như PRO SPORTS cho FTY đầy đủ PRO SPORTS GIAO THUY JSC; flow tiếp tục chờ lựa chọn đầy đủ rồi mới điền.",
+        "entry": "don-hang-sale-asn"
+      }
+    ]
+  },
+  {
     "version": "1.0.27",
     "date": "2026-08-09",
     "highlights": [

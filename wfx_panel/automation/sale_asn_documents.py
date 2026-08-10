@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from wfx_panel.automation.modules import (
 )
 from wfx_panel.automation.runtime import (
     cancellation_deferred,
+    native_download_candidate,
     save_native_download,
     snapshot_downloads,
 )
@@ -556,21 +558,34 @@ def _download_report_excel(
         # không, đồng thời tránh nhầm các format Excel cũ.
         excel.evaluate("element => element.click()")
         deadline = time.monotonic() + REPORT_DOWNLOAD_START_TIMEOUT_SECONDS
+        stable_file: tuple[Path, tuple[int, int]] | None = None
+        native_source: Path | None = None
         while time.monotonic() < deadline and not downloads:
+            candidate = native_download_candidate(
+                downloads_before_click,
+                suffixes={".xls", ".xlsx"},
+            )
+            if candidate is not None and stable_file == candidate:
+                native_source = candidate[0]
+                break
+            stable_file = candidate
             try:
                 _wait(excel_frame, 100)
             except PlaywrightError:
                 if context.pages:
                     _wait(context.pages[0], 100)
-        if not downloads:
+        if not downloads and native_source is None:
             raise PlaywrightTimeoutError(f"WFX không bắt đầu download {label}.")
         with cancellation_deferred():
             target.parent.mkdir(parents=True, exist_ok=True)
-            save_native_download(
-                downloads[0],
-                target,
-                downloads_before_click,
-            )
+            if downloads:
+                save_native_download(
+                    downloads[0],
+                    target,
+                    downloads_before_click,
+                )
+            else:
+                shutil.copy2(native_source, target)
         if not target.is_file() or target.stat().st_size <= 0:
             raise RuntimeError(f"File {label} tải về bị rỗng.")
         _write_log(log, f"[SALE ASN DOCS] Đã tải {label}.")
