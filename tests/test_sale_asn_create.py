@@ -1470,6 +1470,13 @@ def test_factory_dropdown_is_fuzzy_case_insensitive_and_skips_dotted_rows():
     ) is None
 
 
+def test_factory_dropdown_rejects_short_generic_option_while_target_is_loading():
+    assert sale_asn_create._best_factory_label(
+        ["PRO SPORTS"],
+        "PRO SPORTS GIAO THUY JSC",
+    ) is None
+
+
 def test_shipping_control_chooses_visible_host_for_alternative_port_cells():
     source = sale_asn_create._SET_CONTROL_JS
     assert "document.querySelectorAll(spec.selector)" in source

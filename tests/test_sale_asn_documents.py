@@ -1,5 +1,6 @@
 import pytest
 
+import wfx_panel.automation.sale_asn_documents as sale_asn_documents
 from wfx_panel.automation.sale_asn_documents import (
     _CLICK_SALE_ASN_DOCS_JS,
     _SALE_ASN_ROWS_JS,
@@ -18,6 +19,76 @@ from wfx_panel.automation.sale_asn_documents import (
     _sale_asn_horizontal_positions,
     _select_sale_asn_row,
 )
+
+
+def test_download_report_uses_native_file_when_cdp_download_event_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    """Chrome lưu file native vẫn phải được đưa vào pipeline ghép Sale ASN."""
+
+    source = tmp_path / "Report.xlsx"
+    source.write_bytes(b"native report")
+    target = tmp_path / "packing-list-source.xlsx"
+
+    class FakeAction:
+        def evaluate(self, _script):
+            return None
+
+    class FakeLocator:
+        first = FakeAction()
+
+    class FakeFrame:
+        def locator(self, selector):
+            assert selector == sale_asn_documents.REPORT_EXPORT_SELECTOR
+            return FakeLocator()
+
+    class FakePage:
+        def on(self, event, _callback):
+            assert event == "download"
+
+        def remove_listener(self, event, _callback):
+            assert event == "download"
+
+    class FakeContext:
+        pages = [FakePage()]
+
+        def on(self, event, _callback):
+            assert event == "page"
+
+        def remove_listener(self, event, _callback):
+            assert event == "page"
+
+    clock = iter(index / 100 for index in range(100))
+    monkeypatch.setattr(sale_asn_documents.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(sale_asn_documents, "_wait", lambda *_args: None)
+    monkeypatch.setattr(sale_asn_documents, "snapshot_downloads", lambda: {})
+    monkeypatch.setattr(
+        sale_asn_documents,
+        "_find_report_excel_action",
+        lambda _context, frame: (frame, FakeAction()),
+    )
+    monkeypatch.setattr(
+        sale_asn_documents,
+        "native_download_candidate",
+        lambda *_args, **_kwargs: (source, (source.stat().st_size, 1)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        sale_asn_documents,
+        "REPORT_DOWNLOAD_START_TIMEOUT_SECONDS",
+        0.5,
+    )
+
+    sale_asn_documents._download_report_excel(
+        FakeContext(),
+        FakeFrame(),
+        target,
+        "Packing List",
+        lambda _message: None,
+    )
+
+    assert target.read_bytes() == b"native report"
 
 
 def test_sale_asn_document_downloads_allow_slow_wfx_reports():

@@ -694,12 +694,16 @@ def _best_dropdown_label(options: Sequence[str], query: str) -> str | None:
 def _best_factory_label(options: Sequence[str], query: str) -> str | None:
     """Lấy option FTY gần nhất, không phân biệt hoa/thường và bỏ dòng có dấu chấm."""
 
-    eligible = [
-        cleaned
-        for option in options
-        if (cleaned := " ".join(str(option or "").split()))
-        and not cleaned.endswith(".")
-    ]
+    query_folded = _fold(query)
+    eligible = []
+    for option in options:
+        cleaned = " ".join(str(option or "").split())
+        option_folded = _fold(cleaned)
+        if not cleaned or cleaned.endswith("."):
+            continue
+        if option_folded != query_folded and option_folded in query_folded:
+            continue
+        eligible.append(cleaned)
     scored = [(_style_similarity(query, option), option) for option in eligible]
     best_score = max((score for score, _option in scored), default=0)
     if best_score <= 0:
