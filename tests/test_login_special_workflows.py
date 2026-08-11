@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from wfx_panel.automation import modules
+
 # login.py giờ là shim; code automation nằm ở package wfx_panel/automation/.
 # Gộp source mọi module (thứ tự sorted: __init__, _common, browser, catalog,
 # directory, modules, session) để các assert theo mẫu chuỗi vẫn đúng — và
@@ -10,6 +12,49 @@ _AUTOMATION_DIR = (
 SOURCE = "\n".join(
     path.read_text(encoding="utf-8") for path in sorted(_AUTOMATION_DIR.glob("*.py"))
 )
+
+
+class _ContextRoot:
+    def __init__(self, visible=True):
+        self.visible = visible
+
+    def count(self):
+        return 1
+
+    def nth(self, _index):
+        return self
+
+    def is_visible(self):
+        return self.visible
+
+
+class _ContextFrame:
+    def __init__(self, url, *, has_grid=True):
+        self.url = url
+        self.has_grid = has_grid
+
+    def locator(self, selector):
+        assert selector == ".ag-root-wrapper"
+        root = _ContextRoot()
+        if self.has_grid:
+            return root
+        root.count = lambda: 0
+        return root
+
+
+def test_sale_asn_search_context_rejects_other_modules_and_new_form():
+    assert not modules._frame_matches_module_context(
+        _ContextFrame("https://wfx.example/WFXSampleList.aspx"),
+        "Sale ASN",
+    )
+    assert not modules._frame_matches_module_context(
+        _ContextFrame("https://wfx.example/WFXSalesASN.aspx", has_grid=False),
+        "Sale ASN",
+    )
+    assert modules._frame_matches_module_context(
+        _ContextFrame("https://wfx.example/WFXSalesASNList.aspx"),
+        "Sale ASN",
+    )
 
 
 def test_list_floating_filter_excludes_old_grid_and_confirms_visible_input():

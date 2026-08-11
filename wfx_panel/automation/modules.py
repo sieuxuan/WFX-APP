@@ -451,12 +451,15 @@ def _show_module_floating_filter(
     log: Callable[[str], None],
     previous_grids: list[tuple[Frame, str]] | None = None,
     timeout_s: float = 40,
+    module_name: str | None = None,
 ) -> Frame:
     """Chờ grid mới ổn định, bật filter và xác nhận hàng filter thật sự mở."""
     deadline = time.monotonic() + timeout_s
     state = _FloatingFilterState()
     while time.monotonic() < deadline:
         for frame in page.frames:
+            if not _frame_matches_module_context(frame, module_name):
+                continue
             try:
                 roots = frame.locator(".ag-root-wrapper")
                 for index in range(roots.count()):
@@ -502,7 +505,12 @@ def open_module_with_floating_filter(
         _browser, page = _active_wfx_page(playwright, log)
         previous_grids = _mark_grid_roots(page)
         _click_module_menu_on_page(page, module_name, xpath, log)
-        _show_module_floating_filter(page, log, previous_grids)
+        _show_module_floating_filter(
+            page,
+            log,
+            previous_grids,
+            module_name=module_name,
+        )
         return _result(
             True,
             "MODULE_FILTER_READY",
@@ -694,16 +702,21 @@ def _search_input_in_frames(
     timeout_s: float = 25,
     *,
     scan_horizontal: bool = False,
+    module_name: str | None = None,
 ) -> tuple[Frame, Any]:
     """Resolve đúng ô filter theo selector thật, rồi mới fallback theo header."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         for frame in page.frames:
+            if not _frame_matches_module_context(frame, module_name):
+                continue
             candidate = _visible_search_input(frame, selectors, aliases)
             if candidate is not None:
                 return frame, candidate
         if scan_horizontal:
             for frame in page.frames:
+                if not _frame_matches_module_context(frame, module_name):
+                    continue
                 candidate = _search_input_across_horizontal_grid(
                     frame,
                     selectors,
@@ -867,6 +880,19 @@ def _frame_matches_module_context(
     module_name: str | None,
 ) -> bool:
     """Phân biệt các màn dùng chung toàn bộ selector, nhất là hai Indent List."""
+    if module_name == "Sale ASN":
+        # Invoice input xuất hiện ở nhiều module WFX. Chỉ URL Sale ASN chưa đủ
+        # vì form New cũng dùng cùng họ URL; List phải có AG Grid đang hiển thị.
+        try:
+            if "salesasn" not in str(frame.url or "").casefold():
+                return False
+            roots = frame.locator(".ag-root-wrapper")
+            return any(
+                roots.nth(index).is_visible()
+                for index in range(roots.count())
+            )
+        except PlaywrightError:
+            return False
     if module_name not in {"Indent List", "User Indent"}:
         return True
     try:
@@ -1152,6 +1178,7 @@ def _open_list_search_context(
             search_spec.context_field.aliases,
             timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
             scan_horizontal=search_spec.requires_floating_filter,
+            module_name=search_spec.module_name,
         )
         return frame
     except PlaywrightTimeoutError:
@@ -1167,13 +1194,19 @@ def _open_list_search_context(
         )
         _click_module_menu_on_page(page, search_spec.module_name, xpath, log)
         if search_spec.requires_floating_filter:
-            _show_module_floating_filter(page, log, previous_grids)
+            _show_module_floating_filter(
+                page,
+                log,
+                previous_grids,
+                module_name=search_spec.module_name,
+            )
         frame, _context_field = _search_input_in_frames(
             page,
             search_spec.context_field.selectors,
             search_spec.context_field.aliases,
             timeout_s=30,
             scan_horizontal=search_spec.requires_floating_filter,
+            module_name=search_spec.module_name,
         )
         return frame
 

@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.0.30",
+    "date": "2026-08-11",
+    "highlights": [
+      {
+        "title": "Tìm Sale ASN luôn mở đúng danh sách",
+        "body": "Khi bạn đang ở module khác, thao tác Tìm Sale ASN sẽ xác nhận đúng trang Sale ASN List và bảng dữ liệu trước khi điền Invoice No. hoặc Buyer Order Ref/OC No.; ứng dụng không còn đặt nhầm bộ lọc vào trang đang mở.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Goods Description trống sẽ xóa dữ liệu cũ",
+        "body": "Nếu Goods Description trong file để trống, ứng dụng xóa nội dung đang có ở dòng Style Details tương ứng trên WFX thay vì giữ lại mô tả cũ.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Xuất Invoice + PKL ổn định ngay lần đầu",
+        "body": "Nếu WFX chưa trả file Excel ở lần tải đầu, ứng dụng tự chờ và tải lại từ cùng report trong giới hạn thời gian hiện có; bạn không cần bấm Xuất Invoice + PKL lần thứ hai.",
+        "entry": "don-hang-sale-asn-documents"
+      }
+    ]
+  },
+  {
     "version": "1.0.29",
     "date": "2026-08-11",
     "highlights": [

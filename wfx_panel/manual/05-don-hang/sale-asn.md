@@ -162,8 +162,9 @@ liệu.
   để trống vì ứng dụng dùng mode của dòng đầu cho toàn bộ chứng từ.
 - `Destination`, `HS CODE`, `Goods Description`, `Qty`, `Price`, `Carton`, `NW`, `GW`,
   `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address`
-  và `Ship To` có thể để trống. Khi có Goods Description, app điền vào đúng dòng
-  Style Details trên WFX.
+  và `Ship To` có thể để trống. Khi có `Goods Description`, app điền vào đúng dòng
+  Style Details trên WFX. Khi để trống, app xóa Goods Description đang có ở dòng
+  Style tương ứng để dữ liệu cũ không còn sót lại.
 - Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
 - Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không

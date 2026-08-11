@@ -1953,6 +1953,11 @@ def test_order_and_style_stages_report_row_counters(monkeypatch):
     monkeypatch.setattr(
         sale_asn_create, "_set_style_hts_cell", lambda *a, **k: {"ok": True}
     )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_set_style_goods_description_cell",
+        lambda *a, **k: {"ok": True},
+    )
     monkeypatch.setattr(sale_asn_create, "_wait", lambda *a, **k: None)
 
     frame = FakeFrame()
@@ -1964,6 +1969,47 @@ def test_order_and_style_stages_report_row_counters(monkeypatch):
     assert order == ["Order Details 1/3", "Order Details 2/3", "Order Details 3/3"]
     # Style gom theo Style No. nên chỉ có 2 lượt cho 3 dòng.
     assert style == ["Style Details 1/2", "Style Details 2/2"]
+
+
+def test_blank_goods_description_clears_every_style_row(monkeypatch):
+    calls = []
+    logs = []
+
+    class FakeLocator:
+        first = property(lambda self: self)
+
+        def wait_for(self, **_kwargs):
+            return None
+
+        def click(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, selector):
+            assert selector == "#tabStyleDetails"
+            return FakeLocator()
+
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_set_style_goods_description_cell",
+        lambda _frame, style, value: calls.append((style, value)),
+    )
+
+    sale_asn_create._fill_style_details(
+        FakeFrame(),
+        [
+            {"style_no": "STYLE A", "hs_code": "", "goods_description": ""},
+            {"style_no": "STYLE B", "hs_code": "", "goods_description": None},
+        ],
+        logs.append,
+    )
+
+    assert calls == [("STYLE A", ""), ("STYLE B", "")]
+    assert logs == [
+        "[SALE ASN] Đã xóa Goods Description cho Style STYLE A.",
+        "[SALE ASN] Đã xóa Goods Description cho Style STYLE B.",
+    ]
 
 
 def test_panel_api_remembers_selected_sale_asn_stages(tmp_path):

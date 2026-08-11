@@ -2096,24 +2096,21 @@ def _fill_style_details(
     grouped: dict[str, dict[str, str]] = {}
     for row in rows:
         style = str(row.get("style_no") or "")
-        values = {
-            "hs_code": str(row.get("hs_code") or ""),
-            "goods_description": str(row.get("goods_description") or ""),
-        }
-        if not any(values.values()):
-            continue
         detail = grouped.setdefault(style, {})
-        for field, value in values.items():
-            if not value:
-                continue
-            old = detail.setdefault(field, value)
-            if old != value:
-                code = (
-                    "SALE_ASN_STYLE_HS_CODE_CONFLICT"
-                    if field == "hs_code"
-                    else "SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT"
-                )
-                raise RuntimeError(code)
+        hs_code = str(row.get("hs_code") or "")
+        if hs_code:
+            old_hs_code = detail.setdefault("hs_code", hs_code)
+            if old_hs_code != hs_code:
+                raise RuntimeError("SALE_ASN_STYLE_HS_CODE_CONFLICT")
+
+        # Khác HS Code, ô trống ở Goods Description là dữ liệu có chủ ý: user
+        # muốn xóa mô tả WFX đang có. Giữ cả giá trị trống để mọi Style trong
+        # file đều được cập nhật, thay vì âm thầm bỏ qua và giữ dữ liệu cũ.
+        description = str(row.get("goods_description") or "")
+        if "goods_description" not in detail:
+            detail["goods_description"] = description
+        elif detail["goods_description"] != description:
+            raise RuntimeError("SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT")
     for index, (style, values) in enumerate(grouped.items(), 1):
         _emit_stage_progress(
             progress,
@@ -2123,9 +2120,13 @@ def _fill_style_details(
         if code := values.get("hs_code"):
             _set_style_hts_cell(frame, style, code)
             _write_log(log, f"[SALE ASN] Đã điền HS Code cho Style {style}.")
-        if description := values.get("goods_description"):
-            _set_style_goods_description_cell(frame, style, description)
-            _write_log(log, f"[SALE ASN] Đã điền Goods Description cho Style {style}.")
+        description = values["goods_description"]
+        _set_style_goods_description_cell(frame, style, description)
+        action = "xóa" if not description else "điền"
+        _write_log(
+            log,
+            f"[SALE ASN] Đã {action} Goods Description cho Style {style}.",
+        )
 
 
 def _fill_shipping(

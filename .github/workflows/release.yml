@@ -314,8 +314,9 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} sửa luồng Sale ASN xuất đúng
-            Buyer Invoice + Packing List và luôn gộp thành một workbook.
+            WFX Smart ${{ env.VERSION }} sửa ba lỗi trong luồng Sale ASN:
+            mở đúng List khi tìm, xóa Goods Description khi file để trống và
+            tự tải lại report nếu WFX chưa trả Excel ở lượt đầu.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.
@@ -336,10 +337,9 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
-            - Xuất Invoice + PKL tiếp tục xử lý file native khi Chrome không phát sự kiện download qua CDP.
-            - Buyer Invoice và Packing List được tải đủ rồi ghép, wrap text và gộp số liệu theo buyer như thiết kế.
-            - Factory không còn chọn sớm tên chung như PRO SPORTS khi FTY yêu cầu PRO SPORTS GIAO THUY JSC.
-            - Danh sách Factory lazy-bind được chờ đến khi có lựa chọn đầy đủ trước khi điền.
+            - Tìm Sale ASN từ module khác luôn mở và xác nhận đúng Sale ASN List trước khi filter.
+            - Goods Description trống trong file sẽ xóa dữ liệu cũ ở Style Details tương ứng.
+            - Xuất Invoice + PKL tự chờ và tải lại cùng report một lần nếu phản hồi đầu chưa phải Excel.
 
             File `.sha256` và chữ ký `.p7s` xác minh gói tải về đúng từ nhà phát hành.
           make_latest: true
