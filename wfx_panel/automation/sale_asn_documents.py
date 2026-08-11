@@ -43,6 +43,8 @@ BUYER_INVOICE_SELECTOR = "#lnkBuyerInvoice"
 DOCUMENTS_FRAME_TIMEOUT_SECONDS = 60
 REPORT_READY_TIMEOUT_SECONDS = 180
 REPORT_DOWNLOAD_START_TIMEOUT_SECONDS = 180
+REPORT_DOWNLOAD_RETRY_DELAY_MS = 1_000
+REPORT_DOWNLOAD_MAX_ATTEMPTS = 2
 REPORT_EXPORT_SELECTOR = (
     "#rptCustomReportViewer_ctl05_ctl04_ctl00_ButtonLink, "
     'a[title="Export drop down menu"]'
@@ -515,23 +517,48 @@ def _download_report_excel(
     label: str,
     log: Callable[[str], None],
 ) -> None:
-    export_base = _report_export_url(report_frame)
-    if not export_base:
-        raise PlaywrightTimeoutError(f"WFX chưa tạo link download {label}.")
-    export_url = urljoin(
-        report_frame.url,
-        f"{export_base}EXCELOPENXML",
-    )
     _write_log(log, f"[SALE ASN DOCS] Đang tải Excel: {label}...")
-    response = context.request.get(
-        export_url,
-        timeout=REPORT_DOWNLOAD_START_TIMEOUT_SECONDS * 1000,
-        fail_on_status_code=False,
-    )
-    response_body = response.body()
-    if not response.ok or not response_body.startswith(b"PK"):
+    deadline = time.monotonic() + REPORT_DOWNLOAD_START_TIMEOUT_SECONDS
+    response_body = b""
+    last_status: int | str = "unknown"
+    attempt = 0
+    while (
+        attempt < REPORT_DOWNLOAD_MAX_ATTEMPTS
+        and time.monotonic() < deadline
+    ):
+        attempt += 1
+        export_base = _report_export_url(report_frame)
+        if not export_base:
+            raise PlaywrightTimeoutError(f"WFX chưa tạo link download {label}.")
+        export_url = urljoin(
+            report_frame.url,
+            f"{export_base}EXCELOPENXML",
+        )
+        remaining_ms = max(1, int((deadline - time.monotonic()) * 1_000))
+        response = context.request.get(
+            export_url,
+            timeout=remaining_ms,
+            fail_on_status_code=False,
+        )
+        response_body = response.body()
+        last_status = response.status
+        if response.ok and response_body.startswith(b"PK"):
+            break
+        if time.monotonic() >= deadline:
+            break
+        _write_log(
+            log,
+            f"[SALE ASN DOCS] {label} chưa trả file Excel ở lượt {attempt}; "
+            "đang chờ WFX hoàn tất rồi tải lại cùng report...",
+        )
+        pages = getattr(context, "pages", ())
+        wait_target = pages[0] if pages else report_frame
+        _wait(wait_target, REPORT_DOWNLOAD_RETRY_DELAY_MS)
+    else:
+        response_body = b""
+    if not response_body.startswith(b"PK"):
         raise RuntimeError(
-            f"WFX trả file {label} không hợp lệ (HTTP {response.status})."
+            f"WFX trả file {label} không hợp lệ (HTTP {last_status})."
         )
     with cancellation_deferred():
         target.parent.mkdir(parents=True, exist_ok=True)

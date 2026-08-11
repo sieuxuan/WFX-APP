@@ -10,6 +10,7 @@ from wfx_panel.automation.sale_asn_documents import (
     _SALE_ASN_SCROLL_STATE_JS,
     _SALE_ASN_SCROLL_TO_JS,
     DOCUMENTS_FRAME_TIMEOUT_SECONDS,
+    REPORT_DOWNLOAD_MAX_ATTEMPTS,
     REPORT_DOWNLOAD_START_TIMEOUT_SECONDS,
     REPORT_READY_TIMEOUT_SECONDS,
     _click_sale_asn_docs,
@@ -53,7 +54,7 @@ def test_download_report_uses_authenticated_ssrs_request_without_browser_click(
     class FakeRequest:
         def get(self, url, **kwargs):
             assert url == "https://wfx.example/export?Format=EXCELOPENXML"
-            assert kwargs["timeout"] == 180_000
+            assert 179_000 <= kwargs["timeout"] <= 180_000
             assert kwargs["fail_on_status_code"] is False
             return FakeResponse()
 
@@ -76,6 +77,59 @@ def test_download_report_uses_authenticated_ssrs_request_without_browser_click(
 
     assert target.read_bytes() == payload
     assert _report_workbook_kind(target) == "packing"
+
+
+def test_download_report_retries_same_export_when_wfx_first_returns_html(
+    tmp_path,
+    monkeypatch,
+):
+    target = tmp_path / "buyer-invoice-source.xlsx"
+    payload = _report_bytes("BUYER INVOICE")
+    calls = []
+    logs = []
+
+    class FakeFrame:
+        url = "https://wfx.example/report/viewer"
+
+        def wait_for_timeout(self, milliseconds):
+            calls.append(("wait", milliseconds))
+
+    class FakeResponse:
+        def __init__(self, body, *, ok, status):
+            self._body = body
+            self.ok = ok
+            self.status = status
+
+        def body(self):
+            return self._body
+
+    class FakeRequest:
+        def get(self, url, **_kwargs):
+            calls.append(("get", url))
+            if len([item for item in calls if item[0] == "get"]) == 1:
+                return FakeResponse(b"<html>not ready</html>", ok=True, status=200)
+            return FakeResponse(payload, ok=True, status=200)
+
+    context = type("FakeContext", (), {"request": FakeRequest(), "pages": []})()
+    monkeypatch.setattr(
+        sale_asn_documents,
+        "_report_export_url",
+        lambda _frame: "/export?Format=",
+    )
+
+    _download_report_excel(
+        context,
+        FakeFrame(),
+        target,
+        "Buyer Invoice",
+        logs.append,
+    )
+
+    assert REPORT_DOWNLOAD_MAX_ATTEMPTS == 2
+    assert len([item for item in calls if item[0] == "get"]) == 2
+    assert sum(item[1] for item in calls if item[0] == "wait") == 1_000
+    assert target.read_bytes() == payload
+    assert any("chưa trả file Excel ở lượt 1" in line for line in logs)
 
 
 def test_report_kind_validation_rejects_packing_list_as_buyer_invoice(tmp_path):

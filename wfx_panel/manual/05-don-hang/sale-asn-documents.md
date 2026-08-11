@@ -28,6 +28,10 @@ Excel để gửi hoặc lưu trữ.
 > thư mục Downloads.
 
 > [!meo]
+> Nếu WFX chưa trả file Excel ở lần tải đầu, ứng dụng tự chờ rồi tải lại từ cùng
+> báo cáo trong giới hạn ba phút. Bạn không cần bấm nút xuất lần thứ hai.
+
+> [!meo]
 > Khi ghép, ứng dụng tăng chiều cao của các hàng có nội dung wrap để tránh bị
 > cắt chữ khi mở file trong Excel.
 
