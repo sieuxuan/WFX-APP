@@ -314,8 +314,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} sửa hai lỗi Sale ASN khi xuất
-            Invoice + Packing List và chọn Factory từ tên FTY đầy đủ.
+            WFX Smart ${{ env.VERSION }} sửa luồng Sale ASN xuất đúng
+            Buyer Invoice + Packing List và luôn gộp thành một workbook.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.

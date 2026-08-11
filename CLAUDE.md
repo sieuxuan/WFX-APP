@@ -576,8 +576,12 @@ Các workflow riêng hiện có:
   Luồng Documents nhận Invoice No. đang nhập
   hoặc đúng một dòng đang chọn; xác nhận invoice độc lập với cột Docs rồi quét
   ngang AG Grid để tìm/click Docs theo metadata vì mỗi user có thể kéo cột tới
-  vị trí khác nhau; tải lần lượt Packing
-  List và Buyer Invoice bằng Report Viewer `EXCELOPENXML`, ghép thành một
+  vị trí khác nhau; tải lần lượt Packing List và Buyer Invoice qua đúng URL
+  `EXCELOPENXML` do Report Viewer vừa mở cung cấp, dùng request context đang
+  đăng nhập thay vì bấm menu Excel qua `window.open` (Chrome có thể chặn im
+  lặng hoặc tạo download trễ/trùng). Sau mỗi lượt tải, nhận diện nội dung
+  workbook để chặn Packing List bị dùng nhầm làm Buyer Invoice hoặc ngược lại,
+  rồi ghép thành một
   workbook giữ nguyên format report nguồn; nếu mỗi report có nhiều sheet thì xếp
   xen kẽ Invoice 1, PKL 1, Invoice 2, PKL 2 cho đến hết, Invoice luôn đứng trước
   PKL. Sau đó mới mở Save As với tên mặc định là Invoice No. thực tế và tự mở

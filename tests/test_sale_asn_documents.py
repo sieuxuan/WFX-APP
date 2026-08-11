@@ -1,4 +1,7 @@
+from io import BytesIO
+
 import pytest
+from openpyxl import Workbook
 
 import wfx_panel.automation.sale_asn_documents as sale_asn_documents
 from wfx_panel.automation.sale_asn_documents import (
@@ -8,79 +11,62 @@ from wfx_panel.automation.sale_asn_documents import (
     _SALE_ASN_SCROLL_TO_JS,
     DOCUMENTS_FRAME_TIMEOUT_SECONDS,
     REPORT_DOWNLOAD_START_TIMEOUT_SECONDS,
-    REPORT_EXCEL_FORMAT_SELECTOR,
-    REPORT_EXCEL_LABEL_SELECTOR,
-    REPORT_EXPORT_MENU_TIMEOUT_SECONDS,
     REPORT_READY_TIMEOUT_SECONDS,
     _click_sale_asn_docs,
     _close_sale_asn_document_popups,
-    _find_report_excel_action,
+    _download_report_excel,
     _merge_sale_asn_row_payloads,
+    _report_export_url,
+    _report_workbook_kind,
     _sale_asn_horizontal_positions,
     _select_sale_asn_row,
+    _validate_report_kind,
 )
 
 
-def test_download_report_uses_native_file_when_cdp_download_event_is_missing(
+def _report_bytes(title: str) -> bytes:
+    workbook = Workbook()
+    workbook.active["A1"] = title
+    buffer = BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+    return buffer.getvalue()
+
+
+def test_download_report_uses_authenticated_ssrs_request_without_browser_click(
     tmp_path,
     monkeypatch,
 ):
-    """Chrome lưu file native vẫn phải được đưa vào pipeline ghép Sale ASN."""
-
-    source = tmp_path / "Report.xlsx"
-    source.write_bytes(b"native report")
     target = tmp_path / "packing-list-source.xlsx"
-
-    class FakeAction:
-        def evaluate(self, _script):
-            return None
-
-    class FakeLocator:
-        first = FakeAction()
+    payload = _report_bytes("PACKING LIST")
 
     class FakeFrame:
-        def locator(self, selector):
-            assert selector == sale_asn_documents.REPORT_EXPORT_SELECTOR
-            return FakeLocator()
+        url = "https://wfx.example/report/viewer"
 
-    class FakePage:
-        def on(self, event, _callback):
-            assert event == "download"
+    class FakeResponse:
+        ok = True
+        status = 200
 
-        def remove_listener(self, event, _callback):
-            assert event == "download"
+        def body(self):
+            return payload
+
+    class FakeRequest:
+        def get(self, url, **kwargs):
+            assert url == "https://wfx.example/export?Format=EXCELOPENXML"
+            assert kwargs["timeout"] == 180_000
+            assert kwargs["fail_on_status_code"] is False
+            return FakeResponse()
 
     class FakeContext:
-        pages = [FakePage()]
+        request = FakeRequest()
 
-        def on(self, event, _callback):
-            assert event == "page"
-
-        def remove_listener(self, event, _callback):
-            assert event == "page"
-
-    clock = iter(index / 100 for index in range(100))
-    monkeypatch.setattr(sale_asn_documents.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(sale_asn_documents, "_wait", lambda *_args: None)
-    monkeypatch.setattr(sale_asn_documents, "snapshot_downloads", lambda: {})
     monkeypatch.setattr(
         sale_asn_documents,
-        "_find_report_excel_action",
-        lambda _context, frame: (frame, FakeAction()),
-    )
-    monkeypatch.setattr(
-        sale_asn_documents,
-        "native_download_candidate",
-        lambda *_args, **_kwargs: (source, (source.stat().st_size, 1)),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        sale_asn_documents,
-        "REPORT_DOWNLOAD_START_TIMEOUT_SECONDS",
-        0.5,
+        "_report_export_url",
+        lambda _frame: "/export?Format=",
     )
 
-    sale_asn_documents._download_report_excel(
+    _download_report_excel(
         FakeContext(),
         FakeFrame(),
         target,
@@ -88,105 +74,44 @@ def test_download_report_uses_native_file_when_cdp_download_event_is_missing(
         lambda _message: None,
     )
 
-    assert target.read_bytes() == b"native report"
+    assert target.read_bytes() == payload
+    assert _report_workbook_kind(target) == "packing"
+
+
+def test_report_kind_validation_rejects_packing_list_as_buyer_invoice(tmp_path):
+    target = tmp_path / "wrong-report.xlsx"
+    target.write_bytes(_report_bytes("PACKING LIST"))
+
+    with pytest.raises(RuntimeError, match="trả nhầm Packing List"):
+        _validate_report_kind(target, "Buyer Invoice")
+
+
+def test_report_kind_validation_accepts_unknown_template(tmp_path):
+    target = tmp_path / "custom-report.xlsx"
+    target.write_bytes(_report_bytes("CUSTOM SHIPPING DOCUMENT"))
+
+    _validate_report_kind(target, "Buyer Invoice")
 
 
 def test_sale_asn_document_downloads_allow_slow_wfx_reports():
     assert DOCUMENTS_FRAME_TIMEOUT_SECONDS == 60
     assert REPORT_READY_TIMEOUT_SECONDS == 180
-    assert REPORT_EXPORT_MENU_TIMEOUT_SECONDS == 30
     assert REPORT_DOWNLOAD_START_TIMEOUT_SECONDS == 180
 
 
-def test_report_excel_selector_supports_report_viewer_markup_variants():
-    assert '[onclick*="EXCELOPENXML"]' in REPORT_EXCEL_FORMAT_SELECTOR
-    assert '[href*="EXCELOPENXML"]' in REPORT_EXCEL_FORMAT_SELECTOR
-    assert 'a[title="Excel"]' in REPORT_EXCEL_LABEL_SELECTOR
-
-
-def test_report_excel_action_accepts_hidden_explicit_openxml_link():
-    class FakeAction:
-        def __init__(self, name, visible=False):
-            self.name = name
-            self.visible = visible
-
-        def is_visible(self):
-            return self.visible
-
-    class FakeLocator:
-        def __init__(self, actions):
-            self.actions = actions
-
-        def count(self):
-            return len(self.actions)
-
-        def nth(self, index):
-            return self.actions[index]
-
+def test_report_export_url_is_empty_until_ssrs_export_is_initialized():
     class FakeFrame:
-        def __init__(self, explicit=(), labelled=()):
-            self.explicit = list(explicit)
-            self.labelled = list(labelled)
+        def __init__(self, value):
+            self.value = value
 
-        def locator(self, selector):
-            if selector == REPORT_EXCEL_FORMAT_SELECTOR:
-                return FakeLocator(self.explicit)
-            if selector == REPORT_EXCEL_LABEL_SELECTOR:
-                return FakeLocator(self.labelled)
-            raise AssertionError(selector)
+        def evaluate(self, script):
+            assert "ExportUrlBase" in script
+            return self.value
 
-    hidden_excel = FakeAction("hidden-openxml")
-    report_frame = FakeFrame(explicit=[hidden_excel])
-    page = type("FakePage", (), {"frames": [report_frame]})()
-    context = type("FakeContext", (), {"pages": [page]})()
-
-    found_frame, found_action = _find_report_excel_action(context, report_frame)
-
-    assert found_frame is report_frame
-    assert found_action is hidden_excel
-
-
-def test_report_excel_action_finds_visible_menu_in_another_frame():
-    class FakeAction:
-        def __init__(self, visible):
-            self.visible = visible
-
-        def is_visible(self):
-            return self.visible
-
-    class FakeLocator:
-        def __init__(self, actions):
-            self.actions = actions
-
-        def count(self):
-            return len(self.actions)
-
-        def nth(self, index):
-            return self.actions[index]
-
-    class FakeFrame:
-        def __init__(self, explicit=(), labelled=()):
-            self.explicit = list(explicit)
-            self.labelled = list(labelled)
-
-        def locator(self, selector):
-            actions = (
-                self.explicit
-                if selector == REPORT_EXCEL_FORMAT_SELECTOR
-                else self.labelled
-            )
-            return FakeLocator(actions)
-
-    report_frame = FakeFrame()
-    visible_excel = FakeAction(True)
-    menu_frame = FakeFrame(labelled=[visible_excel])
-    page = type("FakePage", (), {"frames": [report_frame, menu_frame]})()
-    context = type("FakeContext", (), {"pages": [page]})()
-
-    found_frame, found_action = _find_report_excel_action(context, report_frame)
-
-    assert found_frame is menu_frame
-    assert found_action is visible_excel
+    assert _report_export_url(FakeFrame(None)) == ""
+    assert _report_export_url(FakeFrame(" /report/export?Format= ")) == (
+        "/report/export?Format="
+    )
 
 
 def test_select_exact_invoice_does_not_require_docs_column_to_be_rendered():

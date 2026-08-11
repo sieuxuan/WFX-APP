@@ -208,6 +208,10 @@ Delivery Terms theo mode đó:
 > WFX và fit vừa một trang theo chiều ngang khi in. Popup Docs/report do lượt
 > bấm Docs mở sẽ luôn tự đóng sau lượt tải, kể cả khi có lỗi; tab WFX có sẵn được giữ.
 
+> Ứng dụng tải trực tiếp đúng file Excel từ URL do Report Viewer cung cấp và
+> kiểm tra nội dung từng workbook trước khi ghép. Packing List không thể bị dùng
+> nhầm làm Buyer Invoice và không tạo hai file PKL thừa trong Downloads.
+
 > [!meo]
 > Packing List J.Lindeberg có header `JL PO#` tự gộp dọc Net Wt, Gross Wt, No of
 > Carton và CBM cho các dòng liền nhau cùng PO + Style khi số liệu giống nhau.
