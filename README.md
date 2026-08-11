@@ -1,4 +1,4 @@
-# WFX Smart 1.0.28
+# WFX Smart 1.0.29
 
 WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
 dùng của WorldFashionExchange (WFX). App chạy bằng pywebview và điều khiển một
@@ -209,10 +209,10 @@ Test không được in credential hoặc nội dung tìm kiếm ra output.
 Mỗi release Windows có hai lựa chọn, đều kèm checksum `.sha256` và chữ ký
 detached `.sha256.p7s`:
 
-- `WFX-Smart-Setup-v1.0.28.exe` — bản khuyên dùng. Cài theo user, không cần
+- `WFX-Smart-Setup-v1.0.29.exe` — bản khuyên dùng. Cài theo user, không cần
   quyền Administrator, tự tạo shortcut Desktop và Start Menu, có Uninstall và
   nâng cấp tại chỗ.
-- `WFX-Smart-v1.0.28-win64.zip` — bản portable. Giải nén nguyên thư mục rồi mở
+- `WFX-Smart-v1.0.29-win64.zip` — bản portable. Giải nén nguyên thư mục rồi mở
   `WFX-Panel.exe`; không được tách EXE khỏi `_internal`.
 
 Khi cập nhật, bản cài bằng Setup tiếp tục nâng cấp qua bộ cài để giữ đúng

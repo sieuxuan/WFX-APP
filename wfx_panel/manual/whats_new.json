@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.0.29",
+    "date": "2026-08-11",
+    "highlights": [
+      {
+        "title": "Xuất Invoice + PKL đúng report và luôn gộp file",
+        "body": "Sale ASN chờ Report Viewer tạo xong link Excel rồi tải trực tiếp bằng phiên WFX đang đăng nhập, không tạo download chậm hoặc file PKL thừa. Ứng dụng kiểm tra nội dung từng workbook để chặn Packing List bị dùng nhầm làm Buyer Invoice trước khi gộp, xuống dòng và xử lý số liệu theo buyer.",
+        "entry": "don-hang-sale-asn-documents"
+      }
+    ]
+  },
+  {
     "version": "1.0.28",
     "date": "2026-08-10",
     "highlights": [

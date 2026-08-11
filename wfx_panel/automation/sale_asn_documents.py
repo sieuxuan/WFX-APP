@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
+
+from openpyxl import load_workbook
 
 from wfx_panel.asn_workbook import (
     ASNWorkbookError,
@@ -33,37 +35,18 @@ from wfx_panel.automation.modules import (
     _open_list_search_context,
     _search_input_in_frame,
 )
-from wfx_panel.automation.runtime import (
-    cancellation_deferred,
-    native_download_candidate,
-    save_native_download,
-    snapshot_downloads,
-)
+from wfx_panel.automation.runtime import cancellation_deferred
 from wfx_panel.automation.search_specs import SALE_ASN_SEARCH_SPEC
 
 PACKING_LIST_SELECTOR = "#lnkANFPackingList"
 BUYER_INVOICE_SELECTOR = "#lnkBuyerInvoice"
 DOCUMENTS_FRAME_TIMEOUT_SECONDS = 60
 REPORT_READY_TIMEOUT_SECONDS = 180
-REPORT_EXPORT_MENU_TIMEOUT_SECONDS = 30
 REPORT_DOWNLOAD_START_TIMEOUT_SECONDS = 180
 REPORT_EXPORT_SELECTOR = (
     "#rptCustomReportViewer_ctl05_ctl04_ctl00_ButtonLink, "
     'a[title="Export drop down menu"]'
 )
-REPORT_EXCEL_FORMAT_SELECTOR = (
-    'a[onclick*="EXCELOPENXML"], a[href*="EXCELOPENXML"], '
-    '[data-format="EXCELOPENXML"]'
-)
-REPORT_EXCEL_LABEL_SELECTOR = (
-    'a[title="Excel"], a[alt="Excel"], '
-    '[role="menuitem"][title="Excel"], input[value="Excel"]'
-)
-REPORT_EXCEL_SELECTOR = (
-    f"{REPORT_EXCEL_FORMAT_SELECTOR}, {REPORT_EXCEL_LABEL_SELECTOR}"
-)
-
-
 _SALE_ASN_ROWS_JS = """root => {
     const shown = element => {
         if (!element || !element.isConnected) return false;
@@ -454,6 +437,28 @@ def _report_frame_is_new(
         return True
 
 
+def _report_export_url(frame: Frame) -> str:
+    """Trả URL export chỉ khi Report Viewer đã khởi tạo hoàn chỉnh.
+
+    Toolbar có thể sáng trước khi SSRS gán ``ExportUrlBase``. Nếu click Excel
+    trong khoảng này, ``ExportReport`` chỉ trả ``false`` và không tạo request
+    download dù nội dung report đã hiện đầy đủ.
+    """
+    try:
+        return str(
+            frame.evaluate(
+                """() => {
+                    const viewer = window.$find?.('rptCustomReportViewer');
+                    const internal = viewer?._getInternalViewer?.();
+                    return internal?.ExportUrlBase || '';
+                }"""
+            )
+            or ""
+        ).strip()
+    except PlaywrightError:
+        return ""
+
+
 def _wait_report_ready(
     context: Any,
     snapshots: list[tuple[Frame, str]],
@@ -485,7 +490,8 @@ def _wait_report_ready(
             )
             key = (id(page), id(frame))
             now = time.monotonic()
-            if export.is_enabled() and not has_loading:
+            export_url = _report_export_url(frame)
+            if export.is_enabled() and not has_loading and export_url:
                 if key != candidate_key:
                     candidate_key = key
                     stable_since = now
@@ -509,137 +515,69 @@ def _download_report_excel(
     label: str,
     log: Callable[[str], None],
 ) -> None:
-    downloads: list[Any] = []
-    attached_pages: list[Page] = []
+    export_base = _report_export_url(report_frame)
+    if not export_base:
+        raise PlaywrightTimeoutError(f"WFX chưa tạo link download {label}.")
+    export_url = urljoin(
+        report_frame.url,
+        f"{export_base}EXCELOPENXML",
+    )
+    _write_log(log, f"[SALE ASN DOCS] Đang tải Excel: {label}...")
+    response = context.request.get(
+        export_url,
+        timeout=REPORT_DOWNLOAD_START_TIMEOUT_SECONDS * 1000,
+        fail_on_status_code=False,
+    )
+    response_body = response.body()
+    if not response.ok or not response_body.startswith(b"PK"):
+        raise RuntimeError(
+            f"WFX trả file {label} không hợp lệ (HTTP {response.status})."
+        )
+    with cancellation_deferred():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(response_body)
+    if not target.is_file() or target.stat().st_size <= 0:
+        raise RuntimeError(f"File {label} tải về bị rỗng.")
+    _validate_report_kind(target, label)
+    _write_log(log, f"[SALE ASN DOCS] Đã tải đúng {label}.")
 
-    def receive(download: Any) -> None:
-        downloads.append(download)
 
-    def attach(page: Page) -> None:
-        if page in attached_pages:
-            return
-        attached_pages.append(page)
-        page.on("download", receive)
-
-    for current in context.pages:
-        attach(current)
-    context.on("page", attach)
+def _report_workbook_kind(path: Path) -> str:
+    """Nhận diện rõ report vừa tải; không suy đoán nếu WFX đổi template."""
     try:
-        export = report_frame.locator(REPORT_EXPORT_SELECTOR).first
-        export.evaluate("element => element.click()")
-        deadline = time.monotonic() + REPORT_EXPORT_MENU_TIMEOUT_SECONDS
-        excel_frame: Frame | None = None
-        excel = None
-        retried_export = False
-        retry_at = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            excel_frame, excel = _find_report_excel_action(
-                context,
-                report_frame,
-            )
-            if excel is not None:
-                break
-            if not retried_export and time.monotonic() >= retry_at:
-                # WebForms Report Viewer đôi khi bỏ lần click đầu khi toolbar
-                # vừa hết loading. Thử mở menu lại đúng một lần; không toggle
-                # liên tục vì action Excel có thể đang được tạo bất đồng bộ.
-                export.evaluate("element => element.click()")
-                retried_export = True
-            _wait(report_frame, 100)
-        if excel is None or excel_frame is None:
-            raise PlaywrightTimeoutError(
-                f"Không tìm thấy lựa chọn Excel của {label} trong Report Viewer."
-            )
-
-        _write_log(log, f"[SALE ASN DOCS] Đang export Excel: {label}...")
-        downloads_before_click = snapshot_downloads()
-        # Link export thường nằm trong menu display:none. DOM click vẫn gọi đúng
-        # exportReport('EXCELOPENXML') và không phụ thuộc menu có kịp hiện hay
-        # không, đồng thời tránh nhầm các format Excel cũ.
-        excel.evaluate("element => element.click()")
-        deadline = time.monotonic() + REPORT_DOWNLOAD_START_TIMEOUT_SECONDS
-        stable_file: tuple[Path, tuple[int, int]] | None = None
-        native_source: Path | None = None
-        while time.monotonic() < deadline and not downloads:
-            candidate = native_download_candidate(
-                downloads_before_click,
-                suffixes={".xls", ".xlsx"},
-            )
-            if candidate is not None and stable_file == candidate:
-                native_source = candidate[0]
-                break
-            stable_file = candidate
-            try:
-                _wait(excel_frame, 100)
-            except PlaywrightError:
-                if context.pages:
-                    _wait(context.pages[0], 100)
-        if not downloads and native_source is None:
-            raise PlaywrightTimeoutError(f"WFX không bắt đầu download {label}.")
-        with cancellation_deferred():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if downloads:
-                save_native_download(
-                    downloads[0],
-                    target,
-                    downloads_before_click,
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except Exception as error:
+        raise RuntimeError(f"File report Excel không đọc được: {error}") from error
+    try:
+        text_parts: list[str] = []
+        for sheet in workbook.worksheets:
+            text_parts.append(sheet.title)
+            for row_index, row in enumerate(sheet.iter_rows(values_only=True)):
+                if row_index >= 20:
+                    break
+                text_parts.extend(
+                    str(value)
+                    for value in row[:20]
+                    if value not in (None, "")
                 )
-            else:
-                shutil.copy2(native_source, target)
-        if not target.is_file() or target.stat().st_size <= 0:
-            raise RuntimeError(f"File {label} tải về bị rỗng.")
-        _write_log(log, f"[SALE ASN DOCS] Đã tải {label}.")
+        normalized = " ".join(" ".join(text_parts).casefold().split())
+        if "packing list" in normalized:
+            return "packing"
+        if "commercial invoice" in normalized or "buyer invoice" in normalized:
+            return "invoice"
+        return ""
     finally:
-        try:
-            context.remove_listener("page", attach)
-        except Exception:
-            pass
-        for current in attached_pages:
-            try:
-                current.remove_listener("download", receive)
-            except Exception:
-                pass
+        workbook.close()
 
 
-def _find_report_excel_action(
-    context: Any,
-    preferred_frame: Frame,
-) -> tuple[Frame | None, Any | None]:
-    """Tìm action Excel của Report Viewer, kể cả link menu đang bị ẩn.
-
-    SSRS/WFX có nhiều biến thể markup: lệnh ``EXCELOPENXML`` có thể nằm trong
-    ``onclick`` hoặc ``href``; một số bản chỉ gắn nhãn Excel lên menu item. Menu
-    cũng có thể được render ở frame cha, nên phải quét mọi frame nhưng vẫn ưu
-    tiên frame report vừa được xác nhận.
-    """
-
-    frames: list[Frame] = [preferred_frame]
-    for page in reversed(context.pages):
-        for frame in reversed(page.frames):
-            if frame not in frames:
-                frames.append(frame)
-
-    hidden_format_action: tuple[Frame, Any] | None = None
-    for frame in frames:
-        try:
-            format_actions = frame.locator(REPORT_EXCEL_FORMAT_SELECTOR)
-            for index in range(format_actions.count()):
-                candidate = format_actions.nth(index)
-                if candidate.is_visible():
-                    return frame, candidate
-                if hidden_format_action is None:
-                    hidden_format_action = (frame, candidate)
-
-            labelled_actions = frame.locator(REPORT_EXCEL_LABEL_SELECTOR)
-            for index in range(labelled_actions.count()):
-                candidate = labelled_actions.nth(index)
-                if candidate.is_visible():
-                    return frame, candidate
-        except PlaywrightError:
-            continue
-    if hidden_format_action is not None:
-        return hidden_format_action
-    return None, None
+def _validate_report_kind(path: Path, label: str) -> None:
+    expected = "packing" if label == "Packing List" else "invoice"
+    actual = _report_workbook_kind(path)
+    if actual and actual != expected:
+        actual_label = "Packing List" if actual == "packing" else "Buyer Invoice"
+        raise RuntimeError(
+            f"WFX trả nhầm {actual_label} khi đang tải {label}."
+        )
 
 
 def _documents_frame(

@@ -22,6 +22,12 @@ Excel để gửi hoặc lưu trữ.
 > Hai sheet giữ nguyên cách trình bày của báo cáo nguồn.
 
 > [!meo]
+> Ứng dụng tải trực tiếp đúng file Excel từ Report Viewer bằng phiên WFX đang
+> đăng nhập và kiểm tra nội dung từng file trước khi ghép. Vì vậy Packing List
+> không thể bị dùng nhầm làm Buyer Invoice và không tạo hai file PKL thừa trong
+> thư mục Downloads.
+
+> [!meo]
 > Khi ghép, ứng dụng tăng chiều cao của các hàng có nội dung wrap để tránh bị
 > cắt chữ khi mở file trong Excel.
 
