@@ -7,7 +7,6 @@ toàn cho các workflow dài.
 
 from __future__ import annotations
 
-import json
 import os
 import queue
 import shutil
@@ -26,34 +25,6 @@ from playwright.sync_api import sync_playwright as _sync_playwright
 T = TypeVar("T")
 CDP_CONNECT_TIMEOUT_MS = 10_000
 NATIVE_DOWNLOAD_TIMEOUT_SECONDS = 180
-_DOWNLOAD_PREFERENCES_RELATIVE = Path("Default") / "Preferences"
-
-
-def _automation_profile_dir() -> Path:
-    local_app_data = os.getenv("LOCALAPPDATA") or str(Path.home())
-    return Path(local_app_data) / "WFX-Automation" / "ChromeProfile"
-
-
-def _profile_downloads_dir() -> Path | None:
-    """Đọc đúng download.default_directory của profile Chrome automation."""
-
-    preferences_path = _automation_profile_dir() / _DOWNLOAD_PREFERENCES_RELATIVE
-    try:
-        raw = json.loads(preferences_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(raw, dict):
-        return None
-    download = raw.get("download")
-    if not isinstance(download, dict):
-        return None
-    value = os.path.expandvars(str(download.get("default_directory") or "").strip())
-    if not value:
-        return None
-    path = Path(value).expanduser()
-    return path if path.is_absolute() else None
-
-
 def _windows_downloads_dir() -> Path | None:
     """Resolve Windows Known Folder Downloads, kể cả khi đã redirect/OneDrive."""
 
@@ -75,11 +46,8 @@ def _windows_downloads_dir() -> Path | None:
 
 
 def _user_downloads_dir() -> Path:
-    """Thư mục download thật mà profile Chrome automation đang sử dụng."""
+    """Windows Known Folder Downloads, không tin cấu hình profile đã stale."""
 
-    configured = _profile_downloads_dir()
-    if configured is not None:
-        return configured
     known_folder = _windows_downloads_dir()
     if known_folder is not None:
         return known_folder
@@ -495,11 +463,13 @@ class AutomationRuntime:
 
     def connect_browser(self, playwright: Any, cdp_url: str) -> Browser:
         if threading.get_ident() != self._thread_id:
-            return playwright.chromium.connect_over_cdp(
+            browser = playwright.chromium.connect_over_cdp(
                 cdp_url,
                 timeout=CDP_CONNECT_TIMEOUT_MS,
                 no_defaults=True,
             )
+            self._restore_native_download_behavior(browser)
+            return browser
         self.checkpoint()
         if self._browser is not None:
             try:
@@ -508,13 +478,30 @@ class AutomationRuntime:
                     return self._browser
             except Exception:
                 pass
-        self._browser = playwright.chromium.connect_over_cdp(
+        browser = playwright.chromium.connect_over_cdp(
             cdp_url,
             timeout=CDP_CONNECT_TIMEOUT_MS,
             no_defaults=True,
         )
+        self._restore_native_download_behavior(browser)
+        self._browser = browser
         self._track_downloads(self._browser)
         return self._browser
+
+    def _restore_native_download_behavior(self, browser: Browser) -> None:
+        """Xóa override artifact cũ để Chrome dùng Download Manager native."""
+
+        session = browser.new_browser_cdp_session()
+        try:
+            session.send(
+                "Browser.setDownloadBehavior",
+                {"behavior": "default"},
+            )
+        finally:
+            try:
+                session.detach()
+            except Exception:
+                pass
 
     def invalidate_browser(self, browser: Browser | None = None) -> None:
         if browser is None or browser is self._browser:

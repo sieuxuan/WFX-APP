@@ -74,9 +74,27 @@ class FakeDownload:
 class FakeBrowser:
     def __init__(self):
         self.contexts = [FakeContext()]
+        self.cdp_sessions = []
 
     def is_connected(self):
         return True
+
+    def new_browser_cdp_session(self):
+        session = FakeCdpSession()
+        self.cdp_sessions.append(session)
+        return session
+
+
+class FakeCdpSession:
+    def __init__(self):
+        self.calls = []
+        self.detach_calls = 0
+
+    def send(self, method, params=None):
+        self.calls.append((method, params))
+
+    def detach(self):
+        self.detach_calls += 1
 
 
 class FakePage:
@@ -212,6 +230,10 @@ def test_runtime_reuses_one_cdp_browser_within_a_flow():
             },
         )
     ]
+    assert first.cdp_sessions[0].calls == [
+        ("Browser.setDownloadBehavior", {"behavior": "default"})
+    ]
+    assert first.cdp_sessions[0].detach_calls == 1
 
 
 def test_cancellation_survives_workflow_except_exception_handlers():
@@ -291,8 +313,9 @@ def test_native_connect_does_not_override_chrome_download_behavior(tmp_path, mon
         def flow():
             browser = worker.connect_browser(playwright, "http://127.0.0.1:9222")
             browser.contexts[0].emit("download", download)
+            return browser
 
-        worker.execute(flow)
+        connected = worker.execute(flow)
     finally:
         worker.shutdown()
 
@@ -305,7 +328,36 @@ def test_native_connect_does_not_override_chrome_download_behavior(tmp_path, mon
             },
         )
     ]
+    assert connected.cdp_sessions[0].calls == [
+        ("Browser.setDownloadBehavior", {"behavior": "default"})
+    ]
+    assert connected.cdp_sessions[0].detach_calls == 1
     assert download.saved_to is None
+
+
+def test_runtime_restores_native_downloads_after_browser_reconnect():
+    worker = runtime.AutomationRuntime()
+    chromium = FakeChromium()
+    playwright = type("FakePlaywrightClient", (), {"chromium": chromium})()
+
+    try:
+        def flow():
+            first = worker.connect_browser(playwright, "http://127.0.0.1:9222")
+            worker.invalidate_browser(first)
+            second = worker.connect_browser(playwright, "http://127.0.0.1:9222")
+            return first, second
+
+        first, second = worker.execute(flow)
+    finally:
+        worker.shutdown()
+
+    assert first is not second
+    assert len(chromium.calls) == 2
+    for browser in (first, second):
+        assert browser.cdp_sessions[0].calls == [
+            ("Browser.setDownloadBehavior", {"behavior": "default"})
+        ]
+        assert browser.cdp_sessions[0].detach_calls == 1
 
 
 def test_download_claimed_by_a_flow_is_not_duplicated_into_downloads(tmp_path, monkeypatch):
@@ -385,7 +437,10 @@ def test_save_native_download_copies_new_chrome_file_to_flow_target(
     assert download.path_calls == 0
 
 
-def test_download_dir_prefers_automation_profile_setting(tmp_path, monkeypatch):
+def test_download_dir_prefers_windows_known_folder_over_stale_profile(
+    tmp_path,
+    monkeypatch,
+):
     local_app_data = tmp_path / "LocalAppData"
     preferences = (
         local_app_data
@@ -394,15 +449,21 @@ def test_download_dir_prefers_automation_profile_setting(tmp_path, monkeypatch):
         / "Default"
         / "Preferences"
     )
-    redirected = tmp_path / "OneDrive" / "Tai xuong"
+    stale = tmp_path / "Old Downloads"
+    known_folder = tmp_path / "OneDrive" / "Tai xuong"
     preferences.parent.mkdir(parents=True)
     preferences.write_text(
-        json.dumps({"download": {"default_directory": str(redirected)}}),
+        json.dumps({"download": {"default_directory": str(stale)}}),
         encoding="utf-8",
     )
     monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    monkeypatch.setattr(
+        runtime,
+        "_windows_downloads_dir",
+        lambda: known_folder,
+    )
 
-    assert runtime._user_downloads_dir() == redirected
+    assert runtime._user_downloads_dir() == known_folder
 
 
 def test_wait_for_native_download_returns_completed_absolute_path(
