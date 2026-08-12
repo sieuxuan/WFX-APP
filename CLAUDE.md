@@ -194,9 +194,12 @@ Mỗi nút trong module là một flow riêng:
    treo Chrome khi đóng tab đó. Việc "dùng lại grid Master đang mở" vẫn chạy vì
    nó tái dùng DOM đang mở trong Chrome, không phụ thuộc Playwright có giữ kết
    nối. Không dùng object Playwright sync từ thread khác.
-8. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True`; tuyệt đối không
-   gọi `Browser.setDownloadBehavior` cho download thông thường. Chrome phải tự
-   quản lý file theo profile và lưu thẳng vào Windows Known Folder Downloads
+8. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True`, rồi reset
+   `Browser.setDownloadBehavior` đúng một lần về `behavior=default` ngay sau
+   mỗi attach/re-attach để xóa override artifact stale; tuyệt đối không dùng
+   `allow`, `allowAndName`, `deny` hoặc truyền `downloadPath` cho download thông
+   thường. Chrome phải tự quản lý file theo profile và lưu thẳng vào Windows
+   Known Folder Downloads
    (kể cả khi đã redirect/OneDrive), để file thật và Chrome Download history
    cùng một đường dẫn; `Mở file`/`Hiện trong thư
    mục` phải hoạt động cả sau khi runtime nhả CDP. Flow cần dùng file vừa tải phải
