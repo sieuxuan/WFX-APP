@@ -43,7 +43,7 @@ from wfx_panel.automation.browser import (
     _start_persistent_chrome,
     invalidate_browser,
 )
-from wfx_panel.automation.runtime import recycle_playwright
+from wfx_panel.automation.runtime import _user_downloads_dir, recycle_playwright
 from wfx_panel.automation.session import _session_is_active, login
 
 ARTICLE_FILE_TAB_INDEXES = (5, 6, 8, 9)
@@ -1963,7 +1963,7 @@ def download_catalog_file(
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
         _write_log(log, f"[ARTICLE FILE] Đang tải {file_name}...")
-        target_dir = Path(download_dir or (Path.home() / "Downloads"))
+        target_dir = Path(download_dir or _user_downloads_dir())
         target_dir.mkdir(parents=True, exist_ok=True)
         target = _available_download_path(target_dir, file_name)
         with tempfile.NamedTemporaryFile(

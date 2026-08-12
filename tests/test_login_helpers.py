@@ -404,6 +404,66 @@ def test_attachment_download_path_never_overwrites_existing_file(tmp_path):
     assert existing.read_bytes() == b"first"
 
 
+def test_catalog_attachment_defaults_to_windows_known_downloads(
+    tmp_path,
+    monkeypatch,
+):
+    known_folder = tmp_path / "OneDrive" / "Tải xuống"
+    fallback_home = tmp_path / "Home"
+    playwright = type("Playwright", (), {"stop": lambda self: None})()
+    browser_context = type("Context", (), {"request": object()})()
+    connected_browser = type("Browser", (), {"contexts": [browser_context]})()
+
+    monkeypatch.setattr(catalog.Path, "home", lambda: fallback_home)
+    monkeypatch.setattr(
+        catalog,
+        "_user_downloads_dir",
+        lambda: known_folder,
+        raising=False,
+    )
+    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
+    monkeypatch.setattr(
+        catalog,
+        "sync_playwright",
+        type(
+            "Factory",
+            (),
+            {
+                "__call__": lambda self: self,
+                "start": lambda self: playwright,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        catalog,
+        "_connect_to_chrome",
+        lambda _playwright: (connected_browser, object()),
+    )
+    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+
+    def download(_request, _url, stream, _log):
+        stream.write(b"pdf")
+        return 3
+
+    monkeypatch.setattr(catalog, "_download_attachment_in_chunks", download)
+
+    result = catalog.download_catalog_file(
+        {
+            "file_name": "jacket.pdf",
+            "download_url": (
+                "https://prosports.worldfashionexchange.com/"
+                "Company/77400/Documents/jacket.pdf"
+            ),
+        }
+    )
+
+    assert result["ok"] is True
+    assert Path(result["download_path"]).parent == known_folder
+    assert Path(result["download_path"]).read_bytes() == b"pdf"
+    assert not (fallback_home / "Downloads" / "jacket.pdf").exists()
+
+
 def test_attachment_download_uses_http_ranges_for_large_files(tmp_path):
     payload = b"0123456789"
 
