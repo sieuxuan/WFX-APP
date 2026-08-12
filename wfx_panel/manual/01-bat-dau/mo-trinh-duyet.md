@@ -19,6 +19,10 @@ Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công vi�
 > Nếu bạn đóng trình duyệt rồi bấm một thao tác trong module, WFX Smart tự mở
 > lại trình duyệt, đăng nhập bằng tài khoản đã lưu và tiếp tục thao tác đó một
 > lần. Bạn không cần quay ra màn hình chính để mở lại thủ công.
+>
+> File bạn tự tải trên WFX và các download thông thường luôn được Chrome lưu
+> vào thư mục `Downloads` chuẩn của Windows. Riêng module có hộp thoại chọn nơi
+> lưu sẽ giữ đúng thư mục và tên file bạn đã chọn.
 
 ## Gặp lỗi thì sao
 
@@ -26,4 +30,4 @@ Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công vi�
 |---|---|
 | Bấm mở nhưng chưa thấy trình duyệt | Chờ vài giây rồi bấm `Kiểm tra lại` trên dải thông báo. |
 | Đèn Chrome sáng nhưng đèn WFX chưa sáng | Mở cửa sổ trình duyệt và đăng nhập WFX, sau đó bấm nút kiểm tra lại ở góc dưới. |
-| Tự bấm tải file trên WFX nhưng không mở được từ Download history | Trong lúc ứng dụng đang chạy một tác vụ, Chrome ghi file vào thư mục tạm rồi thư mục đó bị dọn, nên mục trong Download history trỏ vào chỗ không còn. Ứng dụng tự lưu lại file đó vào thư mục `Downloads` của bạn khi tác vụ kết thúc; mở thẳng ở đó. |
+| Tự bấm tải file trên WFX nhưng không mở được từ Download history | Đóng WFX Smart và trình duyệt làm việc, sau đó mở lại WFX Smart 1.0.31 trở lên. Download mới sẽ vào thư mục `Downloads` chuẩn và dùng được cả `Mở file` lẫn `Hiện trong thư mục`. Mục history cũ từng trỏ vào thư mục tạm không thể tự sửa lại. |

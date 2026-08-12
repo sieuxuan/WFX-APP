@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.0.31",
+    "date": "2026-08-13",
+    "highlights": [
+      {
+        "title": "Download Chrome mở được file và thư mục",
+        "body": "File bạn tự tải trên WFX và các download thông thường luôn về thư mục Downloads chuẩn của Windows; Chrome Download history giữ đúng tên và đường dẫn nên Mở file và Hiện trong thư mục tiếp tục hoạt động sau khi tác vụ kết thúc. Module có hộp thoại Save As vẫn giữ nguyên nơi lưu bạn đã chọn.",
+        "entry": "bat-dau-trinh-duyet"
+      }
+    ]
+  },
+  {
     "version": "1.0.30",
     "date": "2026-08-11",
     "highlights": [
