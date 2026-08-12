@@ -613,6 +613,39 @@ def test_automation_profile_disables_password_manager(tmp_path):
     }
 
 
+def test_automation_profile_replaces_stale_download_directory(
+    tmp_path,
+    monkeypatch,
+):
+    profile = tmp_path / "ChromeProfile"
+    preferences = profile / "Default" / "Preferences"
+    preferences.parent.mkdir(parents=True)
+    stale = tmp_path / "playwright-artifacts-old"
+    known_folder = tmp_path / "OneDrive" / "Tải xuống"
+    preferences.write_text(
+        json.dumps(
+            {
+                "download": {
+                    "default_directory": str(stale),
+                    "directory_upgrade": False,
+                    "prompt_for_download": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(browser, "_user_downloads_dir", lambda: known_folder)
+
+    browser._disable_password_manager(profile)
+
+    loaded = json.loads(preferences.read_text(encoding="utf-8"))
+    assert loaded["download"] == {
+        "default_directory": str(known_folder),
+        "directory_upgrade": True,
+        "prompt_for_download": False,
+    }
+
+
 def test_chrome_launch_uses_password_prompt_suppression_flags(
     tmp_path, monkeypatch
 ):
