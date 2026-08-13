@@ -64,9 +64,12 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 
 Ứng dụng mặc định tìm PO theo thứ tự `PO` → `Style` → `Destination`. Nếu một
 bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu dùng hết các tiêu chí mà
-vẫn còn nhiều dòng, ứng dụng chỉ chọn tất cả khi tổng `Dispatched Qty` bằng đúng
-`Qty` trong file. Nếu tổng không khớp, popup được giữ mở để bạn chọn lại thủ công
-rồi bấm `Add & Continue` hoặc `OK`. Bạn có thể mở
+vẫn còn nhiều dòng, ứng dụng so `Qty` trong file với `Dispatched Qty`: nếu chỉ
+có một dòng hoặc một tập dòng duy nhất cho tổng đúng, ứng dụng tự chọn tập đó;
+nếu tổng toàn bộ dòng đúng thì tự chọn tất cả. Chỉ khi thiếu Qty, không có tập
+khớp hoặc có nhiều tập cùng khớp, các dòng phù hợp mới hiện thành checkbox ngay
+trong ứng dụng. Bạn chọn dòng cần thêm rồi bấm `Thêm
+dòng đã chọn`; ứng dụng tự tick và bấm `Add & Continue` hoặc `OK` trên WFX. Bạn có thể mở
 `Tùy chọn nâng cao` > `Tiêu chí tìm PO` ngay trong module Sale ASN để tắt từng
 tiêu chí không muốn dùng. Ứng dụng nhớ lựa chọn cho những lần sau; khi bỏ tích
 cả ba, ứng dụng tự bật lại cả ba để tránh chạy không có điều kiện tìm. Cột
@@ -79,10 +82,9 @@ Destination của dòng đó và không thay đổi `Country Of Destination` ho�
 Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang vướng của thẻ tiến
 độ, nên bạn luôn thấy đã chạy được tới đâu.
 
-- **Không thể tự thêm PO.** Dòng `Thêm PO` chuyển sang màu cảnh báo và mở thông
-  báo. Chuyển sang WFX, điều chỉnh điều kiện tìm nếu cần, chọn dòng PO rồi bấm
-  `Add & Continue` (hoặc `OK` nếu là PO cuối). Quay lại ứng dụng, tích ô xác nhận
-  và bấm `Tiếp tục dòng kế`.
+- **Có nhiều dòng PO chưa thể tự quyết định.** Dòng `Thêm PO` chuyển sang màu
+  cảnh báo và liệt kê các lựa chọn ngay trong ứng dụng. Tích một hoặc nhiều dòng
+  cần thêm rồi bấm `Thêm dòng đã chọn`; ứng dụng tự xử lý popup WFX và chạy tiếp.
   Nếu muốn bỏ hẳn lượt này để làm lại từ file khác, bấm
   `Chọn file khác`.
 - **Một bước bị lỗi.** Dòng bước đó chuyển sang màu cảnh báo. Form WFX hiện tại
@@ -164,7 +166,10 @@ liệu.
   `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address`
   và `Ship To` có thể để trống. Khi có `Goods Description`, app điền vào đúng dòng
   Style Details trên WFX. Khi để trống, app xóa Goods Description đang có ở dòng
-  Style tương ứng để dữ liệu cũ không còn sót lại.
+  Style tương ứng để dữ liệu cũ không còn sót lại. App đối chiếu bằng cột
+  `Style`; nếu WFX tách cùng Style thành nhiều dòng theo `Style Description`
+  (chẳng hạn SLIM FIT/CLASSIC FIT), HS Code và Goods Description được cập nhật
+  cho tất cả các dòng cùng Style đó.
 - Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
 - Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không
@@ -192,7 +197,9 @@ Delivery Terms theo mode đó:
 
 > [!luuy]
 > Report WFX có thể tải chậm. Ứng dụng chờ tối đa ba phút cho từng Packing List
-> hoặc Buyer Invoice; không bấm xuất lại khi trạng thái vẫn đang chạy.
+> hoặc Buyer Invoice và cập nhật log định kỳ khi WFX vẫn đang tạo Excel; không
+> bấm xuất lại khi trạng thái vẫn đang chạy. Nếu bấm Stop, lượt tải đang chờ sẽ
+> được hủy ở checkpoint gần nhất và các cửa sổ report của lượt đó sẽ tự đóng.
 
 > [!meo]
 > Khi gộp file, ứng dụng giữ nguyên tên sheet do WFX xuất. Chỉ khi hai report có
@@ -232,7 +239,7 @@ Delivery Terms theo mode đó:
 | Ô Buyer viền vàng, không có dấu ✓ | Tên đang gõ chưa khớp Buyer nào. Gõ lại và chọn đúng dòng trong danh sách gợi ý. |
 | File có lỗi | Đọc vị trí ô hoặc dòng trong thông báo, sửa file rồi chọn lại. |
 | Báo một ô số `quá lớn` | Ô Qty, Carton, NW, GW, CBM hoặc giá đang chứa giá trị vượt ngoài phạm vi thực tế (thường do dán nhầm hoặc Excel đổi sang dạng `1E+...`). Nhập lại đúng số rồi chọn file lại. |
-| Có nhiều dòng sau tiêu chí cuối | Ứng dụng chỉ tự chọn tất cả khi tổng `Dispatched Qty` khớp `Qty` file. Nếu không khớp, popup giữ nguyên để bạn chọn lại và bấm `Add & Continue` hoặc `OK`. |
+| Có nhiều dòng sau tiêu chí cuối | Ứng dụng ưu tiên PO exact (`779` khác `779A`), rồi dùng `Qty` file để tự chọn một dòng hoặc một tập dòng duy nhất có tổng `Dispatched Qty` khớp. Chỉ khi thiếu Qty, không có tập khớp hoặc có nhiều tập cùng khớp, bạn mới cần chọn dòng trong ứng dụng và bấm `Thêm dòng đã chọn`. |
 | Không tìm thấy PO | Kiểm tra `Tiêu chí tìm PO` trong `Tùy chọn nâng cao` cùng PO No., Style và (nếu có) Destination trong file; bạn có thể tìm và chọn thủ công trên cửa sổ đang mở. |
 | Đã đóng cửa sổ Add PO | Hủy phiên đang chuẩn bị và chạy lại từ file để tránh bỏ sót dòng. |
 | Không xuất được form Order Details | Mở đúng chứng từ có PO và vào tab Order Details rồi bấm xuất lại. |

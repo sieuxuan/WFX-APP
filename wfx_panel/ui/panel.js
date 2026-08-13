@@ -546,13 +546,11 @@
       syncGrnStepActions();
       syncSaleAsnCreate();
       const continueButton = $('[data-module-action="sale-asn-continue"]');
-      const manualCheck = $(".sale-asn-manual-check");
-      if (continueButton && manualCheck) {
-        // Chỉ ràng buộc checkbox khi đang ở trạng thái chờ user chọn PO; ở trạng
-        // thái thử lại bước lỗi thì nút phải bấm được ngay.
-        continueButton.disabled = manualCheck.hidden
-          ? false
-          : $(".sale-asn-manual-confirm")?.checked !== true;
+      if (continueButton) {
+        const choices = $$(".sale-asn-candidate-select");
+        continueButton.disabled = choices.length
+          ? !choices.some((choice) => choice.checked)
+          : false;
       }
     }
   }
@@ -1978,16 +1976,28 @@
     const action = $(".sale-asn-stage-action");
     if (!action) return;
     action.hidden = true;
-    $(".sale-asn-manual-confirm").checked = false;
-    $(".sale-asn-manual-check").hidden = false;
     $(".sale-asn-skip-step").hidden = true;
     $(".sale-asn-stage-message").textContent = "";
     renderSaleAsnCandidates([]);
     $(".sale-asn-progress-card")?.appendChild(action);
   }
 
-  // Backend đã trả sẵn các dòng WFX tìm được. Hiện luôn tại chỗ để user biết
-  // phải chọn dòng nào trước khi chuyển sang cửa sổ Chrome.
+  function selectedSaleAsnCandidateIds() {
+    return $$(".sale-asn-candidate-select:checked")
+      .map((input) => String(input.value || "").trim())
+      .filter(Boolean);
+  }
+
+  function syncSaleAsnCandidateAction() {
+    const button = $('[data-module-action="sale-asn-continue"]');
+    const choices = $$(".sale-asn-candidate-select");
+    if (button && choices.length) {
+      button.disabled = busy || !choices.some((choice) => choice.checked);
+    }
+  }
+
+  // Backend đã trả sẵn các dòng WFX tìm được. Checkbox ở đây là lựa chọn thật;
+  // backend xác nhận ID rồi tự tick đúng dòng trên popup WFX.
   function renderSaleAsnCandidates(candidates) {
     const box = $(".sale-asn-candidates");
     const list = $(".sale-asn-candidate-list");
@@ -1999,13 +2009,16 @@
         const po = escapeHtml(cell(item?.po_no) || "—");
         const style = escapeHtml(cell(item?.style_no));
         const qty = escapeHtml(cell(item?.dispatched_qty));
-        return `<li><b>${po}</b>`
+        const candidateId = escapeHtml(cell(item?.candidate_id));
+        return `<li><label><input class="sale-asn-candidate-select" type="checkbox" value="${candidateId}" />`
+          + `<b>${po}</b>`
           + (style ? `<span>${style}</span>` : "")
           + (qty ? `<em>${qty}</em>` : "")
-          + "</li>";
+          + "</label></li>";
       })
       .join("");
     box.hidden = !items.length;
+    syncSaleAsnCandidateAction();
   }
 
   // Thẻ hành động là duy nhất trong DOM và được chuyển vào đúng dòng bước đang
@@ -2018,14 +2031,11 @@
     action.hidden = false;
     $(".sale-asn-stage-message").textContent = message || "";
     renderSaleAsnCandidates(candidates);
-    const manualCheck = $(".sale-asn-manual-check");
-    manualCheck.hidden = !manual;
-    $(".sale-asn-manual-confirm").checked = false;
     const skipButton = $(".sale-asn-skip-step");
     skipButton.hidden = !canSkip;
     skipButton.textContent = `Bỏ qua ${stageLabel || "bước này"}`;
     const continueButton = $('[data-module-action="sale-asn-continue"]');
-    continueButton.textContent = manual ? "Tiếp tục dòng kế" : "Thử lại bước này";
+    continueButton.textContent = manual ? "Thêm dòng đã chọn" : "Thử lại bước này";
     continueButton.disabled = Boolean(manual);
     $(".sale-asn-progress-card").hidden = false;
   }
@@ -2410,11 +2420,16 @@
   }
 
   async function continueSaleAsnCreate() {
-    const manualCheck = $(".sale-asn-manual-check");
-    if (!saleAsnReviewToken || (!manualCheck.hidden && !$(".sale-asn-manual-confirm").checked)) return null;
+    if (!saleAsnReviewToken) return null;
+    const selectedCandidates = selectedSaleAsnCandidateIds();
+    if ($$(".sale-asn-candidate-select").length && !selectedCandidates.length) return null;
     hideSaleAsnStageAction();
     saleAsnRunActive = true;
-    const result = await call("continue_sale_asn_create", saleAsnReviewToken);
+    const result = await call(
+      "continue_sale_asn_create",
+      saleAsnReviewToken,
+      selectedCandidates,
+    );
     saleAsnRunActive = false;
     renderSaleAsnRunResult(result);
     return result;
@@ -4905,9 +4920,10 @@
       input.focus();
     });
     bindListboxKeys($(".sale-asn-buyer-suggestions"));
-    $(".sale-asn-manual-confirm")?.addEventListener("change", (event) => {
-      $('[data-module-action="sale-asn-continue"]').disabled =
-        busy || event.target.checked !== true;
+    $(".sale-asn-candidate-list")?.addEventListener("change", (event) => {
+      if (event.target.matches(".sale-asn-candidate-select")) {
+        syncSaleAsnCandidateAction();
+      }
     });
     $(".reports-back-button")?.addEventListener("click", showReportList);
     $$("[data-module-action]").forEach((button) =>

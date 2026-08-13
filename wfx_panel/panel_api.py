@@ -1619,6 +1619,7 @@ class PanelAPI:
         review_token: str,
         *,
         continue_existing: bool,
+        selected_candidate_ids: list[str] | None = None,
     ) -> dict:
         token = str(review_token or "").strip()
         review = self._sale_asn_create_reviews.get(token)
@@ -1646,6 +1647,41 @@ class PanelAPI:
         method = (
             "continue_sale_asn_create" if continue_existing else "start_sale_asn_create"
         )
+        pending_candidates = list(review.get("pending_po_candidates") or ())
+        selected_candidates: list[dict] = []
+        if pending_candidates:
+            requested = {
+                str(item).strip() for item in (selected_candidate_ids or ()) if str(item).strip()
+            }
+            by_id = {
+                str(candidate.get("candidate_id") or ""): candidate
+                for candidate in pending_candidates
+            }
+            if not requested or not requested.issubset(by_id):
+                return {
+                    "ok": False,
+                    "code": "SALE_ASN_PO_SELECTION_REQUIRED",
+                    "message": "Hãy chọn ít nhất một dòng PO trong ứng dụng.",
+                    "review_token": token,
+                    "candidates": pending_candidates,
+                }
+            selected_candidates = [
+                dict(candidate)
+                for candidate in pending_candidates
+                if str(candidate.get("candidate_id") or "") in requested
+            ]
+        runner_kwargs: dict[str, Any] = {
+            "stage": stage,
+            "skip_stages": skipped_stages,
+            "search_fields": po_search_fields,
+            "progress": self._progress_for(method),
+        }
+        if selected_candidates:
+            runner_kwargs.update(
+                selected_po_row=dict(review.get("pending_po_row") or {}),
+                selected_po_candidates=selected_candidates,
+                selected_po_final=bool(review.get("pending_po_final")),
+            )
         result = self._run(
             method,
             lambda: runner(
@@ -1654,10 +1690,7 @@ class PanelAPI:
                 list(document["rows"]),
                 start_index,
                 self._log,
-                stage=stage,
-                skip_stages=skipped_stages,
-                search_fields=po_search_fields,
-                progress=self._progress_for(method),
+                **runner_kwargs,
             ),
             {
                 "invoice_no": document["invoice_no"],
@@ -1667,10 +1700,20 @@ class PanelAPI:
             },
         )
         if result.get("code") == "SALE_ASN_PO_SELECTION_REQUIRED":
-            review["next_index"] = int(result.get("next_index") or start_index)
+            review["next_index"] = int(result.get("pending_index") or start_index)
             review["next_stage"] = "po"
+            review["pending_po_candidates"] = list(result.get("candidates") or ())
+            review["pending_po_row"] = {
+                "source_row": result.get("source_row"),
+                "po_no": result.get("po_no"),
+                "style_no": result.get("style_no"),
+            }
+            review["pending_po_final"] = bool(result.get("final"))
             result["review_token"] = token
         elif result.get("resumable"):
+            review.pop("pending_po_candidates", None)
+            review.pop("pending_po_row", None)
+            review.pop("pending_po_final", None)
             review["next_stage"] = str(result.get("resume_stage") or stage)
             result["review_token"] = token
         elif result.get("code") == "SALE_ASN_FORM_COMPLETED":
@@ -1683,10 +1726,15 @@ class PanelAPI:
             continue_existing=False,
         )
 
-    def continue_sale_asn_create(self, review_token: str) -> dict:
+    def continue_sale_asn_create(
+        self,
+        review_token: str,
+        selected_candidate_ids: list[str] | None = None,
+    ) -> dict:
         return self._run_sale_asn_create_review(
             review_token,
             continue_existing=True,
+            selected_candidate_ids=selected_candidate_ids,
         )
 
     def skip_sale_asn_create_step(self, review_token: str) -> dict:

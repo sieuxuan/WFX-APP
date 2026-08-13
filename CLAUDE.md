@@ -523,12 +523,21 @@ Các workflow riêng hiện có:
   Destination. Mặc định bật đủ ba; dữ liệu hỏng hoặc danh sách rỗng phải quay về
   đủ ba. Destination trống phải tự bỏ qua tiêu chí này cho đúng dòng đó, đồng
   thời không làm thay đổi cặp Country Of Destination/Final Destination mặc định.
+  Vì Search PO của WFX là tìm chứa chuỗi, kết quả phải được lọc lại theo PO No.
+  exact trước khi chọn; `779` không được nhận `779A`.
   Style từ file là từ khóa gần đúng (ví dụ `M Acel Jacket` phải khớp được
   `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX), không phải mã exact. Sau mỗi lần
   thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay;
-  nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì select all rồi Add & Continue/
-  OK đúng một lần. Không dùng Dispatched Qty để tự quyết định PO, nhưng nếu popup
-  trả số này thì phải so sánh với Qty file trước khi Add/OK và dừng khi lệch. Nếu 0 kết quả, giữ
+  nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì dùng Qty file và Dispatched
+  Qty để tìm một dòng hoặc một tập dòng duy nhất có tổng khớp. Khi chỉ có một
+  đáp án thì tự select tập đó rồi Add & Continue/OK đúng một lần; tổng của toàn
+  bộ kết quả khớp cũng là một đáp án hợp lệ. Nếu WFX không đọc được Buyer Order
+  Ref exact thì không được xóa sạch kết quả trước khi lớp Qty này chạy. Khi
+  thiếu Dispatched Qty, không có tổ hợp khớp hoặc có nhiều tổ hợp cùng khớp,
+  phải trả danh sách checkbox vào app. User chọn một hoặc nhiều dòng trong app rồi
+  backend xác thực identity từ review token, tự tick đúng checkbox WFX và bấm
+  Add & Continue/OK; không bắt user thao tác popup thủ công. Một dòng hợp lệ vẫn
+  phải tự add ngay, không hiện checkpoint. Nếu 0 kết quả, giữ
   cửa sổ cho user xử lý thủ công; app dùng review token để tiếp tục từ dòng kế,
   không đọc lại hay đảo thứ tự file. Bộ tiêu chí phải được snapshot vào review
   token để thay đổi Settings giữa lượt không đổi hành vi của lượt đang chạy.
@@ -547,7 +556,11 @@ Các workflow riêng hiện có:
   xóa selection khiến WFX báo `Please select a record`. Sau click `OK`, popup
   có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
   trang Sale ASN chính rồi điền 7 cột Order Details, map Style gần đúng để điền
-  HS Code, rồi điền Shipping Info với Consignor Address `BILL-ADD - PSHK`,
+  HS Code/Goods Description. Style Details phải map bằng cột Style, không dùng
+  Style Description. Khi WFX có nhiều dòng cùng khớp mạnh một Style (ví dụ các
+  biến thể SLIM FIT/CLASSIC FIT), áp dụng cùng dữ liệu Style cho tất cả; chỉ
+  dừng ambiguous khi nhiều kết quả chỉ khớp token yếu. Sau đó điền Shipping
+  Info với Consignor Address `BILL-ADD - PSHK`,
   Factory theo FTY bằng lựa chọn gần đúng tốt nhất, không phân biệt hoa/thường,
   và bỏ qua mọi option Factory có dấu chấm ở cuối. Không tự điền Notify 1.
   Shipment Mode phải
@@ -580,9 +593,12 @@ Các workflow riêng hiện có:
   hoặc đúng một dòng đang chọn; xác nhận invoice độc lập với cột Docs rồi quét
   ngang AG Grid để tìm/click Docs theo metadata vì mỗi user có thể kéo cột tới
   vị trí khác nhau; tải lần lượt Packing List và Buyer Invoice qua đúng URL
-  `EXCELOPENXML` do Report Viewer vừa mở cung cấp, dùng request context đang
-  đăng nhập thay vì bấm menu Excel qua `window.open` (Chrome có thể chặn im
-  lặng hoặc tạo download trễ/trùng). Sau mỗi lượt tải, nhận diện nội dung
+  `EXCELOPENXML` do Report Viewer vừa mở cung cấp, dùng fetch bất đồng bộ trong
+  chính Report Viewer với phiên đang đăng nhập thay vì bấm menu Excel qua
+  `window.open` (Chrome có thể chặn im lặng hoặc tạo download trễ/trùng). Trong
+  lúc SSRS tạo file, worker phải poll theo lát có checkpoint hủy và log định kỳ;
+  không được chặn một `request.get` tới hết timeout ba phút. Sau mỗi lượt tải,
+  nhận diện nội dung
   workbook để chặn Packing List bị dùng nhầm làm Buyer Invoice hoặc ngược lại,
   rồi ghép thành một
   workbook giữ nguyên format report nguồn; nếu mỗi report có nhiều sheet thì xếp

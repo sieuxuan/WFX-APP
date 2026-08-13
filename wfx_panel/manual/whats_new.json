@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.0.33",
+    "date": "2026-08-13",
+    "highlights": [
+      {
+        "title": "Sale ASN tự chọn đúng PO theo Qty",
+        "body": "Kết quả PO gần giống như 779 và 779A được đối chiếu bằng Buyer Order Ref, Qty file và Dispatched Qty. Nếu chỉ có một dòng hoặc một tập dòng duy nhất khớp tổng Qty, ứng dụng tự chọn; chỉ những trường hợp thực sự mơ hồ mới cần bạn chọn ngay trong app.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Style Details hỗ trợ nhiều dòng cùng Style",
+        "body": "Khi WFX tách cùng một Style thành nhiều dòng như SLIM FIT và CLASSIC FIT, HS Code và Goods Description được cập nhật cho tất cả các dòng dựa trên cột Style, không còn dừng ở lỗi style-row-ambiguous.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Tải Packing List và Buyer Invoice không bị kẹt",
+        "body": "Ứng dụng theo dõi download report theo từng lát ngắn, phản hồi Stop tại checkpoint và tiếp tục sang Buyer Invoice sau khi Packing List hoàn tất thay vì bị chặn trong request tải file.",
+        "entry": "don-hang-sale-asn-documents"
+      }
+    ]
+  },
+  {
     "version": "1.0.32",
     "date": "2026-08-13",
     "highlights": [

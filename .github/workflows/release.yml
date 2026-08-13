@@ -314,9 +314,9 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
           body: |
-            WFX Smart ${{ env.VERSION }} sửa triệt để thư mục download mặc định
-            của trình duyệt làm việc. File tải thông thường về đúng Downloads
-            của Windows và Chrome giữ đường dẫn thật để mở file hoặc thư mục.
+            WFX Smart ${{ env.VERSION }} làm ổn định toàn bộ luồng Sale ASN:
+            tự chọn đúng PO bằng Qty/Dispatched Qty, cập nhật mọi dòng cùng
+            Style và tải Packing List + Buyer Invoice không bị kẹt.
 
             Cách dùng được khuyên dùng:
             1. Tải **${{ env.SETUP_NAME }}** và mở file.
@@ -337,10 +337,10 @@ jobs:
             hạn file được thay và có rollback.
 
             Điểm chính:
-            - Mỗi lần Playwright kết nối hoặc kết nối lại, app xóa download override tạm và trả Chrome về Download Manager mặc định.
-            - Windows Known Folder Downloads là nguồn chuẩn, kể cả khi đã redirect sang OneDrive hoặc ổ khác.
-            - Catalog attachment tải bằng HTTP cũng dùng cùng Downloads chuẩn.
-            - Module có hộp thoại Save As vẫn giữ đúng thư mục và tên file người dùng chọn.
+            - PO gần giống như 779/779A được kiểm bằng Buyer Order Ref, Qty file và Dispatched Qty; một đáp án duy nhất được chọn tự động.
+            - Nếu WFX có nhiều dòng cùng cột Style như SLIM FIT/CLASSIC FIT, HS Code và Goods Description được cập nhật cho tất cả.
+            - Download Packing List phản hồi Stop tại checkpoint và chuyển tiếp sang Buyer Invoice sau khi file hoàn tất.
+            - Trường hợp PO thực sự mơ hồ được chọn bằng checkbox ngay trong app; app tự tick và tiếp tục trên WFX.
 
             File `.sha256` và chữ ký `.p7s` xác minh gói tải về đúng từ nhà phát hành.
           make_latest: true

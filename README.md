@@ -1,4 +1,4 @@
-# WFX Smart 1.0.32
+# WFX Smart 1.0.33
 
 WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
 dùng của WorldFashionExchange (WFX). App chạy bằng pywebview và điều khiển một

@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 
 import pytest
@@ -44,22 +45,34 @@ def test_download_report_uses_authenticated_ssrs_request_without_browser_click(
     class FakeFrame:
         url = "https://wfx.example/report/viewer"
 
-    class FakeResponse:
-        ok = True
-        status = 200
+        def __init__(self):
+            self.started_url = ""
+            self.cleaned = False
 
-        def body(self):
-            return payload
+        def evaluate(self, script, argument=None):
+            if script == sale_asn_documents._REPORT_FETCH_START_JS:
+                self.started_url = argument
+                return True
+            if script == sale_asn_documents._REPORT_FETCH_STATE_JS:
+                return {
+                    "done": True,
+                    "ok": True,
+                    "status": 200,
+                    "size": len(payload),
+                    "prefix": "PK",
+                }
+            if script == sale_asn_documents._REPORT_FETCH_CHUNK_JS:
+                chunk = payload[argument["offset"] : argument["offset"] + argument["size"]]
+                return base64.b64encode(chunk).decode("ascii")
+            if script == sale_asn_documents._REPORT_FETCH_CLEANUP_JS:
+                self.cleaned = True
+                return None
+            raise AssertionError("unexpected script")
 
-    class FakeRequest:
-        def get(self, url, **kwargs):
-            assert url == "https://wfx.example/export?Format=EXCELOPENXML"
-            assert 179_000 <= kwargs["timeout"] <= 180_000
-            assert kwargs["fail_on_status_code"] is False
-            return FakeResponse()
+        def wait_for_timeout(self, _milliseconds):
+            return None
 
-    class FakeContext:
-        request = FakeRequest()
+    frame = FakeFrame()
 
     monkeypatch.setattr(
         sale_asn_documents,
@@ -68,8 +81,8 @@ def test_download_report_uses_authenticated_ssrs_request_without_browser_click(
     )
 
     _download_report_excel(
-        FakeContext(),
-        FakeFrame(),
+        object(),
+        frame,
         target,
         "Packing List",
         lambda _message: None,
@@ -77,6 +90,8 @@ def test_download_report_uses_authenticated_ssrs_request_without_browser_click(
 
     assert target.read_bytes() == payload
     assert _report_workbook_kind(target) == "packing"
+    assert frame.started_url == "https://wfx.example/export?Format=EXCELOPENXML"
+    assert frame.cleaned is True
 
 
 def test_download_report_retries_same_export_when_wfx_first_returns_html(
@@ -91,26 +106,34 @@ def test_download_report_retries_same_export_when_wfx_first_returns_html(
     class FakeFrame:
         url = "https://wfx.example/report/viewer"
 
+        def __init__(self):
+            self.attempt = 0
+
         def wait_for_timeout(self, milliseconds):
             calls.append(("wait", milliseconds))
 
-    class FakeResponse:
-        def __init__(self, body, *, ok, status):
-            self._body = body
-            self.ok = ok
-            self.status = status
+        def evaluate(self, script, argument=None):
+            if script == sale_asn_documents._REPORT_FETCH_START_JS:
+                self.attempt += 1
+                calls.append(("get", argument))
+                return True
+            if script == sale_asn_documents._REPORT_FETCH_STATE_JS:
+                body = b"<html>not ready</html>" if self.attempt == 1 else payload
+                return {
+                    "done": True,
+                    "ok": True,
+                    "status": 200,
+                    "size": len(body),
+                    "prefix": body[:2].decode("latin-1"),
+                }
+            if script == sale_asn_documents._REPORT_FETCH_CHUNK_JS:
+                chunk = payload[argument["offset"] : argument["offset"] + argument["size"]]
+                return base64.b64encode(chunk).decode("ascii")
+            if script == sale_asn_documents._REPORT_FETCH_CLEANUP_JS:
+                return None
+            raise AssertionError("unexpected script")
 
-        def body(self):
-            return self._body
-
-    class FakeRequest:
-        def get(self, url, **_kwargs):
-            calls.append(("get", url))
-            if len([item for item in calls if item[0] == "get"]) == 1:
-                return FakeResponse(b"<html>not ready</html>", ok=True, status=200)
-            return FakeResponse(payload, ok=True, status=200)
-
-    context = type("FakeContext", (), {"request": FakeRequest(), "pages": []})()
+    frame = FakeFrame()
     monkeypatch.setattr(
         sale_asn_documents,
         "_report_export_url",
@@ -118,8 +141,8 @@ def test_download_report_retries_same_export_when_wfx_first_returns_html(
     )
 
     _download_report_excel(
-        context,
-        FakeFrame(),
+        object(),
+        frame,
         target,
         "Buyer Invoice",
         logs.append,
@@ -130,6 +153,53 @@ def test_download_report_retries_same_export_when_wfx_first_returns_html(
     assert sum(item[1] for item in calls if item[0] == "wait") == 1_000
     assert target.read_bytes() == payload
     assert any("chưa trả file Excel ở lượt 1" in line for line in logs)
+
+
+def test_download_report_aborts_in_page_fetch_when_stop_reaches_checkpoint(
+    tmp_path,
+    monkeypatch,
+):
+    class Cancelled(BaseException):
+        pass
+
+    class FakeFrame:
+        url = "https://wfx.example/report/viewer"
+
+        def __init__(self):
+            self.cleaned = False
+
+        def evaluate(self, script, _argument=None):
+            if script == sale_asn_documents._REPORT_FETCH_START_JS:
+                return True
+            if script == sale_asn_documents._REPORT_FETCH_STATE_JS:
+                return {"done": False}
+            if script == sale_asn_documents._REPORT_FETCH_CLEANUP_JS:
+                self.cleaned = True
+                return None
+            raise AssertionError("unexpected script")
+
+    frame = FakeFrame()
+    monkeypatch.setattr(
+        sale_asn_documents,
+        "_report_export_url",
+        lambda _frame: "/export?Format=",
+    )
+    monkeypatch.setattr(
+        sale_asn_documents,
+        "_wait",
+        lambda *_args: (_ for _ in ()).throw(Cancelled()),
+    )
+
+    with pytest.raises(Cancelled):
+        _download_report_excel(
+            object(),
+            frame,
+            tmp_path / "packing.xlsx",
+            "Packing List",
+            lambda _message: None,
+        )
+
+    assert frame.cleaned is True
 
 
 def test_report_kind_validation_rejects_packing_list_as_buyer_invoice(tmp_path):
