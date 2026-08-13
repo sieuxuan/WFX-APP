@@ -1268,9 +1268,22 @@ def _auto_add_po(
         active.append(field)
         label = " + ".join(SALE_ASN_PO_SEARCH_LABELS[item] for item in active)
         active_fields = tuple(active)
-        if recovered_search is not None and recovered_search[0] == active_fields:
-            last = list(recovered_search[1])
-            recovered_search = None
+        if recovered_search is not None:
+            recovered_fields = tuple(recovered_search[0])
+            if (
+                len(active_fields) < len(recovered_fields)
+                and recovered_fields[: len(active_fields)] == active_fields
+            ):
+                # Search của các prefix này đã chạy trước khi popup thay document.
+                # Đi thẳng tới đúng bộ tiêu chí đã submit để không reset kết quả
+                # vừa phục hồi (ví dụ PO + Style = 1) về Search chỉ theo PO.
+                continue
+            if recovered_fields == active_fields:
+                last = list(recovered_search[1])
+                recovered_search = None
+            else:
+                recovered_search = None
+                last = _search_po(frame, row, fields=active_fields)
         else:
             last = _search_po(frame, row, fields=active_fields)
         _write_log(log, f"[SALE ASN] Dòng {row.get('source_row')}: {label} → {len(last)} kết quả.")

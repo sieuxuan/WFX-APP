@@ -690,6 +690,64 @@ def test_auto_add_po_uses_results_already_rendered_after_document_change(monkeyp
     assert calls == [(stale_frame, None), (result_frame, (("po",), candidates))]
 
 
+def test_auto_add_po_resumes_later_recovered_filter_without_restarting_po(monkeypatch):
+    candidates = [
+        {
+            "row_index": 2,
+            "selection_name": "optShipmentId",
+            "selection_value": "A",
+            "selection_order_id": "ORDER-1",
+            "po_no": "PO-1",
+            "style_no": "STYLE-1",
+        }
+    ]
+    searches = []
+    selected = []
+    actions = []
+
+    def fake_search(_frame, _row, *, fields):
+        searches.append(tuple(fields))
+        pytest.fail("không được Search lại tiêu chí PO đã hoàn tất")
+
+    class FakeLocator:
+        first = property(lambda self: self)
+
+        def __init__(self, selector):
+            self.selector = selector
+
+        def evaluate(self, _script, spec=None):
+            if spec is None:
+                actions.append(self.selector)
+                return {"ok": True, "tag": "A"}
+            selected.append(spec["selection_value"])
+            return {"ok": True, "value": spec["selection_value"]}
+
+        def wait_for(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, selector):
+            return FakeLocator(selector)
+
+    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+
+    added, returned, reason = _auto_add_po(
+        FakeFrame(),
+        {"source_row": 2, "po_no": "PO-1", "style_no": "STYLE-1"},
+        lambda _message: None,
+        search_fields=("po", "style"),
+        recovered_search=(("po", "style"), candidates),
+    )
+
+    assert added is True
+    assert returned == candidates
+    assert reason == "PO + Style"
+    assert searches == []
+    assert selected == ["A"]
+    assert actions == [sale_asn_create.PO_CONTINUE_SELECTOR]
+
+
 def test_auto_add_po_skips_blank_optional_destination(monkeypatch):
     searches = []
     logs = []
