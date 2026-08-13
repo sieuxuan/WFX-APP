@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -45,10 +46,75 @@ REPORT_READY_TIMEOUT_SECONDS = 180
 REPORT_DOWNLOAD_START_TIMEOUT_SECONDS = 180
 REPORT_DOWNLOAD_RETRY_DELAY_MS = 1_000
 REPORT_DOWNLOAD_MAX_ATTEMPTS = 2
+REPORT_DOWNLOAD_POLL_MS = 100
+REPORT_DOWNLOAD_PROGRESS_INTERVAL_SECONDS = 15
+REPORT_DOWNLOAD_CHUNK_BYTES = 256 * 1024
 REPORT_EXPORT_SELECTOR = (
     "#rptCustomReportViewer_ctl05_ctl04_ctl00_ButtonLink, "
     'a[title="Export drop down menu"]'
 )
+_REPORT_FETCH_START_JS = r"""url => {
+    const key = '__wfxSaleAsnReportFetch';
+    window[key]?.controller?.abort();
+    const controller = new AbortController();
+    const state = {
+        controller,
+        done: false,
+        ok: false,
+        status: 0,
+        error: '',
+        bytes: null,
+    };
+    window[key] = state;
+    fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        signal: controller.signal,
+    }).then(async response => {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (window[key] !== state) return;
+        state.ok = response.ok;
+        state.status = response.status;
+        state.bytes = bytes;
+        state.done = true;
+    }).catch(error => {
+        if (window[key] !== state) return;
+        state.error = String(error?.message || error || 'fetch-failed');
+        state.done = true;
+    });
+    return true;
+}"""
+_REPORT_FETCH_STATE_JS = r"""() => {
+    const state = window.__wfxSaleAsnReportFetch;
+    if (!state) return {done: true, error: 'fetch-state-missing'};
+    const bytes = state.bytes;
+    return {
+        done: Boolean(state.done),
+        ok: Boolean(state.ok),
+        status: Number(state.status || 0),
+        error: String(state.error || ''),
+        size: bytes?.length || 0,
+        prefix: bytes?.length >= 2
+            ? String.fromCharCode(bytes[0], bytes[1])
+            : '',
+    };
+}"""
+_REPORT_FETCH_CHUNK_JS = r"""spec => {
+    const bytes = window.__wfxSaleAsnReportFetch?.bytes;
+    if (!bytes) return '';
+    const chunk = bytes.subarray(spec.offset, spec.offset + spec.size);
+    let binary = '';
+    for (let index = 0; index < chunk.length; index += 0x8000) {
+        binary += String.fromCharCode(...chunk.subarray(index, index + 0x8000));
+    }
+    return btoa(binary);
+}"""
+_REPORT_FETCH_CLEANUP_JS = r"""() => {
+    const state = window.__wfxSaleAsnReportFetch;
+    state?.controller?.abort();
+    delete window.__wfxSaleAsnReportFetch;
+}"""
 _SALE_ASN_ROWS_JS = """root => {
     const shown = element => {
         if (!element || !element.isConnected) return false;
@@ -511,7 +577,7 @@ def _wait_report_ready(
 
 
 def _download_report_excel(
-    context: Any,
+    _context: Any,
     report_frame: Frame,
     target: Path,
     label: str,
@@ -534,15 +600,51 @@ def _download_report_excel(
             report_frame.url,
             f"{export_base}EXCELOPENXML",
         )
-        remaining_ms = max(1, int((deadline - time.monotonic()) * 1_000))
-        response = context.request.get(
-            export_url,
-            timeout=remaining_ms,
-            fail_on_status_code=False,
+        report_frame.evaluate(_REPORT_FETCH_START_JS, export_url)
+        fetch_started = time.monotonic()
+        next_progress = (
+            fetch_started + REPORT_DOWNLOAD_PROGRESS_INTERVAL_SECONDS
         )
-        response_body = response.body()
-        last_status = response.status
-        if response.ok and response_body.startswith(b"PK"):
+        try:
+            while time.monotonic() < deadline:
+                state = report_frame.evaluate(_REPORT_FETCH_STATE_JS)
+                if state.get("done"):
+                    last_status = state.get("status") or state.get("error") or "unknown"
+                    if state.get("ok") and state.get("prefix") == "PK":
+                        chunks: list[bytes] = []
+                        size = max(0, int(state.get("size") or 0))
+                        for offset in range(0, size, REPORT_DOWNLOAD_CHUNK_BYTES):
+                            # _wait(..., 0) chỉ chạy checkpoint, nhờ đó Stop vẫn
+                            # phản hồi khi workbook lớn đang được chuyển từ frame.
+                            _wait(report_frame, 0)
+                            encoded = report_frame.evaluate(
+                                _REPORT_FETCH_CHUNK_JS,
+                                {
+                                    "offset": offset,
+                                    "size": REPORT_DOWNLOAD_CHUNK_BYTES,
+                                },
+                            )
+                            chunks.append(base64.b64decode(encoded))
+                        response_body = b"".join(chunks)
+                    break
+                now = time.monotonic()
+                if now >= next_progress:
+                    waited = int(now - fetch_started)
+                    _write_log(
+                        log,
+                        f"[SALE ASN DOCS] WFX vẫn đang tạo {label}; đã chờ {waited} giây...",
+                    )
+                    next_progress = (
+                        now + REPORT_DOWNLOAD_PROGRESS_INTERVAL_SECONDS
+                    )
+                remaining_ms = max(1, int((deadline - now) * 1_000))
+                _wait(report_frame, min(REPORT_DOWNLOAD_POLL_MS, remaining_ms))
+        finally:
+            try:
+                report_frame.evaluate(_REPORT_FETCH_CLEANUP_JS)
+            except PlaywrightError:
+                pass
+        if response_body.startswith(b"PK"):
             break
         if time.monotonic() >= deadline:
             break
@@ -551,9 +653,7 @@ def _download_report_excel(
             f"[SALE ASN DOCS] {label} chưa trả file Excel ở lượt {attempt}; "
             "đang chờ WFX hoàn tất rồi tải lại cùng report...",
         )
-        pages = getattr(context, "pages", ())
-        wait_target = pages[0] if pages else report_frame
-        _wait(wait_target, REPORT_DOWNLOAD_RETRY_DELAY_MS)
+        _wait(report_frame, REPORT_DOWNLOAD_RETRY_DELAY_MS)
     else:
         response_body = b""
     if not response_body.startswith(b"PK"):

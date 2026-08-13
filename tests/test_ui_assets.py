@@ -1205,12 +1205,7 @@ def test_badge_phien_ban_khong_hardcode():
     assert "Phiên bản 1.0<" not in html
 
 
-def test_manual_po_checkpoint_shows_the_rows_wfx_returned():
-    """Backend đã gửi kèm candidates; thẻ chờ phải hiện ngay tại chỗ.
-
-    Nếu không, user chỉ đọc được "cần bạn chọn trên WFX" rồi phải alt-tab sang
-    Chrome dò thủ công xem dòng nào mới đúng.
-    """
+def test_po_checkpoint_selects_rows_in_app_instead_of_on_wfx():
     html = (UI / "index.html").read_text(encoding="utf-8")
     css = (UI / "style.css").read_text(encoding="utf-8")
     action = html[
@@ -1221,5 +1216,9 @@ def test_manual_po_checkpoint_shows_the_rows_wfx_returned():
 
     assert 'class="sale-asn-candidates"' in action
     assert 'class="sale-asn-candidate-list"' in action
+    assert "Ứng dụng sẽ tự tick" in action
+    assert 'class="sale-asn-manual-confirm"' not in action
+    assert "Thêm dòng đã chọn" in action
     assert ".sale-asn-candidates[hidden] { display: none !important; }" in css
     assert ".sale-asn-candidate-list li {" in css
+    assert ".sale-asn-candidate-list label {" in css

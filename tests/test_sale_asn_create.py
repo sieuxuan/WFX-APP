@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from openpyxl import Workbook, load_workbook
@@ -510,6 +511,151 @@ def test_auto_add_po_narrows_by_enabled_fields_in_fixed_order(monkeypatch):
     assert [spec["selection_value"] for spec in selection_specs] == ["A"]
 
 
+def test_auto_add_po_rejects_partial_po_match_before_qty_selection(monkeypatch):
+    selected = []
+    actions = []
+    candidates = [
+        {
+            "row_index": 1,
+            "selection_value": "ORDER-779",
+            # Popup thật có thể làm lệch index do cột checkbox chỉ xuất hiện ở
+            # data row. Exact cell vẫn phải thắng giá trị cột bị đọc nhầm.
+            "po_no": "PSW-BDG-26-4962",
+            "cell_values": ["", "STYLE", "779", "PSW-BDG-26-4962", "3160"],
+            "dispatched_qty": "3160",
+        },
+        {
+            "row_index": 2,
+            "selection_value": "ORDER-779A",
+            "po_no": "PSW-BDG-26-4963",
+            "cell_values": ["", "STYLE", "779A", "PSW-BDG-26-4963", "299"],
+            "dispatched_qty": "299",
+        },
+    ]
+
+    class FakeLocator:
+        first = property(lambda self: self)
+
+        def __init__(self, selector):
+            self.selector = selector
+
+        def evaluate(self, _script, spec=None):
+            if spec is None:
+                actions.append(self.selector)
+                return {"ok": True, "tag": "A"}
+            selected.append(spec["selection_value"])
+            return {"ok": True, "value": spec["selection_value"]}
+
+        def wait_for(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, selector):
+            return FakeLocator(selector)
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_search_po",
+        lambda _frame, _row, *, fields: candidates,
+    )
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+
+    added, returned, reason = _auto_add_po(
+        FakeFrame(),
+        {
+            "source_row": 2,
+            "po_no": "779",
+            "style_no": "FCP-WPKN-P100-U",
+            "qty": "3160",
+        },
+        lambda _message: None,
+    )
+
+    assert added is True
+    assert returned == [{**candidates[0], "po_no": "779"}]
+    assert reason == "PO"
+    assert selected == ["ORDER-779"]
+    assert actions == [sale_asn_create.PO_CONTINUE_SELECTOR]
+
+
+def test_auto_add_po_uses_qty_when_po_column_cannot_be_read(monkeypatch):
+    selected = []
+    candidates = [
+        {
+            "row_index": 1,
+            "selection_value": "ORDER-779",
+            "po_no": "PSW-BDG-26-4962",
+            "cell_values": ["STYLE", "PSW-BDG-26-4962", "3160"],
+            "dispatched_qty": "3160",
+        },
+        {
+            "row_index": 2,
+            "selection_value": "ORDER-779A",
+            "po_no": "PSW-BDG-26-4963",
+            "cell_values": ["STYLE", "PSW-BDG-26-4963", "299"],
+            "dispatched_qty": "299",
+        },
+    ]
+
+    class FakeLocator:
+        first = property(lambda self: self)
+
+        def evaluate(self, _script, spec=None):
+            if spec is None:
+                return {"ok": True, "tag": "A"}
+            selected.append(spec["selection_value"])
+            return {"ok": True, "value": spec["selection_value"]}
+
+        def wait_for(self, **_kwargs):
+            return None
+
+    class FakeFrame:
+        def locator(self, _selector):
+            return FakeLocator()
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_search_po",
+        lambda _frame, _row, *, fields: candidates,
+    )
+    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    logs = []
+
+    added, returned, _reason = _auto_add_po(
+        FakeFrame(),
+        {
+            "source_row": 2,
+            "po_no": "779",
+            "style_no": "FCP-WPKN-P100-U",
+            "qty": "3160",
+        },
+        logs.append,
+    )
+
+    assert added is True
+    assert returned == [candidates[0]]
+    assert selected == ["ORDER-779"]
+    assert any("Qty với Dispatched Qty" in message for message in logs)
+    assert any("chỉ khớp một tập 1 dòng" in message for message in logs)
+
+
+def test_unique_dispatched_qty_subset_refuses_ambiguous_combinations():
+    candidates = [
+        {"selection_value": "A", "dispatched_qty": "4"},
+        {"selection_value": "B", "dispatched_qty": "6"},
+        {"selection_value": "C", "dispatched_qty": "5"},
+        {"selection_value": "D", "dispatched_qty": "5"},
+    ]
+
+    assert (
+        sale_asn_create._unique_dispatched_qty_subset(
+            candidates,
+            Decimal("10"),
+        )
+        is None
+    )
+
+
 def test_auto_add_po_respects_disabled_fields_and_selects_all_at_end(monkeypatch):
     searches = []
     selected = []
@@ -564,8 +710,18 @@ def test_auto_add_po_respects_disabled_fields_and_selects_all_at_end(monkeypatch
 
 def test_auto_add_po_asks_user_when_ambiguous_rows_have_wrong_total_qty(monkeypatch):
     candidates = [
-        {"row_index": 1, "selection_value": "A", "dispatched_qty": "4"},
-        {"row_index": 2, "selection_value": "B", "dispatched_qty": "5"},
+        {
+            "row_index": 1,
+            "selection_value": "A",
+            "po_no": "PO-1",
+            "dispatched_qty": "4",
+        },
+        {
+            "row_index": 2,
+            "selection_value": "B",
+            "po_no": "PO-1",
+            "dispatched_qty": "5",
+        },
     ]
     logs = []
 
@@ -585,6 +741,39 @@ def test_auto_add_po_asks_user_when_ambiguous_rows_have_wrong_total_qty(monkeypa
     assert returned == candidates
     assert reason.startswith("qty_mismatch:")
     assert any("chờ user xác nhận" in message for message in logs)
+
+
+def test_auto_add_po_asks_user_when_multiple_rows_have_missing_qty(monkeypatch):
+    candidates = [
+        {
+            "row_index": 1,
+            "selection_value": "A",
+            "po_no": "PO-1",
+            "dispatched_qty": "10",
+        },
+        {
+            "row_index": 2,
+            "selection_value": "B",
+            "po_no": "PO-1",
+            "dispatched_qty": "",
+        },
+    ]
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_search_po",
+        lambda _frame, _row, *, fields: candidates,
+    )
+
+    added, returned, reason = _auto_add_po(
+        object(),
+        {"source_row": 2, "po_no": "PO-1", "style_no": "S1", "qty": "10"},
+        lambda _message: None,
+    )
+
+    assert added is False
+    assert returned == candidates
+    assert reason.startswith("qty_unavailable:")
 
 
 def test_auto_add_po_recovers_once_when_popup_document_changes(monkeypatch):
@@ -883,7 +1072,7 @@ def test_sale_asn_style_details_targets_exact_hts_cell(monkeypatch):
 
     _set_style_hts_cell(frame, "STYLE A", "62014010")
 
-    assert captured["spec"] == {"style": "STYLE A"}
+    assert captured["spec"] == {"style": "STYLE A", "target_index": 0}
     assert "#gridStyleDetails_tblGridContent" in captured["script"]
     assert "td#colStyle" in captured["script"]
     assert "td#colHTSCode" in captured["script"]
@@ -913,10 +1102,118 @@ def test_sale_asn_style_details_targets_exact_goods_description_cell(monkeypatch
 
     _set_style_goods_description_cell(frame, "STYLE A", "Men's jacket")
 
-    assert captured["spec"] == {"style": "STYLE A"}
+    assert captured["spec"] == {"style": "STYLE A", "target_index": 0}
     assert "td#colGoodsDescription" in captured["script"]
     assert captured["frame"] is frame
     assert captured["value"] == "Men's jacket"
+
+
+def test_sale_asn_style_details_updates_all_strong_matching_variant_rows(monkeypatch):
+    calls = []
+
+    class FakeFrame:
+        def evaluate(self, _script, spec):
+            calls.append(("mark", spec["target_index"]))
+            return {
+                "ok": True,
+                "style": "BDG-FCP-WPKN-P100-U",
+                "column_id": "colGoodsDescription",
+                "target_count": 2,
+                "target_index": spec["target_index"],
+            }
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_edit_marked_table_cell",
+        lambda _frame, value: calls.append(("edit", value)),
+    )
+
+    count = _set_style_goods_description_cell(
+        FakeFrame(),
+        "FCP-WPKN-P100-U",
+        "FLEX CHINO PANT",
+    )
+
+    assert count == 2
+    assert calls == [
+        ("mark", 0),
+        ("edit", "FLEX CHINO PANT"),
+        ("mark", 1),
+        ("edit", "FLEX CHINO PANT"),
+    ]
+
+
+def test_sale_asn_style_marker_uses_style_column_for_duplicate_fit_rows():
+    markup = """
+      <table id="gridStyleDetails_tblGridContent"><tbody>
+        <tr class="trContent" id="slim">
+          <td id="colStyle"><span id="lblStyle" title="BDG-FCP-WPKN-P100-U FLEX CHINO PANT">BDG-FCP-WPKN-P100-U</span></td>
+          <td id="colStyleDescription">SLIM FIT</td>
+          <td id="colGoodsDescription"></td>
+        </tr>
+        <tr class="trContent" id="classic">
+          <td id="colStyle"><span id="lblStyle" title="BDG-FCP-WPKN-P100-U FLEX CHINO PANT">BDG-FCP-WPKN-P100-U</span></td>
+          <td id="colStyleDescription">CLASSIC FIT</td>
+          <td id="colGoodsDescription"></td>
+        </tr>
+      </tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            first = page.evaluate(
+                sale_asn_create._MARK_STYLE_GOODS_DESCRIPTION_CELL_JS,
+                {"style": "FCP-WPKN-P100-U", "target_index": 0},
+            )
+            second = page.evaluate(
+                sale_asn_create._MARK_STYLE_GOODS_DESCRIPTION_CELL_JS,
+                {"style": "FCP-WPKN-P100-U", "target_index": 1},
+            )
+
+            assert first["ok"] is True
+            assert first["target_count"] == 2
+            assert second["ok"] is True
+            assert page.locator(
+                "#classic #colGoodsDescription"
+            ).get_attribute("data-wfx-sale-asn-target") == "1"
+            assert page.locator(
+                "#slim #colGoodsDescription"
+            ).get_attribute("data-wfx-sale-asn-target") is None
+        finally:
+            browser.close()
+
+
+def test_sale_asn_style_marker_keeps_weak_duplicate_style_matches_ambiguous():
+    markup = """
+      <table id="gridStyleDetails_tblGridContent"><tbody>
+        <tr class="trContent">
+          <td id="colStyle">SLIM FIT</td><td id="colHTSCode"></td>
+        </tr>
+        <tr class="trContent">
+          <td id="colStyle">CLASSIC FIT</td><td id="colHTSCode"></td>
+        </tr>
+      </tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            result = page.evaluate(
+                sale_asn_create._MARK_STYLE_HTS_CELL_JS,
+                {"style": "FIT", "target_index": 0},
+            )
+
+            assert result == {
+                "ok": False,
+                "reason": "style-row-ambiguous",
+                "count": 2,
+                "styles": ["SLIM FIT", "CLASSIC FIT"],
+            }
+        finally:
+            browser.close()
 
 
 def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatch):
@@ -1731,6 +2028,9 @@ class _FakeSaleASNLogin:
         skip_stages=(),
         search_fields=("po", "style", "destination"),
         progress=None,
+        selected_po_row=None,
+        selected_po_candidates=(),
+        selected_po_final=False,
     ):
         self.calls.append(
             (
@@ -1742,14 +2042,30 @@ class _FakeSaleASNLogin:
                 stage,
                 tuple(skip_stages),
                 tuple(search_fields),
+                tuple(
+                    item.get("selection_value")
+                    for item in selected_po_candidates
+                ),
             )
         )
-        if start_index == 0:
+        if start_index == 0 and not selected_po_candidates:
             return {
                 "ok": True,
                 "code": "SALE_ASN_PO_SELECTION_REQUIRED",
-                "message": "manual",
+                "message": "select",
+                "pending_index": 0,
                 "next_index": 1,
+                "source_row": 2,
+                "po_no": "PO-1",
+                "style_no": "STYLE-1",
+                "final": False,
+                "candidates": [
+                    {
+                        "candidate_id": "0",
+                        "selection_value": "ORDER-1",
+                        "po_no": "PO-1",
+                    }
+                ],
             }
         return {
             "ok": True,
@@ -1767,7 +2083,7 @@ def test_panel_api_keeps_review_across_manual_po_checkpoint(tmp_path):
     scanned = api.scan_sale_asn_buyers()
     reviewed = api.prepare_sale_asn_create(str(source), "BUYER A")
     pending = api.start_sale_asn_create(reviewed["review_token"])
-    completed = api.continue_sale_asn_create(reviewed["review_token"])
+    completed = api.continue_sale_asn_create(reviewed["review_token"], ["0"])
     expired = api.continue_sale_asn_create(reviewed["review_token"])
 
     assert scanned["buyers"] == [{"label": "BUYER A", "value": "A"}]
@@ -1775,7 +2091,8 @@ def test_panel_api_keeps_review_across_manual_po_checkpoint(tmp_path):
     assert pending["code"] == "SALE_ASN_PO_SELECTION_REQUIRED"
     assert completed["code"] == "SALE_ASN_FORM_COMPLETED"
     assert expired["code"] == "SALE_ASN_CREATE_REVIEW_EXPIRED"
-    assert [call[4] for call in login.calls if call[0] == "create"] == [0, 1]
+    assert [call[4] for call in login.calls if call[0] == "create"] == [0, 0]
+    assert [call[8] for call in login.calls if call[0] == "create"] == [(), ("ORDER-1",)]
 
 
 def test_panel_api_returns_automatic_price_check_with_completed_sale_asn(tmp_path):
@@ -1786,10 +2103,124 @@ def test_panel_api_returns_automatic_price_check_with_completed_sale_asn(tmp_pat
 
     reviewed = api.prepare_sale_asn_create(str(source), "BUYER A")
     api.start_sale_asn_create(reviewed["review_token"])
-    completed = api.continue_sale_asn_create(reviewed["review_token"])
+    completed = api.continue_sale_asn_create(reviewed["review_token"], ["0"])
 
     assert completed["code"] == "SALE_ASN_FORM_COMPLETED"
     assert "price_check_token" not in completed
+
+
+def test_panel_api_rejects_po_candidate_id_not_issued_by_review(tmp_path):
+    source = tmp_path / "input.xlsx"
+    _input_workbook(source, _valid_rows())
+    login = _FakeSaleASNLogin()
+    api = PanelAPI(login_module=login, prefs_module=prefs, base_dir=tmp_path / "data")
+
+    reviewed = api.prepare_sale_asn_create(str(source), "BUYER A")
+    api.start_sale_asn_create(reviewed["review_token"])
+    rejected = api.continue_sale_asn_create(
+        reviewed["review_token"],
+        ["not-issued"],
+    )
+
+    assert rejected["code"] == "SALE_ASN_PO_SELECTION_REQUIRED"
+    assert rejected["candidates"][0]["candidate_id"] == "0"
+    assert len([call for call in login.calls if call[0] == "create"]) == 1
+
+
+def test_sale_asn_po_results_prioritize_buyer_order_ref_over_system_po_number():
+    source = sale_asn_create._PO_RESULTS_JS
+
+    assert "const buyerReferenceIndex = indexFor" in source
+    assert "const poIndex = buyerReferenceIndex >= 0" in source
+    assert source.index("/buyer\\s*order\\s*(ref|reference)/") < source.index(
+        ": indexFor([/po\\s*(no|number)/"
+    )
+    assert "largestOverlap" in source
+    assert "cell_values: cells.map" in source
+
+def test_run_sale_asn_applies_app_selection_without_reopening_new_form(monkeypatch):
+    rows = [
+        {"source_row": 2, "po_no": "PO-1", "style_no": "STYLE-1"},
+        {"source_row": 3, "po_no": "PO-2", "style_no": "STYLE-2"},
+    ]
+    context = object()
+    page = type("FakePage", (), {"context": context})()
+    selected = []
+    searched = []
+
+    class FakePlaywright:
+        def stop(self):
+            return None
+
+    monkeypatch.setattr(
+        sale_asn_create,
+        "sync_playwright",
+        lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_active_wfx_page",
+        lambda _playwright, _log: (object(), page),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_refresh_existing_new_form",
+        lambda *_args: pytest.fail("resume selection không được refresh form New"),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_open_new_form",
+        lambda *_args: pytest.fail("resume selection không được mở form New"),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_frame_with_selector",
+        lambda *_args, **_kwargs: (page, object()),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_add_selected_po_candidates",
+        lambda _frame, row, candidates, _log, *, final: selected.append(
+            (row["po_no"], [item["selection_value"] for item in candidates], final)
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_ensure_po_popup_for_next_row",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_auto_add_po_with_frame_retry",
+        lambda _context, frame, row, _log, *, final, search_fields: (
+            searched.append((row["po_no"], final)) or True,
+            [],
+            "PO",
+            frame,
+        ),
+    )
+    monkeypatch.setattr(
+        sale_asn_create,
+        "_check_sale_asn_price_on_page",
+        lambda *_args: {"message": "checked"},
+    )
+
+    result = sale_asn_create.run_sale_asn_create(
+        "menu-xpath",
+        "BUYER A",
+        rows,
+        start_index=0,
+        stage="po",
+        skip_stages=("order_details", "style_details", "shipping_info"),
+        selected_po_row=rows[0],
+        selected_po_candidates=[{"selection_value": "ORDER-1"}],
+        selected_po_final=False,
+        log=lambda _message: None,
+    )
+
+    assert result["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert selected == [("PO-1", ["ORDER-1"], False)]
+    assert searched == [("PO-2", True)]
 
 
 def test_panel_api_retries_or_skips_failed_sale_asn_stage(tmp_path):
@@ -2272,7 +2703,10 @@ def test_recovering_missing_po_asks_the_user_instead_of_failing(monkeypatch):
 
     assert result["code"] == "SALE_ASN_PO_SELECTION_REQUIRED"
     assert result["po_no"] == "PO-2"
-    assert result["candidates"] == candidates
+    assert [
+        {key: value for key, value in candidate.items() if key != "candidate_id"}
+        for candidate in result["candidates"]
+    ] == candidates
     # Lượt Tiếp tục phải bỏ qua vòng thêm PO và để _ensure_order_grid_rows dò
     # lại, nếu không các PO đã vào grid sẽ bị thêm trùng.
     assert result["next_index"] == len(rows)

@@ -212,18 +212,21 @@ def _po_selection_result(
     completed: int,
     total: int,
 ) -> dict[str, Any]:
-    manual_action = "OK" if final else "Add & Continue"
-    if reason.startswith("qty_mismatch:"):
+    rendered_candidates = [
+        {**dict(candidate), "candidate_id": str(index)}
+        for index, candidate in enumerate(candidates[:20])
+    ]
+    if reason.startswith(("qty_mismatch:", "qty_unavailable:")):
         detail = reason.split(":", 1)[1]
         message = (
             f"Dòng {row.get('source_row')} · PO {row.get('po_no')}: {detail}. "
-            "Popup vẫn đang mở; hãy kiểm tra/chọn lại các dòng rồi bấm "
-            f"{manual_action}, sau đó quay lại app bấm Tiếp tục."
+            "Hãy chọn các dòng cần thêm ngay trong ứng dụng; automation sẽ tự "
+            "tick và tiếp tục trên WFX."
         )
     else:
         message = (
-            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} cần bạn chọn trên WFX. "
-            f"Chọn đúng dòng rồi bấm {manual_action}; sau đó quay lại app bấm Tiếp tục."
+            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} có nhiều lựa chọn. "
+            "Hãy chọn dòng cần thêm ngay trong ứng dụng."
         )
     return _result(
         True,
@@ -235,7 +238,8 @@ def _po_selection_result(
         po_no=row.get("po_no"),
         style_no=row.get("style_no"),
         reason=reason,
-        candidates=list(candidates[:20]),
+        candidates=rendered_candidates,
+        final=final,
         completed=completed,
         total=total,
     )
@@ -272,19 +276,68 @@ _PO_RESULTS_JS = r"""root => {
         const rows = [...table.querySelectorAll(':scope > tbody > tr, :scope > tr')];
         if (rows.length < 2) continue;
         let headers = [];
+        let headerCells = [];
         let headerIndex = -1;
         rows.forEach((row, index) => {
-            const cells = [...row.children].map(cell => fold(cell.textContent));
-            if (cells.some(text => /po\s*(no|number)|buyer order/.test(text))) {
-                headers = cells; headerIndex = index;
+            const cells = [...row.children];
+            const texts = cells.map(cell => fold(cell.textContent));
+            if (texts.some(text => /po\s*(no|number)|buyer order/.test(text))) {
+                headers = texts; headerCells = cells; headerIndex = index;
             }
         });
         if (headerIndex < 0) continue;
         const indexFor = patterns => headers.findIndex(text =>
             patterns.some(pattern => pattern.test(text)));
-        const poIndex = indexFor([/po\s*(no|number)/, /buyer order/]);
+        // Workbook dùng Buyer Order Ref (ví dụ 779), không phải mã PO/OC hệ
+        // thống dạng PSW-BDG-.... Ưu tiên cột Buyer Order Ref dù bảng có một
+        // cột "PO No." đứng trước; chỉ fallback khi tenant không có cột Ref.
+        const buyerReferenceIndex = indexFor([
+            /buyer\s*order\s*(ref|reference)/,
+            /buyer.*(ref|reference)/,
+        ]);
+        const poIndex = buyerReferenceIndex >= 0
+            ? buyerReferenceIndex
+            : indexFor([/po\s*(no|number)/, /buyer order/]);
         const styleIndex = indexFor([/style/, /article/]);
         const qtyIndex = indexFor([/dispatched\s*qty/, /dispatch\s*qty/, /^qty$/]);
+        const valueFor = (cells, index, patterns) => {
+            // Một số tenant thêm cột checkbox chỉ ở data row, làm index của
+            // header lệch một ô. Ưu tiên semantic attributes, rồi ghép theo
+            // tọa độ ngang của header/cell thay vì tin tuyệt đối vào index.
+            for (const cell of cells) {
+                const hint = fold([
+                    cell.id,
+                    cell.className,
+                    cell.getAttribute('data-title'),
+                    cell.getAttribute('headers'),
+                    cell.getAttribute('aria-label'),
+                    cell.getAttribute('colname'),
+                ].filter(Boolean).join(' '));
+                if (patterns.some(pattern => pattern.test(hint))) {
+                    const value = clean(cell.textContent);
+                    if (value) return value;
+                }
+            }
+            const header = headerCells[index];
+            if (header) {
+                const headerRect = header.getBoundingClientRect();
+                let aligned = null;
+                let largestOverlap = 0;
+                for (const cell of cells) {
+                    const rect = cell.getBoundingClientRect();
+                    const overlap = Math.min(headerRect.right, rect.right)
+                        - Math.max(headerRect.left, rect.left);
+                    if (overlap > largestOverlap) {
+                        largestOverlap = overlap;
+                        aligned = cell;
+                    }
+                }
+                if (aligned && largestOverlap > 0) {
+                    return clean(aligned.textContent);
+                }
+            }
+            return clean(cells[index]?.textContent);
+        };
         const candidates = [];
         rows.slice(headerIndex + 1).forEach((row, rowIndex) => {
             if (!shown(row)) return;
@@ -299,9 +352,16 @@ _PO_RESULTS_JS = r"""root => {
                 selection_name: clean(action.name),
                 selection_value: clean(action.value),
                 selection_order_id: clean(action.getAttribute('orderid')),
-                po_no: clean(cells[poIndex]?.textContent),
-                style_no: clean(cells[styleIndex]?.textContent),
-                dispatched_qty: clean(cells[qtyIndex]?.textContent),
+                po_no: valueFor(cells, poIndex, [
+                    /buyer\s*order\s*(ref|reference)/,
+                    /buyer.*(ref|reference)/,
+                    /po\s*(no|number)/,
+                ]),
+                style_no: valueFor(cells, styleIndex, [/style/, /article/]),
+                dispatched_qty: valueFor(cells, qtyIndex, [
+                    /dispatched\s*qty/, /dispatch\s*qty/, /^qty$/,
+                ]),
+                cell_values: cells.map(cell => clean(cell.textContent)),
                 text: clean(row.textContent),
             });
         });
@@ -606,7 +666,12 @@ _MARK_STYLE_HTS_CELL_JS = r"""spec => {
         .filter(item => item.score > 0);
     const bestScore = Math.max(0, ...candidates.map(item => item.score));
     const best = candidates.filter(item => item.score === bestScore);
-    if (best.length !== 1) {
+    // Một Style có thể tạo nhiều dòng WFX theo Style Description/Fit (ví dụ
+    // SLIM FIT và CLASSIC FIT). Khi cả hai đều khớp exact/contains mạnh, cùng
+    // HS Code và Goods Description từ file phải được áp dụng cho tất cả.
+    // Khớp token yếu vẫn phải dừng để không ghi nhầm style gần giống.
+    const strongDuplicate = bestScore >= 8000 && wanted.length >= 6;
+    if (!best.length || (best.length > 1 && !strongDuplicate)) {
         return {
             ok: false,
             reason: 'style-row-ambiguous',
@@ -614,12 +679,23 @@ _MARK_STYLE_HTS_CELL_JS = r"""spec => {
             styles: candidates.map(item => item.styleText),
         };
     }
-    const cell = best[0].row.querySelector('td#colHTSCode');
+    const targetIndex = Number.isInteger(Number(spec.target_index))
+        ? Number(spec.target_index) : 0;
+    if (targetIndex < 0 || targetIndex >= best.length) {
+        return {ok: false, reason: 'style-row-index-changed', count: best.length};
+    }
+    const cell = best[targetIndex].row.querySelector('td#colHTSCode');
     if (!cell) return {ok: false, reason: 'hts-cell-not-found'};
     document.querySelectorAll('[data-wfx-sale-asn-target]').forEach(item =>
         item.removeAttribute('data-wfx-sale-asn-target'));
     cell.setAttribute('data-wfx-sale-asn-target', '1');
-    return {ok: true, style: best[0].styleText, column_id: cell.id};
+    return {
+        ok: true,
+        style: best[targetIndex].styleText,
+        column_id: cell.id,
+        target_count: best.length,
+        target_index: targetIndex,
+    };
 }"""
 
 # WFX dùng cùng cấu trúc bảng cho hai field Style Details. Giữ selector HTS
@@ -1233,6 +1309,112 @@ def _auto_add_po_with_frame_retry(
     raise RuntimeError("SALE_ASN_PO_SEARCH_NOT_READY")
 
 
+def _add_selected_po_candidates(
+    frame: Frame,
+    row: dict,
+    candidates: Sequence[dict],
+    log: Callable[[str], None],
+    *,
+    final: bool,
+) -> None:
+    if not candidates:
+        raise RuntimeError("SALE_ASN_PO_SELECTION_REQUIRED")
+    selected_values: list[str] = []
+    for chosen in candidates:
+        selected = frame.locator(PO_RESULTS_TABLE_SELECTOR).first.evaluate(
+            _SELECT_PO_ROW_JS,
+            {
+                "row_index": chosen.get("row_index"),
+                "selection_name": str(chosen.get("selection_name") or ""),
+                "selection_value": str(chosen.get("selection_value") or ""),
+                "selection_order_id": str(chosen.get("selection_order_id") or ""),
+            },
+        )
+        if not selected.get("ok"):
+            raise RuntimeError(
+                "SALE_ASN_PO_SELECTION_NOT_CONFIRMED:"
+                f"{selected.get('reason') or 'unknown'}"
+            )
+        selected_values.append(str(selected.get("value") or ""))
+    _write_log(
+        log,
+        (
+            f"[SALE ASN] Dòng {row.get('source_row')}: đã chọn "
+            f"{len(selected_values)} dòng ({', '.join(selected_values)})."
+        ),
+    )
+    action_selector = PO_OK_SELECTOR if final else PO_CONTINUE_SELECTOR
+    button = frame.locator(action_selector).first
+    button.wait_for(state="visible", timeout=5_000)
+    clicked = button.evaluate(
+        """container => {
+            const action = container.matches('a, button, input, [onclick]')
+                ? container
+                : container.querySelector('a, button, input, [onclick]');
+            if (!action) return {ok: false, reason: 'action-not-found'};
+            action.click();
+            return {ok: true, tag: action.tagName, id: action.id || ''};
+        }"""
+    )
+    if not clicked.get("ok"):
+        raise RuntimeError(
+            f"SALE_ASN_PO_SELECTION_NOT_CONFIRMED:{clicked.get('reason')}"
+        )
+    if final:
+        _write_log(
+            log,
+            (
+                "[SALE ASN] PO cuối: đã bấm link OK để thêm PO và đóng "
+                f"Add Order Details ({clicked.get('tag') or 'node'})."
+            ),
+        )
+        return
+    _wait(frame, 250)
+
+
+def _unique_dispatched_qty_subset(
+    candidates: Sequence[dict],
+    expected_qty: Decimal | None,
+) -> list[dict] | None:
+    """Trả tập dòng duy nhất có tổng Dispatched Qty bằng Qty file.
+
+    ``None`` nghĩa là thiếu Qty, không có đáp án, có nhiều đáp án hoặc số trạng
+    thái vượt ngưỡng an toàn. Không đoán khi hai tổ hợp cùng cho một tổng.
+    """
+
+    if expected_qty is None or expected_qty <= 0 or not candidates:
+        return None
+    quantities = [
+        _decimal_or_none(candidate.get("dispatched_qty"))
+        for candidate in candidates
+    ]
+    if any(value is None or value <= 0 for value in quantities):
+        return None
+
+    # value None đánh dấu tổng này có từ hai tổ hợp trở lên.
+    states: dict[Decimal, tuple[int, ...] | None] = {Decimal("0"): ()}
+    for index, quantity in enumerate(quantities):
+        assert quantity is not None
+        updated = dict(states)
+        for total, subset in states.items():
+            combined = total + quantity
+            if combined > expected_qty:
+                continue
+            proposed = None if subset is None else (*subset, index)
+            if combined not in updated:
+                updated[combined] = proposed
+            elif updated[combined] != proposed:
+                updated[combined] = None
+        states = updated
+        if len(states) > 4096:
+            return None
+
+    selected = states.get(expected_qty)
+    if not selected:
+        return None
+    return [dict(candidates[index]) for index in selected]
+
+
 def _auto_add_po(
     frame: Frame,
     row: dict,
@@ -1286,6 +1468,52 @@ def _auto_add_po(
                 last = _search_po(frame, row, fields=active_fields)
         else:
             last = _search_po(frame, row, fields=active_fields)
+        if "po" in active_fields:
+            requested_po = _fold(row.get("po_no"))
+            raw_count = len(last)
+            raw_candidates = list(last)
+            exact: list[dict] = []
+            for item in last:
+                parsed_po = _fold(item.get("po_no"))
+                cell_values = item.get("cell_values")
+                if not isinstance(cell_values, (list, tuple)):
+                    cell_values = ()
+                cell_match = any(
+                    requested_po and _fold(value) == requested_po
+                    for value in cell_values
+                )
+                if requested_po and (parsed_po == requested_po or cell_match):
+                    candidate = dict(item)
+                    if parsed_po != requested_po:
+                        # Parser cột là thông tin hiển thị; exact cell match mới
+                        # là bằng chứng chọn dòng. Chuẩn hóa label gửi về app.
+                        candidate["po_no"] = str(row.get("po_no") or "")
+                    exact.append(candidate)
+            if exact:
+                last = exact
+            else:
+                # WFX có tenant thêm cột checkbox chỉ ở data row, khiến cột
+                # Buyer Order Ref không thể xác định chắc chắn. Không xóa sạch
+                # kết quả trước khi lớp Qty/Dispatched Qty có cơ hội quyết định.
+                last = raw_candidates
+                _write_log(
+                    log,
+                    (
+                        f"[SALE ASN] Dòng {row.get('source_row')}: chưa đọc được "
+                        f"Buyer Order Ref exact {row.get('po_no')} trong "
+                        f"{raw_count} kết quả; tiếp tục đối chiếu Qty với "
+                        "Dispatched Qty."
+                    ),
+                )
+            if exact and len(last) != raw_count:
+                _write_log(
+                    log,
+                    (
+                        f"[SALE ASN] Dòng {row.get('source_row')}: đã loại "
+                        f"{raw_count - len(last)} kết quả PO gần đúng không "
+                        f"khớp exact {row.get('po_no')}."
+                    ),
+                )
         _write_log(log, f"[SALE ASN] Dòng {row.get('source_row')}: {label} → {len(last)} kết quả.")
         if not last:
             # Mỗi lượt chỉ thêm điều kiện nên 0 kết quả không thể tăng lại.
@@ -1297,14 +1525,32 @@ def _auto_add_po(
         # chí nhưng còn nhiều dòng (thường là các size), chỉ auto-add khi tổng
         # Dispatched Qty bằng Qty file. Lệch thì giữ popup để user quyết định.
         expected_qty = _decimal_or_none(row.get("qty"))
+        if expected_qty is not None and len(last) >= 2:
+            qty_subset = _unique_dispatched_qty_subset(last, expected_qty)
+            if qty_subset is not None and len(qty_subset) < len(last):
+                last = qty_subset
+                _write_log(
+                    log,
+                    (
+                        f"[SALE ASN] Dòng {row.get('source_row')}: Qty file "
+                        f"{_decimal_display(expected_qty)} chỉ khớp một tập "
+                        f"{len(last)} dòng theo Dispatched Qty; tự chọn."
+                    ),
+                )
         all_dispatched_qty = [
             _decimal_or_none(item.get("dispatched_qty")) for item in last
         ]
-        if (
-            expected_qty is not None
-            and len(last) >= 2
-            and all(value is not None for value in all_dispatched_qty)
-        ):
+        if expected_qty is not None and len(last) >= 2:
+            if not all(value is not None for value in all_dispatched_qty):
+                detail = (
+                    f"có {len(last)} dòng nhưng WFX không cung cấp đủ "
+                    "Dispatched Qty để đối chiếu Qty file"
+                )
+                _write_log(
+                    log,
+                    f"[SALE ASN] Dòng {row.get('source_row')}: {detail}; chờ user xác nhận.",
+                )
+                return False, last, f"qty_unavailable:{detail}"
             total_dispatched_qty = sum(all_dispatched_qty, Decimal("0"))
             if abs(expected_qty - total_dispatched_qty) > Decimal("0.0001"):
                 detail = (
@@ -1321,84 +1567,22 @@ def _auto_add_po(
                 log,
                 f"[SALE ASN] Dòng {row.get('source_row')}: tổng Dispatched Qty {_decimal_display(total_dispatched_qty)} khớp Qty file; tự thêm {len(last)} dòng.",
             )
-        matching_qty = [
-            _decimal_or_none(item.get("dispatched_qty"))
-            for item in last
-            if _order_style_matches(
-                _fold(row.get("style_no")), _fold(item.get("style_no"))
-            )
-        ]
-        matching_qty = [value for value in matching_qty if value is not None]
-        if expected_qty is not None and matching_qty and len(last) == 1:
-            actual_qty = sum(matching_qty, Decimal("0"))
-            if abs(expected_qty - actual_qty) > Decimal("0.0001"):
-                raise RuntimeError(
-                    "SALE_ASN_PO_QTY_MISMATCH:"
-                    f"Dòng {row.get('source_row')} · file Qty "
-                    f"{_decimal_display(expected_qty)} khác WFX "
-                    f"{_decimal_display(actual_qty)}."
+        if expected_qty is not None and len(last) == 1:
+            actual_qty = _decimal_or_none(last[0].get("dispatched_qty"))
+            if actual_qty is not None:
+                if abs(expected_qty - actual_qty) > Decimal("0.0001"):
+                    raise RuntimeError(
+                        "SALE_ASN_PO_QTY_MISMATCH:"
+                        f"Dòng {row.get('source_row')} · file Qty "
+                        f"{_decimal_display(expected_qty)} khác WFX "
+                        f"{_decimal_display(actual_qty)}."
+                    )
+                _write_log(
+                    log,
+                    f"[SALE ASN] Dòng {row.get('source_row')}: Qty {_decimal_display(expected_qty)} khớp Dispatched Qty trước khi thêm PO.",
                 )
-            _write_log(
-                log,
-                f"[SALE ASN] Dòng {row.get('source_row')}: Qty {_decimal_display(expected_qty)} khớp WFX trước khi thêm PO.",
-            )
 
-        selected_values: list[str] = []
-        for chosen in last:
-            selected = frame.locator(PO_RESULTS_TABLE_SELECTOR).first.evaluate(
-                _SELECT_PO_ROW_JS,
-                {
-                    "row_index": chosen.get("row_index"),
-                    "selection_name": str(chosen.get("selection_name") or ""),
-                    "selection_value": str(chosen.get("selection_value") or ""),
-                    "selection_order_id": str(chosen.get("selection_order_id") or ""),
-                },
-            )
-            if not selected.get("ok"):
-                raise RuntimeError(
-                    "SALE_ASN_PO_SELECTION_NOT_CONFIRMED:"
-                    f"{selected.get('reason') or 'unknown'}"
-                )
-            selected_values.append(str(selected.get("value") or ""))
-        _write_log(
-            log,
-            (
-                f"[SALE ASN] Dòng {row.get('source_row')}: đã chọn "
-                f"{len(selected_values)} dòng ({', '.join(selected_values)})."
-            ),
-        )
-        action_selector = PO_OK_SELECTOR if final else PO_CONTINUE_SELECTOR
-        button = frame.locator(action_selector).first
-        button.wait_for(state="visible", timeout=5_000)
-        # WFX đã nhận click và add PO nhưng Playwright có thể chờ navigation
-        # tới timeout khi popup Ajax tự detach. DOM click kết thúc ngay; lượt
-        # kế tiếp sẽ chờ #txtOCNo visible lại trước khi điền.
-        clicked = button.evaluate(
-            """container => {
-                const action = container.matches('a, button, input, [onclick]')
-                    ? container
-                    : container.querySelector('a, button, input, [onclick]');
-                if (!action) return {ok: false, reason: 'action-not-found'};
-                action.click();
-                return {ok: true, tag: action.tagName, id: action.id || ''};
-            }"""
-        )
-        if not clicked.get("ok"):
-            raise RuntimeError(
-                f"SALE_ASN_PO_SELECTION_NOT_CONFIRMED:{clicked.get('reason')}"
-            )
-        if final:
-            _write_log(
-                log,
-                (
-                    "[SALE ASN] PO cuối: đã bấm link OK để thêm PO và đóng "
-                    f"Add Order Details ({clicked.get('tag') or 'node'})."
-                ),
-            )
-            # OK đóng popup/page đồng bộ ngay trong handler click. Không được
-            # wait trên frame này sau click vì target đã bị dispose hợp lệ.
-            return True, last, label
-        _wait(frame, 250)
+        _add_selected_po_candidates(frame, row, last, log, final=final)
         return True, last, label
     reason = "not_found" if not last else "ambiguous"
     return False, last, reason
@@ -1730,29 +1914,50 @@ def _set_order_grid_cell(
     _edit_marked_table_cell(frame, value)
 
 
-def _set_style_hts_cell(frame: Frame, style: str, value: str) -> None:
-    marked = frame.evaluate(
-        _MARK_STYLE_HTS_CELL_JS,
-        {"style": style},
-    )
-    if not marked.get("ok"):
-        raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
-    _edit_marked_table_cell(frame, value)
+def _set_style_cells(
+    frame: Frame,
+    style: str,
+    value: str,
+    marker_script: str,
+) -> int:
+    target_count: int | None = None
+    target_index = 0
+    while target_count is None or target_index < target_count:
+        marked = frame.evaluate(
+            marker_script,
+            {"style": style, "target_index": target_index},
+        )
+        if not marked.get("ok"):
+            raise RuntimeError(
+                f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}"
+            )
+        if target_count is None:
+            target_count = max(1, int(marked.get("target_count") or 1))
+        elif int(marked.get("target_count") or target_count) != target_count:
+            raise RuntimeError(
+                "SALE_ASN_TABLE_MAPPING_FAILED:style-row-count-changed"
+            )
+        _edit_marked_table_cell(frame, value)
+        target_index += 1
+    return target_count
+
+
+def _set_style_hts_cell(frame: Frame, style: str, value: str) -> int:
+    return _set_style_cells(frame, style, value, _MARK_STYLE_HTS_CELL_JS)
 
 
 def _set_style_goods_description_cell(
     frame: Frame,
     style: str,
     value: str,
-) -> None:
+) -> int:
     """Điền Goods Description vào đúng dòng Style Details trên WFX."""
-    marked = frame.evaluate(
+    return _set_style_cells(
+        frame,
+        style,
+        value,
         _MARK_STYLE_GOODS_DESCRIPTION_CELL_JS,
-        {"style": style},
     )
-    if not marked.get("ok"):
-        raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
-    _edit_marked_table_cell(frame, value)
 
 
 def _order_row_identity(row: dict) -> tuple[str, str]:
@@ -2131,14 +2336,31 @@ def _fill_style_details(
             f"Style Details {index}/{len(grouped)}",
         )
         if code := values.get("hs_code"):
-            _set_style_hts_cell(frame, style, code)
-            _write_log(log, f"[SALE ASN] Đã điền HS Code cho Style {style}.")
+            hts_count = _set_style_hts_cell(frame, style, code)
+            hts_scope = (
+                f"{hts_count} dòng "
+                if isinstance(hts_count, int) and hts_count > 1
+                else ""
+            )
+            _write_log(
+                log,
+                f"[SALE ASN] Đã điền HS Code cho {hts_scope}Style {style}.",
+            )
         description = values["goods_description"]
-        _set_style_goods_description_cell(frame, style, description)
+        description_count = _set_style_goods_description_cell(
+            frame,
+            style,
+            description,
+        )
         action = "xóa" if not description else "điền"
+        description_scope = (
+            f"{description_count} dòng "
+            if isinstance(description_count, int) and description_count > 1
+            else ""
+        )
         _write_log(
             log,
-            f"[SALE ASN] Đã {action} Goods Description cho Style {style}.",
+            f"[SALE ASN] Đã {action} Goods Description cho {description_scope}Style {style}.",
         )
 
 
@@ -2248,6 +2470,9 @@ def run_sale_asn_create(
     skip_stages: Sequence[str] = (),
     search_fields: Sequence[str] = SALE_ASN_PO_SEARCH_FIELDS,
     progress: Callable[..., None] | None = None,
+    selected_po_row: dict | None = None,
+    selected_po_candidates: Sequence[dict] = (),
+    selected_po_final: bool = False,
 ) -> dict[str, Any]:
     playwright = None
     current_stage = str(stage or "po")
@@ -2275,7 +2500,7 @@ def run_sale_asn_create(
                 "po",
                 "Đang mở Add Order Details",
             )
-            if start_index <= 0:
+            if start_index <= 0 and not selected_po_candidates:
                 main_frame = _refresh_existing_new_form(page, log)
                 if main_frame is None:
                     main_frame = _open_new_form(page, xpath, log)
@@ -2284,14 +2509,36 @@ def run_sale_asn_create(
                 _click_dom_action(add)
                 _write_log(log, "[SALE ASN] Đã chọn Buyer và mở Add Order Details.")
             first_pending = max(0, int(start_index))
-            # Vòng lặp nằm hẳn trong guard: ngoài guard thì popup chưa được mở
-            # nên không có tên nào để tham chiếu nhầm.
-            if first_pending < len(rows):
-                _popup_page, popup_frame = _frame_with_selector(
+            if selected_po_candidates:
+                selected_row = dict(selected_po_row or {})
+                _popup_page, selected_frame = _frame_with_selector(
                     context,
                     PO_POPUP_SELECTOR,
                     timeout_s=15,
                 )
+                _add_selected_po_candidates(
+                    selected_frame,
+                    selected_row,
+                    selected_po_candidates,
+                    log,
+                    final=selected_po_final,
+                )
+                first_pending = min(len(rows), first_pending + 1)
+                if first_pending < len(rows):
+                    popup_frame = _ensure_po_popup_for_next_row(
+                        context,
+                        rows[:first_pending],
+                        log,
+                    )
+            # Vòng lặp nằm hẳn trong guard: ngoài guard thì popup chưa được mở
+            # nên không có tên nào để tham chiếu nhầm.
+            if first_pending < len(rows):
+                if not selected_po_candidates:
+                    _popup_page, popup_frame = _frame_with_selector(
+                        context,
+                        PO_POPUP_SELECTOR,
+                        timeout_s=15,
+                    )
                 for index in range(first_pending, len(rows)):
                     row = dict(rows[index])
                     _emit_stage_progress(

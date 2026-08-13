@@ -245,7 +245,8 @@ def test_sale_asn_create_flow_is_reviewed_and_resumable():
         assert f'"{method}"' in JS
     assert "SALE_ASN_PO_SELECTION_REQUIRED" in JS
     assert "result.resumable" in JS
-    assert '"Tiếp tục dòng kế" : "Thử lại bước này"' in JS
+    assert 'manual ? "Thêm dòng đã chọn" : "Thử lại bước này"' in JS
+    assert '"continue_sale_asn_create",\n      saleAsnReviewToken,\n      selectedCandidates' in JS
     assert "saleAsnExactBuyer" in JS
     assert "saleAsnReviewToken" in JS
     assert 'showSaleAsnView("lookup", { focus: false })' in JS
@@ -305,12 +306,16 @@ def test_sale_asn_progress_is_ignored_outside_an_active_run():
         "continue_sale_asn_create",
         "skip_sale_asn_create_step",
     ):
-        guarded = (
-            "    saleAsnRunActive = true;\n"
-            f'    const result = await call("{method}", saleAsnReviewToken);\n'
-            "    saleAsnRunActive = false;"
-        )
-        assert guarded in JS, method
+        if method == "continue_sale_asn_create":
+            assert 'const result = await call(\n      "continue_sale_asn_create"' in JS
+            assert "      selectedCandidates," in JS
+        else:
+            guarded = (
+                "    saleAsnRunActive = true;\n"
+                f'    const result = await call("{method}", saleAsnReviewToken);\n'
+                "    saleAsnRunActive = false;"
+            )
+            assert guarded in JS, method
     assert "saleAsnRunActive = false;\n    resetSaleAsnReview" in JS
 
 
@@ -1097,7 +1102,7 @@ def test_halted_sale_asn_run_gives_the_start_button_back():
     assert 'setSaleAsnStageState(stage, "warn", "đã dừng")' in halt
 
 
-def test_manual_po_checkpoint_renders_backend_candidates():
+def test_po_checkpoint_renders_selectable_backend_candidates():
     body = _sale_asn_run_result_body()
 
     assert "candidates: result.candidates," in body
@@ -1110,6 +1115,9 @@ def test_manual_po_checkpoint_renders_backend_candidates():
     for field in ("po_no", "style_no", "dispatched_qty"):
         assert f"escapeHtml(cell(item?.{field})" in render
     assert "candidates.slice(0, 20)" in render
+    assert 'class="sale-asn-candidate-select" type="checkbox"' in render
+    assert "item?.candidate_id" in render
+    assert "selectedSaleAsnCandidateIds()" in JS
     # Thẻ hành động ẩn đi thì danh sách của lượt cũ không được ở lại.
     hide = JS[
         JS.index("function hideSaleAsnStageAction() {") : JS.index(
