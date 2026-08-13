@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.0.32",
+    "date": "2026-08-13",
+    "highlights": [
+      {
+        "title": "Sale ASN tự chọn PO sau khi popup tải lại",
+        "body": "Khi WFX tải lại popup Add Order Details trong lúc lọc PO theo Style hoặc Destination, ứng dụng dùng ngay kết quả đã nhận từ frame mới. Nếu chỉ còn một dòng, ứng dụng chọn dòng đó và tiếp tục thay vì quay lại tìm theo PO rồi lặp giữa nhiều kết quả.",
+        "entry": "don-hang-sale-asn"
+      }
+    ]
+  },
+  {
     "version": "1.0.31",
     "date": "2026-08-13",
     "highlights": [
