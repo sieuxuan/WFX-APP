@@ -225,7 +225,7 @@ Delivery Terms theo mode đó:
 > Carton và CBM cho các dòng liền nhau cùng PO + Style khi số liệu giống nhau.
 > Packing List CORPORATE OFFICE - TRUEWERK tự gộp bốn cột tương ứng của dòng PO và
 > `ADD`/`- ADD` liền nhau khi mỗi cột chỉ có một số khác 0, rồi đưa số đó lên ô đầu
-> vùng gộp.
+> vùng gộp. Buyer khác, gồm cả BIRDDOGS, không dùng hai quy tắc gộp đặc biệt này.
 
 > [!meo]
 > Nếu file cùng tên đang mở trong Excel, app tự lưu tên kế tiếp, ví dụ

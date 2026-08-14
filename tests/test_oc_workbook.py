@@ -66,10 +66,11 @@ def test_generated_template_has_one_visible_header_and_hidden_references(tmp_pat
     sheet = workbook["OC INPUT"]
     assert [cell.value for cell in sheet[1]] == list(INPUT_HEADERS)
     assert sheet.freeze_panes == "A2"
-    assert len(sheet.data_validations.dataValidation) == 7
+    assert len(sheet.data_validations.dataValidation) == 8
     validations = {
         next(iter(validation.sqref.ranges)).min_col: validation
         for validation in sheet.data_validations.dataValidation
+        if validation.type == "list"
     }
     assert validations[1].errorStyle == "warning"
     assert validations[5].errorStyle == "warning"
@@ -80,6 +81,18 @@ def test_generated_template_has_one_visible_header_and_hidden_references(tmp_pat
     assert sheet["V1"].fill.fgColor.rgb == "00F4B183"
     assert sheet["W1"].fill.fgColor.rgb == "00F4B183"
     assert sheet["X1"].fill.fgColor.rgb == "00F4B183"
+    date_validation = next(
+        validation
+        for validation in sheet.data_validations.dataValidation
+        if validation.type == "custom"
+    )
+    assert str(date_validation.sqref) == "K2:M10001"
+    assert date_validation.formula1 == (
+        "OR(COUNTA($K2:$M2)<3,"
+        "AND(ISNUMBER($K2),ISNUMBER($L2),ISNUMBER($M2),"
+        "$K2<$M2,$M2<$L2))"
+    )
+    assert date_validation.errorStyle == "stop"
     references = workbook["REFERENCES"]
     assert [references.cell(row, 3).value for row in range(2, 5)] == [
         "Confirmed",
@@ -90,6 +103,28 @@ def test_generated_template_has_one_visible_header_and_hidden_references(tmp_pat
         references.cell(row, 7).value
         for row in range(2, len(PAYMENT_TERM_OPTIONS) + 2)
     ] == list(PAYMENT_TERM_OPTIONS)
+    assert "Republic of Slovenia" in {
+        references.cell(row, 5).value
+        for row in range(2, references.max_row + 1)
+    }
+    workbook.close()
+
+
+def test_new_input_maps_republic_of_slovenia_to_europe(tmp_path):
+    source = _filled_input_file(
+        tmp_path,
+        _input_row(**{"Country of Final Destination": "Republic of Slovenia"}),
+    )
+
+    prepared = prepare_oc_workbook(source, "new", tmp_path / "edi.xlsx")
+
+    workbook = load_workbook(prepared.upload_path, data_only=True)
+    sheet = workbook["Sheet1"]
+    indexes = {header: index + 1 for index, header in enumerate(EDI_HEADERS)}
+    assert sheet.cell(2, indexes["Country of Final Destination"]).value == (
+        "Republic of Slovenia"
+    )
+    assert sheet.cell(2, indexes["Market"]).value == "Europe"
     workbook.close()
 
 

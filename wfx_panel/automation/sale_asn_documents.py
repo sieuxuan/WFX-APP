@@ -175,6 +175,7 @@ _SALE_ASN_ROWS_JS = """root => {
     const rows = [];
     grouped.forEach((parts, rowKey) => {
         let invoiceNo = '';
+        let buyer = '';
         let selected = false;
         for (const row of parts) {
             selected = selected
@@ -188,9 +189,19 @@ _SALE_ASN_ROWS_JS = """root => {
                 if (!invoiceNo && /invoice\\s*(no|number)|invoiceno/.test(meta)) {
                     invoiceNo = text(cell);
                 }
+                const compactMeta = meta.replace(/[^a-z0-9]+/g, '');
+                const excludedBuyerField = /buyer(order|reference|ref|po|division|style)/
+                    .test(compactMeta);
+                const buyerField = compactMeta === 'buyer'
+                    || compactMeta.includes('buyername')
+                    || compactMeta.includes('lblbuyer')
+                    || compactMeta.includes('cellbuyer');
+                if (!buyer && buyerField && !excludedBuyerField) {
+                    buyer = text(cell);
+                }
             }
         }
-        rows.push({ row_key: rowKey, invoice_no: invoiceNo, selected });
+        rows.push({ row_key: rowKey, invoice_no: invoiceNo, buyer, selected });
     });
     const noRows = [...root.querySelectorAll(
         '.ag-overlay-no-rows-wrapper, .ag-overlay-no-rows-center'
@@ -384,6 +395,7 @@ def _merge_sale_asn_row_payloads(
                 merged[row_key] = {
                     "row_key": row_key,
                     "invoice_no": "",
+                    "buyer": "",
                     "selected": False,
                 }
                 order.append(row_key)
@@ -391,6 +403,9 @@ def _merge_sale_asn_row_payloads(
             invoice_no = str(row.get("invoice_no") or "").strip()
             if invoice_no:
                 current["invoice_no"] = invoice_no
+            buyer = str(row.get("buyer") or "").strip()
+            if buyer:
+                current["buyer"] = buyer
             current["selected"] = bool(
                 current["selected"] or row.get("selected")
             )
@@ -879,6 +894,7 @@ def prepare_sale_asn_documents(
             buyer_path,
             target,
             invoice_no=invoice_no,
+            buyer_name=str(row.get("buyer") or ""),
         )
         sheet_names = sale_asn_sheet_names(target)
         return _result(

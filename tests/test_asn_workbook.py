@@ -292,7 +292,13 @@ def test_merge_sale_asn_reports_merges_jl_packing_measurements_by_po_and_style(t
     _jl_packing_report(packing)
     _report(buyer, "Buyer Invoice", "Invoice data")
 
-    merge_sale_asn_reports(packing, buyer, target, invoice_no="1105.JLSKI.26")
+    merge_sale_asn_reports(
+        packing,
+        buyer,
+        target,
+        invoice_no="1105.JLSKI.26",
+        buyer_name="J.LINDEBERG",
+    )
 
     workbook = load_workbook(target, data_only=False)
     sheet = workbook["JL Packing"]
@@ -333,7 +339,13 @@ def test_merge_sale_asn_reports_merges_truewerk_measurements_from_po_to_add_row(
     _truewerk_packing_report(packing)
     _report(buyer, "Buyer Invoice", "Invoice data")
 
-    merge_sale_asn_reports(packing, buyer, target, invoice_no="TRUEWERK-001")
+    merge_sale_asn_reports(
+        packing,
+        buyer,
+        target,
+        invoice_no="TRUEWERK-001",
+        buyer_name="CORPORATE OFFICE - TRUEWERK",
+    )
 
     workbook = load_workbook(target, data_only=False)
     sheet = workbook["TRUEWERK Packing"]
@@ -354,4 +366,29 @@ def test_merge_sale_asn_reports_merges_truewerk_measurements_from_po_to_add_row(
     assert sheet["J7"].value == 3
     assert sheet["J8"].value == 500
     assert sheet["J11"].value == 3
+    workbook.close()
+
+
+def test_merge_sale_asn_reports_does_not_apply_truewerk_merge_to_birddogs(tmp_path):
+    packing = tmp_path / "birddogs-packing.xlsx"
+    buyer = tmp_path / "buyer.xlsx"
+    target = tmp_path / "BIRDDOGS-001.xlsx"
+    _truewerk_packing_report(packing)
+    _report(buyer, "Buyer Invoice", "Invoice data")
+
+    merge_sale_asn_reports(
+        packing,
+        buyer,
+        target,
+        invoice_no="BIRDDOGS-001",
+        buyer_name="BIRDDOGS",
+    )
+
+    workbook = load_workbook(target, data_only=False)
+    sheet = workbook["TRUEWERK Packing"]
+    merged = {str(item) for item in sheet.merged_cells.ranges}
+    assert "J4:K5" not in merged
+    assert "L4:M5" not in merged
+    assert sheet["J4"].value == 0
+    assert sheet["J5"].value == 1485.2
     workbook.close()

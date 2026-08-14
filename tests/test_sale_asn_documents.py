@@ -258,6 +258,8 @@ def test_rows_reader_uses_nested_grid_button_value_for_invoice_number():
     assert "element.querySelectorAll(" in _SALE_ASN_ROWS_JS
     assert "candidate?.value" in _SALE_ASN_ROWS_JS
     assert "candidate?.getAttribute?.('value')" in _SALE_ASN_ROWS_JS
+    assert "buyerField" in _SALE_ASN_ROWS_JS
+    assert "excludedBuyerField" in _SALE_ASN_ROWS_JS
 
 
 def test_row_payloads_merge_invoice_from_another_horizontal_viewport():
@@ -265,7 +267,12 @@ def test_row_payloads_merge_invoice_from_another_horizontal_viewport():
         [
             {
                 "rows": [
-                    {"row_key": "4", "invoice_no": "", "selected": True},
+                    {
+                        "row_key": "4",
+                        "invoice_no": "",
+                        "buyer": "",
+                        "selected": True,
+                    },
                 ],
                 "noRows": False,
             },
@@ -274,6 +281,7 @@ def test_row_payloads_merge_invoice_from_another_horizontal_viewport():
                     {
                         "row_key": "4",
                         "invoice_no": "104-PRO-2026",
+                        "buyer": "BIRDDOGS",
                         "selected": False,
                     },
                 ],
@@ -287,6 +295,7 @@ def test_row_payloads_merge_invoice_from_another_horizontal_viewport():
             {
                 "row_key": "4",
                 "invoice_no": "104-PRO-2026",
+                "buyer": "BIRDDOGS",
                 "selected": True,
             }
         ],
