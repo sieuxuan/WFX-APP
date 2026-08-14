@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.0.34",
+    "date": "2026-08-14",
+    "highlights": [
+      {
+        "title": "Form OC kiểm tra đúng thứ tự ngày",
+        "body": "Form OC mới cảnh báo ngay trong Excel khi Buyer Order Date, Raw Material ETA và Buyer Delivery Date không đúng thứ tự. Republic of Slovenia cũng đã được ánh xạ sang Market Europe.",
+        "entry": "don-hang-oc-new"
+      },
+      {
+        "title": "Packing List chỉ gộp đúng Buyer",
+        "body": "Quy tắc gộp dòng đặc biệt chỉ chạy cho J.Lindeberg và CORPORATE OFFICE - TRUEWERK. Buyer khác, gồm cả BIRDDOGS, giữ nguyên từng dòng dù report có bộ header tương tự.",
+        "entry": "don-hang-sale-asn-documents"
+      }
+    ]
+  },
+  {
     "version": "1.0.33",
     "date": "2026-08-13",
     "highlights": [

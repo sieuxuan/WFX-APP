@@ -850,6 +850,8 @@ _TRUEWERK_PACKING_HEADERS = {
 }
 _TRUEWERK_PACKING_DETAIL_HEADERS = {"style": "style", "po no": "po"}
 _TRUEWERK_PACKING_MEASUREMENTS = ("net_wt", "gross_wt", "carton", "cbm")
+_JL_BUYER = "j.lindeberg"
+_TRUEWERK_BUYER = "corporate office - truewerk"
 
 
 def _cell_row(reference: str) -> int:
@@ -1261,6 +1263,7 @@ def merge_sale_asn_reports(
     output_path: str | Path,
     *,
     invoice_no: str = "",
+    buyer_name: str = "",
 ) -> Path:
     """Ghép report ở cấp OOXML để giữ nguyên khung của cả Invoice và PKL."""
     packing_path = Path(packing_list_path).expanduser().resolve()
@@ -1272,11 +1275,14 @@ def merge_sale_asn_reports(
         if not source.is_file() or source.stat().st_size <= 0:
             raise ASNWorkbookError(f"Không đọc được report: {source.name}.")
     invoice_label = str(invoice_no or target.stem).strip() or "Invoice"
+    buyer_key = " ".join(str(buyer_name or "").split()).casefold()
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         _merge_packages(packing_path, buyer_path, target, invoice_label)
-        _merge_jl_packing_measurements(target)
-        _merge_truewerk_packing_measurements(target)
+        if buyer_key == _JL_BUYER:
+            _merge_jl_packing_measurements(target)
+        elif buyer_key == _TRUEWERK_BUYER:
+            _merge_truewerk_packing_measurements(target)
         _fit_packing_measurement_columns(target)
         _fit_wrapped_report_rows(target)
         _fit_reports_to_a4(target)

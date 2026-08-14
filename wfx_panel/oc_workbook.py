@@ -178,6 +178,7 @@ COUNTRY_MARKET = {
     "Japan": "Asia",
     "New Zealand": "Australia",
     "Norway": "Europe",
+    "Republic of Slovenia": "Europe",
     "Singapore": "Asia",
     "South Korea": "Asia",
     "Spain": "Europe",
@@ -657,6 +658,33 @@ def _add_list_validation(
     validation.add(f"{sheet.cell(2, column).column_letter}2:{sheet.cell(2, column).column_letter}10001")
 
 
+def _add_date_sequence_validation(sheet: Any) -> None:
+    """Warn in Excel once all three OC dates on a row have been entered."""
+    validation = DataValidation(
+        type="custom",
+        formula1=(
+            "OR(COUNTA($K2:$M2)<3,"
+            "AND(ISNUMBER($K2),ISNUMBER($L2),ISNUMBER($M2),"
+            "$K2<$M2,$M2<$L2))"
+        ),
+        allow_blank=True,
+    )
+    validation.errorTitle = "Thứ tự ngày không hợp lệ"
+    validation.error = (
+        "Ngày phải theo Buyer Order Date < Raw Material ETA Date "
+        "< Buyer Delivery Date."
+    )
+    validation.promptTitle = "Thứ tự ngày Upload OC"
+    validation.prompt = (
+        "Có thể nhập lần lượt; khi đủ ba ngày, Excel sẽ kiểm tra đúng thứ tự."
+    )
+    validation.showErrorMessage = True
+    validation.showInputMessage = True
+    validation.errorStyle = "stop"
+    sheet.add_data_validation(validation)
+    validation.add("K2:M10001")
+
+
 def write_oc_input_template(path: str | Path) -> Path:
     """Create the simplified one-header workbook shown to end users."""
     target = Path(path).expanduser().resolve()
@@ -732,6 +760,7 @@ def write_oc_input_template(path: str | Path) -> Path:
         for row, option in enumerate(options, start=2):
             references.cell(row, column, option)
         _add_list_validation(sheet, references, heading, column, len(options))
+    _add_date_sequence_validation(sheet)
     references.sheet_state = "veryHidden"
     workbook.save(target)
     return target

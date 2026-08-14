@@ -55,6 +55,8 @@ Excel để gửi hoặc lưu trữ.
 > lên ô đầu vùng gộp, dù đang nằm ở dòng PO hay `ADD`; Qty/Unit được giữ riêng.
 > Nếu cùng một cột có hai số khác 0 hoặc hai dòng không liền nhau, app giữ nguyên
 > để không làm mất số liệu hay đổi thứ tự Packing List.
+> Hai cách gộp trên chỉ áp dụng đúng Buyer J.Lindeberg hoặc CORPORATE OFFICE -
+> TRUEWERK. Packing List của Buyer khác, gồm cả BIRDDOGS, luôn giữ nguyên từng dòng.
 
 > [!meo]
 > Nếu file cùng tên đang mở trong Excel, ứng dụng tự lưu thành tên kế tiếp như

@@ -22,7 +22,12 @@ xác nhận.
 
 > [!luuy]
 > Ngày Buyer Order phải trước ngày Raw Material ETA. Ngày Raw Material ETA phải
-> trước ngày Buyer Delivery và OC Delivery.
+> trước ngày Buyer Delivery và OC Delivery. Form mới sẽ cảnh báo trong Excel
+> ngay khi bạn đã nhập đủ ba ngày nhưng thứ tự chưa đúng.
+
+> [!meo]
+> `Republic of Slovenia` được tự ánh xạ sang Market `Europe` khi ứng dụng tạo
+> file Upload OC cho WFX.
 
 > [!luuy]
 > Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút `Xác nhận Upload` mới

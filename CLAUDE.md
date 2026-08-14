@@ -620,6 +620,9 @@ Các workflow riêng hiện có:
   lên ô đầu vùng gộp dù nó nằm ở dòng PO hay dòng `ADD`. Qty/Unit vẫn giữ riêng.
   Nếu cùng một cột có hai số khác 0 hoặc hai dòng bị tách xa nhau thì giữ nguyên
   để không làm mất số liệu/đổi thứ tự Packing List.
+  Hai quy tắc gộp đặc biệt phải được khóa theo Buyer exact đọc từ dòng Sale ASN:
+  chỉ `J.LINDEBERG` và `CORPORATE OFFICE - TRUEWERK` được áp dụng. Buyer khác,
+  kể cả BIRDDOGS có report dùng bộ header giống TRUEWERK, phải giữ nguyên từng dòng.
   Nếu file đích cùng tên đang mở/khóa trong Excel, không báo lỗi hoặc bắt tải lại:
   tự lưu sibling kế tiếp theo dạng `Invoice (2).xlsx` và trả đúng tên đã lưu.
   phải tạo merged range trước rồi mới phục hồi style từng ô để không mất border/
