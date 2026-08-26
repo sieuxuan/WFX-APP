@@ -115,6 +115,15 @@ class FakeLogin:
             "message": "created",
         }
 
+    def confirm_oc_pending(self, mode, log=print):
+        self.calls.append(("confirm_oc_pending", mode))
+        return {
+            "ok": True,
+            "code": "OC_FAST_CONFIRM_COMPLETED",
+            "message": "confirmed",
+            "confirmed_styles": 2,
+        }
+
     def search_sample_list(self, xpath, filter_kind, query, log=print):
         self.calls.append(("search_sample", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
@@ -1658,6 +1667,16 @@ def test_oc_revision_report_delegates_to_automation(tmp_path):
 
     assert result["code"] == "OC_REVISION_REPORT_READY"
     assert ("open_oc_revision_report",) in fake.calls
+
+
+def test_fast_oc_confirm_delegates_without_upload_review(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.confirm_oc_pending("revision")
+
+    assert result["code"] == "OC_FAST_CONFIRM_COMPLETED"
+    assert result["confirmed_styles"] == 2
+    assert fake.calls == [("confirm_oc_pending", "revision")]
 
 
 def test_upload_oc_requires_review_then_confirm_before_calling_edi(tmp_path):

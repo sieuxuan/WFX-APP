@@ -262,6 +262,7 @@
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
     "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
+    "confirm_oc_pending",
     "run_gdn_dispatch",
     "clear_catalog_costing_dependencies",
     "review_catalog_style_import", "prepare_catalog_style_row",
@@ -301,6 +302,7 @@
     upload_oc: "Đang kiểm tra file và upload OC qua EDI…",
     review_oc_upload: "Đang kiểm tra file và tổng hợp review…",
     confirm_oc_upload: "Đang upload OC đã xác nhận qua EDI…",
+    confirm_oc_pending: "Đang Confirm từng Style và chờ WFX xử lý…",
     run_gdn_dispatch: "Đang tạo (GDN) Dispatch trên WFX…",
     download_oc_template: "Đang tạo form Upload OC…",
     search_sample: "Đang tìm Sample…",
@@ -373,6 +375,7 @@
     upload_oc: "Upload OC",
     review_oc_upload: "Review Upload OC",
     confirm_oc_upload: "Xác nhận Upload OC",
+    confirm_oc_pending: "Confirm nhanh OC",
     run_gdn_dispatch: "Tạo (GDN) Dispatch",
     cancel_oc_upload_review: "Hủy Upload OC",
     search_sample: "Tìm Sample",
@@ -1748,6 +1751,12 @@
     return result;
   }
 
+  async function confirmOcPending(mode) {
+    const result = await call("confirm_oc_pending", mode);
+    if (result) renderOcUploadResult(result);
+    return result;
+  }
+
   async function downloadSaleAsnDocuments() {
     const prepared = await call(
       "prepare_sale_asn_documents",
@@ -2609,6 +2618,7 @@
       return result;
     },
     "oc-upload-new": () => uploadOcFile("new"),
+    "oc-confirm-new": () => confirmOcPending("new"),
     "oc-review-cancel": cancelOcUploadReview,
     "oc-review-confirm": confirmOcUploadReview,
     "oc-revise-report": async () => {
@@ -2617,6 +2627,7 @@
       return result;
     },
     "oc-upload-revise": () => uploadOcFile("revise"),
+    "oc-confirm-revision": () => confirmOcPending("revision"),
     "oc-search": () => runSelectedModuleAction(
       "search_oc",
       moduleFilterKinds.oc,

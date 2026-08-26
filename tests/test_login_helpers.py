@@ -738,6 +738,11 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
         and "PasswordManagerOnboarding" in arg
         for arg in command
     )
+    assert any(
+        arg.startswith("--disable-features=")
+        and "LaunchShellExecuteViaExplorer" in arg.split("=", 1)[1].split(",")
+        for arg in command
+    )
     assert launch_options["creationflags"] & browser.subprocess.DETACHED_PROCESS == 0
 
 

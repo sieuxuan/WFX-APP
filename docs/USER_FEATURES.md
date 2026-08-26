@@ -4,7 +4,7 @@
 > sửa nội dung trong `wfx_panel/manual/` rồi chạy
 > `python scripts/generate_user_features.py`.
 
-Phiên bản: 1.0.34
+Phiên bản: 1.0.35
 
 ## 1. Bắt đầu
 
@@ -186,13 +186,19 @@ Dùng để làm gì Mở OC List và tìm đúng OC bằng số OC hoặc Style
 
 Kiểm tra file và tạo OC mới sau khi bạn xác nhận.
 
-Dùng để làm gì Kiểm tra file OC mới trên máy, xem lại số liệu rồi tạo OC trên WFX sau khi bạn xác nhận. Các bước Mở module OC List. Bấm Tải file mẫu trong thẻ Upload OC New. Mở file và chỉ nhập dữ liệu trong sheet OC INPUT. Lưu file Excel. Bấm Chọn file OC mới trong thẻ Upload OC New. Đọc bảng Review trước khi Upload. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng. Bấm Xác nhận Upload để bắt đầu tạo OC trên WFX. Mẹo Mẹo Mỗi file chỉ được chứa một Buyer. Buyer và Factory có thể được nhập thêm nếu danh sách gợi ý chưa có giá trị mới. Lưu ý Ngày Buyer Order phải trước ngày Raw Material ETA. Ngày Raw Material ETA phải trước ngày Buyer Delivery và OC Delivery. Form mới sẽ cảnh báo trong Excel ngay khi bạn đã nhập đủ ba ngày nhưng thứ tự chưa đúng. Mẹo Republic of Slovenia được tự ánh xạ sang Market Europe khi ứng dụng tạo file Upload OC cho WFX. Lưu ý Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút Xác nhận Upload mới bắt đầu thao tác trên WFX. Bấm Hủy thì không có dữ liệu nào được gửi đi. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo file có nhiều Buyer Tách dữ liệu thành từng file, mỗi file chỉ giữ một Buyer. Báo sai ngày hoặc số lượng Mở đúng ô được báo, sửa giá trị rồi chọn lại file. WFX chưa sẵn sàng nhận file Giữ file đã sửa, kiểm tra phiên WFX rồi thực hiện Upload lại.
+Dùng để làm gì Kiểm tra file OC mới trên máy, xem lại số liệu rồi tạo OC trên WFX sau khi bạn xác nhận. Các bước Mở module OC List. Bấm Tải file mẫu trong thẻ Upload OC New. Mở file và chỉ nhập dữ liệu trong sheet OC INPUT. Lưu file Excel. Bấm Chọn file OC mới trong thẻ Upload OC New. Đọc bảng Review trước khi Upload. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng. Bấm Xác nhận Upload để bắt đầu tạo OC trên WFX. Mẹo Mẹo Mỗi file chỉ được chứa một Buyer. Buyer và Factory có thể được nhập thêm nếu danh sách gợi ý chưa có giá trị mới. Mẹo Buyer, Season, Order Type và Currency chỉ cần nhập ở dòng dữ liệu đầu tiên. Các dòng sau để trống sẽ tự dùng lại bốn giá trị này. Lưu ý Ngày Buyer Order phải trước ngày Raw Material ETA. Ngày Raw Material ETA phải trước ngày Buyer Delivery và OC Delivery. Form mới sẽ cảnh báo trong Excel ngay khi bạn đã nhập đủ ba ngày nhưng thứ tự chưa đúng. Mẹo Destination có thể là tên quốc gia hoặc mã/ref của Buyer như TEXPORT , JLHQ , US , ZALANDOPHO hay ID . Ứng dụng tự đổi sang Country chuẩn và Market tương ứng khi tạo file Upload OC cho WFX. Riêng AE và United Arab Emirates được chuẩn hóa thành United Arab Emirates-AE . Lưu ý Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút Xác nhận Upload mới bắt đầu thao tác trên WFX. Bấm Hủy thì không có dữ liệu nào được gửi đi. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo file có nhiều Buyer Tách dữ liệu thành từng file, mỗi file chỉ giữ một Buyer. Báo sai ngày hoặc số lượng Mở đúng ô được báo, sửa giá trị rồi chọn lại file. WFX chưa sẵn sàng nhận file Giữ file đã sửa, kiểm tra phiên WFX rồi thực hiện Upload lại.
 
 ### Revise OC
 
 Xuất báo cáo WFX, sửa file và cập nhật OC cũ.
 
 Dùng để làm gì Xuất dữ liệu OC cũ từ báo cáo WFX, sửa trong Excel và gửi bản cập nhật trở lại WFX. Các bước Mở module OC List. Bấm Mở report trong thẻ Revise OC. Chọn tham số trên báo cáo WFX. Xuất báo cáo thành file Excel. Sửa dữ liệu cần thay đổi trong file. Giữ nguyên các cột nhận dạng của OC gốc. Bấm Chọn file Revise trong thẻ Revise OC. Kiểm tra bảng Review rồi bấm Xác nhận Upload . Mẹo Mẹo Ứng dụng chỉ mở đúng báo cáo. Bạn tự chọn tham số và xuất Excel trên WFX để bảo đảm lấy đúng OC cần sửa. Lưu ý Không xóa hoặc đổi các cột nhận dạng OC gốc. WFX cần các cột này để biết OC nào sẽ được cập nhật. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo cáo chưa mở Chờ khu Reporting & Analytic tải xong rồi bấm Mở report lại. File thiếu thông tin OC gốc Xuất lại báo cáo WFX và sửa trên file mới. Review không đúng OC Bấm Hủy , kiểm tra file rồi chọn lại đúng bản Revise.
+
+### Confirm nhanh OC
+
+Confirm tuần tự từng Style trên thẻ New hoặc Revision.
+
+Dùng để làm gì Confirm nhanh các Style đang chờ trong EDI Buyer PO sau khi Create Transaction. Bạn vẫn dùng được chức năng này khi OC đã được upload ngoài ứng dụng. Các bước Mở module OC List trong WFX Smart. Bấm Confirm New nếu dữ liệu đang ở thẻ New trên WFX. Bấm Confirm Revision nếu dữ liệu đang ở thẻ Revision trên WFX. Chờ ứng dụng Confirm và process xong từng Style. Kiểm tra thông báo hoàn tất trước khi đóng trình duyệt làm việc. Lưu ý Ứng dụng xử lý lần lượt từng Style. Chỉ khi Style hiện tại process xong thì ứng dụng mới chuyển sang Style tiếp theo. Mẹo Với Revision, dòng không có WFX Sales Order vẫn được bỏ qua. Dòng có đúng một lựa chọn sẽ được chọn tự động. Gặp lỗi thì sao Hiện tượng Cách xử lý Style có nhiều WFX Sales Order Chọn thủ công một WFX Sales Order cho Style được báo rồi bấm Confirm Revision lại. Style chưa process xong Kiểm tra Style đang dừng trên WFX. Chỉ chạy lại khi đã biết rõ kết quả trước đó. Không đọc được kết quả Confirm Kiểm tra thẻ New hoặc Revision trên WFX trước khi chạy lại để tránh Confirm nhầm Style. Màn Confirm chưa sẵn sàng Chờ EDI Buyer PO tải xong rồi thử lại.
 
 ### (GDN) Dispatch
 
@@ -412,6 +418,11 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `MODULE_SEARCH_NOT_READY` | Ô tìm kiếm của module chưa sẵn sàng | App đã thử tự mở List; hãy chờ WFX ổn định rồi thử tìm lại. |
 | `OC_EDI_FAILED` | Không hoàn tất được Upload OC | Kiểm tra màn EDI Buyer PO trước khi Create Transaction. |
 | `OC_EDI_NOT_READY` | EDI Buyer PO chưa sẵn sàng | Chờ WFX tải xong, kiểm tra quyền EDI Buyer PO rồi thử upload lại. |
+| `OC_FAST_CONFIRM_FAILED` | Không hoàn tất được Confirm nhanh OC | Kiểm tra màn EDI Buyer PO và Log kỹ thuật rồi thử lại. |
+| `OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS` | Một Style có nhiều WFX Sales Order | Chọn WFX Sales Order thủ công cho Style được báo rồi chạy lại. |
+| `OC_FAST_CONFIRM_NOT_READY` | Màn Confirm OC chưa sẵn sàng | Chờ WFX tải xong tab New hoặc Revision rồi thử lại. |
+| `OC_FAST_CONFIRM_PROCESS_TIMEOUT` | Style chưa process xong | Kiểm tra Style đang dừng trên WFX trước khi tiếp tục. |
+| `OC_FAST_CONFIRM_UNCONFIRMED` | Chưa đọc được kết quả Confirm OC | Kiểm tra tab New hoặc Revision trước khi chạy lại. |
 | `OC_REVISION_REPORT_FAILED` | Không thể mở report Revise OC | Mở Log kỹ thuật và kiểm tra quyền Reporting & Analytic của tài khoản. |
 | `OC_REVISION_REPORT_NOT_READY` | Report Upload OC from OC_Sale chưa sẵn sàng | Chờ cây báo cáo tải xong rồi bấm Mở report lại. |
 | `OC_UPLOAD_FILE_MISSING` | File Upload OC tạm không còn tồn tại | Chọn lại file OC. Nếu vẫn lỗi, xem Log kỹ thuật. |

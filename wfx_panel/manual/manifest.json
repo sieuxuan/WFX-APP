@@ -381,6 +381,23 @@
           }
         },
         {
+          "id": "don-hang-oc-confirm-fast",
+          "title": "Confirm nhanh OC",
+          "summary": "Confirm tuần tự từng Style trên thẻ New hoặc Revision.",
+          "file": "05-don-hang/oc-confirm-fast.md",
+          "keywords": ["confirm oc", "new", "revision", "wfx sales order"],
+          "covers": {
+            "actions": ["oc-confirm-new", "oc-confirm-revision"],
+            "errors": [
+              "OC_FAST_CONFIRM_FAILED",
+              "OC_FAST_CONFIRM_NOT_READY",
+              "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS",
+              "OC_FAST_CONFIRM_PROCESS_TIMEOUT",
+              "OC_FAST_CONFIRM_UNCONFIRMED"
+            ]
+          }
+        },
+        {
           "id": "don-hang-gdn-dispatch",
           "title": "(GDN) Dispatch",
           "summary": "Tạo Dispatch từ Invoice GRN sau thời gian chờ bắt buộc.",

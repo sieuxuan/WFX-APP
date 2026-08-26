@@ -164,40 +164,77 @@ PAYMENT_TERM_OPTIONS = (
 
 PO_TYPE_OPTIONS = ("CM", "CMT", "FOB", "DDP")
 
-COUNTRY_MARKET = {
-    "Australia": "Australia",
-    "Austria": "Europe",
-    "Canada": "America",
-    "Chile": "America",
-    "China": "Asia",
-    "Dominican Republic": "America",
-    "France": "Europe",
-    "Germany": "Europe",
-    "Hong Kong": "Asia",
-    "Italy": "Europe",
-    "Japan": "Asia",
-    "New Zealand": "Australia",
-    "Norway": "Europe",
-    "Republic of Slovenia": "Europe",
-    "Singapore": "Asia",
-    "South Korea": "Asia",
-    "Spain": "Europe",
-    "Sweden": "Europe",
-    "Switzerland": "Europe",
-    "Taiwan": "Asia",
-    "Thailand": "Asia",
-    "United Arab Emirates": "Asia",
-    "United Kingdom": "Europe",
-    "United States": "America",
-    "United States-US-Flat": "America",
-    "United States-US-Hanger": "America",
-    "Vietnam": "Asia",
+DESTINATION_COUNTRY_MARKET = {
+    "TEXPORT": ("Sweden", "Europe"),
+    "CA": ("Canada", "America"),
+    "DO": ("Dominican Republic", "America"),
+    "JP": ("Japan", "Asia"),
+    "US": ("United States", "America"),
+    "KR": ("South Korea", "Asia"),
+    "SG": ("Singapore", "Asia"),
+    "TH": ("Thailand", "Asia"),
+    "JLHQ": ("Sweden", "Europe"),
+    "TW": ("Taiwan", "Asia"),
+    "JLCN": ("China", "Asia"),
+    "AU": ("Australia", "Australia"),
+    "HK": ("Hong Kong", "Asia"),
+    "AE": ("United Arab Emirates-AE", "Asia"),
+    "GE": ("Germany", "Europe"),
+    "JLHQ STUDI": ("Sweden", "Europe"),
+    "SW": ("Switzerland", "Europe"),
+    "AUT": ("Austria", "Europe"),
+    "SP": ("Spain", "Europe"),
+    "NW": ("Norway", "Europe"),
+    "UK": ("United Kingdom", "Europe"),
+    "IT": ("Italy", "Europe"),
+    "FR": ("France", "Europe"),
+    "JLUS": ("United States", "America"),
+    "United States-US-Hanger": ("United States-US-Hanger", "America"),
+    "United States-US-Flat": ("United States-US-Flat", "America"),
+    "Chile": ("Chile", "America"),
+    "Vietnam": ("Vietnam", "Asia"),
+    "New Zealand": ("New Zealand", "Australia"),
+    "Sweden": ("Sweden", "Europe"),
+    "Canada": ("Canada", "America"),
+    "Dominican Republic": ("Dominican Republic", "America"),
+    "Japan": ("Japan", "Asia"),
+    "United States": ("United States", "America"),
+    "South Korea": ("South Korea", "Asia"),
+    "Singapore": ("Singapore", "Asia"),
+    "Thailand": ("Thailand", "Asia"),
+    "Taiwan": ("Taiwan", "Asia"),
+    "China": ("China", "Asia"),
+    "Australia": ("Australia", "Australia"),
+    "Hong Kong": ("Hong Kong", "Asia"),
+    "United Arab Emirates": ("United Arab Emirates-AE", "Asia"),
+    "United Arab Emirates-AE": ("United Arab Emirates-AE", "Asia"),
+    "Germany": ("Germany", "Europe"),
+    "Switzerland": ("Switzerland", "Europe"),
+    "Austria": ("Austria", "Europe"),
+    "Spain": ("Spain", "Europe"),
+    "Norway": ("Norway", "Europe"),
+    "United Kingdom": ("United Kingdom", "Europe"),
+    "Italy": ("Italy", "Europe"),
+    "France": ("France", "Europe"),
+    "ZALANDOPHO": ("Germany", "Europe"),
+    "ES": ("Spain", "Europe"),
+    "ID": ("Indonesia", "Asia"),
+    "Republic of Slovenia": ("Republic of Slovenia", "Europe"),
 }
 
 INPUT_COMMENTS = {
-    "Buyer": "Chọn Buyer đúng với Buyer sẽ chọn tại EDI Buyer PO.",
-    "Season": "Season phải giống Season trong Techpack Style.",
-    "Order Type": "Chọn Confirmed, Forecast hoặc SMS.",
+    "Buyer": (
+        "Chọn Buyer đúng với Buyer sẽ chọn tại EDI Buyer PO. Chỉ cần nhập ở "
+        "dòng dữ liệu đầu tiên."
+    ),
+    "Season": (
+        "Season phải giống Season trong Techpack Style. Chỉ cần nhập ở dòng "
+        "dữ liệu đầu tiên."
+    ),
+    "Order Type": (
+        "Chọn Confirmed, Forecast hoặc SMS. Chỉ cần nhập ở dòng dữ liệu đầu tiên."
+    ),
+    "Currency": "Chỉ cần nhập Currency ở dòng dữ liệu đầu tiên.",
     "Ship Under PO Ref": "Mã PO dùng để gom các dòng Color/Size cùng đơn hàng.",
     "Article Code": "Article Code lấy trên WFX.",
     "Buyer Style Ref": "Buyer Style Ref phải giống Techpack Style.",
@@ -209,7 +246,10 @@ INPUT_COMMENTS = {
         "Buyer Delivery Date."
     ),
     "Payment Terms": "Chọn đúng điều khoản thanh toán trong danh sách WFX.",
-    "Country of Final Destination": "App tự mapping Final Destination và Market.",
+    "Country of Final Destination": (
+        "Có thể nhập tên quốc gia hoặc mã Destination ref trong danh sách. App "
+        "tự chuẩn hóa Final Destination và Market."
+    ),
     "Color Code": "Color Code lấy trên WFX.",
     "Color Name": "Tên màu lấy trên WFX.",
     "Size Code": "Size Code lấy trên WFX.",
@@ -291,6 +331,7 @@ DATE_HEADERS = frozenset(
 
 NEW_REQUIRED_FORM_COLUMNS = frozenset(range(17))
 SIMPLE_NEW_OPTIONAL_COLUMNS = frozenset({21, 22, 23})
+SIMPLE_NEW_COMMON_COLUMNS = frozenset({0, 1, 2, 3})
 REVISE_REQUIRED_HEADERS = frozenset(
     {
         "Factory",
@@ -640,7 +681,12 @@ def _add_list_validation(
             f"'{REFERENCE_SHEET_NAME}'!${reference_letter}$2:"
             f"${reference_letter}${option_count + 1}"
         ),
-        allow_blank=header == "PO Type (Zone)",
+        allow_blank=header in {
+            "Buyer",
+            "Order Type",
+            "Currency",
+            "PO Type (Zone)",
+        },
     )
     validation.error = f"Hãy chọn {input_header} từ danh sách."
     validation.errorTitle = "Giá trị không hợp lệ"
@@ -751,7 +797,7 @@ def write_oc_input_template(path: str | Path) -> Path:
         ("Factory", FACTORY_OPTIONS),
         ("Order Type", ORDER_TYPE_OPTIONS),
         ("Currency", ("USD", "EUR", "GBP")),
-        ("Country", tuple(COUNTRY_MARKET)),
+        ("Country", tuple(DESTINATION_COUNTRY_MARKET)),
         ("PO Type (Zone)", PO_TYPE_OPTIONS),
         ("Payment Terms", PAYMENT_TERM_OPTIONS),
     )
@@ -806,11 +852,18 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
     known_buyers = {item.casefold() for item in BUYER_OPTIONS}
     known_factories = {item.casefold() for item in FACTORY_OPTIONS}
     skipped_zero_units = 0
+    common_values = {
+        index: source_rows[0][1][index] for index in SIMPLE_NEW_COMMON_COLUMNS
+    }
     countries = {
-        country.casefold(): (country, market)
-        for country, market in COUNTRY_MARKET.items()
+        reference.casefold(): country_market
+        for reference, country_market in DESTINATION_COUNTRY_MARKET.items()
     }
     for row_number, values in source_rows:
+        values = list(values)
+        for index, common_value in common_values.items():
+            if values[index] in (None, ""):
+                values[index] = common_value
         if _is_zero_quantity(values[19]):
             skipped_zero_units += 1
             continue

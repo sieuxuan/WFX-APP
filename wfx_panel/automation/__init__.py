@@ -156,6 +156,7 @@ from wfx_panel.automation.modules import (  # noqa: F401
     toggle_company_foc,
 )
 from wfx_panel.automation.oc import (  # noqa: F401
+    confirm_oc_pending,
     open_oc_revision_report,
     upload_oc_edi,
 )
@@ -290,6 +291,7 @@ __all__ = [
     'open_module_new',
     'open_module_with_floating_filter',
     'open_rmpo_result_action',
+    'confirm_oc_pending',
     'open_oc_revision_report',
     'open_sample_new',
     'open_sample_file_result',

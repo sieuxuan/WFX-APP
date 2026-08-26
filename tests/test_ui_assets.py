@@ -208,6 +208,8 @@ def test_index_html_has_contract_hooks():
         'data-module-action="oc-review-confirm"',
         'data-module-action="oc-revise-report"',
         'data-module-action="oc-upload-revise"',
+        'data-module-action="oc-confirm-new"',
+        'data-module-action="oc-confirm-revision"',
         'data-module-action="sale-asn-documents"',
         'data-module-action="sale-asn-template"',
         'data-module-action="sale-asn-import"',

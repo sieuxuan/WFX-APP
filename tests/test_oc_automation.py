@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from playwright.sync_api import sync_playwright
+
 from wfx_panel.automation import oc
 from wfx_panel.automation.oc import _status_kind
 
@@ -293,3 +295,276 @@ def test_upload_marks_transaction_unconfirmed_if_connection_drops_after_submit(
     assert result["code"] == "OC_TRANSACTION_UNCONFIRMED"
     assert result["transaction_submitted"] is True
     assert "Không tự chạy lại" in result["message"]
+
+
+def test_confirm_groups_keep_detail_rows_with_their_style():
+    markup = """
+      <table id="gridEDIBuyerPO_tblGridContent"><tbody>
+        <tr id="style-a-1">
+          <td id="colSelector"><input type="radio"></td>
+          <td id="colStyle">STYLE-A</td>
+          <td id="colWFXSalesOrder"><select><option value="">[Select]</option></select></td>
+        </tr>
+        <tr id="style-a-2">
+          <td id="colSelector"></td>
+          <td id="colStyle">STYLE-A</td>
+          <td id="colWFXSalesOrder"><select><option value="SO-A">SO-A</option></select></td>
+        </tr>
+        <tr id="style-b-1">
+          <td id="colSelector"><input type="radio"></td>
+          <td id="colStyle">STYLE-B</td>
+          <td id="colWFXSalesOrder"><select><option value="SO-B">SO-B</option></select></td>
+        </tr>
+      </tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+
+            groups = page.evaluate(oc._CONFIRM_GROUPS_JS)
+
+            assert [group["label"] for group in groups] == ["STYLE-A", "STYLE-B"]
+            assert [group["row_count"] for group in groups] == [2, 1]
+            assert groups[0]["key"] != groups[1]["key"]
+        finally:
+            browser.close()
+
+
+def test_confirm_groups_support_the_wfx_focus_container():
+    markup = """
+      <div id="gridEDIBuyerPO_divFocus">
+        <table><tbody><tr>
+          <td id="colSelector"><input type="radio"></td>
+          <td id="colStyle">STYLE-FOCUS</td>
+        </tr></tbody></table>
+      </div>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+
+            groups = page.evaluate(oc._CONFIRM_GROUPS_JS)
+
+            assert groups[0]["label"] == "STYLE-FOCUS"
+            assert groups[0]["row_count"] == 1
+        finally:
+            browser.close()
+
+
+def test_confirm_page_size_reresolves_select_after_wfx_postback(monkeypatch):
+    class OldSelect:
+        reads = 0
+
+        def input_value(self, *, timeout):
+            assert timeout == 1_000
+            self.reads += 1
+            if self.reads == 1:
+                return "20"
+            raise oc.PlaywrightError("detached after postback")
+
+        def select_option(self, *, label=None, value=None, timeout):
+            assert label == "100"
+            assert value is None
+            assert timeout == 5_000
+
+    class NewSelect:
+        def input_value(self, *, timeout):
+            assert timeout == 1_000
+            return "100"
+
+    frames = [object(), object()]
+    selects = [OldSelect(), NewSelect()]
+    resolved = []
+
+    def resolve(*_args, **_kwargs):
+        index = len(resolved)
+        resolved.append(index)
+        return frames[index], selects[index]
+
+    monkeypatch.setattr(oc, "_visible_in_frames", resolve)
+    monkeypatch.setattr(oc, "_wait", lambda *_args: None)
+
+    frame = oc._set_confirm_page_size(object())
+
+    assert frame is frames[1]
+    assert resolved == [0, 1]
+
+
+def test_revision_prepare_selects_single_option_without_matching_row_po():
+    markup = """
+      <div id="gridEDIBuyerPO_divFocus"></div>
+      <table id="gridEDIBuyerPO_tblGridContent"><tbody>
+        <tr>
+          <td id="colSelector"><input type="radio"></td>
+          <td id="colStyle">STYLE-A</td>
+          <td id="colWFXSalesOrder">
+            <select><option value="">[Select]</option><option value="ANY-SO">ANY-SO</option></select>
+          </td>
+        </tr>
+        <tr>
+          <td id="colSelector"></td>
+          <td id="colStyle">STYLE-A</td>
+          <td id="colWFXSalesOrder"><select><option value="">[Select]</option></select></td>
+        </tr>
+      </tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            group = page.evaluate(oc._CONFIRM_GROUPS_JS)[0]
+
+            prepared = page.evaluate(oc._PREPARE_REVISION_STYLE_JS, group["key"])
+
+            assert prepared == {
+                "ok": True,
+                "selected_count": 1,
+                "empty_count": 1,
+                "row_count": 2,
+            }
+            assert page.locator("select").first.input_value() == "ANY-SO"
+        finally:
+            browser.close()
+
+
+def test_revision_prepare_stops_before_selecting_when_any_row_has_many_options():
+    markup = """
+      <table id="gridEDIBuyerPO_tblGridContent"><tbody>
+        <tr>
+          <td id="colSelector"><input type="radio"></td>
+          <td id="colStyle">STYLE-A</td>
+          <td id="colWFXSalesOrder">
+            <select><option value="SO-1">SO-1</option></select>
+          </td>
+        </tr>
+        <tr>
+          <td id="colSelector"></td>
+          <td id="colStyle">STYLE-A</td>
+          <td id="colWFXSalesOrder">
+            <select><option value="">[Select]</option><option value="SO-2">SO-2</option><option value="SO-3">SO-3</option></select>
+          </td>
+        </tr>
+      </tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            group = page.evaluate(oc._CONFIRM_GROUPS_JS)[0]
+
+            prepared = page.evaluate(oc._PREPARE_REVISION_STYLE_JS, group["key"])
+
+            assert prepared["ok"] is False
+            assert prepared["reason"] == "multiple-sales-orders"
+            assert prepared["options"] == ["SO-2", "SO-3"]
+            assert page.locator("select").first.input_value() == "SO-1"
+        finally:
+            browser.close()
+
+
+def test_confirm_waits_for_same_style_to_process_before_continuing(monkeypatch):
+    frame = object()
+    snapshots = iter(
+        [
+            [{"key": "style-a", "label": "STYLE-A", "row_count": 2}],
+            [{"key": "style-b", "label": "STYLE-B", "row_count": 1}],
+            [],
+        ]
+    )
+    wait_results = iter([False, True, True])
+    calls = []
+    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: next(snapshots))
+    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
+    monkeypatch.setattr(
+        oc,
+        "_prepare_revision_style",
+        lambda *_args: {"ok": True, "selected_count": 0, "empty_count": 0},
+    )
+    monkeypatch.setattr(
+        oc,
+        "_select_confirm_style",
+        lambda _frame, key: calls.append(("select", key)),
+    )
+    monkeypatch.setattr(
+        oc,
+        "_click_confirm_toolbar",
+        lambda _page: calls.append(("confirm",)),
+    )
+    monkeypatch.setattr(
+        oc,
+        "_wait_style_processed",
+        lambda _page, _frame, key, **_kwargs: (
+            calls.append(("wait", key)) or next(wait_results)
+        ),
+    )
+
+    result = oc._confirm_all_pending(object(), frame, "new", log=lambda _: None)
+
+    assert result["ok"] is True
+    assert result["code"] == "OC_FAST_CONFIRM_COMPLETED"
+    assert result["confirmed_styles"] == 2
+    assert calls == [
+        ("select", "style-a"),
+        ("confirm",),
+        ("wait", "style-a"),
+        ("select", "style-a"),
+        ("confirm",),
+        ("wait", "style-a"),
+        ("select", "style-b"),
+        ("confirm",),
+        ("wait", "style-b"),
+    ]
+
+
+def test_revision_confirm_stops_before_confirm_when_style_has_many_sales_orders(
+    monkeypatch,
+):
+    style = {"key": "style-a", "label": "STYLE-A", "row_count": 2}
+    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: [style])
+    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
+    monkeypatch.setattr(
+        oc,
+        "_prepare_revision_style",
+        lambda *_args: {
+            "ok": False,
+            "reason": "multiple-sales-orders",
+            "options": ["SO-1", "SO-2"],
+            "row_number": 2,
+        },
+    )
+    confirm_calls = []
+    monkeypatch.setattr(
+        oc,
+        "_click_confirm_toolbar",
+        lambda *_args: confirm_calls.append("confirm"),
+    )
+
+    result = oc._confirm_all_pending(object(), object(), "revision", log=lambda _: None)
+
+    assert result["ok"] is False
+    assert result["code"] == "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS"
+    assert result["stopped_style"] == "STYLE-A"
+    assert result["sales_order_options"] == ["SO-1", "SO-2"]
+    assert confirm_calls == []
+
+
+def test_confirm_stops_when_style_does_not_finish_processing(monkeypatch):
+    style = {"key": "style-a", "label": "STYLE-A", "row_count": 1}
+    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: [style])
+    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
+    monkeypatch.setattr(oc, "_select_confirm_style", lambda *_args: None)
+    monkeypatch.setattr(oc, "_click_confirm_toolbar", lambda *_args: None)
+    monkeypatch.setattr(oc, "_wait_style_processed", lambda *_args, **_kwargs: False)
+
+    result = oc._confirm_all_pending(object(), object(), "new", log=lambda _: None)
+
+    assert result["ok"] is False
+    assert result["code"] == "OC_FAST_CONFIRM_PROCESS_TIMEOUT"
+    assert result["stopped_style"] == "STYLE-A"
+    assert result["confirmation_submitted"] is True

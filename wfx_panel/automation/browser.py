@@ -254,7 +254,12 @@ def _start_persistent_chrome(
             "--no-service-autorun",
             "--process-per-site",
             "--renderer-process-limit=3",
-            "--disable-features=PasswordManagerOnboarding,PasswordManagerEnableAccountStorage,PasswordLeakDetection,MediaRouter,OptimizationHints",
+            # Chromium 150+ chuyển ShellExecute qua Explorer. Trên một số phiên
+            # Windows (đặc biệt app/RemoteApp) đường này im lặng không mở được
+            # cả file lẫn "Hiện trong thư mục", dù file và History đều đúng.
+            # Dùng lại đường ShellExecute trực tiếp chỉ ảnh hưởng thao tác mở
+            # download; không đổi sandbox, profile hay lifecycle automation.
+            "--disable-features=PasswordManagerOnboarding,PasswordManagerEnableAccountStorage,PasswordLeakDetection,MediaRouter,OptimizationHints,LaunchShellExecuteViaExplorer",
             URL,
         ],
         stdin=subprocess.DEVNULL,
