@@ -77,6 +77,7 @@ def test_generated_template_has_one_visible_header_and_hidden_references(tmp_pat
     assert validations[3].allow_blank is True
     assert validations[4].allow_blank is True
     assert validations[5].errorStyle == "warning"
+    assert validations[14].errorStyle == "warning"
     assert validations[15].errorStyle is None
     assert validations[22].allow_blank is True
     assert validations[14].allow_blank is False
@@ -281,6 +282,22 @@ def test_new_input_is_mapped_to_value_only_edi_and_total_qty(tmp_path):
     assert sheet.cell(3, indexes["Total Qty"]).value == 15
     assert sheet.cell(2, indexes["Buyer Order Date"]).value.date() == date(2025, 10, 8)
     assert all(cell.data_type != "f" for row in sheet.iter_rows() for cell in row)
+    workbook.close()
+
+
+def test_new_input_keeps_payment_term_outside_reference_list(tmp_path):
+    custom_payment_term = "TT 45 Days From Invoice Date"
+    source = _filled_input_file(
+        tmp_path,
+        _input_row(**{"Payment Terms": custom_payment_term}),
+    )
+
+    prepared = prepare_oc_workbook(source, "new", tmp_path / "edi.xlsx")
+
+    workbook = load_workbook(prepared.upload_path, data_only=True)
+    sheet = workbook["Sheet1"]
+    indexes = {header: index + 1 for index, header in enumerate(EDI_HEADERS)}
+    assert sheet.cell(2, indexes["Payment Terms"]).value == custom_payment_term
     workbook.close()
 
 

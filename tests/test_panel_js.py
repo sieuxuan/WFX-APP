@@ -179,6 +179,8 @@ def test_oc_workspace_wires_template_new_and_revise_flows():
         "choose_oc_upload_file",
         "review_oc_upload",
         "cancel_oc_upload_review",
+        "choose_oc_upload_export_file",
+        "save_oc_upload_file",
         "confirm_oc_upload",
         "open_oc_revision_report",
     ):
@@ -187,6 +189,10 @@ def test_oc_workspace_wires_template_new_and_revise_flows():
     assert 'uploadOcFile("revise")' in JS
     assert 'call("review_oc_upload", mode, selected.file_path)' in JS
     assert 'call("confirm_oc_upload", token)' in JS
+    assert 'callQuiet("choose_oc_upload_export_file", fileName)' in JS
+    assert 'call("save_oc_upload_file", token, selected.file_path)' in JS
+    assert 'data-module-action="oc-review-download"' in JS
+    assert "pendingOcReview.downloaded" in JS
     assert 'call("upload_oc", mode, selected.file_path)' not in JS
     assert "let ocSelectionRevision = 0" in JS
     assert "selectionRevision !== ocSelectionRevision" in JS

@@ -726,81 +726,138 @@ def _click_pending_transaction(page: Page) -> None:
     raise PlaywrightTimeoutError("Không tìm thấy Pending ở Transaction Detail.")
 
 
-def _select_first_transaction(page: Page) -> None:
-    _frame, create_link = _toolbar_link(page, "Create Transaction", timeout_s=30)
-    create_row = create_link.locator("xpath=ancestor::table[1]")
-    for frame in page.frames:
-        try:
-            checkboxes = frame.locator("input[type='checkbox']")
-            candidates: list[Any] = []
-            for index in range(checkboxes.count()):
-                checkbox = checkboxes.nth(index)
-                if checkbox.is_visible() and checkbox.is_enabled():
-                    candidates.append(checkbox)
-            for checkbox in candidates:
-                try:
-                    row_text = " ".join(
-                        (checkbox.locator("xpath=ancestor::tr[1]").inner_text() or "").split()
-                    )
-                except PlaywrightError:
-                    row_text = ""
-                if row_text and not re.search(r"select\s+all", row_text, re.I):
-                    if not checkbox.is_checked():
-                        checkbox.check()
-                    return
-            if len(candidates) == 1:
-                candidates[0].check()
-                return
-        except PlaywrightError:
-            continue
-    if create_row.count():
-        raise PlaywrightTimeoutError("Không tìm thấy checkbox đơn hàng để tạo transaction.")
-    raise PlaywrightTimeoutError("Không tìm thấy dòng Transaction Detail.")
+def _transaction_checkboxes(frame: Frame) -> list[Any]:
+    candidates: list[Any] = []
+    try:
+        checkboxes = frame.locator("input[type='checkbox']")
+        for index in range(checkboxes.count()):
+            checkbox = checkboxes.nth(index)
+            if not checkbox.is_visible() or not checkbox.is_enabled():
+                continue
+            try:
+                row_text = " ".join(
+                    (checkbox.locator("xpath=ancestor::tr[1]").inner_text() or "").split()
+                )
+            except PlaywrightError:
+                row_text = ""
+            if re.search(r"select\s+all|all\s+records", row_text, re.I):
+                continue
+            candidates.append(checkbox)
+    except PlaywrightError:
+        pass
+    return candidates
+
+
+def _select_first_transaction(page: Page, *, force: bool = False) -> None:
+    toolbar_frame, _create_link = _toolbar_link(
+        page, "Create Transaction", timeout_s=30
+    )
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        checkpoint()
+        frames: list[Frame] = [toolbar_frame]
+        frames.extend(frame for frame in page.frames if frame is not toolbar_frame)
+        for frame in frames:
+            candidates = _transaction_checkboxes(frame)
+            if not candidates:
+                continue
+            checkbox = candidates[0]
+            try:
+                if force and checkbox.is_checked():
+                    checkbox.uncheck(timeout=3_000)
+                    _wait(page, 150)
+                if not checkbox.is_checked():
+                    checkbox.check(timeout=5_000)
+                if not checkbox.is_checked():
+                    checkbox.click(timeout=5_000)
+                if checkbox.is_checked():
+                    # WFX updates its selected-record state asynchronously after
+                    # the native checkbox event. Do not click Create Transaction
+                    # in the same tick as the selection.
+                    _wait(page, 350)
+                    if checkbox.is_checked():
+                        return
+            except PlaywrightError:
+                continue
+        _wait(page, 250)
+    raise PlaywrightTimeoutError(
+        "Không tìm thấy hoặc không xác nhận được checkbox đơn hàng để tạo transaction."
+    )
 
 
 def _create_transaction(page: Page, log: Callable[[str], None]) -> tuple[bool, list[str]]:
-    _frame, create_link = _toolbar_link(page, "Create Transaction", timeout_s=10)
-    dialog_messages: list[str] = []
+    def build_dialog_handler(
+        dialog_messages: list[str],
+        no_record_state: list[bool],
+    ) -> Callable[[Any], None]:
+        def accept_create_dialog(dialog: Any) -> None:
+            message = " ".join(str(dialog.message or "").split())
+            dialog_messages.append(message)
+            if re.search(r"no\s+record\s+selected", message, re.I):
+                no_record_state[0] = True
+            dialog.accept()
 
-    def accept_create_dialog(dialog: Any) -> None:
-        dialog_messages.append(" ".join(str(dialog.message or "").split()))
-        dialog.accept()
+        return accept_create_dialog
 
-    page.on("dialog", accept_create_dialog)
-    try:
-        with cancellation_deferred():
-            _click(create_link)
-            _write_log(log, "[OC EDI] Đã gửi Create Transaction")
-            deadline = time.monotonic() + 35
-            while time.monotonic() < deadline:
-                # Không cho Stop ngắt đoạn xác nhận sau thao tác không idempotent.
-                # Nếu mất kết nối, caller phải coi transaction là unconfirmed.
-                checkpoint()
-                if any(
-                    re.search(r"success|created|complete", message, re.I)
-                    for message in dialog_messages
-                ):
-                    return True, dialog_messages
-                for frame in page.frames:
-                    try:
-                        messages = frame.locator(
-                            "#lblSuccessMsg, .success, .clsSuccess, "
-                            "[class*='success' i], [id*='success' i]"
-                        )
-                        for index in range(messages.count()):
-                            candidate = messages.nth(index)
-                            text = " ".join((candidate.text_content() or "").split())
-                            if text and re.search(r"success|created|complete", text, re.I):
-                                return True, dialog_messages + [text]
-                    except PlaywrightError:
-                        continue
-                _wait(page, 300)
-        return False, dialog_messages
-    finally:
+    for attempt in range(2):
+        # Selecting again is safe before the Create Transaction click and closes
+        # the race where WFX has rendered the toolbar before binding the row
+        # selection. A "No Record Selected" alert confirms no transaction was
+        # submitted, so one fresh selection + click is safe as well.
+        _select_first_transaction(page, force=attempt > 0)
+        _frame, create_link = _toolbar_link(page, "Create Transaction", timeout_s=10)
+        dialog_messages: list[str] = []
+        no_record_state = [False]
+        accept_create_dialog = build_dialog_handler(dialog_messages, no_record_state)
+
+        page.on("dialog", accept_create_dialog)
         try:
-            page.remove_listener("dialog", accept_create_dialog)
-        except Exception:
-            pass
+            with cancellation_deferred():
+                _click(create_link)
+                _write_log(log, "[OC EDI] Đã gửi Create Transaction")
+                deadline = time.monotonic() + 35
+                while time.monotonic() < deadline:
+                    # Không cho Stop ngắt đoạn xác nhận sau thao tác không
+                    # idempotent. Nếu mất kết nối, caller phải coi transaction
+                    # là unconfirmed.
+                    checkpoint()
+                    if no_record_state[0]:
+                        break
+                    if any(
+                        re.search(r"success|created|complete", message, re.I)
+                        for message in dialog_messages
+                    ):
+                        return True, dialog_messages
+                    for frame in page.frames:
+                        try:
+                            messages = frame.locator(
+                                "#lblSuccessMsg, .success, .clsSuccess, "
+                                "[class*='success' i], [id*='success' i]"
+                            )
+                            for index in range(messages.count()):
+                                candidate = messages.nth(index)
+                                text = " ".join((candidate.text_content() or "").split())
+                                if text and re.search(
+                                    r"success|created|complete", text, re.I
+                                ):
+                                    return True, dialog_messages + [text]
+                        except PlaywrightError:
+                            continue
+                    _wait(page, 300)
+            if no_record_state[0] and attempt == 0:
+                _write_log(
+                    log,
+                    "[OC EDI] WFX chưa nhận dòng đã chọn; chọn lại và thử Create Transaction một lần.",
+                )
+                _wait(page, 500)
+                continue
+            return False, dialog_messages
+        finally:
+            try:
+                page.remove_listener("dialog", accept_create_dialog)
+            except Exception:
+                pass
+    return False, []
 
 
 def _read_confirm_styles(frame: Frame) -> list[dict[str, Any]]:

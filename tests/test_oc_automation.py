@@ -267,6 +267,62 @@ def test_upload_creates_exactly_one_transaction_after_all_statuses_succeed(
     assert calls == ["pending", "select", "create"]
 
 
+def test_create_transaction_reselects_once_after_no_record_selected(monkeypatch):
+    class FakePage:
+        frames = []
+
+        def __init__(self):
+            self.listeners = {}
+
+        def on(self, event, handler):
+            self.listeners[event] = handler
+
+        def remove_listener(self, event, handler):
+            if self.listeners.get(event) is handler:
+                del self.listeners[event]
+
+    class Dialog:
+        def __init__(self, message):
+            self.message = message
+            self.accepted = False
+
+        def accept(self):
+            self.accepted = True
+
+    page = FakePage()
+    selections = []
+    clicks = []
+
+    monkeypatch.setattr(
+        oc,
+        "_select_first_transaction",
+        lambda _page, *, force=False: selections.append(force),
+    )
+    monkeypatch.setattr(
+        oc,
+        "_toolbar_link",
+        lambda *_args, **_kwargs: (page, object()),
+    )
+    monkeypatch.setattr(oc, "checkpoint", lambda: None)
+    monkeypatch.setattr(oc, "_wait", lambda *_args: None)
+
+    def click(_link):
+        clicks.append(len(clicks) + 1)
+        message = "No Record Selected" if len(clicks) == 1 else "Created successfully"
+        dialog = Dialog(message)
+        page.listeners["dialog"](dialog)
+        assert dialog.accepted is True
+
+    monkeypatch.setattr(oc, "_click", click)
+
+    confirmed, messages = oc._create_transaction(page, lambda _message: None)
+
+    assert confirmed is True
+    assert clicks == [1, 2]
+    assert selections == [False, True]
+    assert messages == ["Created successfully"]
+
+
 def test_upload_marks_transaction_unconfirmed_if_connection_drops_after_submit(
     tmp_path, monkeypatch
 ):

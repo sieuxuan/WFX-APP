@@ -12,7 +12,8 @@ xác nhận.
 5. Bấm `Chọn file OC mới` trong thẻ Upload OC New.
 6. Đọc bảng Review trước khi Upload.
 7. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng.
-8. Bấm `Xác nhận Upload` để bắt đầu tạo OC trên WFX.
+8. Bấm `Tải file EDI xuống máy` để lưu bản form hệ thống đã tự tạo.
+9. Mở kiểm tra file nếu cần, sau đó bấm `Xác nhận Upload` để bắt đầu tạo OC trên WFX.
 
 ## Mẹo
 
@@ -36,8 +37,9 @@ xác nhận.
 > `United Arab Emirates` được chuẩn hóa thành `United Arab Emirates-AE`.
 
 > [!luuy]
-> Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút `Xác nhận Upload` mới
-> bắt đầu thao tác trên WFX. Bấm `Hủy` thì không có dữ liệu nào được gửi đi.
+> Chọn file chỉ kiểm tra trên máy và hiện Review. App yêu cầu lưu bản EDI đã
+> sinh trước khi cho phép tự Upload. Nếu WFX báo lỗi, dùng file đã lưu để Upload
+> thủ công lại trên WFX hoặc chọn lại file nguồn trong ứng dụng.
 
 ## Gặp lỗi thì sao
 

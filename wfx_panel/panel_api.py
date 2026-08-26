@@ -266,6 +266,7 @@ NON_REPORTABLE_FAILURES = frozenset(
         "GDN_TRANSACTION_FAILED",
         "GDN_TRANSACTION_UNCONFIRMED",
         "OC_UPLOAD_REVIEW_EXPIRED",
+        "OC_UPLOAD_FILE_SAVE_FAILED",
         "SALE_ASN_INVOICE_NOT_FOUND",
         "SALE_ASN_MULTIPLE_RESULTS",
         "SALE_ASN_SELECTION_REQUIRED",
@@ -3015,6 +3016,103 @@ class PanelAPI:
             }
 
         return self._run("cancel_oc_upload_review", action)
+
+    def save_oc_upload_file(
+        self,
+        review_token: str,
+        file_path: str,
+    ) -> dict:
+        """Save the generated value-only workbook without consuming the review."""
+        token = str(review_token or "").strip()
+        raw_path = str(file_path or "").strip()
+        if not raw_path:
+            return {
+                "ok": False,
+                "code": "OC_UPLOAD_FILE_SAVE_FAILED",
+                "message": "Chưa có đường dẫn lưu file EDI Upload OC.",
+            }
+        target = Path(raw_path).expanduser().resolve()
+        if target.suffix.casefold() != ".xlsx":
+            target = target.with_suffix(".xlsx")
+
+        def next_available_target(current: Path) -> Path:
+            suffix = current.suffix or ".xlsx"
+            for index in range(2, 10_000):
+                candidate = current.with_name(f"{current.stem} ({index}){suffix}")
+                if not candidate.exists():
+                    return candidate
+            raise OSError("Không tìm được tên file trống để lưu EDI Upload OC.")
+
+        def copy_to_target(source: Path, destination: Path) -> None:
+            staging = destination.with_name(
+                f".{destination.name}.{secrets.token_hex(4)}.tmp"
+            )
+            try:
+                shutil.copyfile(source, staging)
+                os.replace(staging, destination)
+            except OSError:
+                try:
+                    staging.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
+
+        def action() -> dict:
+            review = self._oc_upload_reviews.get(token)
+            if review is None:
+                return {
+                    "ok": False,
+                    "code": "OC_UPLOAD_REVIEW_EXPIRED",
+                    "message": "Review Upload OC không còn hiệu lực; hãy chọn lại file.",
+                }
+            source = Path(review["prepared"].upload_path)
+            if not source.is_file():
+                return {
+                    "ok": False,
+                    "code": "OC_UPLOAD_FILE_MISSING",
+                    "message": (
+                        "File EDI Upload OC đã sinh không còn tồn tại; "
+                        "hãy chọn lại file nguồn."
+                    ),
+                }
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                actual_target = target
+                renamed_for_open_file = False
+                try:
+                    copy_to_target(source, actual_target)
+                except PermissionError:
+                    actual_target = next_available_target(target)
+                    copy_to_target(source, actual_target)
+                    renamed_for_open_file = True
+            except OSError as error:
+                return {
+                    "ok": False,
+                    "code": "OC_UPLOAD_FILE_SAVE_FAILED",
+                    "message": f"Không lưu được file EDI Upload OC: {error}",
+                }
+            suffix_message = (
+                " File cùng tên đang mở nên đã tự lưu bằng tên mới."
+                if renamed_for_open_file
+                else ""
+            )
+            return {
+                "ok": True,
+                "code": "OC_UPLOAD_FILE_SAVED",
+                "message": (
+                    f"Đã tải form EDI Upload OC xuống {actual_target.name}."
+                    f"{suffix_message} Bạn có thể tự Upload lại file này nếu WFX báo lỗi."
+                ),
+                "file_path": str(actual_target),
+                "file_name": actual_target.name,
+                "renamed_for_open_file": renamed_for_open_file,
+            }
+
+        return self._run(
+            "save_oc_upload_file",
+            action,
+            {"file_name": target.name},
+        )
 
     def confirm_oc_upload(self, review_token: str) -> dict:
         """Upload exactly the value-only workbook shown in the review."""
