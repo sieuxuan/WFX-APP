@@ -32,6 +32,14 @@ REVISION_REPORT_SELECTOR = (
 PACKAGE_VALUE = "1"
 PACKAGE_LABEL = "StandardSalesOrder"
 STATUS_TIMEOUT_SECONDS = 120
+CONFIRM_PROCESS_TIMEOUT_SECONDS = 180
+CONFIRM_FIRST_PASS_TIMEOUT_SECONDS = 8
+CONFIRM_PAGE_SIZE_SELECTOR = "#gridEDIBuyerPO_divPageSize select"
+CONFIRM_GRID_SELECTOR = "#gridEDIBuyerPO_tblGridContent"
+CONFIRM_TAB_SELECTORS = {
+    "new": "#tabNew",
+    "revision": "#tabRevision",
+}
 
 _STATUS_JS = r"""() => {
   const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
@@ -116,6 +124,178 @@ _FAILED_RECORD_JS = r"""() => {
       detail: pairs.join(' | ').slice(0, 1200)
     };
   }).filter(record => record.detail);
+}"""
+
+_CONFIRM_GROUPS_JS = r"""() => {
+  const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const table = document.querySelector('#gridEDIBuyerPO_tblGridContent') ||
+    document.querySelector('#gridEDIBuyerPO_divFocus');
+  if (!table) return [];
+  const rows = table.matches('table')
+    ? [...table.querySelectorAll(':scope > tbody > tr')]
+    : [...table.querySelectorAll('table > tbody > tr')];
+  const starts = rows
+    .map((row, index) => ({row, index}))
+    .filter(item => item.row.querySelector(
+      '#colSelector input[type="radio"], #colSelector input[type="checkbox"]'
+    ));
+  const signature = groupRows => {
+    const clone = document.createElement('div');
+    groupRows.forEach(row => {
+      const copy = row.cloneNode(true);
+      copy.querySelectorAll('#colSelector').forEach(cell => cell.remove());
+      clone.appendChild(copy);
+    });
+    const text = norm(clone.textContent).toLocaleLowerCase('en');
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    const rowKey = groupRows[0]?.getAttribute('rowid') || groupRows[0]?.id || '';
+    return rowKey ? `row:${rowKey}` : `text:${(hash >>> 0).toString(16)}`;
+  };
+  return starts.map((start, groupIndex) => {
+    const end = starts[groupIndex + 1]?.index ?? rows.length;
+    const groupRows = rows.slice(start.index, end);
+    const styleCell = groupRows[0].querySelector(
+      '#colStyle, #lblStyle, [id*="Style" i]'
+    );
+    return {
+      key: signature(groupRows),
+      label: norm(styleCell?.getAttribute('title') || styleCell?.textContent ||
+        groupRows[0].textContent).slice(0, 180),
+      row_count: groupRows.length,
+    };
+  });
+}"""
+
+_PREPARE_REVISION_STYLE_JS = r"""targetKey => {
+  const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const table = document.querySelector('#gridEDIBuyerPO_tblGridContent') ||
+    document.querySelector('#gridEDIBuyerPO_divFocus');
+  if (!table) return {ok: false, reason: 'grid-not-found'};
+  const rows = table.matches('table')
+    ? [...table.querySelectorAll(':scope > tbody > tr')]
+    : [...table.querySelectorAll('table > tbody > tr')];
+  const starts = rows
+    .map((row, index) => ({row, index}))
+    .filter(item => item.row.querySelector(
+      '#colSelector input[type="radio"], #colSelector input[type="checkbox"]'
+    ));
+  const signature = groupRows => {
+    const clone = document.createElement('div');
+    groupRows.forEach(row => {
+      const copy = row.cloneNode(true);
+      copy.querySelectorAll('#colSelector').forEach(cell => cell.remove());
+      clone.appendChild(copy);
+    });
+    const text = norm(clone.textContent).toLocaleLowerCase('en');
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    const rowKey = groupRows[0]?.getAttribute('rowid') || groupRows[0]?.id || '';
+    return rowKey ? `row:${rowKey}` : `text:${(hash >>> 0).toString(16)}`;
+  };
+  let groupRows = null;
+  for (let groupIndex = 0; groupIndex < starts.length; groupIndex += 1) {
+    const end = starts[groupIndex + 1]?.index ?? rows.length;
+    const candidate = rows.slice(starts[groupIndex].index, end);
+    if (signature(candidate) === targetKey) {
+      groupRows = candidate;
+      break;
+    }
+  }
+  if (!groupRows) return {ok: false, reason: 'style-changed'};
+  const rowPlans = groupRows.map((row, rowIndex) => {
+    const cell = row.querySelector('#colWFXSalesOrder');
+    const select = cell?.querySelector('select');
+    if (!select) return {row, cell, select: null, choices: [], rowIndex};
+    cell.click();
+    select.focus();
+    select.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+    const choices = [...select.options]
+      .filter(option => !option.disabled)
+      .map(option => ({value: norm(option.value), label: norm(option.textContent)}))
+      .filter(option => option.value &&
+        !/^(select|choose|--|\[select\])$/i.test(option.label));
+    const unique = [...new Map(
+      choices.map(option => [option.value.toLocaleLowerCase('en'), option])
+    ).values()];
+    return {row, cell, select, choices: unique, rowIndex};
+  });
+  const ambiguous = rowPlans.find(plan => plan.choices.length > 1);
+  if (ambiguous) {
+    return {
+      ok: false,
+      reason: 'multiple-sales-orders',
+      row_number: ambiguous.rowIndex + 1,
+      options: ambiguous.choices.map(option => option.label || option.value),
+    };
+  }
+  let selectedCount = 0;
+  let emptyCount = 0;
+  rowPlans.forEach(plan => {
+    if (plan.choices.length === 0) {
+      emptyCount += 1;
+      return;
+    }
+    plan.cell?.click();
+    plan.select.focus();
+    plan.select.value = plan.choices[0].value;
+    plan.select.dispatchEvent(new Event('input', {bubbles: true}));
+    plan.select.dispatchEvent(new Event('change', {bubbles: true}));
+    selectedCount += 1;
+  });
+  return {
+    ok: true,
+    selected_count: selectedCount,
+    empty_count: emptyCount,
+    row_count: groupRows.length,
+  };
+}"""
+
+_MARK_CONFIRM_STYLE_JS = r"""targetKey => {
+  const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const table = document.querySelector('#gridEDIBuyerPO_tblGridContent') ||
+    document.querySelector('#gridEDIBuyerPO_divFocus');
+  if (!table) return {ok: false, reason: 'grid-not-found'};
+  const rows = table.matches('table')
+    ? [...table.querySelectorAll(':scope > tbody > tr')]
+    : [...table.querySelectorAll('table > tbody > tr')];
+  const starts = rows
+    .map((row, index) => ({row, index}))
+    .filter(item => item.row.querySelector(
+      '#colSelector input[type="radio"], #colSelector input[type="checkbox"]'
+    ));
+  const signature = groupRows => {
+    const clone = document.createElement('div');
+    groupRows.forEach(row => {
+      const copy = row.cloneNode(true);
+      copy.querySelectorAll('#colSelector').forEach(cell => cell.remove());
+      clone.appendChild(copy);
+    });
+    const text = norm(clone.textContent).toLocaleLowerCase('en');
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    const rowKey = groupRows[0]?.getAttribute('rowid') || groupRows[0]?.id || '';
+    return rowKey ? `row:${rowKey}` : `text:${(hash >>> 0).toString(16)}`;
+  };
+  document.querySelectorAll('[data-wfx-oc-confirm-row]').forEach(row =>
+    row.removeAttribute('data-wfx-oc-confirm-row'));
+  for (let groupIndex = 0; groupIndex < starts.length; groupIndex += 1) {
+    const end = starts[groupIndex + 1]?.index ?? rows.length;
+    const groupRows = rows.slice(starts[groupIndex].index, end);
+    if (signature(groupRows) !== targetKey) continue;
+    groupRows.forEach(row => row.setAttribute('data-wfx-oc-confirm-row', '1'));
+    return {ok: true, row_count: groupRows.length};
+  }
+  return {ok: false, reason: 'style-changed'};
 }"""
 
 
@@ -621,6 +801,334 @@ def _create_transaction(page: Page, log: Callable[[str], None]) -> tuple[bool, l
             page.remove_listener("dialog", accept_create_dialog)
         except Exception:
             pass
+
+
+def _read_confirm_styles(frame: Frame) -> list[dict[str, Any]]:
+    rows = frame.evaluate(_CONFIRM_GROUPS_JS)
+    return [dict(row) for row in rows if isinstance(row, dict) and row.get("key")]
+
+
+def _focus_confirm_grid(page: Page, frame: Frame) -> None:
+    for owner in (frame, page):
+        try:
+            focus = owner.locator("#gridEDIBuyerPO_divFocus")
+            if focus.count() and focus.first.is_visible():
+                focus.first.click(timeout=2_000)
+                return
+        except PlaywrightError:
+            continue
+
+
+def _prepare_revision_style(frame: Frame, style_key: str) -> dict[str, Any]:
+    prepared = frame.evaluate(_PREPARE_REVISION_STYLE_JS, style_key)
+    if not isinstance(prepared, dict):
+        return {"ok": False, "reason": "style-changed"}
+    return dict(prepared)
+
+
+def _select_confirm_style(frame: Frame, style_key: str) -> None:
+    marked = frame.evaluate(_MARK_CONFIRM_STYLE_JS, style_key)
+    if not isinstance(marked, dict) or not marked.get("ok"):
+        raise PlaywrightTimeoutError("Style đã thay đổi trước khi chọn Confirm.")
+    controls = frame.locator(
+        '[data-wfx-oc-confirm-row="1"] #colSelector '
+        'input[type="radio"], '
+        '[data-wfx-oc-confirm-row="1"] #colSelector '
+        'input[type="checkbox"]'
+    )
+    if not controls.count():
+        raise PlaywrightTimeoutError("Không tìm thấy ô chọn của Style.")
+    control = controls.first
+    try:
+        if not control.is_checked():
+            control.check(timeout=5_000)
+    except PlaywrightError:
+        control.click(timeout=5_000)
+
+
+def _click_confirm_toolbar(page: Page) -> None:
+    selector = (
+        "#sectionEDIBuyerPO > tbody > tr > td:nth-child(2) "
+        "> span > div:nth-child(3) > a"
+    )
+    try:
+        _frame, confirm = _visible_in_frames(page, selector, timeout_s=3)
+    except PlaywrightTimeoutError:
+        _frame, confirm = _toolbar_link(page, "Confirm", timeout_s=12)
+    _click(confirm)
+
+
+def _confirm_frame(page: Page, *, timeout_s: float = 12) -> Frame:
+    try:
+        frame, _grid = _attached_in_frames(
+            page,
+            CONFIRM_GRID_SELECTOR,
+            timeout_s=min(timeout_s, 4),
+        )
+        return frame
+    except PlaywrightTimeoutError:
+        frame, _grid = _attached_in_frames(
+            page,
+            "#gridEDIBuyerPO_divFocus",
+            timeout_s=timeout_s,
+        )
+        return frame
+
+
+def _wait_style_processed(
+    page: Page,
+    frame: Frame,
+    style_key: str,
+    *,
+    timeout_s: float,
+) -> bool:
+    deadline = time.monotonic() + timeout_s
+    absent_since: float | None = None
+    current_frame = frame
+    while time.monotonic() < deadline:
+        checkpoint()
+        try:
+            styles = _read_confirm_styles(current_frame)
+            loading = current_frame.locator(
+                ".loading, .clsLoading, [class*='loading' i], "
+                "[id*='progress' i]"
+            )
+            visible_loading = any(
+                loading.nth(index).is_visible()
+                for index in range(min(loading.count(), 20))
+            )
+            still_present = any(style["key"] == style_key for style in styles)
+            if not visible_loading and not still_present:
+                if absent_since is None:
+                    absent_since = time.monotonic()
+                elif time.monotonic() - absent_since >= 1:
+                    return True
+            else:
+                absent_since = None
+        except PlaywrightError:
+            absent_since = None
+            try:
+                current_frame = _confirm_frame(page, timeout_s=2)
+            except PlaywrightTimeoutError:
+                pass
+        _wait(page, 200)
+    return False
+
+
+def _set_confirm_page_size(page: Page) -> Frame:
+    frame, select = _visible_in_frames(
+        page,
+        CONFIRM_PAGE_SIZE_SELECTOR,
+        timeout_s=25,
+    )
+    try:
+        current = str(select.input_value(timeout=1_000) or "").strip()
+    except PlaywrightError:
+        current = ""
+    if current != "100":
+        try:
+            select.select_option(label="100", timeout=5_000)
+        except PlaywrightError:
+            select.select_option(value="100", timeout=5_000)
+        _wait(page, 500)
+        frame, select = _visible_in_frames(
+            page,
+            CONFIRM_PAGE_SIZE_SELECTOR,
+            timeout_s=25,
+        )
+    selected = str(select.input_value(timeout=1_000) or "").strip()
+    if selected != "100":
+        option = select.locator("option:checked")
+        label = " ".join((option.first.inner_text() or "").split()) if option.count() else ""
+        if label != "100":
+            raise PlaywrightTimeoutError("Không đổi được số dòng hiển thị thành 100.")
+    return frame
+
+
+def _open_confirm_grid(
+    page: Page,
+    mode: str,
+    log: Callable[[str], None],
+) -> Frame:
+    tab_selector = CONFIRM_TAB_SELECTORS[mode]
+    try:
+        _frame, tab = _visible_in_frames(page, tab_selector, timeout_s=2)
+    except PlaywrightTimeoutError:
+        try:
+            _menu_frame, menu = _visible_in_frames(page, EDI_MENU_SELECTOR, timeout_s=12)
+        except PlaywrightTimeoutError:
+            _menu_frame, menu = _attached_in_frames(page, EDI_MENU_SELECTOR, timeout_s=12)
+        _click(menu)
+        _frame, tab = _visible_in_frames(page, tab_selector, timeout_s=30)
+    _click(tab)
+    label = "Revision" if mode == "revision" else "New"
+    _write_log(log, f"[OC CONFIRM] Đã mở tab {label}")
+    frame = _set_confirm_page_size(page)
+    _write_log(log, "[OC CONFIRM] Đã đổi số dòng hiển thị thành 100")
+    return frame
+
+
+def _confirm_all_pending(
+    page: Page,
+    frame: Frame,
+    mode: str,
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    confirmed_styles = 0
+    selected_sales_orders = 0
+    while True:
+        checkpoint()
+        styles = _read_confirm_styles(frame)
+        if not styles:
+            return _result(
+                True,
+                "OC_FAST_CONFIRM_COMPLETED",
+                (
+                    f"Đã Confirm xong {confirmed_styles} Style."
+                    if confirmed_styles
+                    else "Không còn Style chờ Confirm."
+                ),
+                mode=mode,
+                confirmed_styles=confirmed_styles,
+                selected_sales_orders=selected_sales_orders,
+                confirmation_submitted=confirmed_styles > 0,
+            )
+        style = styles[0]
+        style_key = str(style["key"])
+        style_label = str(style.get("label") or style_key)
+        _write_log(
+            log,
+            f"[OC CONFIRM] Đang xử lý Style {style_label} "
+            f"({confirmed_styles + 1})",
+        )
+        _focus_confirm_grid(page, frame)
+        if mode == "revision":
+            prepared = _prepare_revision_style(frame, style_key)
+            if not prepared.get("ok"):
+                if prepared.get("reason") == "multiple-sales-orders":
+                    options = list(prepared.get("options") or ())
+                    return _result(
+                        False,
+                        "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS",
+                        f"Style {style_label} có nhiều WFX Sales Order. "
+                        "Hãy chọn thủ công rồi chạy lại Confirm nhanh.",
+                        mode=mode,
+                        confirmed_styles=confirmed_styles,
+                        selected_sales_orders=selected_sales_orders,
+                        stopped_style=style_label,
+                        stopped_row=prepared.get("row_number"),
+                        sales_order_options=options,
+                        confirmation_submitted=confirmed_styles > 0,
+                    )
+                raise PlaywrightTimeoutError(
+                    "Style đã thay đổi khi chuẩn bị WFX Sales Order."
+                )
+            selected_sales_orders += int(prepared.get("selected_count") or 0)
+
+        confirmation_submitted = False
+        try:
+            with cancellation_deferred():
+                processed = False
+                for attempt in range(2):
+                    _select_confirm_style(frame, style_key)
+                    confirmation_submitted = True
+                    _click_confirm_toolbar(page)
+                    _write_log(
+                        log,
+                        f"[OC CONFIRM] Đã bấm Confirm lượt {attempt + 1} "
+                        f"cho {style_label}",
+                    )
+                    processed = _wait_style_processed(
+                        page,
+                        frame,
+                        style_key,
+                        timeout_s=(
+                            CONFIRM_FIRST_PASS_TIMEOUT_SECONDS
+                            if attempt == 0
+                            else CONFIRM_PROCESS_TIMEOUT_SECONDS
+                        ),
+                    )
+                    if processed:
+                        break
+                if not processed:
+                    return _result(
+                        False,
+                        "OC_FAST_CONFIRM_PROCESS_TIMEOUT",
+                        f"Style {style_label} chưa process xong sau khi Confirm. "
+                        "App đã dừng trước Style tiếp theo.",
+                        mode=mode,
+                        confirmed_styles=confirmed_styles,
+                        selected_sales_orders=selected_sales_orders,
+                        stopped_style=style_label,
+                        confirmation_submitted=True,
+                    )
+        except Exception as error:
+            if confirmation_submitted:
+                return _result(
+                    False,
+                    "OC_FAST_CONFIRM_UNCONFIRMED",
+                    f"Đã bấm Confirm cho Style {style_label} nhưng không đọc được "
+                    "kết quả. App không tự chạy lại để tránh Confirm nhầm Style.",
+                    mode=mode,
+                    confirmed_styles=confirmed_styles,
+                    selected_sales_orders=selected_sales_orders,
+                    stopped_style=style_label,
+                    confirmation_submitted=True,
+                    errors=[f"{type(error).__name__}: {_first_line(error)}"],
+                )
+            raise
+        confirmed_styles += 1
+        _write_log(log, f"[OC CONFIRM] Style {style_label} đã process xong")
+
+
+def confirm_oc_pending(
+    mode: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Confirm tuần tự toàn bộ Style đang chờ trên tab New hoặc Revision."""
+    selected_mode = str(mode or "").strip().casefold()
+    selected_mode = "revision" if selected_mode in {"revision", "revise"} else selected_mode
+    if selected_mode not in CONFIRM_TAB_SELECTORS:
+        return _result(
+            False,
+            "OC_MODE_INVALID",
+            "Chế độ Confirm OC phải là New hoặc Revision.",
+        )
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        frame = _open_confirm_grid(page, selected_mode, log)
+        return _confirm_all_pending(page, frame, selected_mode, log)
+    except RuntimeError as error:
+        code = str(error)
+        if code in {"CHROME_CLOSED", "NOT_LOGGED_IN"}:
+            message = (
+                "Trình duyệt làm việc chưa được mở."
+                if code == "CHROME_CLOSED"
+                else "Phiên WFX chưa đăng nhập hoặc đã hết hạn."
+            )
+            return _result(False, code, message)
+        raise
+    except PlaywrightTimeoutError as error:
+        return _result(
+            False,
+            "OC_FAST_CONFIRM_NOT_READY",
+            f"Màn Confirm OC chưa sẵn sàng: {_first_line(error)}",
+            mode=selected_mode,
+            confirmation_submitted=False,
+        )
+    except Exception as error:
+        return _result(
+            False,
+            "OC_FAST_CONFIRM_FAILED",
+            f"{type(error).__name__}: {_first_line(error)}",
+            mode=selected_mode,
+            confirmation_submitted=False,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
 
 
 def upload_oc_edi(

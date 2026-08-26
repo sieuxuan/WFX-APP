@@ -20,8 +20,8 @@ Bản đồ nhanh:
   Costing/BOM + cây folder), tách khỏi `PanelAPI`.
 - `wfx_panel/oc_workbook.py` — tạo form OC một-header, validate workbook New/
   Revise và sinh `Sheet1` EDI 51 cột chỉ chứa giá trị.
-- `wfx_panel/automation/oc.py` — mở report Revise OC và điều khiển EDI Buyer PO
-  tới bước Create Transaction.
+- `wfx_panel/automation/oc.py` — mở report Revise OC, điều khiển EDI Buyer PO
+  tới Create Transaction và Confirm tuần tự theo Style.
 - `wfx_panel/panel_app.py` — pywebview + tray + hotkey toàn cục + lớp win32.
 - `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
 
@@ -225,6 +225,11 @@ Mỗi nút trong module là một flow riêng:
   extension và tắt các dịch vụ nền không cần cho WFX; không giới hạn V8 heap
   cứng vì grid lớn có thể cần bộ nhớ đột biến. Trước khi nhả CDP sau mỗi flow,
   runtime yêu cầu GC cho từng page nhưng không reload/đóng tab.
+- Chrome/Chromium 150+ trên Windows phải khởi động với
+  `--disable-features=LaunchShellExecuteViaExplorer` để tránh hồi quy Chromium
+  làm `Mở file` và `Hiện trong thư mục` im lặng không chạy dù download history
+  đã trỏ đúng file thật. Cờ này chỉ đổi đường gọi Windows Shell của Chrome,
+  không thay download path, sandbox hay các flow automation.
 - Reports chỉ dùng một tab report riêng ngoài tab WFX chính. Nếu đúng report
   đang mở và bảng tham số còn sẵn sàng thì phải tái sử dụng DOM hiện tại; khi
   đổi report, điều hướng tab report đó thay vì tạo thêm tab. Probe stale/lỗi
@@ -403,8 +408,12 @@ Các workflow riêng hiện có:
   bắt buộc, ngày, Selling Price, Units, Extra Production, dòng trùng và tự tính
   lại `Total Qty` theo PO/delivery/style. Buyer/Factory trong form là danh sách
   gợi ý có thể nhập thêm để không chặn master data mới; Buyer vẫn phải khớp
-  exact trên WFX và Factory được WFX kiểm tra ở Process Package. Country phải
-  có mapping Market. Revise phải giữ đủ định danh OC gốc như `DeliveryOCID`.
+  exact trên WFX và Factory được WFX kiểm tra ở Process Package. Với OC New,
+  Buyer/Season/Order Type/Currency chỉ bắt buộc ở dòng dữ liệu đầu tiên; dòng
+  sau để trống phải kế thừa bốn giá trị này, còn giá trị nhập rõ vẫn được giữ.
+  Destination nhận cả tên quốc gia lẫn ref Buyer, phải chuẩn hóa thành Country
+  và Market theo bảng mapping trong `oc_workbook.py`. Revise phải giữ đủ định
+  danh OC gốc như `DeliveryOCID`.
 - Sau validate local phải hiện review và chưa được mở EDI: Buyer, Season, số PO
   distinct theo `Summary Buyer Order Ref`, số Style distinct theo `Article`,
   `Sum of Units` và số dòng. Workbook tạm dùng token một lần; chỉ nút `Xác nhận
@@ -438,6 +447,16 @@ Các workflow riêng hiện có:
   `Upload OC from OC_Sale` node `258`. User tự chọn tham số và Export Excel
   trên report WFX; app không tự động hoá bước download này. App tiếp tục từ
   file người dùng đã sửa và chọn lại ở card Revise OC.
+- Workspace OC luôn hiện riêng hai nút `Confirm New` và `Confirm Revision`, kể
+  cả khi OC được upload ngoài app. Flow phải đổi page size EDI Buyer PO thành
+  100 và xử lý tuần tự từng Style. New chọn selector của Style rồi Confirm;
+  Revision kiểm tra từng dòng trong Style: không có WFX Sales Order thì bỏ qua,
+  có đúng một option thì chọn option đó không cần khớp PO của dòng, có nhiều
+  option thì dừng trước Confirm để user chọn thủ công. Mỗi Style được bấm
+  Confirm tối đa hai lượt; sau lượt đầu phải xác nhận vẫn là cùng Style trước
+  khi bấm lại. Sau Confirm phải chờ Style biến mất khỏi tab New/Revision và
+  bảng ổn định tối đa 180 giây rồi mới chuyển Style tiếp theo. Nếu kết quả chưa
+  rõ hoặc quá thời gian, dừng toàn bộ flow và không tự retry.
 - Sample List: List + Floating Filter, tìm theo Sample Order No./Style/
   Created By, và New Sample Order. Nút `Check File` chạy đúng flow Search trước;
   nếu chỉ có một dòng thì tự click Style Code, quét bốn mục file giống Catalog

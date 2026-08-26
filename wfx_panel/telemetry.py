@@ -55,6 +55,7 @@ METHOD_LABELS = {
     "upload_oc": "Upload OC qua EDI Buyer PO",
     "review_oc_upload": "Review file Upload OC",
     "confirm_oc_upload": "Xác nhận Upload OC qua EDI Buyer PO",
+    "confirm_oc_pending": "Confirm nhanh OC theo Style",
     "run_gdn_dispatch": "Tạo (GDN) Dispatch",
     "cancel_oc_upload_review": "Hủy bước xem lại Upload OC",
     "search_sample": "Tìm trong Sample List",
@@ -439,6 +440,26 @@ ERROR_CODE_INFO.update(
         "OC_UPLOAD_FILE_MISSING": (
             "File Upload OC tạm không còn tồn tại",
             "Chọn lại file OC. Nếu vẫn lỗi, xem Log kỹ thuật.",
+        ),
+        "OC_FAST_CONFIRM_FAILED": (
+            "Không hoàn tất được Confirm nhanh OC",
+            "Kiểm tra màn EDI Buyer PO và Log kỹ thuật rồi thử lại.",
+        ),
+        "OC_FAST_CONFIRM_NOT_READY": (
+            "Màn Confirm OC chưa sẵn sàng",
+            "Chờ WFX tải xong tab New hoặc Revision rồi thử lại.",
+        ),
+        "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS": (
+            "Một Style có nhiều WFX Sales Order",
+            "Chọn WFX Sales Order thủ công cho Style được báo rồi chạy lại.",
+        ),
+        "OC_FAST_CONFIRM_PROCESS_TIMEOUT": (
+            "Style chưa process xong",
+            "Kiểm tra Style đang dừng trên WFX trước khi tiếp tục.",
+        ),
+        "OC_FAST_CONFIRM_UNCONFIRMED": (
+            "Chưa đọc được kết quả Confirm OC",
+            "Kiểm tra tab New hoặc Revision trước khi chạy lại.",
         ),
         "LOGIN_TIMEOUT": (
             "WFX phản hồi quá chậm khi đăng nhập",
@@ -907,6 +928,7 @@ _METHOD_MODULES = {
     "upload_oc": "OC List",
     "review_oc_upload": "OC List",
     "confirm_oc_upload": "OC List",
+    "confirm_oc_pending": "OC List",
     "cancel_oc_upload_review": "OC List",
     "search_sample": "Sample List",
     "check_sample_files": "Sample List",

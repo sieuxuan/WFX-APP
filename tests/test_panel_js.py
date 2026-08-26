@@ -193,6 +193,13 @@ def test_oc_workspace_wires_template_new_and_revise_flows():
     assert 'callQuiet("cancel_oc_upload_review", result.review_token)' in JS
 
 
+def test_oc_workspace_wires_always_visible_fast_confirm_buttons():
+    assert '"oc-confirm-new": () => confirmOcPending("new")' in JS
+    assert '"oc-confirm-revision": () => confirmOcPending("revision")' in JS
+    assert 'call("confirm_oc_pending", mode)' in JS
+    assert 'confirm_oc_pending: "Đang Confirm từng Style và chờ WFX xử lý…"' in JS
+
+
 def test_gdn_dispatch_requires_grn_confirmation_and_calls_one_flow():
     assert 'id: "gdn_dispatch"' in JS
     assert 'kind: "gdn_dispatch"' in JS

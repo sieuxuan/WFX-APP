@@ -73,6 +73,9 @@ def test_generated_template_has_one_visible_header_and_hidden_references(tmp_pat
         if validation.type == "list"
     }
     assert validations[1].errorStyle == "warning"
+    assert validations[1].allow_blank is True
+    assert validations[3].allow_blank is True
+    assert validations[4].allow_blank is True
     assert validations[5].errorStyle == "warning"
     assert validations[15].errorStyle is None
     assert validations[22].allow_blank is True
@@ -107,6 +110,12 @@ def test_generated_template_has_one_visible_header_and_hidden_references(tmp_pat
         references.cell(row, 5).value
         for row in range(2, references.max_row + 1)
     }
+    assert {"TEXPORT", "ZALANDOPHO", "ID"}.issubset(
+        {
+            references.cell(row, 5).value
+            for row in range(2, references.max_row + 1)
+        }
+    )
     workbook.close()
 
 
@@ -125,6 +134,123 @@ def test_new_input_maps_republic_of_slovenia_to_europe(tmp_path):
         "Republic of Slovenia"
     )
     assert sheet.cell(2, indexes["Market"]).value == "Europe"
+    workbook.close()
+
+
+def test_new_input_uses_first_row_common_fields_when_later_rows_are_blank(tmp_path):
+    source = _filled_input_file(
+        tmp_path,
+        _input_row(**{"Size Code": "M"}),
+        _input_row(
+            Buyer=None,
+            Season=None,
+            **{
+                "Order Type": None,
+                "Currency": None,
+                "Size Code": "L",
+            },
+        ),
+    )
+
+    prepared = prepare_oc_workbook(source, "new", tmp_path / "edi.xlsx")
+
+    workbook = load_workbook(prepared.upload_path, data_only=True)
+    sheet = workbook["Sheet1"]
+    indexes = {header: index + 1 for index, header in enumerate(EDI_HEADERS)}
+    for row_number in (2, 3):
+        assert sheet.cell(row_number, indexes["Buyer"]).value == "J.LINDEBERG"
+        assert sheet.cell(row_number, indexes["Season"]).value == "SS26"
+        assert sheet.cell(row_number, indexes["Order Type"]).value == "Confirmed"
+        assert sheet.cell(row_number, indexes["Currency"]).value == "USD"
+    workbook.close()
+
+
+def test_new_input_maps_destination_references_to_country_and_market(tmp_path):
+    mappings = (
+        ("TEXPORT", "Sweden", "Europe"),
+        ("CA", "Canada", "America"),
+        ("DO", "Dominican Republic", "America"),
+        ("JP", "Japan", "Asia"),
+        ("US", "United States", "America"),
+        ("KR", "South Korea", "Asia"),
+        ("SG", "Singapore", "Asia"),
+        ("TH", "Thailand", "Asia"),
+        ("JLHQ", "Sweden", "Europe"),
+        ("TW", "Taiwan", "Asia"),
+        ("JLCN", "China", "Asia"),
+        ("AU", "Australia", "Australia"),
+        ("HK", "Hong Kong", "Asia"),
+        ("AE", "United Arab Emirates-AE", "Asia"),
+        ("GE", "Germany", "Europe"),
+        ("JLHQ STUDI", "Sweden", "Europe"),
+        ("SW", "Switzerland", "Europe"),
+        ("AUT", "Austria", "Europe"),
+        ("SP", "Spain", "Europe"),
+        ("NW", "Norway", "Europe"),
+        ("UK", "United Kingdom", "Europe"),
+        ("IT", "Italy", "Europe"),
+        ("FR", "France", "Europe"),
+        ("JLUS", "United States", "America"),
+        ("United States-US-Hanger", "United States-US-Hanger", "America"),
+        ("United States-US-Flat", "United States-US-Flat", "America"),
+        ("Chile", "Chile", "America"),
+        ("Vietnam", "Vietnam", "Asia"),
+        ("New Zealand", "New Zealand", "Australia"),
+        ("Sweden", "Sweden", "Europe"),
+        ("Canada", "Canada", "America"),
+        ("Dominican Republic", "Dominican Republic", "America"),
+        ("Japan", "Japan", "Asia"),
+        ("United States", "United States", "America"),
+        ("South Korea", "South Korea", "Asia"),
+        ("Singapore", "Singapore", "Asia"),
+        ("Thailand", "Thailand", "Asia"),
+        ("Taiwan", "Taiwan", "Asia"),
+        ("China", "China", "Asia"),
+        ("Australia", "Australia", "Australia"),
+        ("Hong Kong", "Hong Kong", "Asia"),
+        ("United Arab Emirates", "United Arab Emirates-AE", "Asia"),
+        ("United Arab Emirates-AE", "United Arab Emirates-AE", "Asia"),
+        ("Germany", "Germany", "Europe"),
+        ("Switzerland", "Switzerland", "Europe"),
+        ("Austria", "Austria", "Europe"),
+        ("Spain", "Spain", "Europe"),
+        ("Norway", "Norway", "Europe"),
+        ("United Kingdom", "United Kingdom", "Europe"),
+        ("Italy", "Italy", "Europe"),
+        ("France", "France", "Europe"),
+        ("ZALANDOPHO", "Germany", "Europe"),
+        ("ES", "Spain", "Europe"),
+        ("ID", "Indonesia", "Asia"),
+    )
+    source = _filled_input_file(
+        tmp_path,
+        *(
+            _input_row(
+                **{
+                    "Country of Final Destination": reference,
+                    "Size Code": f"SIZE-{index}",
+                }
+            )
+            for index, (reference, _country, _market) in enumerate(mappings)
+        ),
+    )
+
+    prepared = prepare_oc_workbook(source, "new", tmp_path / "edi.xlsx")
+
+    workbook = load_workbook(prepared.upload_path, data_only=True)
+    sheet = workbook["Sheet1"]
+    indexes = {header: index + 1 for index, header in enumerate(EDI_HEADERS)}
+    actual = [
+        (
+            sheet.cell(row_number, indexes["Country of Final Destination"]).value,
+            sheet.cell(row_number, indexes["Final Destination"]).value,
+            sheet.cell(row_number, indexes["Market"]).value,
+        )
+        for row_number in range(2, len(mappings) + 2)
+    ]
+    assert actual == [
+        (country, country, market) for _reference, country, market in mappings
+    ]
     workbook.close()
 
 

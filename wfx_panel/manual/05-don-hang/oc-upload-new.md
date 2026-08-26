@@ -20,14 +20,20 @@ xác nhận.
 > Mỗi file chỉ được chứa một Buyer. Buyer và Factory có thể được nhập thêm nếu
 > danh sách gợi ý chưa có giá trị mới.
 
+> [!meo]
+> Buyer, Season, Order Type và Currency chỉ cần nhập ở dòng dữ liệu đầu tiên.
+> Các dòng sau để trống sẽ tự dùng lại bốn giá trị này.
+
 > [!luuy]
 > Ngày Buyer Order phải trước ngày Raw Material ETA. Ngày Raw Material ETA phải
 > trước ngày Buyer Delivery và OC Delivery. Form mới sẽ cảnh báo trong Excel
 > ngay khi bạn đã nhập đủ ba ngày nhưng thứ tự chưa đúng.
 
 > [!meo]
-> `Republic of Slovenia` được tự ánh xạ sang Market `Europe` khi ứng dụng tạo
-> file Upload OC cho WFX.
+> Destination có thể là tên quốc gia hoặc mã/ref của Buyer như `TEXPORT`,
+> `JLHQ`, `US`, `ZALANDOPHO` hay `ID`. Ứng dụng tự đổi sang Country chuẩn và
+> Market tương ứng khi tạo file Upload OC cho WFX. Riêng `AE` và
+> `United Arab Emirates` được chuẩn hóa thành `United Arab Emirates-AE`.
 
 > [!luuy]
 > Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút `Xác nhận Upload` mới

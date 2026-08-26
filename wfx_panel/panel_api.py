@@ -96,6 +96,7 @@ SESSION_OK = frozenset(
         "BUYER_NOT_FOUND",
         "OC_REVISION_REPORT_READY",
         "OC_TRANSACTION_CREATED",
+        "OC_FAST_CONFIRM_COMPLETED",
         "GDN_DISPATCH_COMPLETED",
         "GDN_STATUS_READY",
         "SUPPLIER_INVOICE_DELETE_SUBMITTED",
@@ -253,6 +254,9 @@ NON_REPORTABLE_FAILURES = frozenset(
         "OC_TEMPLATE_SHEET_MISSING",
         "OC_EDI_VALIDATION_FAILED",
         "OC_TRANSACTION_UNCONFIRMED",
+        "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS",
+        "OC_FAST_CONFIRM_PROCESS_TIMEOUT",
+        "OC_FAST_CONFIRM_UNCONFIRMED",
         "GDN_INVOICE_REQUIRED",
         "GDN_INVOICE_INVALID",
         "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
@@ -367,6 +371,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "open_oc_revision_report",
         "upload_oc",
         "confirm_oc_upload",
+        "confirm_oc_pending",
         "run_gdn_dispatch",
         "open_gdn_status",
         "prepare_catalog_style_row",
@@ -848,6 +853,7 @@ class PanelAPI:
                 "open_oc_revision_report",
                 "upload_oc",
                 "confirm_oc_upload",
+                "confirm_oc_pending",
                 "run_gdn_dispatch",
                 "search_sample",
                 "check_sample_files",
@@ -3046,6 +3052,15 @@ class PanelAPI:
             "confirm_oc_upload",
             action,
             {"review_token": token[:8]},
+        )
+
+    def confirm_oc_pending(self, mode: str) -> dict:
+        """Confirm tuần tự các Style chờ, không phụ thuộc lịch sử upload app."""
+        selected_mode = str(mode or "").strip().casefold()
+        return self._run(
+            "confirm_oc_pending",
+            lambda: self._login.confirm_oc_pending(selected_mode, self._log),
+            {"mode": selected_mode},
         )
 
     def upload_oc(self, mode: str, file_path: str) -> dict:

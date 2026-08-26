@@ -1,4 +1,24 @@
-[
+[{
+    "version": "1.0.35",
+    "date": "2026-08-26",
+    "highlights": [
+      {
+        "title": "Confirm nhanh OC theo từng Style",
+        "body": "OC New và Revision có thể Confirm tuần tự từng Style sau Create Transaction, tự xử lý lựa chọn duy nhất và giữ an toàn khi WFX chưa process xong.",
+        "entry": "don-hang-oc-confirm-fast"
+      },
+      {
+        "title": "Form Upload OC linh hoạt hơn",
+        "body": "Buyer, Season, Order Type và Currency có thể dùng lại từ dòng đầu; Destination nhận cả tên quốc gia, mã Buyer và mã ref rồi chuẩn hóa sang Country và Market của WFX.",
+        "entry": "don-hang-oc-new"
+      },
+      {
+        "title": "Theo dõi OC rõ ràng hơn",
+        "body": "Log kỹ thuật, lỗi và trạng thái task được bổ sung để dễ kiểm tra tiến trình Confirm và xử lý khi WFX trả kết quả không đầy đủ.",
+        "entry": "su-co-lich-su"
+      }
+    ]
+  },
   {
     "version": "1.0.34",
     "date": "2026-08-14",
