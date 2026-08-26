@@ -245,7 +245,10 @@ INPUT_COMMENTS = {
         "Nhập ngày theo dd-mm-yyyy; phải sau Buyer Order Date và trước "
         "Buyer Delivery Date."
     ),
-    "Payment Terms": "Chọn đúng điều khoản thanh toán trong danh sách WFX.",
+    "Payment Terms": (
+        "Có thể chọn điều khoản trong danh sách gợi ý hoặc nhập giá trị đang có "
+        "trên WFX."
+    ),
     "Country of Final Destination": (
         "Có thể nhập tên quốc gia hoặc mã Destination ref trong danh sách. App "
         "tự chuẩn hóa Final Destination và Market."
@@ -694,7 +697,7 @@ def _add_list_validation(
     validation.promptTitle = "Upload OC"
     validation.showErrorMessage = True
     validation.showInputMessage = True
-    if header in {"Buyer", "Factory"}:
+    if header in {"Buyer", "Factory", "Payment Terms"}:
         validation.errorStyle = "warning"
         validation.error = (
             f"{input_header} chưa có trong danh sách gợi ý của form. "
@@ -889,9 +892,7 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
             order_type = _canonical_option(
                 values[2], "Order Type", row_number, ORDER_TYPE_OPTIONS
             )
-            payment_terms = _canonical_option(
-                values[13], "Payment Terms", row_number, PAYMENT_TERM_OPTIONS
-            )
+            payment_terms = text[13]
             zone = _canonical_option(
                 values[21],
                 "PO Type (Zone)",
@@ -1160,9 +1161,7 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
                 if values[18] in (None, "")
                 else _decimal(values[18], FORM_HEADERS[18], row_number)
             )
-            payment_terms = _canonical_option(
-                values[9], "Payment Terms", row_number, PAYMENT_TERM_OPTIONS
-            )
+            payment_terms = text[9]
             zone = _canonical_option(
                 values[17],
                 "PO Type",
@@ -1352,12 +1351,6 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
                 "Order Type",
                 row_number,
                 ORDER_TYPE_OPTIONS,
-            )
-            values[indexes["Payment Terms"]] = _canonical_option(
-                values[indexes["Payment Terms"]],
-                "Payment Terms",
-                row_number,
-                PAYMENT_TERM_OPTIONS,
             )
             values[indexes["Zone"]] = _canonical_option(
                 values[indexes["Zone"]],

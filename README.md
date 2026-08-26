@@ -56,8 +56,9 @@ Benchmark RAM/tốc độ của bản này nằm tại
   sau khi sửa luôn tạo snapshot mới, không dùng dữ liệu review cũ. Trạng thái
   EDI `InProgress` hoặc Fail được coi là lỗi ngay; app mở `Failed Record`, hiện
   Mapping/Doc No. cụ thể và lưu ảnh chẩn đoán trước khi dừng transaction.
-  Form có thêm `SMS` và dropdown Payment Terms; tự bỏ dòng Units bằng 0, mặc
-  định Zone trống thành FOB/Extra Production trống thành 0 và chặn sai thứ tự ngày.
+  Form có thêm `SMS` và danh sách gợi ý Payment Terms nhưng vẫn cho phép nhập
+  giá trị khác đang có trên WFX; tự bỏ dòng Units bằng 0, mặc định Zone trống
+  thành FOB/Extra Production trống thành 0 và chặn sai thứ tự ngày.
 - Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
   Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
   và Company Setup. Nút New của QA, Advance Payment Request và Expense Invoice

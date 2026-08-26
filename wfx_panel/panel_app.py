@@ -795,6 +795,52 @@ class PanelApp:
             "mode": selected_mode,
         }
 
+    def choose_oc_upload_export_file(self, source_file: str = "") -> dict:
+        """Choose where to save the generated EDI workbook before upload."""
+        if self.window is None:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_UNAVAILABLE",
+                "message": "Cửa sổ lưu file chưa sẵn sàng.",
+            }
+        stem = _safe_costing_file_stem(source_file or "OC-EDI-Upload")
+        try:
+            selected = self.window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                allow_multiple=False,
+                save_filename=f"WFX-Smart-{stem}.xlsx",
+                file_types=("Excel workbook (*.xlsx)",),
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_FAILED",
+                "message": f"Không mở được cửa sổ lưu file: {error}",
+            }
+        if not selected:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_CANCELLED",
+                "message": "Đã hủy tải file EDI Upload OC.",
+            }
+        try:
+            target = _dialog_selected_path(selected)
+        except ValueError as error:
+            return {
+                "ok": False,
+                "code": "OC_FILE_DIALOG_FAILED",
+                "message": str(error),
+            }
+        if target.suffix.casefold() != ".xlsx":
+            target = target.with_suffix(".xlsx")
+        return {
+            "ok": True,
+            "code": "OC_UPLOAD_EXPORT_PATH_SELECTED",
+            "message": f"Sẽ lưu file EDI thành {target.name}.",
+            "file_path": str(target),
+            "file_name": target.name,
+        }
+
     def choose_sale_asn_export_file(self, invoice_no: str) -> dict:
         """Chọn đích lưu sau khi đã đọc được Invoice No. thực tế."""
         if self.window is None:
@@ -2559,6 +2605,9 @@ class PanelApp:
         self.api.choose_report_export_dir = self.choose_report_export_dir  # type: ignore[attr-defined]
         self.api.open_report_export_dir = self.open_report_export_dir  # type: ignore[attr-defined]
         self.api.choose_oc_upload_file = self.choose_oc_upload_file  # type: ignore[attr-defined]
+        self.api.choose_oc_upload_export_file = (  # type: ignore[attr-defined]
+            self.choose_oc_upload_export_file
+        )
         self.api.choose_sale_asn_export_file = self.choose_sale_asn_export_file  # type: ignore[attr-defined]
         self.api.choose_sale_asn_price_check_export_file = (  # type: ignore[attr-defined]
             self.choose_sale_asn_price_check_export_file

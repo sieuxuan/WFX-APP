@@ -1725,6 +1725,15 @@ def test_upload_oc_requires_review_then_confirm_before_calling_edi(tmp_path):
     assert review["row_count"] == 1
     assert not any(call[0] == "upload_oc_edi" for call in fake.calls)
 
+    exported = tmp_path / "saved-edi.xlsx"
+    saved = api.save_oc_upload_file(review["review_token"], str(exported))
+
+    assert saved["code"] == "OC_UPLOAD_FILE_SAVED"
+    assert exported.is_file()
+    assert exported.read_bytes() == Path(
+        api._oc_upload_reviews[review["review_token"]]["prepared"].upload_path
+    ).read_bytes()
+
     result = api.confirm_oc_upload(review["review_token"])
 
     assert result["code"] == "OC_TRANSACTION_CREATED"

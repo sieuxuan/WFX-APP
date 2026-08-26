@@ -441,6 +441,10 @@ ERROR_CODE_INFO.update(
             "File Upload OC tạm không còn tồn tại",
             "Chọn lại file OC. Nếu vẫn lỗi, xem Log kỹ thuật.",
         ),
+        "OC_UPLOAD_FILE_SAVE_FAILED": (
+            "Không lưu được file EDI Upload OC",
+            "Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại.",
+        ),
         "OC_FAST_CONFIRM_FAILED": (
             "Không hoàn tất được Confirm nhanh OC",
             "Kiểm tra màn EDI Buyer PO và Log kỹ thuật rồi thử lại.",

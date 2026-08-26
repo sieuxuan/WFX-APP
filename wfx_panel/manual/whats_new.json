@@ -1,4 +1,25 @@
 [{
+    "version": "1.0.36",
+    "date": "2026-08-26",
+    "highlights": [
+      {
+        "title": "Upload OC luôn có bản EDI để lưu lại",
+        "body": "Sau khi kiểm tra file, app tạo bản EDI và yêu cầu tải xuống máy trước khi tự Upload. Nếu WFX trả lỗi, bạn có thể dùng chính file này để Upload thủ công lại.",
+        "entry": "don-hang-oc-new"
+      },
+      {
+        "title": "Create Transaction ổn định hơn",
+        "body": "App xác nhận dòng Transaction Detail đã được WFX chọn trước khi Create. Nếu WFX chỉ báo No Record Selected, app chọn lại và thử an toàn đúng một lần.",
+        "entry": "don-hang-oc-new"
+      },
+      {
+        "title": "Payment Terms không còn bị chặn theo danh sách cũ",
+        "body": "Form vẫn có danh sách gợi ý nhưng cho phép nhập điều khoản thanh toán đang có trên WFX, kể cả khi chưa xuất hiện trong form.",
+        "entry": "don-hang-oc-new"
+      }
+    ]
+  },
+  {
     "version": "1.0.35",
     "date": "2026-08-26",
     "highlights": [

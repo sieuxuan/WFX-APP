@@ -262,6 +262,7 @@
     "find_supplier_in_category", "find_buyer",
     "toggle_company_foc",
     "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
+    "choose_oc_upload_export_file", "save_oc_upload_file",
     "confirm_oc_pending",
     "run_gdn_dispatch",
     "clear_catalog_costing_dependencies",
@@ -302,6 +303,7 @@
     upload_oc: "Đang kiểm tra file và upload OC qua EDI…",
     review_oc_upload: "Đang kiểm tra file và tổng hợp review…",
     confirm_oc_upload: "Đang upload OC đã xác nhận qua EDI…",
+    save_oc_upload_file: "Đang lưu file EDI để có thể Upload lại…",
     confirm_oc_pending: "Đang Confirm từng Style và chờ WFX xử lý…",
     run_gdn_dispatch: "Đang tạo (GDN) Dispatch trên WFX…",
     download_oc_template: "Đang tạo form Upload OC…",
@@ -1672,12 +1674,23 @@
     if (review) review.hidden = true;
   }
 
+  function syncOcUploadReviewActions() {
+    const hasReview = Boolean(pendingOcReview?.token);
+    const downloadButton = $('[data-module-action="oc-review-download"]');
+    const confirmButton = $('[data-module-action="oc-review-confirm"]');
+    if (downloadButton) downloadButton.disabled = !hasReview;
+    if (confirmButton) {
+      confirmButton.disabled = !hasReview || !pendingOcReview.downloaded;
+    }
+  }
+
   function renderOcUploadReview(result, fileName = "") {
     const review = $(".oc-upload-review");
     if (!review || !result?.ok || !result.review_token) return;
     pendingOcReview = {
       token: result.review_token,
       fileName: fileName || result.source_file || "",
+      downloaded: false,
     };
     $(".oc-review-file").textContent = pendingOcReview.fileName;
     $(".oc-review-mode").textContent = result.mode === "revise" ? "REVISE" : "NEW";
@@ -1690,6 +1703,7 @@
     const warnings = Array.isArray(result.warnings) ? result.warnings : [];
     warning.textContent = warnings.join(" · ");
     warning.hidden = warnings.length === 0;
+    syncOcUploadReviewActions();
     review.hidden = false;
     review.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -1720,7 +1734,7 @@
       renderOcUploadReview(result, selected.file_name);
       renderOcUploadResult({
         ...result,
-        message: "File hợp lệ. Kiểm tra review và bấm Xác nhận Upload.",
+        message: "File hợp lệ. Hãy tải form EDI xuống máy trước khi tự Upload.",
       }, selected.file_name);
     } else if (result) {
       pendingOcReview = null;
@@ -1734,6 +1748,7 @@
     ocSelectionRevision += 1;
     const token = pendingOcReview?.token || "";
     pendingOcReview = null;
+    syncOcUploadReviewActions();
     hideOcUploadReview();
     if (!token) return null;
     const result = await callQuiet("cancel_oc_upload_review", token);
@@ -1741,11 +1756,35 @@
     return result;
   }
 
-  async function confirmOcUploadReview() {
+  async function downloadOcUploadFile() {
     if (!pendingOcReview?.token) return null;
+    const { token, fileName } = pendingOcReview;
+    const selected = await callQuiet("choose_oc_upload_export_file", fileName);
+    if (!selected?.ok) {
+      if (selected && selected.code !== "OC_FILE_DIALOG_CANCELLED") {
+        renderOcUploadResult(selected, fileName);
+        handleResult(selected);
+      }
+      return selected;
+    }
+    const saved = await call("save_oc_upload_file", token, selected.file_path);
+    if (saved?.ok && pendingOcReview?.token === token) {
+      pendingOcReview.downloaded = true;
+      syncOcUploadReviewActions();
+      renderOcUploadResult(saved, saved.file_name || fileName);
+    }
+    return saved;
+  }
+
+  async function confirmOcUploadReview() {
+    if (!pendingOcReview?.token || !pendingOcReview.downloaded) {
+      setStatus("warning", "Hãy tải file EDI xuống máy trước khi Xác nhận Upload.");
+      return null;
+    }
     const { token, fileName } = pendingOcReview;
     const result = await call("confirm_oc_upload", token);
     pendingOcReview = null;
+    syncOcUploadReviewActions();
     hideOcUploadReview();
     if (result) renderOcUploadResult(result, fileName);
     return result;
@@ -2620,6 +2659,7 @@
     "oc-upload-new": () => uploadOcFile("new"),
     "oc-confirm-new": () => confirmOcPending("new"),
     "oc-review-cancel": cancelOcUploadReview,
+    "oc-review-download": downloadOcUploadFile,
     "oc-review-confirm": confirmOcUploadReview,
     "oc-revise-report": async () => {
       const result = await call("open_oc_revision_report");

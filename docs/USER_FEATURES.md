@@ -4,7 +4,7 @@
 > sửa nội dung trong `wfx_panel/manual/` rồi chạy
 > `python scripts/generate_user_features.py`.
 
-Phiên bản: 1.0.35
+Phiên bản: 1.0.36
 
 ## 1. Bắt đầu
 
@@ -186,7 +186,7 @@ Dùng để làm gì Mở OC List và tìm đúng OC bằng số OC hoặc Style
 
 Kiểm tra file và tạo OC mới sau khi bạn xác nhận.
 
-Dùng để làm gì Kiểm tra file OC mới trên máy, xem lại số liệu rồi tạo OC trên WFX sau khi bạn xác nhận. Các bước Mở module OC List. Bấm Tải file mẫu trong thẻ Upload OC New. Mở file và chỉ nhập dữ liệu trong sheet OC INPUT. Lưu file Excel. Bấm Chọn file OC mới trong thẻ Upload OC New. Đọc bảng Review trước khi Upload. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng. Bấm Xác nhận Upload để bắt đầu tạo OC trên WFX. Mẹo Mẹo Mỗi file chỉ được chứa một Buyer. Buyer và Factory có thể được nhập thêm nếu danh sách gợi ý chưa có giá trị mới. Mẹo Buyer, Season, Order Type và Currency chỉ cần nhập ở dòng dữ liệu đầu tiên. Các dòng sau để trống sẽ tự dùng lại bốn giá trị này. Lưu ý Ngày Buyer Order phải trước ngày Raw Material ETA. Ngày Raw Material ETA phải trước ngày Buyer Delivery và OC Delivery. Form mới sẽ cảnh báo trong Excel ngay khi bạn đã nhập đủ ba ngày nhưng thứ tự chưa đúng. Mẹo Destination có thể là tên quốc gia hoặc mã/ref của Buyer như TEXPORT , JLHQ , US , ZALANDOPHO hay ID . Ứng dụng tự đổi sang Country chuẩn và Market tương ứng khi tạo file Upload OC cho WFX. Riêng AE và United Arab Emirates được chuẩn hóa thành United Arab Emirates-AE . Lưu ý Chọn file chỉ kiểm tra trên máy và hiện Review. Chỉ nút Xác nhận Upload mới bắt đầu thao tác trên WFX. Bấm Hủy thì không có dữ liệu nào được gửi đi. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo file có nhiều Buyer Tách dữ liệu thành từng file, mỗi file chỉ giữ một Buyer. Báo sai ngày hoặc số lượng Mở đúng ô được báo, sửa giá trị rồi chọn lại file. WFX chưa sẵn sàng nhận file Giữ file đã sửa, kiểm tra phiên WFX rồi thực hiện Upload lại.
+Dùng để làm gì Kiểm tra file OC mới trên máy, xem lại số liệu rồi tạo OC trên WFX sau khi bạn xác nhận. Các bước Mở module OC List. Bấm Tải file mẫu trong thẻ Upload OC New. Mở file và chỉ nhập dữ liệu trong sheet OC INPUT. Lưu file Excel. Bấm Chọn file OC mới trong thẻ Upload OC New. Đọc bảng Review trước khi Upload. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng. Bấm Tải file EDI xuống máy để lưu bản form hệ thống đã tự tạo. Mở kiểm tra file nếu cần, sau đó bấm Xác nhận Upload để bắt đầu tạo OC trên WFX. Mẹo Mẹo Mỗi file chỉ được chứa một Buyer. Buyer và Factory có thể được nhập thêm nếu danh sách gợi ý chưa có giá trị mới. Mẹo Buyer, Season, Order Type và Currency chỉ cần nhập ở dòng dữ liệu đầu tiên. Các dòng sau để trống sẽ tự dùng lại bốn giá trị này. Lưu ý Ngày Buyer Order phải trước ngày Raw Material ETA. Ngày Raw Material ETA phải trước ngày Buyer Delivery và OC Delivery. Form mới sẽ cảnh báo trong Excel ngay khi bạn đã nhập đủ ba ngày nhưng thứ tự chưa đúng. Mẹo Destination có thể là tên quốc gia hoặc mã/ref của Buyer như TEXPORT , JLHQ , US , ZALANDOPHO hay ID . Ứng dụng tự đổi sang Country chuẩn và Market tương ứng khi tạo file Upload OC cho WFX. Riêng AE và United Arab Emirates được chuẩn hóa thành United Arab Emirates-AE . Lưu ý Chọn file chỉ kiểm tra trên máy và hiện Review. App yêu cầu lưu bản EDI đã sinh trước khi cho phép tự Upload. Nếu WFX báo lỗi, dùng file đã lưu để Upload thủ công lại trên WFX hoặc chọn lại file nguồn trong ứng dụng. Gặp lỗi thì sao Hiện tượng Cách xử lý Báo file có nhiều Buyer Tách dữ liệu thành từng file, mỗi file chỉ giữ một Buyer. Báo sai ngày hoặc số lượng Mở đúng ô được báo, sửa giá trị rồi chọn lại file. WFX chưa sẵn sàng nhận file Giữ file đã sửa, kiểm tra phiên WFX rồi thực hiện Upload lại.
 
 ### Revise OC
 
@@ -426,6 +426,7 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `OC_REVISION_REPORT_FAILED` | Không thể mở report Revise OC | Mở Log kỹ thuật và kiểm tra quyền Reporting & Analytic của tài khoản. |
 | `OC_REVISION_REPORT_NOT_READY` | Report Upload OC from OC_Sale chưa sẵn sàng | Chờ cây báo cáo tải xong rồi bấm Mở report lại. |
 | `OC_UPLOAD_FILE_MISSING` | File Upload OC tạm không còn tồn tại | Chọn lại file OC. Nếu vẫn lỗi, xem Log kỹ thuật. |
+| `OC_UPLOAD_FILE_SAVE_FAILED` | Không lưu được file EDI Upload OC | Chọn thư mục có quyền ghi, đóng file cũ nếu đang mở và thử lại. |
 | `PANEL_ERROR` | Ứng dụng gặp lỗi khi chạy tác vụ | Mở Log kỹ thuật để xem mã lượt chạy. |
 | `QUICK_SEARCH_FAILED` | Quick Search gặp lỗi | Mở module thủ công và thử lại từng bước. |
 | `QUICK_SEARCH_TIMEOUT` | Quick Search phản hồi quá chậm | Chờ WFX tải xong rồi thử lại. |

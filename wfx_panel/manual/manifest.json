@@ -356,13 +356,15 @@
             "actions": [
               "oc-template",
               "oc-upload-new",
+              "oc-review-download",
               "oc-review-confirm",
               "oc-review-cancel"
             ],
             "errors": [
               "OC_EDI_FAILED",
               "OC_EDI_NOT_READY",
-              "OC_UPLOAD_FILE_MISSING"
+              "OC_UPLOAD_FILE_MISSING",
+              "OC_UPLOAD_FILE_SAVE_FAILED"
             ]
           }
         },
