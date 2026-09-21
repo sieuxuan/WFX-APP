@@ -325,3 +325,67 @@ def test_concurrent_flushes_do_not_post_duplicates(tmp_path, monkeypatch):
 
     assert sorted(seen) == [0, 1, 2, 3, 4]
     assert telemetry._load_outbox(tmp_path) == []
+
+
+def test_a_background_flush_failure_is_recorded_instead_of_killing_the_thread(
+    tmp_path, monkeypatch
+):
+    """Thread flush là daemon và không ai join nó.
+
+    Nếu `telemetry.flush` ném (ổ đĩa đầy, quyền bị chặn, antivirus khoá file
+    tạm) thì thread chết không dấu vết — và trong test còn nổi lên thành
+    `PytestUnhandledThreadExceptionWarning` ngẫu nhiên khi pytest đã dọn
+    tmp_path trước lúc thread chạy.
+    """
+    from wfx_panel import crash_log, run_engine
+
+    recorded: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        crash_log,
+        "record",
+        lambda event, **details: recorded.append((event, details)),
+    )
+    monkeypatch.setattr(
+        run_engine.telemetry,
+        "flush",
+        lambda *_a, **_kw: (_ for _ in ()).throw(OSError("ổ đĩa đầy")),
+    )
+
+    run_engine._flush_telemetry_quietly(tmp_path, "https://hooks.test/x")
+
+    assert recorded == [
+        ("TELEMETRY_FLUSH_FAILED", {"exception": "OSError: ổ đĩa đầy"})
+    ]
+
+
+def test_a_background_flush_that_works_records_nothing(tmp_path, monkeypatch):
+    from wfx_panel import crash_log, run_engine
+
+    recorded: list[str] = []
+    monkeypatch.setattr(
+        crash_log, "record", lambda event, **_details: recorded.append(event)
+    )
+    sent: list[tuple] = []
+    monkeypatch.setattr(
+        run_engine.telemetry,
+        "flush",
+        lambda base_dir, endpoint: sent.append((base_dir, endpoint)),
+    )
+
+    run_engine._flush_telemetry_quietly(tmp_path, "https://hooks.test/x")
+
+    assert sent == [(tmp_path, "https://hooks.test/x")]
+    assert recorded == []
+
+
+def test_the_background_flush_thread_is_named_so_a_dump_can_identify_it():
+    import threading
+
+    from wfx_panel import run_engine
+
+    source = run_engine.__file__
+    with open(source, encoding="utf-8") as stream:
+        text = stream.read()
+    assert 'name="wfx-telemetry-flush"' in text
+    assert "target=_flush_telemetry_quietly" in text
+    assert isinstance(threading.current_thread().name, str)

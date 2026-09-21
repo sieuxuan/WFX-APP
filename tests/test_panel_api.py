@@ -2601,8 +2601,8 @@ def test_automatic_report_thread_captures_disabled_endpoint(
     scheduled = []
 
     class DeferredThread:
-        def __init__(self, target, args, daemon):
-            scheduled.append((target, args, daemon))
+        def __init__(self, target, args, daemon, name=""):
+            scheduled.append((target, args, daemon, name))
 
         def start(self):
             return None
@@ -2610,6 +2610,11 @@ def test_automatic_report_thread_captures_disabled_endpoint(
     monkeypatch.setattr(
         "wfx_panel.panel_api.threading.Thread",
         DeferredThread,
+    )
+    sent = []
+    monkeypatch.setattr(
+        "wfx_panel.telemetry.flush",
+        lambda base_dir, endpoint: sent.append((base_dir, endpoint)),
     )
 
     class FailingLogin(FakeLogin):
@@ -2629,10 +2634,15 @@ def test_automatic_report_thread_captures_disabled_endpoint(
     api.open_module("0004_0050_0020")
 
     assert len(scheduled) == 1
-    target, args, daemon = scheduled[0]
-    assert target is telemetry.flush
+    target, args, daemon, name = scheduled[0]
     assert args == (tmp_path, "")
     assert daemon is True
+    assert name == "wfx-telemetry-flush"
+
+    # Target là wrapper nuốt lỗi, nhưng nó phải gửi đúng endpoint đã chốt lúc
+    # lên lịch — không được tự resolve lại DEFAULT_WEBHOOK_URL khi chạy trễ.
+    target(*args)
+    assert sent == [(tmp_path, "")]
 
 
 def test_failed_division_switch_records_local_screenshot(tmp_path):

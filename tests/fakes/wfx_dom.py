@@ -54,6 +54,9 @@ class FakeClock:
     def time(self) -> float:
         return self._now
 
+    def monotonic_ns(self) -> int:
+        return int(self._now * 1_000_000_000)
+
     def sleep(self, seconds: float) -> None:
         self.advance(seconds)
 
@@ -90,6 +93,7 @@ class FakeNode:
         self.checked = False
         self.check_calls = 0
         self.keys: list[str] = []
+        self.selected: list[str] = []
         self.parent: FakeNode | None = None
 
     def _guard(self) -> None:
@@ -143,6 +147,11 @@ class FakeNode:
     def press(self, key: str, timeout: float | None = None) -> None:
         self._guard()
         self.keys.append(key)
+
+    def select_option(self, value: str | None = None, **_kwargs: Any) -> None:
+        self._guard()
+        self.selected.append(str(value))
+        self.value = str(value)
 
     def evaluate(self, script: str, arg: Any = None) -> Any:
         self._guard()
@@ -208,6 +217,9 @@ class FakeLocator:
 
     def press(self, key: str, timeout: float | None = None) -> None:
         self._node.press(key, timeout)
+
+    def select_option(self, value: str | None = None, **kwargs: Any) -> None:
+        self._node.select_option(value, **kwargs)
 
     def evaluate(self, script: str, arg: Any = None) -> Any:
         return self._node.evaluate(script, arg)
