@@ -19,6 +19,7 @@ import pytest
 from openpyxl import Workbook
 
 from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from wfx_panel.automation import sale_asn_documents as docs
 
@@ -256,12 +257,12 @@ def test_the_browser_boundary_codes_are_reported(
 
 
 def _reach_grid(monkeypatch, rows):
-    monkeypatch.setattr(docs, "_open_list_search_context", lambda *_a, **_k: "frame")
-    monkeypatch.setattr(docs, "_clear_list_search_fields", lambda *_a, **_k: None)
-    monkeypatch.setattr(docs, "_search_input_in_frame", lambda *_a, **_k: "field")
-    monkeypatch.setattr(docs, "_apply_module_search", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        docs,
+    patch_automation(monkeypatch, docs, "_open_list_search_context", lambda *_a, **_k: "frame")
+    patch_automation(monkeypatch, docs, "_clear_list_search_fields", lambda *_a, **_k: None)
+    patch_automation(monkeypatch, docs, "_search_input_in_frame", lambda *_a, **_k: "field")
+    patch_automation(monkeypatch, docs, "_apply_module_search", lambda *_a, **_k: None)
+    patch_automation(
+        monkeypatch, docs,
         "_sale_asn_result_grid",
         lambda *_a, **_k: ("root", {"rows": rows}),
     )
@@ -274,7 +275,7 @@ def test_a_row_without_a_docs_button_is_reported_with_the_invoice(
 ):
     wire_automation(monkeypatch, docs, world)
     _reach_grid(monkeypatch, [_row("INV-1")])
-    monkeypatch.setattr(docs, "_click_sale_asn_docs", lambda *_a, **_k: False)
+    patch_automation(monkeypatch, docs, "_click_sale_asn_docs", lambda *_a, **_k: False)
 
     result = _prepare(world, tmp_path)
 
@@ -290,8 +291,8 @@ def test_several_matching_rows_are_reported_to_the_user(
 ):
     wire_automation(monkeypatch, docs, world)
     _reach_grid(monkeypatch, [_row("INV-1"), _row("INV-1")])
-    monkeypatch.setattr(
-        docs,
+    patch_automation(
+        monkeypatch, docs,
         "_click_sale_asn_docs",
         lambda *_a, **_k: pytest.fail("Chưa chọn được dòng thì không được bấm Docs"),
     )
@@ -319,12 +320,12 @@ def test_popups_are_closed_even_when_the_run_fails(
         opened.append(world.add_page(FakePage(clock)))
         return True
 
-    monkeypatch.setattr(docs, "_click_sale_asn_docs", click_docs)
+    patch_automation(monkeypatch, docs, "_click_sale_asn_docs", click_docs)
 
     def boom(*_args, **_kwargs):
         raise docs.PlaywrightTimeoutError("Documents chưa mở")
 
-    monkeypatch.setattr(docs, "_documents_frame", boom)
+    patch_automation(monkeypatch, docs, "_documents_frame", boom)
 
     result = _prepare(world, tmp_path)
 

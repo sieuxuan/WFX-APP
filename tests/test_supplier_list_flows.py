@@ -26,6 +26,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.ui_source import panel_js
 from tests.fakes.wfx_dom import install_fake_clock
 from tests.fakes.wfx_supplier import (
@@ -68,7 +69,7 @@ def _menu(monkeypatch, page, frame=None):
             page.frames.append(frame)
         return True
 
-    monkeypatch.setattr(directory, "_click_module_menu_on_page", click_menu)
+    patch_automation(monkeypatch, directory, "_click_module_menu_on_page", click_menu)
     return opened
 
 
@@ -281,8 +282,8 @@ def test_loi_la_khong_bien_thanh_ma_ranh_gioi(monkeypatch, world):
     world.page.frames.append(frame)
     _menu(monkeypatch, world.page)
     wire_automation(monkeypatch, directory, world)
-    monkeypatch.setattr(
-        directory,
+    patch_automation(
+        monkeypatch, directory,
         "_open_supplier_category_on_page",
         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("ổ đĩa đầy")),
     )
@@ -468,7 +469,7 @@ def test_mot_category_loi_van_bao_ket_qua_mot_phan(monkeypatch, world):
             raise PlaywrightError("Frame Textiles/Fabric đã detach")
         return real(page, current, query, log, kind)
 
-    monkeypatch.setattr(directory, "_filter_company_rows", flaky)
+    patch_automation(monkeypatch, directory, "_filter_company_rows", flaky)
 
     result = _find_all("acme")
 
@@ -492,8 +493,8 @@ def test_moi_category_deu_loi_thi_khong_duoc_noi_la_khong_tim_thay(
     world.page.frames.append(frame)
     _menu(monkeypatch, world.page)
     wire_automation(monkeypatch, directory, world)
-    monkeypatch.setattr(
-        directory,
+    patch_automation(
+        monkeypatch, directory,
         "_filter_company_rows",
         lambda *_a, **_k: (_ for _ in ()).throw(PlaywrightError("frame detached")),
     )
@@ -596,7 +597,7 @@ def test_frame_doi_giua_chung_thi_dong_bo_lai_dung_mot_lan(monkeypatch, world):
             page.frames.append(fresh)
         return real_fill(page, current, query, log, kind)
 
-    monkeypatch.setattr(directory, "_fill_company_query", swap)
+    patch_automation(monkeypatch, directory, "_fill_company_query", swap)
 
     result = _find_in(TRIMS, "acme")
 
@@ -736,8 +737,8 @@ def test_timeout_cua_supplier_khong_bien_thanh_stack_trace(monkeypatch, world):
     world.page.frames.append(frame)
     _menu(monkeypatch, world.page)
     wire_automation(monkeypatch, directory, world)
-    monkeypatch.setattr(
-        directory,
+    patch_automation(
+        monkeypatch, directory,
         "_filter_company_rows",
         lambda *_a, **_k: (_ for _ in ()).throw(
             PlaywrightTimeoutError("Kết quả Company Name chưa ổn định")

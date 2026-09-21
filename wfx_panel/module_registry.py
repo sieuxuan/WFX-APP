@@ -1,8 +1,10 @@
-"""Controller riêng cho từng module WFX.
+"""Danh bạ module WFX: mỗi màn hình một mô tả và cách mở.
 
-UI chỉ biết module id và metadata. Mọi hành vi mở module nằm trong các lớp ở
-đây để sau này mỗi màn hình có thể thêm workflow riêng mà không làm PanelAPI
-thành một khối if/else lớn.
+UI chỉ biết module id và metadata. Cách mở từng màn nằm trong các lớp ở đây
+nên thêm module mới không phải đụng tới một khối if/else nào.
+
+Đừng nhầm với ``wfx_panel/controllers/modules.py``: file đó là bridge của các
+flow module (List/New/Search), còn đây là danh bạ mô tả module.
 """
 
 from __future__ import annotations

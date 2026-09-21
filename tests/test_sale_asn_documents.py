@@ -5,6 +5,7 @@ import pytest
 from openpyxl import Workbook
 
 import wfx_panel.automation.sale_asn_documents as sale_asn_documents
+from tests.fakes.module_reflection import patch_automation
 from wfx_panel.automation.sale_asn_documents import (
     _CLICK_SALE_ASN_DOCS_JS,
     _SALE_ASN_ROWS_JS,
@@ -74,8 +75,8 @@ def test_download_report_uses_authenticated_ssrs_request_without_browser_click(
 
     frame = FakeFrame()
 
-    monkeypatch.setattr(
-        sale_asn_documents,
+    patch_automation(
+        monkeypatch, sale_asn_documents,
         "_report_export_url",
         lambda _frame: "/export?Format=",
     )
@@ -134,8 +135,8 @@ def test_download_report_retries_same_export_when_wfx_first_returns_html(
             raise AssertionError("unexpected script")
 
     frame = FakeFrame()
-    monkeypatch.setattr(
-        sale_asn_documents,
+    patch_automation(
+        monkeypatch, sale_asn_documents,
         "_report_export_url",
         lambda _frame: "/export?Format=",
     )
@@ -179,13 +180,13 @@ def test_download_report_aborts_in_page_fetch_when_stop_reaches_checkpoint(
             raise AssertionError("unexpected script")
 
     frame = FakeFrame()
-    monkeypatch.setattr(
-        sale_asn_documents,
+    patch_automation(
+        monkeypatch, sale_asn_documents,
         "_report_export_url",
         lambda _frame: "/export?Format=",
     )
-    monkeypatch.setattr(
-        sale_asn_documents,
+    patch_automation(
+        monkeypatch, sale_asn_documents,
         "_wait",
         lambda *_args: (_ for _ in ()).throw(Cancelled()),
     )

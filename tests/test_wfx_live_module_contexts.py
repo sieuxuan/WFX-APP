@@ -10,7 +10,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 import login
-from wfx_panel import constants, module_controllers, prefs
+from wfx_panel import constants, module_registry, prefs
 from wfx_panel.automation import directory
 
 pytestmark = pytest.mark.skipif(
@@ -64,7 +64,7 @@ def _clear_company_filter(expected_kind: str) -> None:
 
 
 def _open(module_id: str) -> dict:
-    controller = module_controllers.get(module_id)
+    controller = module_registry.get(module_id)
     assert controller is not None
     return controller.open(login, lambda _line: None)
 

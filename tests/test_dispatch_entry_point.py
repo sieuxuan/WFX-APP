@@ -12,7 +12,18 @@ Thẻ tiến độ sáu bước (`report`/`download`/`workbook`/`edi`/`package`/
 `transaction`) cũng phải phản ánh đúng bước đang hỏng.
 """
 
-from __future__ import annotationsimport pytestfrom playwright.sync_api import TimeoutError as PlaywrightTimeoutErrorfrom tests.fakes.automation_boundary import WfxWorld, wire_automationfrom tests.fakes.wfx_dom import install_fake_clockfrom wfx_panel.automation import dispatch@pytest.fixture
+from __future__ import annotations
+
+import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+from tests.fakes.automation_boundary import WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
+from tests.fakes.wfx_dom import install_fake_clock
+from wfx_panel.automation import dispatch
+
+
+@pytest.fixture
 def clock(monkeypatch):
     return install_fake_clock(monkeypatch, dispatch)
 
@@ -101,7 +112,7 @@ def test_a_failure_while_building_the_workbook_is_safe_to_retry(
             "Report Buyer Dispatch chưa tải xong.",
         )
 
-    monkeypatch.setattr(dispatch, "_prepare_dispatch_workbook", boom)
+    patch_automation(monkeypatch, dispatch, "_prepare_dispatch_workbook", boom)
 
     result = dispatch.run_gdn_dispatch("INV-001", _quiet(), progress)
 
@@ -136,21 +147,21 @@ def test_an_expired_session_before_any_upload_is_safe_to_retry(monkeypatch, worl
 
 
 def _reach_package(monkeypatch, *, fail_with):
-    monkeypatch.setattr(
-        dispatch,
+    patch_automation(
+        monkeypatch, dispatch,
         "_prepare_dispatch_workbook",
         lambda _ctx, _inv, _tmp, _log, stage: stage(
             "workbook", "Đã tạo workbook", 3
         )
         or "upload.xlsx",
     )
-    monkeypatch.setattr(dispatch, "_open_edi", lambda *_a, **_k: "frame")
-    monkeypatch.setattr(dispatch, "_edi_rows", lambda *_a, **_k: [])
+    patch_automation(monkeypatch, dispatch, "_open_edi", lambda *_a, **_k: "frame")
+    patch_automation(monkeypatch, dispatch, "_edi_rows", lambda *_a, **_k: [])
 
     def boom(*_args, **_kwargs):
         raise fail_with
 
-    monkeypatch.setattr(dispatch, "_process_package", boom)
+    patch_automation(monkeypatch, dispatch, "_process_package", boom)
 
 
 def test_a_package_failure_sends_the_user_to_inspect_edi(monkeypatch, world):
@@ -233,8 +244,8 @@ def test_a_timeout_at_the_package_stage_keeps_the_inspect_checkpoint(
 def test_the_six_stages_are_streamed_in_order(monkeypatch, world):
     wire_automation(monkeypatch, dispatch, world)
     progress = Progress()
-    monkeypatch.setattr(
-        dispatch,
+    patch_automation(
+        monkeypatch, dispatch,
         "_prepare_dispatch_workbook",
         lambda _ctx, _inv, _tmp, _log, stage: [
             stage("download", "Đang tải Excel…", 2),
@@ -242,13 +253,13 @@ def test_the_six_stages_are_streamed_in_order(monkeypatch, world):
         ]
         and "upload.xlsx",
     )
-    monkeypatch.setattr(dispatch, "_open_edi", lambda *_a, **_k: "frame")
-    monkeypatch.setattr(dispatch, "_edi_rows", lambda *_a, **_k: [])
+    patch_automation(monkeypatch, dispatch, "_open_edi", lambda *_a, **_k: "frame")
+    patch_automation(monkeypatch, dispatch, "_edi_rows", lambda *_a, **_k: [])
 
     def boom(*_args, **_kwargs):
         raise dispatch.DispatchFlowError("GDN_PACKAGE_PROCESS_FAILED", "Fail")
 
-    monkeypatch.setattr(dispatch, "_process_package", boom)
+    patch_automation(monkeypatch, dispatch, "_process_package", boom)
 
     dispatch.run_gdn_dispatch("INV-001", _quiet(), progress)
 
