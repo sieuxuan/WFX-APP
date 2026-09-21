@@ -1739,12 +1739,22 @@ def _sample_file_result(
             "Kết quả Sample không có Style Code có thể mở.",
         )
     if total_rows > 1 or len(rows) > 1:
+        # `result_count` là số dòng người dùng bấm được, không phải số dòng
+        # grid trả về: dòng không có Style Code không vào danh sách, nên đếm
+        # theo `total_rows` sẽ hiện "3 kết quả" cho một danh sách chỉ có một
+        # dòng chọn được. Chênh lệch phải nói rõ trong message.
+        message = f"Có {len(usable)} kết quả; chọn Sample cần kiểm tra file."
+        if len(usable) < total_rows:
+            message = (
+                f"Có {total_rows} kết quả, {len(usable)} dòng mở được Style "
+                "Code; chọn Sample cần kiểm tra file."
+            )
         return _result(
             True,
             "SAMPLE_MULTIPLE_RESULTS",
-            f"Có {total_rows} kết quả; chọn Sample cần kiểm tra file.",
+            message,
             samples=usable[:20],
-            result_count=total_rows,
+            result_count=len(usable),
         )
     selected = usable[0]
     if not _click_sample_style_result(
@@ -1765,82 +1775,6 @@ def _sample_file_result(
         f"Đã mở Style Code {article_code} từ Sample List.",
         article_code=article_code,
     )
-
-
-def find_sample_file_results(
-    xpath: str,
-    filter_kind: str,
-    query: str,
-    log: Callable[[str], None] = print,
-) -> dict[str, Any]:
-    """Tìm Sample như flow thường, tự mở Style nếu chỉ có một dòng."""
-    selected_field = SAMPLE_SEARCH_SPEC.fields.get(filter_kind)
-    if selected_field is None:
-        return _result(
-            False,
-            "INVALID_FILTER",
-            "Kiểu tìm Sample List không hợp lệ.",
-        )
-    query = str(query or "").strip()
-    if not query:
-        return _result(
-            False,
-            "QUERY_REQUIRED",
-            f"Vui lòng nhập {selected_field.label} cần tìm.",
-        )
-    playwright: Playwright | None = None
-    search_started = False
-    try:
-        playwright = sync_playwright().start()
-        _browser, page = _active_wfx_page(playwright, log)
-        frame = _open_list_search_context(
-            page,
-            SAMPLE_SEARCH_SPEC,
-            xpath,
-            log,
-        )
-        _clear_list_search_fields(
-            frame,
-            SAMPLE_SEARCH_SPEC.field_selectors,
-            scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
-        )
-        _wait(page, 250)
-        field = _search_input_in_frame(
-            page,
-            frame,
-            selected_field.selectors,
-            selected_field.aliases,
-            timeout_s=8,
-            scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
-        )
-        search_started = True
-        _apply_module_search(page, field, query, selected_field.label, log)
-        return _sample_file_result(frame, log)
-    except PlaywrightTimeoutError as exc:
-        detail = _first_line(exc)
-        code = (
-            "MODULE_SEARCH_NOT_CONFIRMED"
-            if search_started
-            else "MODULE_SEARCH_NOT_READY"
-        )
-        message = f"Chưa thể kiểm tra file từ Sample List: {detail}"
-        _write_log(log, message)
-        return _result(False, code, message, module="Sample List")
-    except Exception as exc:
-        boundary = _browser_boundary_result(exc, module="Sample List")
-        if boundary is not None:
-            return boundary
-        message = f"{type(exc).__name__}: {_first_line(exc)}"
-        _write_log(log, message)
-        return _result(
-            False,
-            "SAMPLE_FILE_SEARCH_FAILED",
-            message,
-            module="Sample List",
-        )
-    finally:
-        if playwright is not None:
-            playwright.stop()
 
 
 def _sample_filter_values(
@@ -2020,23 +1954,29 @@ def open_sample_file_result(
         return _result(
             False,
             "SAMPLE_RESULT_EXPIRED",
-            "Lựa chọn Sample đã hết hiệu lực. Hãy bấm Check File lại.",
+            "Lựa chọn Sample đã hết hiệu lực. Hãy bấm Xem file đính kèm lại.",
         )
     playwright: Playwright | None = None
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
+        # Grid vẫn đang mở, chỉ cần nhận lại context. Phải quét ngang như mọi
+        # lối vào Sample khác: mỗi tài khoản kéo cột một kiểu nên cột Sample
+        # Order No. có thể đang nằm ngoài viewport, và khi đó AG Grid không
+        # render ô filter — bỏ quét ngang sẽ báo nhầm là lựa chọn hết hiệu lực.
         frame, _field = _search_input_in_frames(
             page,
             SAMPLE_SEARCH_SPEC.context_field.selectors,
             SAMPLE_SEARCH_SPEC.context_field.aliases,
             timeout_s=2,
+            scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
+            module_name=SAMPLE_SEARCH_SPEC.module_name,
         )
         if not _click_sample_style_result(frame, row_key, style_code, log):
             return _result(
                 False,
                 "SAMPLE_RESULT_EXPIRED",
-                "Kết quả Sample đã thay đổi. Hãy bấm Check File lại.",
+                "Kết quả Sample đã thay đổi. Hãy bấm Xem file đính kèm lại.",
             )
         return _result(
             True,
@@ -2048,7 +1988,7 @@ def open_sample_file_result(
         return _result(
             False,
             "SAMPLE_RESULT_EXPIRED",
-            "Sample List hoặc dòng đã chọn không còn mở. Hãy bấm Check File lại.",
+            "Sample List hoặc dòng đã chọn không còn mở. Hãy bấm Xem file đính kèm lại.",
         )
     except Exception as exc:
         boundary = _browser_boundary_result(exc, module="Sample List")
@@ -2070,21 +2010,6 @@ def search_oc_list(
 ) -> dict[str, Any]:
     return _search_module_list(
         OC_SEARCH_SPEC,
-        xpath,
-        filter_kind,
-        query,
-        log,
-    )
-
-
-def search_sample_list(
-    xpath: str,
-    filter_kind: str,
-    query: str,
-    log: Callable[[str], None] = print,
-) -> dict[str, Any]:
-    return _search_module_list(
-        SAMPLE_SEARCH_SPEC,
         xpath,
         filter_kind,
         query,

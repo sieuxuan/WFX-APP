@@ -2192,43 +2192,6 @@ class CatalogController:
             {"active_tab_only": True},
         )
 
-    def check_sample_files(self, filter_kind: str, query: str) -> dict:
-        """Tìm Sample, tự mở Style duy nhất rồi quét file như Catalog."""
-        panel = self._panel
-        filter_kind = str(filter_kind or "").casefold()
-        query = str(query or "").strip()
-
-        def action() -> dict:
-            self._invalidate_catalog_search_only()
-            self.files.clear()
-            self.sample_file_choices.clear()
-            finder = getattr(panel._login, "find_sample_file_results", None)
-            if not callable(finder):
-                return {
-                    "ok": False,
-                    "code": "SAMPLE_FILES_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ Check File ở Sample List.",
-                }
-            sample = constants.MODULE_BY_ID["0004_0056_4070"]
-            found = finder(
-                sample["xpath"],
-                filter_kind,
-                query,
-                panel._log,
-            )
-            if found.get("code") == "SAMPLE_MULTIPLE_RESULTS":
-                return self._publish_sample_file_choices(found)
-            if found.get("code") != "SAMPLE_STYLE_OPENED":
-                return {**found, "source": "sample"}
-            article_code = str(found.get("article_code") or "").strip()
-            return self._sample_files_result(article_code)
-
-        return panel._run(
-            "check_sample_files",
-            action,
-            {"filter_kind": filter_kind, "query": query},
-        )
-
     def check_sample_files_with_filters(
         self,
         values: Mapping[str, str],
@@ -2287,9 +2250,10 @@ class CatalogController:
                 return {
                     "ok": False,
                     "code": "SAMPLE_RESULT_EXPIRED",
+                    "source": "sample",
                     "message": (
                         "Lựa chọn Sample đã hết hiệu lực. "
-                        "Hãy bấm Check File lại."
+                        "Hãy bấm Xem file đính kèm lại."
                     ),
                 }
             opener = getattr(panel._login, "open_sample_file_result", None)
@@ -2305,7 +2269,12 @@ class CatalogController:
                 panel._log,
             )
             if opened.get("code") != "SAMPLE_STYLE_OPENED":
-                return opened
+                if opened.get("code") == "SAMPLE_RESULT_EXPIRED":
+                    # Grid đã khác lúc phát token, nên CẢ danh sách đang hiện
+                    # đều trỏ vào dòng cũ — không riêng dòng vừa bấm. Giữ lại
+                    # token là mời người dùng bấm tiếp vào dòng đã chết.
+                    self.sample_file_choices.clear()
+                return {**opened, "source": "sample"}
             self.sample_file_choices.clear()
             return self._sample_files_result(choice["style_code"])
 

@@ -82,10 +82,9 @@ def test_search_auto_opens_the_required_module_list():
 
     oc = constants.MODULE_BY_ID["0004_0050_0020"]
     assert _open("0004_0050_0020")["ok"]
-    sample_from_oc = login.search_sample_list(
+    sample_from_oc = login.search_sample_list_with_filters(
         constants.MODULE_BY_ID["0004_0056_4070"]["xpath"],
-        "style",
-        SMOKE_QUERY,
+        {"style": SMOKE_QUERY},
         lambda _line: None,
     )
     assert sample_from_oc["code"] == "MODULE_SEARCH_APPLIED"
@@ -111,24 +110,21 @@ def test_search_auto_opens_the_required_module_list():
     _clear_visible_filter(
         ('input[aria-label*="Buyer Order Ref/Oc Num" i]',)
     )
-    sample_search = login.search_sample_list(
+    sample_search = login.search_sample_list_with_filters(
         sample["xpath"],
-        "sample_no",
-        SMOKE_QUERY,
+        {"sample_no": SMOKE_QUERY},
         lambda _line: None,
     )
     assert sample_search["code"] == "MODULE_SEARCH_APPLIED"
-    created_by_search = login.search_sample_list(
+    created_by_search = login.search_sample_list_with_filters(
         sample["xpath"],
-        "created_by",
-        SMOKE_QUERY,
+        {"created_by": SMOKE_QUERY},
         lambda _line: None,
     )
     assert created_by_search["code"] == "MODULE_SEARCH_APPLIED"
-    created_by_files = login.find_sample_file_results(
+    created_by_files = login.find_sample_file_results_with_filters(
         sample["xpath"],
-        "created_by",
-        SMOKE_QUERY,
+        {"created_by": SMOKE_QUERY},
         lambda _line: None,
     )
     assert created_by_files["code"] == "NO_RESULTS"
