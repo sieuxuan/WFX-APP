@@ -704,6 +704,18 @@ def scan_catalog_style_options(
             subcategories_by_product_group=dependencies,
             group_id=str(group_id),
         )
+    except RuntimeError as exc:
+        code = str(exc).partition(":")[0]
+        if code in {"CHROME_CLOSED", "NOT_LOGGED_IN"}:
+            message = (
+                "Trình duyệt làm việc chưa được mở."
+                if code == "CHROME_CLOSED"
+                else "Phiên chưa đăng nhập hoặc đã hết hạn."
+            )
+            return _result(False, code, message)
+        message = f"Không quét được dropdown Style: RuntimeError: {_first_line(exc)}"
+        _write_log(log, message)
+        return _result(False, "STYLE_OPTIONS_SCAN_FAILED", message)
     except Exception as exc:
         message = f"Không quét được dropdown Style: {type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
@@ -746,11 +758,16 @@ def _prepare_copy(
             choices=choices,
             source_row=int(row.get("source_row") or 0),
         )
-    selected_index = (
-        int(choices[0]["choice_index"])
-        if len(choices) == 1
-        else int(copy_choice if copy_choice is not None else -1)
-    )
+    # Lựa chọn rõ ràng của người dùng luôn phải được xác thực lại với tập kết
+    # quả HIỆN TẠI. Trước đây nhánh `len(choices) == 1` bỏ qua `copy_choice`,
+    # nên khi dữ liệu WFX đổi giữa lượt chọn và lượt xác nhận và tập kết quả co
+    # lại còn một Style KHÁC, flow vẫn Copy Style đó mà không báo gì.
+    if copy_choice is not None:
+        selected_index = int(copy_choice)
+    elif len(choices) == 1:
+        selected_index = int(choices[0]["choice_index"])
+    else:
+        selected_index = -1
     allowed = {int(choice["choice_index"]) for choice in choices}
     if selected_index not in allowed:
         raise RuntimeError("STYLE_COPY_CHOICE_INVALID")
@@ -846,6 +863,11 @@ def prepare_catalog_style_row(
         raw = str(exc)
         code, _, detail = raw.partition(":")
         messages = {
+            # PanelAPI khớp đúng hai mã này để tự mở lại trình duyệt và đăng
+            # nhập lại. Gộp chúng vào STYLE_PREPARE_FAILED là mất hẳn cơ chế
+            # khôi phục, lại còn gửi telemetry cho một tình huống bình thường.
+            "CHROME_CLOSED": "Trình duyệt làm việc chưa được mở.",
+            "NOT_LOGGED_IN": "Phiên chưa đăng nhập hoặc đã hết hạn.",
             "STYLE_COPY_NOT_FOUND": "Không tìm thấy Style nguồn để Copy.",
             "STYLE_COPY_CHOICE_INVALID": "Lựa chọn Style nguồn không còn hợp lệ.",
             "STYLE_COPY_RESULT_DETACHED": "Dòng Style nguồn đã đổi trước khi chọn.",

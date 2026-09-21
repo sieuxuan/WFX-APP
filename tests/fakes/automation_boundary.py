@@ -127,6 +127,9 @@ class FakePage:
     def close(self, run_before_unload: bool = True) -> None:
         self.closed = True
 
+    def is_closed(self) -> bool:
+        return self.closed
+
     def wait_for_timeout(self, milliseconds: float) -> None:
         self.clock.advance(float(milliseconds) / 1_000.0)
 
