@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from tests.fakes.module_reflection import module_source
+from tests.fakes.wfx_dom import patch_automation
 from wfx_panel.automation import costing
 
 
@@ -274,7 +274,7 @@ def test_inventory_filters_every_forbidden_control():
 
 
 def test_scan_source_never_clicks_forbidden_selectors():
-    source = Path(costing.__file__).read_text(encoding="utf-8")
+    source = module_source(costing)
 
     for selector in costing.costing_forbidden_selectors():
         assert f'locator("{selector}").click' not in source
@@ -295,7 +295,7 @@ def test_apply_plan_requires_server_side_source_for_article_mutation():
 
 
 def test_save_uses_exact_required_xpath_and_cancellation_deferral():
-    source = Path(costing.__file__).read_text(encoding="utf-8")
+    source = module_source(costing)
 
     assert 'xpath=//*[@id="titlebarCostSheet"]/tbody/tr/td[3]/span/div[1]' in source
     assert "with cancellation_deferred():" in source
@@ -350,7 +350,7 @@ def test_supplier_is_applied_before_rate_and_delete_requires_comments():
     assert costing._field_application_priority(supplier) < (
         costing._field_application_priority(rate)
     )
-    source = Path(costing.__file__).read_text(encoding="utf-8")
+    source = module_source(costing)
     assert "Updated via Costing import" in source
     assert "sectionCostSheetDeletionReason" in source
 
@@ -658,19 +658,19 @@ def test_export_scan_allows_non_open_but_import_scan_still_blocks(monkeypatch):
         "items": [],
         "fields": [{"field_key": "rate"}],
     }
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_costing_frame",
         lambda *_args, **_kwargs: (object(), frame),
     )
-    monkeypatch.setattr(costing, "_status_from_tree", lambda _frame: "Approved")
-    monkeypatch.setattr(
-        costing,
+    patch_automation(monkeypatch, costing, "_status_from_tree", lambda _frame: "Approved")
+    patch_automation(
+        monkeypatch, costing,
         "_selected_costing_title",
         lambda *_args, **_kwargs: "Approved Costing",
     )
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_inventory_costing_frame",
         lambda *_args, **_kwargs: document,
     )
@@ -707,27 +707,27 @@ def test_active_tab_apply_rejects_a_different_style_before_touching_costing(
     context = type("Context", (), {"pages": [active_page]})()
     browser = type("Browser", (), {"contexts": [context]})()
     session_page = object()
-    monkeypatch.setattr(costing, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(costing, "sync_playwright", lambda: Starter())
-    monkeypatch.setattr(
-        costing,
+    patch_automation(monkeypatch, costing, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, costing, "sync_playwright", lambda: Starter())
+    patch_automation(
+        monkeypatch, costing,
         "_connect_to_chrome",
         lambda *_args, **_kwargs: (browser, session_page),
     )
-    monkeypatch.setattr(costing, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(costing, "_session_is_active", lambda _page: True)
-    monkeypatch.setattr(
-        costing,
+    patch_automation(monkeypatch, costing, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, costing, "_session_is_active", lambda _page: True)
+    patch_automation(
+        monkeypatch, costing,
         "_active_costing_page",
         lambda _context: active_page,
     )
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_article_code_from_page",
         lambda _page: "OTHER0001",
     )
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_costing_frame",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("Không được chạm Costing của style khác")

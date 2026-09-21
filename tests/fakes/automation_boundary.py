@@ -23,7 +23,13 @@ from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
 
-from tests.fakes.wfx_dom import FakeClock, FakeLocator, FakeNode
+from tests.fakes.wfx_dom import (
+    FakeClock,
+    FakeLocator,
+    FakeNode,
+    _binding_sites,
+    patch_automation,
+)
 
 WFX_URL = "https://wfx.test/wfx/default.aspx"
 
@@ -265,7 +271,7 @@ def wire_automation(
     CLAUDE.md đặc tả kỹ nhưng chưa có test nào: tự mở lại trình duyệt khi
     `CHROME_CLOSED`, và đăng nhập lại đúng một lần khi `NOT_LOGGED_IN`.
     """
-    available = [name for name in BOUNDARY_NAMES if hasattr(module, name)]
+    available = [name for name in BOUNDARY_NAMES if _binding_sites(module, name)]
     assert available, (
         f"{module.__name__} không có ranh giới Playwright nào để vá — "
         "kiểm tra lại tên hàm trong BOUNDARY_NAMES."
@@ -273,12 +279,13 @@ def wire_automation(
     patched: list[str] = []
 
     def patch(name: str, value: Any) -> None:
-        if hasattr(module, name):
-            monkeypatch.setattr(module, name, value)
-            patched.append(name)
+        if not _binding_sites(module, name):
+            return
+        patch_automation(monkeypatch, module, name, value)
+        patched.append(name)
 
-    if clock is not None and hasattr(module, "time"):
-        monkeypatch.setattr(module, "time", clock)
+    if clock is not None and _binding_sites(module, "time"):
+        patch_automation(monkeypatch, module, "time", clock)
 
     patch("sync_playwright", lambda: FakePlaywrightStarter(world))
 

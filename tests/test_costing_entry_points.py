@@ -29,7 +29,7 @@ from tests.fakes.automation_boundary import (
     WfxWorld,
     wire_automation,
 )
-from tests.fakes.wfx_dom import FakeNode, install_fake_clock
+from tests.fakes.wfx_dom import FakeNode, install_fake_clock, patch_automation
 from wfx_panel.automation import _common, costing
 
 CLEAR_SELECTOR = '[id="lnkClearDependency"]'
@@ -464,8 +464,8 @@ def test_export_is_allowed_at_any_status(monkeypatch, clock):
     page, _unused = _costing_page(clock, status="Approved")
     world = WfxWorld(clock, [page])
     wire_automation(monkeypatch, costing, world)
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_inventory_costing_frame",
         lambda *_a, **_k: {"sections": [{"key": "fabric"}], "items": [], "fields": []},
     )
@@ -483,8 +483,8 @@ def test_an_open_costsheet_is_scanned(monkeypatch, clock):
     page, _unused = _costing_page(clock)
     world = WfxWorld(clock, [page])
     wire_automation(monkeypatch, costing, world)
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_inventory_costing_frame",
         lambda *_a, **_k: {"sections": [{"key": "fabric"}], "items": [], "fields": []},
     )
@@ -504,7 +504,7 @@ def test_an_unexpected_scan_failure_is_translated_for_the_user(monkeypatch, cloc
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi grid")
 
-    monkeypatch.setattr(costing, "_scan_open_costing_context", boom)
+    patch_automation(monkeypatch, costing, "_scan_open_costing_context", boom)
 
     result = costing.scan_open_costing("SKN0000188", log=_quiet())
 
@@ -517,8 +517,8 @@ def test_a_costsheet_that_never_loads_is_not_exported(monkeypatch, clock):
     page, _unused = _costing_page(clock)
     world = WfxWorld(clock, [page])
     wire_automation(monkeypatch, costing, world)
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_inventory_costing_frame",
         lambda *_a, **_k: {"sections": [], "items": [], "fields": []},
     )
@@ -553,7 +553,7 @@ def test_the_active_tab_is_scanned_without_searching_again(monkeypatch, clock):
         scanned.append(article_code)
         return {"sections": [{"key": "fabric"}], "items": [], "fields": []}
 
-    monkeypatch.setattr(costing, "_inventory_costing_frame", inventory)
+    patch_automation(monkeypatch, costing, "_inventory_costing_frame", inventory)
 
     result = costing.scan_active_open_costing(log=_quiet())
 
@@ -571,8 +571,8 @@ def test_scanning_two_visible_costing_tabs_stops_instead_of_guessing(
     second, _f2 = _costing_page(clock, code="ABC9999999", focused=True)
     world = WfxWorld(clock, [first, second])
     wire_automation(monkeypatch, costing, world)
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_inventory_costing_frame",
         lambda *_a, **_k: pytest.fail("Chưa rõ tab nào thì không được quét"),
     )
@@ -628,8 +628,8 @@ def test_two_visible_costing_tabs_ask_the_user_to_pick_one(monkeypatch, clock):
 @pytest.fixture
 def saves(monkeypatch):
     calls: list[tuple] = []
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_save_costing",
         lambda page, frame, log: calls.append((page, frame)),
     )
@@ -775,7 +775,7 @@ def test_an_unexpected_clear_failure_never_claims_a_save(monkeypatch, clock):
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi titlebar")
 
-    monkeypatch.setattr(costing, "_save_costing", boom)
+    patch_automation(monkeypatch, costing, "_save_costing", boom)
 
     result = costing.clear_active_costing_dependencies(log=_quiet())
 
@@ -800,8 +800,8 @@ def _apply(plan=None):
 def test_an_empty_plan_is_reported_without_saving(monkeypatch, clock):
     world = WfxWorld(clock)
     wire_automation(monkeypatch, costing, world)
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_open_costing_apply_session",
         lambda *_a, **_k: costing._CostingApplySession(
             article_code="SKN0000188",
@@ -816,8 +816,8 @@ def test_an_empty_plan_is_reported_without_saving(monkeypatch, clock):
             log=_quiet(),
         ),
     )
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_save_costing",
         lambda *_a: pytest.fail("Plan rỗng thì không được Save"),
     )
@@ -842,7 +842,7 @@ def test_a_stale_plan_stops_before_writing(monkeypatch, clock):
     def abort(*_args, **_kwargs):
         raise costing.CostingApplyAbort(stale)
 
-    monkeypatch.setattr(costing, "_open_costing_apply_session", abort)
+    patch_automation(monkeypatch, costing, "_open_costing_apply_session", abort)
 
     result = _apply()
 
@@ -864,7 +864,7 @@ def test_a_costsheet_that_left_open_stops_the_apply(monkeypatch, clock):
             )
         )
 
-    monkeypatch.setattr(costing, "_open_costing_apply_session", abort)
+    patch_automation(monkeypatch, costing, "_open_costing_apply_session", abort)
 
     assert _apply()["code"] == "COSTING_NOT_OPEN"
 
@@ -881,7 +881,7 @@ def test_a_plan_error_keeps_its_own_code_and_data(monkeypatch, clock):
             candidates=["F-001", "F-002"],
         )
 
-    monkeypatch.setattr(costing, "_open_costing_apply_session", boom)
+    patch_automation(monkeypatch, costing, "_open_costing_apply_session", boom)
 
     result = _apply()
 
@@ -904,7 +904,7 @@ def test_a_field_that_cannot_be_filled_names_the_field_and_article(
             reason="control read-only",
         )
 
-    monkeypatch.setattr(costing, "_open_costing_apply_session", boom)
+    patch_automation(monkeypatch, costing, "_open_costing_apply_session", boom)
 
     result = _apply()
 
@@ -935,7 +935,7 @@ def test_a_timeout_keeps_a_costing_code_but_never_invents_one(
     def boom(*_args, **_kwargs):
         raise PlaywrightTimeoutError(raised)
 
-    monkeypatch.setattr(costing, "_open_costing_apply_session", boom)
+    patch_automation(monkeypatch, costing, "_open_costing_apply_session", boom)
 
     assert _apply()["code"] == expected
 
@@ -948,7 +948,7 @@ def test_an_unexpected_apply_failure_never_claims_a_save(monkeypatch, clock):
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi editor")
 
-    monkeypatch.setattr(costing, "_open_costing_apply_session", boom)
+    patch_automation(monkeypatch, costing, "_open_costing_apply_session", boom)
 
     result = costing.apply_costing_plan(
         "SKN0000188",
