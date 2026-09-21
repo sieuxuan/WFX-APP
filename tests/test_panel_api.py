@@ -12,6 +12,7 @@ from wfx_panel import (
     oc_workbook,
     panel_api,
     prefs,
+    sale_asn_controller,
     telemetry,
 )
 from wfx_panel.atomic_io import write_json_atomic
@@ -1737,7 +1738,7 @@ def test_upload_oc_requires_review_then_confirm_before_calling_edi(tmp_path):
     assert saved["code"] == "OC_UPLOAD_FILE_SAVED"
     assert exported.is_file()
     assert exported.read_bytes() == Path(
-        api._oc_upload_reviews[review["review_token"]]["prepared"].upload_path
+        api._oc.reviews[review["review_token"]]["prepared"].upload_path
     ).read_bytes()
 
     result = api.confirm_oc_upload(review["review_token"])
@@ -2362,7 +2363,7 @@ def test_release_update_methods_delegate_and_schedule(tmp_path, monkeypatch):
         "checksum_url": "https://github.com/example/update.zip.sha256",
     }
     monkeypatch.setattr(
-        "wfx_panel.panel_api.updater.check_for_updates",
+        "wfx_panel.settings_controller.updater.check_for_updates",
         lambda **_kwargs: dict(state),
     )
     applied = []
@@ -2378,7 +2379,7 @@ def test_panel_update_channel_is_always_stable(tmp_path, monkeypatch):
     api, _ = make_api(tmp_path)
     calls = []
     monkeypatch.setattr(
-        "wfx_panel.panel_api.updater.check_for_updates",
+        "wfx_panel.settings_controller.updater.check_for_updates",
         lambda **kwargs: calls.append(kwargs) or {
             "ok": True,
             "code": "UP_TO_DATE",
@@ -2775,14 +2776,14 @@ def test_sale_asn_documents_use_next_name_when_selected_file_is_open(
     target.parent.mkdir()
     target.touch()
 
-    real_replace = panel_api.os.replace
+    real_replace = sale_asn_controller.os.replace
 
     def reject_open_file(source, destination):
         if Path(destination).resolve() == target.resolve():
             raise PermissionError("File is open in Excel")
         return real_replace(source, destination)
 
-    monkeypatch.setattr(panel_api.os, "replace", reject_open_file)
+    monkeypatch.setattr(sale_asn_controller.os, "replace", reject_open_file)
 
     saved = api.save_sale_asn_documents(prepared["export_token"], str(target))
 
@@ -2966,7 +2967,7 @@ def test_grn_handoff_rejects_a_received_rmpo_before_automation(tmp_path):
     api, fake = make_api(tmp_path)
     found = api.search_rmpo("", "RM-42")
     choice_id = found["rmpos"][0]["choice_id"]
-    api._rmpo_choices[choice_id]["status"] = " Received "
+    api._inventory.rmpo_choices[choice_id]["status"] = " Received "
 
     result = api.prepare_grn_receipt("RM-42", "domestic", choice_id)
 

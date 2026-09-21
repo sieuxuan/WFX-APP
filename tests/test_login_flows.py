@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from wfx_panel import constants, panel_api, prefs, secret
+from wfx_panel import constants, panel_api, prefs, secret, settings_controller
 from wfx_panel.automation import session
 from wfx_panel.panel_api import PanelAPI
 
@@ -1334,7 +1334,7 @@ def test_flow_c4_hotkey_valid_invalid_and_rollback(tmp_path):
 
 def test_flow_c5_autostart_reports_os_failure(tmp_path, monkeypatch):
     api, _ = make_api(tmp_path)
-    monkeypatch.setattr(panel_api.autostart, "sync", lambda wanted: False)
+    monkeypatch.setattr(settings_controller.autostart, "sync", lambda wanted: False)
 
     result = api.set_autostart(True)
 

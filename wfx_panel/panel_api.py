@@ -2,10 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import inspect
-import os
-import secrets
-import shutil
-import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -13,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from wfx_panel import (
-    autostart,
     constants,
     job_history,
     log_bridge,
@@ -21,10 +16,6 @@ from wfx_panel import (
     reference_sync,
     status,
     telemetry,
-    updater,
-)
-from wfx_panel import (
-    hotkey as hotkey_spec,
 )
 from wfx_panel import prefs as prefs_default
 from wfx_panel.automation import runtime as automation_runtime
@@ -32,14 +23,14 @@ from wfx_panel.automation.runtime import RUNTIME as AUTOMATION_RUNTIME
 from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.catalog_controller import CatalogController
 from wfx_panel.coercion import boolean
-from wfx_panel.oc_workbook import OCWorkbookError, prepare_oc_workbook
-from wfx_panel.report_parameters import ReportParameterStore
-from wfx_panel.sale_asn_buyers import SaleASNBuyerStore, normalise_buyers
-from wfx_panel.sale_asn_workbook import (
-    SaleASNWorkbookError,
-    read_sale_asn_workbook,
-    write_sale_asn_price_check_workbook,
-)
+from wfx_panel.directory_controller import DirectoryController
+from wfx_panel.finance_controller import FinanceController
+from wfx_panel.inventory_controller import InventoryController
+from wfx_panel.jobs_controller import JobsController
+from wfx_panel.oc_controller import OCController
+from wfx_panel.reports_controller import ReportsController
+from wfx_panel.sale_asn_controller import SaleASNController
+from wfx_panel.settings_controller import SettingsController
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 
 SESSION_OK = frozenset(
@@ -123,44 +114,7 @@ LOGIN_CODES = frozenset(
 AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
     {"login", "open_chrome", "maintain_session"}
 )
-THEME_CHOICES = frozenset({"light", "dark", "system"})
 
-
-def _snapshot_oc_source(source: Path, target: Path) -> str:
-    """Copy the exact current workbook bytes and return their SHA-256.
-
-    A review must never reuse a previous transformation just because Windows
-    returns the same selected path.  Snapshotting also prevents Excel saving
-    the source halfway through the three validation/read passes.
-    """
-    for attempt in range(2):
-        try:
-            before = source.stat()
-            digest = hashlib.sha256()
-            with source.open("rb") as reader, target.open("wb") as writer:
-                while chunk := reader.read(1024 * 1024):
-                    writer.write(chunk)
-                    digest.update(chunk)
-            after = source.stat()
-        except OSError as error:
-            raise OCWorkbookError(
-                "OC_FILE_READ_FAILED",
-                "Không đọc được file OC. Hãy lưu và đóng file Excel rồi chọn lại.",
-                (f"{type(error).__name__}: {error}",),
-            ) from error
-        unchanged = (
-            before.st_size == after.st_size
-            and before.st_mtime_ns == after.st_mtime_ns
-            and target.stat().st_size == after.st_size
-        )
-        if unchanged:
-            return digest.hexdigest()
-        if attempt == 0:
-            continue
-    raise OCWorkbookError(
-        "OC_FILE_CHANGED_DURING_READ",
-        "File OC đang được Excel lưu. Hãy chờ lưu xong rồi chọn lại file.",
-    )
 
 
 NON_REPORTABLE_FAILURES = frozenset(
@@ -397,12 +351,6 @@ class PanelAPI:
         self._login = login_module
         self._prefs = prefs_module or prefs_default
         self._base_dir = base_dir or self._prefs.DATA_DIR
-        self._report_parameters = ReportParameterStore(
-            self._base_dir / "report-parameters.json"
-        )
-        self._sale_asn_buyer_store = SaleASNBuyerStore(
-            self._base_dir / "sale-asn-buyers.json"
-        )
         self._logs: list[str] = []
         self._sink: Callable[[str], None] | None = None
         self._result_sink: Callable[[str, dict, float], None] | None = None
@@ -442,26 +390,16 @@ class PanelAPI:
         # Toàn bộ state + logic Catalog (kết quả tìm, category đã chuẩn bị, cache
         # cây folder) sống trong controller riêng để bridge không phình to.
         self._catalog = CatalogController(self)
-        # Workbook đã chuẩn hóa chỉ sống từ bước Review đến Confirm/Cancel.
-        # Token ngẫu nhiên ngăn UI cũ hoặc click lặp upload nhầm review khác.
-        self._oc_upload_reviews: dict[str, dict] = {}
-        # Hai report Sale ASN được ghép trong file tạm trước khi UI
-        # mở Save As. Token ngăn một panel cũ lưu nhầm workbook khác.
-        self._sale_asn_document_exports: dict[str, dict] = {}
-        # Review tạo Sale ASN giữ snapshot workbook và vị trí PO kế tiếp. Khi
-        # WFX trả nhiều dòng, user có thể chọn thủ công rồi tiếp tục đúng dòng
-        # kế mà không đọc lại file hoặc đảo thứ tự.
-        self._sale_asn_create_reviews: dict[str, dict] = {}
-        self._sale_asn_buyers = self._sale_asn_buyer_store.load()
-        # Token hóa dòng Supplier Invoice khi Invoice No. có nhiều kết quả;
-        # WebView chỉ nhận token, không nhận row key nội bộ của WFX.
-        self._supplier_invoice_cancel_choices: dict[str, dict[str, str]] = {}
-        # Tương tự, lựa chọn RMPO chỉ sống tới lần Search kế tiếp. Mọi action
-        # phải kiểm tra lại row/status trên WFX trước khi click.
-        self._rmpo_choices: dict[str, dict[str, str]] = {}
-        # Phiên nhập kho giữ RMPO/Supplier đã xác thực và danh sách Site giữa
-        # các checkpoint người dùng tự Confirm Sourcing ASN trên WFX.
-        self._grn_receipt_sessions: dict[str, dict[str, Any]] = {}
+        # Toàn bộ state + logic OC (review workbook, token upload) nằm trong
+        # controller riêng, giống Catalog.
+        self._oc = OCController(self)
+        self._sale_asn = SaleASNController(self)
+        self._inventory = InventoryController(self)
+        self._reports = ReportsController(self)
+        self._finance = FinanceController(self)
+        self._directory = DirectoryController(self)
+        self._settings = SettingsController(self)
+        self._jobs = JobsController(self)
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -728,7 +666,7 @@ class PanelAPI:
             "module_groups": module_controllers.manifest_groups(),
             "divisions": list(constants.DIVISIONS.values()),
             "jobs": job_history.list_jobs(self._base_dir, 20),
-            "sale_asn_buyers": list(self._sale_asn_buyers),
+            "sale_asn_buyers": list(self._sale_asn.buyers),
             "sale_asn_stages": preferences["sale_asn_stages"],
             "sale_asn_po_search_fields": preferences[
                 "sale_asn_po_search_fields"
@@ -1374,192 +1312,25 @@ class PanelAPI:
         )
 
     def report_catalog(self) -> dict:
-        catalog = getattr(self._login, "report_catalog", None)
-        reports = catalog() if callable(catalog) else []
-        return {"ok": True, "code": "REPORT_CATALOG_READY", "reports": reports}
+        return self._reports.report_catalog()
 
     def _saved_report_parameters(self, report_id: str) -> dict[str, Any]:
-        account_key = str(self._account().get("user_id") or "").strip().casefold()
-        return self._report_parameters.load(account_key, str(report_id))
+        return self._reports._saved_report_parameters(report_id)
 
     def load_report_parameters(self, report_id: str) -> dict:
-        loader = getattr(self._login, "load_report_parameters", None)
-        if not callable(loader):
-            return {
-                "ok": False,
-                "code": "REPORT_UNAVAILABLE",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ Reports.",
-            }
-        cleaned_id = str(report_id or "")
+        return self._reports.load_report_parameters(report_id)
 
-        def action() -> dict:
-            result = loader(cleaned_id, self._log)
-            if result.get("ok"):
-                return {
-                    **result,
-                    "saved_parameters": self._saved_report_parameters(cleaned_id),
-                }
-            return result
+    def save_report_parameters(self, report_id: str, values: Mapping[str, Any] | None=None) -> dict:
+        return self._reports.save_report_parameters(report_id, values)
 
-        return self._run(
-            "load_report_parameters",
-            action,
-            {"module_id": "reports", "report_id": str(report_id or "")},
-        )
+    def export_report_excel(self, report_id: str, values: Mapping[str, Any] | None=None) -> dict:
+        return self._reports.export_report_excel(report_id, values)
 
-    def save_report_parameters(
-        self, report_id: str, values: Mapping[str, Any] | None = None
-    ) -> dict:
-        cleaned_id = str(report_id or "").strip()
-        allowed = {
-            str(item.get("id") or "")
-            for item in (getattr(self._login, "report_catalog", lambda: [])() or [])
-            if isinstance(item, Mapping)
-        }
-        if not cleaned_id or cleaned_id not in allowed:
-            return {
-                "ok": False,
-                "code": "REPORT_UNKNOWN",
-                "message": "Báo cáo không được hỗ trợ.",
-            }
-        account_key = str(self._account().get("user_id") or "").strip().casefold()
-        if not account_key:
-            return {
-                "ok": False,
-                "code": "REPORT_SAVE_ACCOUNT_REQUIRED",
-                "message": "Hãy đăng nhập WFX trước khi lưu tham số báo cáo.",
-            }
-        if values is not None and not isinstance(values, Mapping):
-            return {
-                "ok": False,
-                "code": "REPORT_PARAMETERS_INVALID",
-                "message": "Tham số báo cáo phải là một object hợp lệ.",
-            }
-        try:
-            clean_values = self._report_parameters.save(
-                account_key,
-                cleaned_id,
-                dict(values or {}),
-            )
-        except OSError as error:
-            return {
-                "ok": False,
-                "code": "REPORT_SAVE_FAILED",
-                "message": f"Không lưu được tham số báo cáo: {type(error).__name__}",
-            }
-        return {
-            "ok": True,
-            "code": "REPORT_PARAMETERS_SAVED",
-            "message": "Đã lưu tham số báo cáo để dùng lần sau.",
-            "report_id": cleaned_id,
-            "saved_parameters": clean_values,
-        }
+    def load_color_report_options(self, values: Mapping[str, Any] | None=None) -> dict:
+        return self._reports.load_color_report_options(values)
 
-    def export_report_excel(
-        self, report_id: str, values: Mapping[str, Any] | None = None
-    ) -> dict:
-        exporter = getattr(self._login, "export_report_excel", None)
-        if not callable(exporter):
-            return {
-                "ok": False,
-                "code": "REPORT_UNAVAILABLE",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ Reports.",
-            }
-        if values is not None and not isinstance(values, Mapping):
-            return {
-                "ok": False,
-                "code": "REPORT_PARAMETERS_INVALID",
-                "message": "Tham số báo cáo phải là một object hợp lệ.",
-            }
-        safe_values = dict(values or {})
-        return self._run(
-            "export_report_excel",
-            lambda: exporter(str(report_id or ""), safe_values, self._log),
-            {"module_id": "reports", "report_id": str(report_id or "")},
-        )
-
-    def load_color_report_options(
-        self, values: Mapping[str, Any] | None = None
-    ) -> dict:
-        loader = getattr(self._login, "load_color_report_options", None)
-        if not callable(loader):
-            return {
-                "ok": False,
-                "code": "REPORT_UNAVAILABLE",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ báo cáo này.",
-            }
-        if values is not None and not isinstance(values, Mapping):
-            return {
-                "ok": False,
-                "code": "REPORT_PARAMETERS_INVALID",
-                "message": "Tham số báo cáo phải là một object hợp lệ.",
-            }
-        safe_values = {
-            str(key): str(value)[:500]
-            for key, value in dict(values or {}).items()
-            if isinstance(value, (str, int, float))
-        }
-        if not safe_values:
-            saved = self._saved_report_parameters("color_combination_production")
-            safe_values = {
-                key: str(saved.get(key) or "")
-                for key in ("division", "buyer", "season")
-                if str(saved.get(key) or "")
-            }
-        return self._run(
-            "load_color_report_options",
-            lambda: loader(safe_values, self._log),
-            {"module_id": "reports", "report_id": "color_combination_production"},
-        )
-
-    def run_color_report_batch(
-        self,
-        selection: Mapping[str, Any] | None = None,
-        style_refs: list[str] | None = None,
-        output_dir: str = "",
-    ) -> dict:
-        runner = getattr(self._login, "run_color_report_batch", None)
-        if not callable(runner):
-            return {
-                "ok": False,
-                "code": "REPORT_UNAVAILABLE",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ báo cáo này.",
-            }
-        if selection is not None and not isinstance(selection, Mapping):
-            return {
-                "ok": False,
-                "code": "REPORT_PARAMETERS_INVALID",
-                "message": "Lựa chọn báo cáo phải là một object hợp lệ.",
-            }
-        if style_refs is not None and not isinstance(style_refs, (list, tuple)):
-            return {
-                "ok": False,
-                "code": "REPORT_STYLE_REFS_INVALID",
-                "message": "Danh sách Style của báo cáo không hợp lệ.",
-            }
-        safe_selection = {
-            str(key): str(value)[:500]
-            for key, value in dict(selection or {}).items()
-            if isinstance(value, (str, int, float))
-        }
-        safe_refs = [
-            str(item)[:200]
-            for item in list(style_refs or ())[:500]
-            if str(item).strip()
-        ]
-        method = "run_color_report_batch"
-        self.save_report_parameters("color_combination_production", safe_selection)
-        return self._run(
-            method,
-            lambda: runner(
-                safe_selection,
-                safe_refs,
-                str(output_dir or ""),
-                self._log,
-                progress=self._progress_for(method),
-            ),
-            {"module_id": "reports", "style_count": len(safe_refs)},
-        )
+    def run_color_report_batch(self, selection: Mapping[str, Any] | None=None, style_refs: list[str] | None=None, output_dir: str='') -> dict:
+        return self._reports.run_color_report_batch(selection, style_refs, output_dir)
 
     def _admin_module_access_error(self, module_id: str) -> dict | None:
         self._refresh_admin_access()
@@ -1576,341 +1347,41 @@ class PanelAPI:
         }
 
     def open_sale_asn_new(self) -> dict:
-        def action() -> dict:
-            return self._login.open_sale_asn_new(
-                constants.SALE_ASN_NEW_XPATH,
-                self._log,
-            )
-
-        return self._run("open_sale_asn_new", action)
+        return self._sale_asn.open_sale_asn_new()
 
     def scan_sale_asn_buyers(self) -> dict:
-        scanner = getattr(self._login, "scan_sale_asn_buyers", None)
-        if not callable(scanner):
-            return {
-                "ok": False,
-                "code": "SALE_ASN_BUYER_SCAN_FAILED",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ quét Buyer Sale ASN.",
-            }
-        result = self._run(
-            "scan_sale_asn_buyers",
-            lambda: scanner(constants.SALE_ASN_NEW_XPATH, self._log),
-        )
-        if result.get("ok") and isinstance(result.get("buyers"), list):
-            self._sale_asn_buyers = normalise_buyers(result["buyers"])
-            try:
-                self._sale_asn_buyers = self._sale_asn_buyer_store.save(
-                    self._sale_asn_buyers
-                )
-            except OSError as error:
-                self._log(
-                    "[SALE ASN] Không lưu được cache Buyer: "
-                    f"{type(error).__name__}."
-                )
-            result["buyers"] = list(self._sale_asn_buyers)
-        return result
+        return self._sale_asn.scan_sale_asn_buyers()
 
     def scan_sale_asn_order_details(self) -> dict:
-        """Đọc PO/Order Details đang mở để xuất sẵn vào form 22 cột."""
-
-        scanner = getattr(self._login, "scan_sale_asn_order_details", None)
-        if not callable(scanner):
-            return {
-                "ok": False,
-                "code": "SALE_ASN_ORDER_SCAN_FAILED",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ đọc Order Details.",
-            }
-        return self._run(
-            "scan_sale_asn_order_details",
-            lambda: scanner(self._log),
-        )
+        return self._sale_asn.scan_sale_asn_order_details()
 
     def _discard_sale_asn_create_review(self, review_token: str) -> bool:
-        review = self._sale_asn_create_reviews.pop(review_token, None)
-        if review is None:
-            return False
-        temporary = review.get("temporary")
-        if temporary is not None:
-            try:
-                temporary.cleanup()
-            except OSError as error:
-                self._log(
-                    "[SALE ASN] Không dọn được review tạm: "
-                    f"{type(error).__name__}."
-                )
-        return True
+        return self._sale_asn._discard_sale_asn_create_review(review_token)
 
-    def prepare_sale_asn_create(
-        self,
-        file_path: str,
-        buyer: str,
-        selected_stages: list[str] | tuple[str, ...] | None = None,
-    ) -> dict:
-        stage_order = (
-            "po",
-            "order_details",
-            "style_details",
-            "shipping_info",
-        )
-        if selected_stages is not None and not isinstance(
-            selected_stages,
-            (list, tuple),
-        ):
-            return {
-                "ok": False,
-                "code": "SALE_ASN_CREATE_STEPS_INVALID",
-                "message": "Danh sách bước Sale ASN không hợp lệ.",
-            }
-        requested = {
-            str(stage or "").strip()
-            for stage in (selected_stages or stage_order)
-            if isinstance(stage, str)
-        }
-        stages = tuple(stage for stage in stage_order if stage in requested)
-        if not stages:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_CREATE_STEPS_REQUIRED",
-                "message": "Hãy chọn ít nhất một bước Sale ASN cần thực hiện.",
-            }
-        selected_buyer = str(buyer or "").strip()
-        if "po" in stages and not selected_buyer:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_BUYER_REQUIRED",
-                "message": "Hãy chọn Buyer trước khi kiểm tra file.",
-            }
-        source = Path(str(file_path or "")).expanduser()
-        po_search_fields = list(
-            self._prefs.load_prefs(base_dir=self._base_dir)[
-                "sale_asn_po_search_fields"
-            ]
-        )
-        cache_root = self._base_dir / "sale-asn-create-cache"
-        cache_root.mkdir(parents=True, exist_ok=True)
-        temporary = tempfile.TemporaryDirectory(
-            prefix="review-", dir=str(cache_root)
-        )
-        snapshot = Path(temporary.name) / "Sale-ASN-Input.xlsx"
-        try:
-            shutil.copy2(source, snapshot)
-            document = read_sale_asn_workbook(
-                snapshot,
-                required_stages=list(stages),
-            )
-        except SaleASNWorkbookError as error:
-            temporary.cleanup()
-            return {
-                "ok": False,
-                "code": error.code,
-                "message": error.message,
-                "errors": list(error.errors),
-            }
-        except OSError as error:
-            temporary.cleanup()
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_NOT_FOUND",
-                "message": f"Không đọc được file Sale ASN: {error}",
-            }
+    def prepare_sale_asn_create(self, file_path: str, buyer: str, selected_stages: list[str] | tuple[str, ...] | None=None) -> dict:
+        return self._sale_asn.prepare_sale_asn_create(file_path, buyer, selected_stages)
 
-        for old_token in tuple(self._sale_asn_create_reviews):
-            self._discard_sale_asn_create_review(old_token)
-        review_token = secrets.token_urlsafe(24)
-        self._sale_asn_create_reviews[review_token] = {
-            "temporary": temporary,
-            "document": document,
-            "buyer": selected_buyer,
-            "next_index": 0,
-            "next_stage": stages[0],
-            "selected_stages": list(stages),
-            "skipped_stages": [
-                stage for stage in stage_order if stage not in stages
-            ],
-            "po_search_fields": po_search_fields,
-        }
-        stage_labels = {
-            "po": "Thêm PO",
-            "order_details": "Order Details",
-            "style_details": "Style Details",
-            "shipping_info": "Shipping Info",
-        }
-        return {
-            "ok": True,
-            "code": "SALE_ASN_CREATE_REVIEW_READY",
-            "message": (
-                f"File hợp lệ: {document['po_count']} PO, "
-                f"{document['style_count']} Style. Sẽ làm: "
-                f"{', '.join(stage_labels[stage] for stage in stages)}."
-            ),
-            "review_token": review_token,
-            "buyer": selected_buyer,
-            "selected_stages": list(stages),
-            **{
-                key: document[key]
-                for key in (
-                    "file_name",
-                    "invoice_no",
-                    "destination",
-                    "factory",
-                    "po_count",
-                    "style_count",
-                )
-            },
-        }
-
-    def _run_sale_asn_create_review(
-        self,
-        review_token: str,
-        *,
-        continue_existing: bool,
-        selected_candidate_ids: list[str] | None = None,
-    ) -> dict:
-        token = str(review_token or "").strip()
-        review = self._sale_asn_create_reviews.get(token)
-        if review is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_CREATE_REVIEW_EXPIRED",
-                "message": "Phiên kiểm tra Sale ASN không còn hiệu lực; hãy chọn file lại.",
-            }
-        runner = getattr(self._login, "run_sale_asn_create", None)
-        if not callable(runner):
-            return {
-                "ok": False,
-                "code": "SALE_ASN_CREATE_FAILED",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ tạo Sale ASN.",
-            }
-        document = review["document"]
-        start_index = int(review.get("next_index") or 0) if continue_existing else 0
-        stage = str(review.get("next_stage") or "po")
-        skipped_stages = tuple(review.get("skipped_stages") or ())
-        po_search_fields = tuple(
-            review.get("po_search_fields")
-            or ("po", "style", "destination")
-        )
-        method = (
-            "continue_sale_asn_create" if continue_existing else "start_sale_asn_create"
-        )
-        pending_candidates = list(review.get("pending_po_candidates") or ())
-        selected_candidates: list[dict] = []
-        if pending_candidates:
-            requested = {
-                str(item).strip() for item in (selected_candidate_ids or ()) if str(item).strip()
-            }
-            by_id = {
-                str(candidate.get("candidate_id") or ""): candidate
-                for candidate in pending_candidates
-            }
-            if not requested or not requested.issubset(by_id):
-                return {
-                    "ok": False,
-                    "code": "SALE_ASN_PO_SELECTION_REQUIRED",
-                    "message": "Hãy chọn ít nhất một dòng PO trong ứng dụng.",
-                    "review_token": token,
-                    "candidates": pending_candidates,
-                }
-            selected_candidates = [
-                dict(candidate)
-                for candidate in pending_candidates
-                if str(candidate.get("candidate_id") or "") in requested
-            ]
-        runner_kwargs: dict[str, Any] = {
-            "stage": stage,
-            "skip_stages": skipped_stages,
-            "search_fields": po_search_fields,
-            "progress": self._progress_for(method),
-        }
-        if selected_candidates:
-            runner_kwargs.update(
-                selected_po_row=dict(review.get("pending_po_row") or {}),
-                selected_po_candidates=selected_candidates,
-                selected_po_final=bool(review.get("pending_po_final")),
-            )
-        result = self._run(
-            method,
-            lambda: runner(
-                constants.SALE_ASN_NEW_XPATH,
-                str(review["buyer"]),
-                list(document["rows"]),
-                start_index,
-                self._log,
-                **runner_kwargs,
-            ),
-            {
-                "invoice_no": document["invoice_no"],
-                "po_count": document["po_count"],
-                "start_index": start_index,
-                "stage": stage,
-            },
-        )
-        if result.get("code") == "SALE_ASN_PO_SELECTION_REQUIRED":
-            review["next_index"] = int(result.get("pending_index") or start_index)
-            review["next_stage"] = "po"
-            review["pending_po_candidates"] = list(result.get("candidates") or ())
-            review["pending_po_row"] = {
-                "source_row": result.get("source_row"),
-                "po_no": result.get("po_no"),
-                "style_no": result.get("style_no"),
-            }
-            review["pending_po_final"] = bool(result.get("final"))
-            result["review_token"] = token
-        elif result.get("resumable"):
-            review.pop("pending_po_candidates", None)
-            review.pop("pending_po_row", None)
-            review.pop("pending_po_final", None)
-            review["next_stage"] = str(result.get("resume_stage") or stage)
-            result["review_token"] = token
-        elif result.get("code") == "SALE_ASN_FORM_COMPLETED":
-            self._discard_sale_asn_create_review(token)
-        return result
-
-    def start_sale_asn_create(self, review_token: str) -> dict:
-        return self._run_sale_asn_create_review(
+    def _run_sale_asn_create_review(self, review_token: str, *, continue_existing: bool, selected_candidate_ids: list[str] | None=None) -> dict:
+        return self._sale_asn._run_sale_asn_create_review(
             review_token,
-            continue_existing=False,
-        )
-
-    def continue_sale_asn_create(
-        self,
-        review_token: str,
-        selected_candidate_ids: list[str] | None = None,
-    ) -> dict:
-        return self._run_sale_asn_create_review(
-            review_token,
-            continue_existing=True,
+            continue_existing=continue_existing,
             selected_candidate_ids=selected_candidate_ids,
         )
 
+    def start_sale_asn_create(self, review_token: str) -> dict:
+        return self._sale_asn.start_sale_asn_create(review_token)
+
+    def continue_sale_asn_create(self, review_token: str, selected_candidate_ids: list[str] | None=None) -> dict:
+        return self._sale_asn.continue_sale_asn_create(
+            review_token,
+            selected_candidate_ids,
+        )
+
     def skip_sale_asn_create_step(self, review_token: str) -> dict:
-        token = str(review_token or "").strip()
-        review = self._sale_asn_create_reviews.get(token)
-        if review is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_CREATE_REVIEW_EXPIRED",
-                "message": "Phiên kiểm tra Sale ASN không còn hiệu lực; hãy chọn file lại.",
-            }
-        stage = str(review.get("next_stage") or "po")
-        if stage not in {"order_details", "style_details", "shipping_info"}:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_CREATE_STAGE_NOT_SKIPPABLE",
-                "message": "Bước hiện tại không thể bỏ qua.",
-            }
-        skipped = list(review.get("skipped_stages") or ())
-        if stage not in skipped:
-            skipped.append(stage)
-        review["skipped_stages"] = skipped
-        return self._run_sale_asn_create_review(token, continue_existing=True)
+        return self._sale_asn.skip_sale_asn_create_step(review_token)
 
     def cancel_sale_asn_create(self, review_token: str) -> dict:
-        self._discard_sale_asn_create_review(str(review_token or "").strip())
-        return {
-            "ok": True,
-            "code": "SALE_ASN_CREATE_CANCELLED",
-            "message": "Đã hủy phiên tạo Sale ASN.",
-        }
+        return self._sale_asn.cancel_sale_asn_create(review_token)
 
     def search_oc(
         self,
@@ -1969,542 +1440,41 @@ class PanelAPI:
             ),
         )
 
-    def search_sale_asn(
-        self,
-        filter_kind: str,
-        query: str,
-    ) -> dict:
-        sale_asn = constants.MODULE_BY_ID["0004_0070_0020"]
-        return self._run(
-            "search_sale_asn",
-            lambda: self._login.search_sale_asn_list(
-                sale_asn["xpath"],
-                str(filter_kind or ""),
-                str(query or "").strip(),
-                self._log,
-            ),
-            {
-                "filter_kind": str(filter_kind or ""),
-                "query": str(query or "").strip(),
-            },
-        )
+    def search_sale_asn(self, filter_kind: str, query: str) -> dict:
+        return self._sale_asn.search_sale_asn(filter_kind, query)
 
-    def export_sale_asn_price_check(
-        self,
-        price_check: dict,
-        file_path: str,
-    ) -> dict:
-        """Lưu bản đối chiếu đã chạy trong task tạo Sale ASN vừa hoàn tất."""
-
-        if not isinstance(price_check, dict):
-            return {
-                "ok": False,
-                "code": "SALE_ASN_PRICE_EXPORT_FAILED",
-                "message": "Kết quả Check giá không hợp lệ; hãy tạo Sale ASN lại.",
-            }
-        raw_path = str(file_path or "").strip()
-        if not raw_path:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_PRICE_EXPORT_FAILED",
-                "message": "Chưa có đường dẫn lưu kết quả Check giá.",
-            }
-        target = Path(raw_path).expanduser().resolve()
-        try:
-            actual = write_sale_asn_price_check_workbook(target, price_check)
-        except (OSError, ValueError, TypeError) as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_PRICE_EXPORT_FAILED",
-                "message": f"Không lưu được file Check giá: {error}",
-            }
-        return {
-            "ok": True,
-            "code": "SALE_ASN_PRICE_EXPORTED",
-            "message": f"Đã lưu kết quả Check giá thành {actual.name}.",
-            "export_path": str(actual),
-            "file_name": actual.name,
-        }
+    def export_sale_asn_price_check(self, price_check: dict, file_path: str) -> dict:
+        return self._sale_asn.export_sale_asn_price_check(price_check, file_path)
 
     def _discard_sale_asn_document_export(self, export_token: str) -> bool:
-        prepared = self._sale_asn_document_exports.pop(export_token, None)
-        if prepared is None:
-            return False
-        temporary = prepared.get("temporary")
-        if temporary is not None:
-            try:
-                temporary.cleanup()
-            except OSError as error:
-                self._log(
-                    "[SALE ASN DOCS] Không dọn được file tạm: "
-                    f"{type(error).__name__}"
-                )
-        return True
+        return self._sale_asn._discard_sale_asn_document_export(export_token)
 
-    def prepare_sale_asn_documents(
-        self,
-        filter_kind: str,
-        query: str,
-    ) -> dict:
-        """Tải/ghép hai report và giữ file tạm đến bước Save As."""
-        selected_filter = str(filter_kind or "").strip()
-        selected_query = str(query or "").strip()
-        sale_asn = constants.MODULE_BY_ID["0004_0070_0020"]
-        cache_root = self._base_dir / "sale-asn-export-cache"
-        cache_root.mkdir(parents=True, exist_ok=True)
-        temporary = tempfile.TemporaryDirectory(
-            prefix="documents-",
-            dir=cache_root,
-        )
-        prepared_path = Path(temporary.name) / "Sale-ASN-Documents.xlsx"
-
-        def action() -> dict:
-            preparer = getattr(
-                self._login,
-                "prepare_sale_asn_documents",
-                None,
-            )
-            if not callable(preparer):
-                return {
-                    "ok": False,
-                    "code": "SALE_ASN_DOCUMENTS_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ tải Documents Sale ASN.",
-                }
-            return preparer(
-                sale_asn["xpath"],
-                selected_filter,
-                selected_query,
-                prepared_path,
-                self._log,
-            )
-
-        result = self._run(
-            "prepare_sale_asn_documents",
-            action,
-            {
-                "filter_kind": selected_filter,
-                "query": selected_query,
-            },
-        )
-        internal_path = Path(str(result.get("prepared_path") or prepared_path))
-        public_result = {
-            key: value
-            for key, value in result.items()
-            if key != "prepared_path"
-        }
-        if not result.get("ok") or not internal_path.is_file():
-            temporary.cleanup()
-            if result.get("ok"):
-                return {
-                    **public_result,
-                    "ok": False,
-                    "code": "SALE_ASN_REPORT_MERGE_FAILED",
-                    "message": "Workbook Sale ASN tạm không được tạo.",
-                }
-            return public_result
-
-        for old_token in tuple(self._sale_asn_document_exports):
-            self._discard_sale_asn_document_export(old_token)
-        export_token = secrets.token_urlsafe(24)
-        self._sale_asn_document_exports[export_token] = {
-            "temporary": temporary,
-            "prepared_path": internal_path,
-            "invoice_no": str(result.get("invoice_no") or "Invoice").strip(),
-            "sheet_names": list(result.get("sheet_names") or []),
-        }
-        return {
-            **public_result,
-            "export_token": export_token,
-        }
+    def prepare_sale_asn_documents(self, filter_kind: str, query: str) -> dict:
+        return self._sale_asn.prepare_sale_asn_documents(filter_kind, query)
 
     def cancel_sale_asn_documents(self, export_token: str) -> dict:
-        token = str(export_token or "").strip()
-        self._discard_sale_asn_document_export(token)
-        return {
-            "ok": True,
-            "code": "SALE_ASN_DOCUMENTS_CANCELLED",
-            "message": "Đã hủy lưu Documents Sale ASN.",
-        }
+        return self._sale_asn.cancel_sale_asn_documents(export_token)
 
-    def save_sale_asn_documents(
-        self,
-        export_token: str,
-        file_path: str,
-    ) -> dict:
-        token = str(export_token or "").strip()
-        raw_path = str(file_path or "").strip()
-        if not raw_path:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_DOCUMENTS_SAVE_FAILED",
-                "message": "Chưa có đường dẫn lưu file Sale ASN.",
-            }
-        target = Path(raw_path).expanduser().resolve()
-        if target.suffix.casefold() != ".xlsx":
-            target = target.with_suffix(".xlsx")
+    def save_sale_asn_documents(self, export_token: str, file_path: str) -> dict:
+        return self._sale_asn.save_sale_asn_documents(export_token, file_path)
 
-        def next_available_target(current: Path) -> Path:
-            """Tránh ghi đè file đang mở bằng một tên sibling chưa tồn tại."""
-            suffix = current.suffix or ".xlsx"
-            for index in range(2, 10_000):
-                candidate = current.with_name(f"{current.stem} ({index}){suffix}")
-                if not candidate.exists():
-                    return candidate
-            raise OSError("Không tìm được tên file trống để lưu Documents Sale ASN.")
-
-        def copy_to_target(source: Path, destination: Path) -> None:
-            staging = destination.with_name(
-                f".{destination.name}.{secrets.token_hex(4)}.tmp"
-            )
-            try:
-                shutil.copyfile(source, staging)
-                os.replace(staging, destination)
-            except OSError:
-                try:
-                    staging.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                raise
-
-        def action() -> dict:
-            prepared = self._sale_asn_document_exports.get(token)
-            if prepared is None:
-                return {
-                    "ok": False,
-                    "code": "SALE_ASN_DOCUMENTS_EXPIRED",
-                    "message": (
-                        "File Sale ASN tạm không còn hiệu lực; hãy tải lại."
-                    ),
-                }
-            source = Path(prepared["prepared_path"])
-            if not source.is_file():
-                self._discard_sale_asn_document_export(token)
-                return {
-                    "ok": False,
-                    "code": "SALE_ASN_DOCUMENTS_EXPIRED",
-                    "message": "File Sale ASN tạm đã bị xóa; hãy tải lại.",
-                }
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                actual_target = target
-                renamed_for_open_file = False
-                try:
-                    copy_to_target(source, actual_target)
-                except PermissionError:
-                    actual_target = next_available_target(target)
-                    copy_to_target(source, actual_target)
-                    renamed_for_open_file = True
-            except OSError as error:
-                return {
-                    "ok": False,
-                    "code": "SALE_ASN_DOCUMENTS_SAVE_FAILED",
-                    "message": f"Không lưu được file Excel: {error}",
-                }
-            invoice_no = str(prepared.get("invoice_no") or "Invoice")
-            self._discard_sale_asn_document_export(token)
-            suffix_message = (
-                " File cùng tên đang mở nên đã tự lưu bằng tên mới."
-                if renamed_for_open_file
-                else ""
-            )
-            return {
-                "ok": True,
-                "code": "SALE_ASN_DOCUMENTS_EXPORTED",
-                "message": (
-                    f"Đã lưu Packing List + Buyer Invoice của "
-                    f"{invoice_no} thành {actual_target.name}.{suffix_message}"
-                ),
-                "invoice_no": invoice_no,
-                "export_path": str(actual_target),
-                "file_name": actual_target.name,
-                "renamed_for_open_file": renamed_for_open_file,
-                "sheet_names": list(prepared.get("sheet_names") or []),
-            }
-
-        return self._run(
-            "save_sale_asn_documents",
-            action,
-            {"file_name": target.name},
-        )
-
-    def search_rmpo(
-        self,
-        supplier: str,
-        order_no: str,
-    ) -> dict:
-        rmpo = constants.MODULE_BY_ID["0005_0050_0020"]
-
-        def action() -> dict:
-            self._rmpo_choices.clear()
-            result = self._login.search_rmpo_list(
-                rmpo["xpath"],
-                str(supplier or "").strip(),
-                str(order_no or "").strip(),
-                self._log,
-            )
-            if result.get("code") != "RMPO_RESULTS_READY":
-                return result
-            public_rows: list[dict[str, str]] = []
-            for raw in result.get("rmpo_rows") or []:
-                if not isinstance(raw, dict):
-                    continue
-                row = {
-                    key: str(raw.get(key) or "").strip()
-                    for key in (
-                        "row_key",
-                        "status",
-                        "supplier",
-                        "order_no",
-                        "last_created",
-                        "qty",
-                    )
-                }
-                if not row["row_key"] or not row["order_no"]:
-                    continue
-                choice_id = secrets.token_urlsafe(18)
-                self._rmpo_choices[choice_id] = row
-                public_rows.append(
-                    {
-                        "choice_id": choice_id,
-                        "status": row["status"],
-                        "supplier": row["supplier"],
-                        "order_no": row["order_no"],
-                        "last_created": row["last_created"],
-                        "qty": row["qty"],
-                    }
-                )
-            if not public_rows:
-                return {
-                    "ok": False,
-                    "code": "RMPO_NO_RESULTS",
-                    "message": "Không đọc được dòng RMPO phù hợp để chọn.",
-                    "rmpos": [],
-                    "result_count": 0,
-                }
-            return {
-                **result,
-                "rmpos": public_rows,
-                "result_count": max(
-                    len(public_rows), int(result.get("result_count") or 0)
-                ),
-            }
-
-        return self._run(
-            "search_rmpo",
-            action,
-            {"module_id": "0005_0050_0020"},
-        )
+    def search_rmpo(self, supplier: str, order_no: str) -> dict:
+        return self._inventory.search_rmpo(supplier, order_no)
 
     def run_rmpo_action(self, choice_id: str, action_name: str) -> dict:
-        token = str(choice_id or "").strip()
-        requested_action = str(action_name or "").strip()
+        return self._inventory.run_rmpo_action(choice_id, action_name)
 
-        def action() -> dict:
-            choice = self._rmpo_choices.get(token)
-            if choice is None:
-                return {
-                    "ok": False,
-                    "code": "RMPO_RESULT_EXPIRED",
-                    "message": "Lựa chọn RMPO đã hết hiệu lực. Hãy tìm lại.",
-                }
-            return self._login.open_rmpo_result_action(
-                choice["row_key"],
-                choice["order_no"],
-                choice["supplier"],
-                choice["status"],
-                requested_action,
-                self._log,
-            )
+    def prepare_grn_receipt(self, rmpo_no: str, mode: str, rmpo_choice_id: str='') -> dict:
+        return self._inventory.prepare_grn_receipt(rmpo_no, mode, rmpo_choice_id)
 
-        return self._run(
-            "run_rmpo_action",
-            action,
-            {
-                "module_id": "0005_0050_0020",
-                "action": requested_action,
-            },
-        )
-
-    def prepare_grn_receipt(
-        self,
-        rmpo_no: str,
-        mode: str,
-        rmpo_choice_id: str = "",
-    ) -> dict:
-        cleaned_rmpo = " ".join(str(rmpo_no or "").split())
-        cleaned_mode = str(mode or "").strip().casefold()
-        choice_token = str(rmpo_choice_id or "").strip()
-
-        def action() -> dict:
-            supplier = ""
-            if choice_token:
-                choice = self._rmpo_choices.get(choice_token)
-                if (
-                    choice is None
-                    or choice["order_no"].casefold() != cleaned_rmpo.casefold()
-                ):
-                    return {
-                        "ok": False,
-                        "code": "GRN_RMPO_SELECTION_EXPIRED",
-                        "message": "Lựa chọn RMPO đã hết hiệu lực. Hãy chọn lại.",
-                    }
-                if " ".join(choice["status"].casefold().split()) == "received":
-                    return {
-                        "ok": False,
-                        "code": "GRN_ALREADY_RECEIVED",
-                        "message": (
-                            f"RMPO {choice['order_no']} đã nhập kho hết, "
-                            "không thể nhập thêm."
-                        ),
-                    }
-                supplier = choice["supplier"]
-            result = self._login.prepare_grn_receipt(
-                constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
-                cleaned_rmpo,
-                supplier,
-                cleaned_mode,
-                self._log,
-            )
-            if result.get("code") not in {
-                "GRN_SOURCING_ASN_READY",
-                "GRN_SITE_SELECTION_REQUIRED",
-            }:
-                return result
-            receipt_token = secrets.token_urlsafe(24)
-            sites = [
-                " ".join(str(item or "").split())
-                for item in result.get("sites") or []
-                if str(item or "").strip()
-            ]
-            self._grn_receipt_sessions.clear()
-            self._grn_receipt_sessions[receipt_token] = {
-                "rmpo_no": str(result.get("rmpo_no") or cleaned_rmpo),
-                "supplier": str(result.get("supplier") or supplier),
-                "mode": cleaned_mode,
-                "stage": (
-                    "sourcing"
-                    if result.get("code") == "GRN_SOURCING_ASN_READY"
-                    else "site"
-                ),
-                "sites": sites,
-            }
-            return {**result, "receipt_token": receipt_token, "sites": sites}
-
-        return self._run(
-            "prepare_grn_receipt",
-            action,
-            {
-                "module_id": "grn_receipt",
-                "mode": cleaned_mode,
-                "from_rmpo_choice": bool(choice_token),
-            },
-        )
-
-    def continue_grn_receipt(
-        self,
-        receipt_token: str,
-        sourcing_confirmed: bool,
-    ) -> dict:
-        token = str(receipt_token or "").strip()
-        confirmed = boolean(sourcing_confirmed)
-
-        def action() -> dict:
-            session = self._grn_receipt_sessions.get(token)
-            if session is None or session.get("stage") != "sourcing":
-                return {
-                    "ok": False,
-                    "code": "GRN_SESSION_EXPIRED",
-                    "message": "Phiên nhập kho đã hết hiệu lực. Hãy bắt đầu lại.",
-                }
-            if not confirmed:
-                return {
-                    "ok": False,
-                    "code": "GRN_SOURCING_CONFIRM_REQUIRED",
-                    "message": "Chỉ tiếp tục sau khi đã Confirm Sourcing ASN trên WFX.",
-                }
-            result = self._login.continue_grn_receipt(
-                session["supplier"],
-                self._log,
-            )
-            if result.get("code") == "GRN_SITE_SELECTION_REQUIRED":
-                sites = [
-                    " ".join(str(item or "").split())
-                    for item in result.get("sites") or []
-                    if str(item or "").strip()
-                ]
-                session["stage"] = "site"
-                session["sites"] = sites
-                result = {
-                    **result,
-                    "receipt_token": token,
-                    "rmpo_no": session["rmpo_no"],
-                    "supplier": session["supplier"],
-                    "sites": sites,
-                }
-            return result
-
-        return self._run(
-            "continue_grn_receipt",
-            action,
-            {"module_id": "grn_receipt"},
-        )
+    def continue_grn_receipt(self, receipt_token: str, sourcing_confirmed: bool) -> dict:
+        return self._inventory.continue_grn_receipt(receipt_token, sourcing_confirmed)
 
     def finalize_grn_receipt(self, receipt_token: str, site: str) -> dict:
-        token = str(receipt_token or "").strip()
-        requested_site = " ".join(str(site or "").split())
-
-        def action() -> dict:
-            session = self._grn_receipt_sessions.get(token)
-            if session is None or session.get("stage") != "site":
-                return {
-                    "ok": False,
-                    "code": "GRN_SESSION_EXPIRED",
-                    "message": "Phiên nhập kho đã hết hiệu lực. Hãy bắt đầu lại.",
-                }
-            canonical_site = next(
-                (
-                    item
-                    for item in session.get("sites") or []
-                    if str(item).casefold() == requested_site.casefold()
-                ),
-                None,
-            )
-            if canonical_site is None:
-                return {
-                    "ok": False,
-                    "code": "GRN_SITE_INVALID",
-                    "message": "Site không còn trong danh sách GRN hiện tại.",
-                }
-            result = self._login.finalize_grn_receipt(
-                session["rmpo_no"],
-                canonical_site,
-                self._log,
-            )
-            if result.get("ok"):
-                self._grn_receipt_sessions.pop(token, None)
-            return result
-
-        return self._run(
-            "finalize_grn_receipt",
-            action,
-            {"module_id": "grn_receipt"},
-        )
+        return self._inventory.finalize_grn_receipt(receipt_token, site)
 
     def search_grn(self, filter_kind: str, query: str) -> dict:
-        cleaned_kind = str(filter_kind or "").strip().casefold()
-        cleaned_query = " ".join(str(query or "").split())
-        return self._run(
-            "search_grn",
-            lambda: self._login.search_grn_receipt(
-                cleaned_kind,
-                cleaned_query,
-                self._log,
-            ),
-            {
-                "module_id": "grn_receipt",
-                "filter_kind": cleaned_kind,
-            },
-        )
+        return self._inventory.search_grn(filter_kind, query)
 
     def search_indent(
         self,
@@ -2539,184 +1509,30 @@ class PanelAPI:
             {"module_id": module_id},
         )
 
-    def search_supplier_invoice(
-        self,
-        supplier: str = "",
-        invoice_no: str = "",
-        po_no: str = "",
-        asn_grn_no: str = "",
-    ) -> dict:
-        supplier_invoice = constants.MODULE_BY_ID["0065_0880_0020_0020"]
-        values = {
-            "supplier": str(supplier or "").strip(),
-            "invoice_no": str(invoice_no or "").strip(),
-            "po_no": str(po_no or "").strip(),
-            "asn_grn_no": str(asn_grn_no or "").strip(),
-        }
-        return self._run(
-            "search_supplier_invoice",
-            lambda: self._login.search_supplier_invoice_list(
-                supplier_invoice["xpath"],
-                values["supplier"],
-                values["invoice_no"],
-                values["po_no"],
-                values["asn_grn_no"],
-                self._log,
-            ),
-            {
-                "module_id": "0065_0880_0020_0020",
-                "filter_kinds": [
-                    name for name, value in values.items() if value
-                ],
-            },
+    def search_supplier_invoice(self, supplier: str='', invoice_no: str='', po_no: str='', asn_grn_no: str='') -> dict:
+        return self._finance.search_supplier_invoice(
+            supplier,
+            invoice_no,
+            po_no,
+            asn_grn_no,
         )
 
-    def search_advance_pr(
-        self,
-        buyer: str = "",
-        supplier: str = "",
-        invoice_no: str = "",
-        order_no: str = "",
-    ) -> dict:
-        advance_pr = constants.MODULE_BY_ID["0065_0880_0010_0020"]
-        values = {
-            "buyer": str(buyer or "").strip(),
-            "supplier": str(supplier or "").strip(),
-            "invoice_no": str(invoice_no or "").strip(),
-            "order_no": str(order_no or "").strip(),
-        }
-        return self._run(
-            "search_advance_pr",
-            lambda: self._login.search_advance_pr_list(
-                advance_pr["xpath"],
-                values["buyer"],
-                values["supplier"],
-                values["invoice_no"],
-                values["order_no"],
-                self._log,
-            ),
-            {
-                "module_id": "0065_0880_0010_0020",
-                "filter_kinds": [
-                    name for name, value in values.items() if value
-                ],
-            },
-        )
+    def search_advance_pr(self, buyer: str='', supplier: str='', invoice_no: str='', order_no: str='') -> dict:
+        return self._finance.search_advance_pr(buyer, supplier, invoice_no, order_no)
 
-    def search_expense_invoice(
-        self,
-        supplier: str = "",
-        invoice_no: str = "",
-        created_by: str = "",
-        status: str = "",
-    ) -> dict:
-        expense_invoice = constants.MODULE_BY_ID["0065_0880_0030_0020"]
-        values = {
-            "supplier": str(supplier or "").strip(),
-            "invoice_no": str(invoice_no or "").strip(),
-            "created_by": str(created_by or "").strip(),
-            "status": str(status or "").strip(),
-        }
-        return self._run(
-            "search_expense_invoice",
-            lambda: self._login.search_expense_invoice_list(
-                expense_invoice["xpath"],
-                values["supplier"],
-                values["invoice_no"],
-                values["created_by"],
-                values["status"],
-                self._log,
-            ),
-            {
-                "module_id": "0065_0880_0030_0020",
-                "filter_kinds": [
-                    name for name, value in values.items() if value
-                ],
-            },
+    def search_expense_invoice(self, supplier: str='', invoice_no: str='', created_by: str='', status: str='') -> dict:
+        return self._finance.search_expense_invoice(
+            supplier,
+            invoice_no,
+            created_by,
+            status,
         )
 
     def cancel_supplier_invoice(self, invoice_no: str) -> dict:
-        cleaned_invoice = str(invoice_no or "").strip()
-        supplier_invoice = constants.MODULE_BY_ID["0065_0880_0020_0020"]
-
-        def action() -> dict:
-            self._supplier_invoice_cancel_choices.clear()
-            result = self._login.prepare_supplier_invoice_cancel(
-                supplier_invoice["xpath"],
-                cleaned_invoice,
-                self._log,
-            )
-            if result.get("code") != "SUPPLIER_INVOICE_MULTIPLE_RESULTS":
-                return result
-            public_invoices: list[dict[str, str]] = []
-            for raw in result.get("invoices") or []:
-                if not isinstance(raw, dict):
-                    continue
-                row_key = str(raw.get("row_key") or "").strip()
-                invoice = str(raw.get("invoice_no") or "").strip()
-                status = str(raw.get("status") or "").strip()
-                if not row_key or not invoice or not status:
-                    continue
-                choice_id = secrets.token_urlsafe(18)
-                self._supplier_invoice_cancel_choices[choice_id] = {
-                    "row_key": row_key,
-                    "invoice_no": invoice,
-                    "status": status,
-                }
-                public_invoices.append(
-                    {
-                        "choice_id": choice_id,
-                        "invoice_no": invoice,
-                        "supplier": str(raw.get("supplier") or ""),
-                        "po_no": str(raw.get("po_no") or ""),
-                        "asn_grn_no": str(raw.get("asn_grn_no") or ""),
-                        "status": status,
-                    }
-                )
-            if not public_invoices:
-                return {
-                    "ok": False,
-                    "code": "SUPPLIER_INVOICE_RESULT_EXPIRED",
-                    "message": "Không đọc được dòng Supplier Invoice để chọn an toàn.",
-                }
-            return {
-                **result,
-                "invoices": public_invoices,
-                "exact_match": bool(result.get("exact_match")),
-            }
-
-        return self._run(
-            "cancel_supplier_invoice",
-            action,
-            {"filter_kind": "invoice_no"},
-        )
+        return self._finance.cancel_supplier_invoice(invoice_no)
 
     def cancel_supplier_invoice_choice(self, choice_id: str) -> dict:
-        token = str(choice_id or "").strip()
-
-        def action() -> dict:
-            choice = self._supplier_invoice_cancel_choices.get(token)
-            if choice is None:
-                return {
-                    "ok": False,
-                    "code": "SUPPLIER_INVOICE_RESULT_EXPIRED",
-                    "message": (
-                        "Lựa chọn Supplier Invoice đã hết hiệu lực; "
-                        "hãy tìm lại trước khi Cancel."
-                    ),
-                }
-            return self._login.cancel_supplier_invoice_choice(
-                choice["row_key"],
-                choice["invoice_no"],
-                choice["status"],
-                self._log,
-            )
-
-        return self._run(
-            "cancel_supplier_invoice_choice",
-            action,
-            {"choice_id": token},
-        )
+        return self._finance.cancel_supplier_invoice_choice(choice_id)
 
     def open_module_new(self, module_id: str) -> dict:
         return self._run(
@@ -2729,135 +1545,22 @@ class PanelAPI:
         )
 
     def toggle_company_foc(self) -> dict:
-        def action() -> dict:
-            denied = self._admin_module_access_error("0090_0007")
-            if denied is not None:
-                return denied
-            company = constants.MODULE_BY_ID["0090_0007"]
-            toggler = getattr(self._login, "toggle_company_foc", None)
-            if not callable(toggler):
-                return {
-                    "ok": False,
-                    "code": "COMPANY_FOC_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ đổi FOC.",
-                }
-            return toggler(company["xpath"], self._log)
-
-        return self._run("toggle_company_foc", action)
+        return self._directory.toggle_company_foc()
 
     def open_supplier_category(self, category_name: str) -> dict:
-        def action() -> dict:
-            value = constants.CATEGORIES.get(category_name)
-            if value is None:
-                return {
-                    "ok": False,
-                    "code": "CATEGORY_UNKNOWN",
-                    "message": f"Category lạ: {category_name}",
-                }
-            denied = self._admin_module_access_error("0005_0010_1290")
-            if denied is not None:
-                return denied
-            supplier = constants.MODULE_BY_ID["0005_0010_1290"]
-            return self._login.open_supplier_category(
-                supplier["xpath"],
-                category_name,
-                value,
-                self._log,
-            )
-
-        return self._run(
-            "open_supplier_category",
-            action,
-            {"category_name": category_name},
-        )
+        return self._directory.open_supplier_category(category_name)
 
     def find_supplier(self, query: str) -> dict:
-        def action() -> dict:
-            denied = self._admin_module_access_error("0005_0010_1290")
-            if denied is not None:
-                return denied
-            supplier = constants.MODULE_BY_ID["0005_0010_1290"]
-            return self._login.find_supplier_across_categories(
-                supplier["xpath"],
-                constants.CATEGORIES,
-                str(query or "").strip(),
-                self._log,
-            )
+        return self._directory.find_supplier(query)
 
-        return self._run(
-            "find_supplier",
-            action,
-            {"query": str(query or "").strip()},
-        )
-
-    def find_supplier_in_category(
-        self,
-        category_name: str,
-        query: str,
-    ) -> dict:
-        def action() -> dict:
-            value = constants.CATEGORIES.get(category_name)
-            if value is None:
-                return {
-                    "ok": False,
-                    "code": "CATEGORY_UNKNOWN",
-                    "message": f"Category lạ: {category_name}",
-                }
-            denied = self._admin_module_access_error("0005_0010_1290")
-            if denied is not None:
-                return denied
-            supplier = constants.MODULE_BY_ID["0005_0010_1290"]
-            return self._login.find_supplier_in_category(
-                supplier["xpath"],
-                category_name,
-                value,
-                str(query or "").strip(),
-                self._log,
-            )
-
-        return self._run(
-            "find_supplier_in_category",
-            action,
-            {
-                "category_name": category_name,
-                "query": str(query or "").strip(),
-            },
-        )
+    def find_supplier_in_category(self, category_name: str, query: str) -> dict:
+        return self._directory.find_supplier_in_category(category_name, query)
 
     def find_buyer(self, query: str) -> dict:
-        def action() -> dict:
-            denied = self._admin_module_access_error("0004_0010_1720")
-            if denied is not None:
-                return denied
-            buyer = constants.MODULE_BY_ID["0004_0010_1720"]
-            return self._login.find_and_open_buyer(
-                buyer["xpath"],
-                str(query or "").strip(),
-                self._log,
-            )
-
-        return self._run(
-            "find_buyer",
-            action,
-            {"query": str(query or "").strip()},
-        )
+        return self._directory.find_buyer(query)
 
     def switch_division(self, division_key: str) -> dict:
-        def action() -> dict:
-            if not hasattr(self._login, "switch_division"):
-                return {
-                    "ok": False,
-                    "code": "DIVISION_CHANGE_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ đổi Division.",
-                }
-            result = self._login.switch_division(division_key, self._log)
-            return self._with_admin_access(result)
-
-        return self._run(
-            "switch_division",
-            action,
-            {"division_key": str(division_key or "").casefold()},
-        )
+        return self._directory.switch_division(division_key)
 
     # -- catalog (uỷ quyền cho CatalogController) --------------------------
     def scan_catalog_folders(
@@ -2984,10 +1687,7 @@ class PanelAPI:
         return self._catalog.open_sample_file_choice(choice_id)
 
     def open_oc_revision_report(self) -> dict:
-        return self._run(
-            "open_oc_revision_report",
-            lambda: self._login.open_oc_revision_report(self._log),
-        )
+        return self._oc.open_oc_revision_report()
 
     def run_gdn_dispatch(
         self,
@@ -3051,321 +1751,29 @@ class PanelAPI:
             {"module_id": "gdn_dispatch"},
         )
 
-    @staticmethod
-    def _oc_review_payload(prepared) -> dict:
-        return {
-            "buyer": prepared.buyer,
-            "seasons": list(prepared.seasons),
-            "season": ", ".join(prepared.seasons) or "—",
-            "po_count": prepared.po_count,
-            "style_count": prepared.style_count,
-            "total_units": prepared.total_units,
-            "row_count": prepared.row_count,
-            "mode": prepared.mode,
-            "warnings": list(prepared.warnings),
-        }
-
     def _discard_oc_upload_review(self, review_token: str) -> bool:
-        review = self._oc_upload_reviews.pop(review_token, None)
-        if review is None:
-            return False
-        temporary = review.get("temporary")
-        if temporary is not None:
-            try:
-                temporary.cleanup()
-            except OSError as error:
-                self._log(
-                    "[OC] Không dọn được workbook review tạm: "
-                    f"{type(error).__name__}"
-                )
-        return True
+        return self._oc._discard_oc_upload_review(review_token)
 
     def review_oc_upload(self, mode: str, file_path: str) -> dict:
-        """Validate locally and return business totals before touching WFX."""
-        selected_mode = str(mode or "").strip().casefold()
-        source = Path(str(file_path or "")).expanduser().resolve()
-
-        def action() -> dict:
-            # UI chỉ duy trì một review hiện hành; file cũ không được phép vô
-            # tình confirm sau khi user đã chọn workbook khác.
-            for old_token in tuple(self._oc_upload_reviews):
-                self._discard_oc_upload_review(old_token)
-            cache_root = self._base_dir / "oc-upload-cache"
-            cache_root.mkdir(parents=True, exist_ok=True)
-            temporary = tempfile.TemporaryDirectory(
-                prefix="review-",
-                dir=cache_root,
-            )
-            try:
-                source_snapshot = Path(temporary.name) / "OC-Source.xlsx"
-                source_sha256 = _snapshot_oc_source(source, source_snapshot)
-                upload_path = Path(temporary.name) / "OC-EDI-Upload.xlsx"
-                prepared = prepare_oc_workbook(
-                    source_snapshot,
-                    selected_mode,
-                    upload_path,
-                )
-            except OCWorkbookError as error:
-                temporary.cleanup()
-                return {
-                    "ok": False,
-                    "code": error.code,
-                    "message": error.message,
-                    "errors": list(error.errors),
-                    "source_file": source.name,
-                    "mode": selected_mode,
-                }
-            except Exception:
-                temporary.cleanup()
-                raise
-            review_token = secrets.token_urlsafe(24)
-            self._oc_upload_reviews[review_token] = {
-                "temporary": temporary,
-                "prepared": prepared,
-                "source_file": source.name,
-                "source_sha256": source_sha256,
-            }
-            self._log(
-                "[OC] Review sẵn sàng: "
-                f"{prepared.row_count} dòng, {prepared.po_count} PO, "
-                f"{prepared.style_count} Style, {prepared.total_units} Units"
-            )
-            return {
-                "ok": True,
-                "code": "OC_UPLOAD_REVIEW_READY",
-                "message": "File hợp lệ. Kiểm tra số liệu trước khi xác nhận Upload.",
-                "review_token": review_token,
-                "source_file": source.name,
-                "source_sha256": source_sha256,
-                **self._oc_review_payload(prepared),
-            }
-
-        return self._run(
-            "review_oc_upload",
-            action,
-            {"mode": selected_mode, "file_name": source.name},
-        )
+        return self._oc.review_oc_upload(mode, file_path)
 
     def cancel_oc_upload_review(self, review_token: str) -> dict:
-        token = str(review_token or "").strip()
+        return self._oc.cancel_oc_upload_review(review_token)
 
-        def action() -> dict:
-            self._discard_oc_upload_review(token)
-            return {
-                "ok": True,
-                "code": "OC_UPLOAD_REVIEW_CANCELLED",
-                "message": "Đã hủy Upload OC; WFX chưa nhận dữ liệu.",
-            }
-
-        return self._run("cancel_oc_upload_review", action)
-
-    def save_oc_upload_file(
-        self,
-        review_token: str,
-        file_path: str,
-    ) -> dict:
-        """Save the generated value-only workbook without consuming the review."""
-        token = str(review_token or "").strip()
-        raw_path = str(file_path or "").strip()
-        if not raw_path:
-            return {
-                "ok": False,
-                "code": "OC_UPLOAD_FILE_SAVE_FAILED",
-                "message": "Chưa có đường dẫn lưu file EDI Upload OC.",
-            }
-        target = Path(raw_path).expanduser().resolve()
-        if target.suffix.casefold() != ".xlsx":
-            target = target.with_suffix(".xlsx")
-
-        def next_available_target(current: Path) -> Path:
-            suffix = current.suffix or ".xlsx"
-            for index in range(2, 10_000):
-                candidate = current.with_name(f"{current.stem} ({index}){suffix}")
-                if not candidate.exists():
-                    return candidate
-            raise OSError("Không tìm được tên file trống để lưu EDI Upload OC.")
-
-        def copy_to_target(source: Path, destination: Path) -> None:
-            staging = destination.with_name(
-                f".{destination.name}.{secrets.token_hex(4)}.tmp"
-            )
-            try:
-                shutil.copyfile(source, staging)
-                os.replace(staging, destination)
-            except OSError:
-                try:
-                    staging.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                raise
-
-        def action() -> dict:
-            review = self._oc_upload_reviews.get(token)
-            if review is None:
-                return {
-                    "ok": False,
-                    "code": "OC_UPLOAD_REVIEW_EXPIRED",
-                    "message": "Review Upload OC không còn hiệu lực; hãy chọn lại file.",
-                }
-            source = Path(review["prepared"].upload_path)
-            if not source.is_file():
-                return {
-                    "ok": False,
-                    "code": "OC_UPLOAD_FILE_MISSING",
-                    "message": (
-                        "File EDI Upload OC đã sinh không còn tồn tại; "
-                        "hãy chọn lại file nguồn."
-                    ),
-                }
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                actual_target = target
-                renamed_for_open_file = False
-                try:
-                    copy_to_target(source, actual_target)
-                except PermissionError:
-                    actual_target = next_available_target(target)
-                    copy_to_target(source, actual_target)
-                    renamed_for_open_file = True
-            except OSError as error:
-                return {
-                    "ok": False,
-                    "code": "OC_UPLOAD_FILE_SAVE_FAILED",
-                    "message": f"Không lưu được file EDI Upload OC: {error}",
-                }
-            suffix_message = (
-                " File cùng tên đang mở nên đã tự lưu bằng tên mới."
-                if renamed_for_open_file
-                else ""
-            )
-            return {
-                "ok": True,
-                "code": "OC_UPLOAD_FILE_SAVED",
-                "message": (
-                    f"Đã tải form EDI Upload OC xuống {actual_target.name}."
-                    f"{suffix_message} Bạn có thể tự Upload lại file này nếu WFX báo lỗi."
-                ),
-                "file_path": str(actual_target),
-                "file_name": actual_target.name,
-                "renamed_for_open_file": renamed_for_open_file,
-            }
-
-        return self._run(
-            "save_oc_upload_file",
-            action,
-            {"file_name": target.name},
-        )
+    def save_oc_upload_file(self, review_token: str, file_path: str) -> dict:
+        return self._oc.save_oc_upload_file(review_token, file_path)
 
     def confirm_oc_upload(self, review_token: str) -> dict:
-        """Upload exactly the value-only workbook shown in the review."""
-        token = str(review_token or "").strip()
-
-        def action() -> dict:
-            review = self._oc_upload_reviews.get(token)
-            if review is None:
-                return {
-                    "ok": False,
-                    "code": "OC_UPLOAD_REVIEW_EXPIRED",
-                    "message": "Review Upload OC không còn hiệu lực; hãy chọn lại file.",
-                }
-            prepared = review["prepared"]
-            try:
-                result = self._login.upload_oc_edi(
-                    prepared.upload_path,
-                    prepared.buyer,
-                    prepared.mode,
-                    self._log,
-                )
-            except BaseException:
-                self._discard_oc_upload_review(token)
-                raise
-            # Cho auto-relogin gọi lại action đúng một lần khi chưa hề chạm EDI.
-            if str(result.get("code") or "") != "NOT_LOGGED_IN":
-                self._discard_oc_upload_review(token)
-            return {
-                **result,
-                "source_file": review["source_file"],
-                **self._oc_review_payload(prepared),
-            }
-
-        return self._run(
-            "confirm_oc_upload",
-            action,
-            {"review_token": token[:8]},
-        )
+        return self._oc.confirm_oc_upload(review_token)
 
     def confirm_oc_pending(self, mode: str) -> dict:
-        """Confirm tuần tự các Style chờ, không phụ thuộc lịch sử upload app."""
-        selected_mode = str(mode or "").strip().casefold()
-        return self._run(
-            "confirm_oc_pending",
-            lambda: self._login.confirm_oc_pending(selected_mode, self._log),
-            {"mode": selected_mode},
-        )
+        return self._oc.confirm_oc_pending(mode)
 
     def reject_all_oc_pending(self) -> dict:
-        """Reject tuần tự PO trong tab New hoặc Revision đang mở trên WFX."""
-        return self._run(
-            "reject_all_oc_pending",
-            lambda: self._login.reject_all_oc_pending(self._log),
-        )
+        return self._oc.reject_all_oc_pending()
 
     def upload_oc(self, mode: str, file_path: str) -> dict:
-        selected_mode = str(mode or "").strip().casefold()
-        source = Path(str(file_path or "")).expanduser().resolve()
-
-        def action() -> dict:
-            cache_root = self._base_dir / "oc-upload-cache"
-            cache_root.mkdir(parents=True, exist_ok=True)
-            try:
-                with tempfile.TemporaryDirectory(
-                    prefix="run-",
-                    dir=cache_root,
-                ) as temporary:
-                    upload_path = Path(temporary) / "OC-EDI-Upload.xlsx"
-                    prepared = prepare_oc_workbook(
-                        source,
-                        selected_mode,
-                        upload_path,
-                    )
-                    self._log(
-                        "[OC] Workbook hợp lệ: "
-                        f"{prepared.row_count} dòng, Buyer {prepared.buyer}"
-                    )
-                    for warning in prepared.warnings:
-                        self._log(f"[OC] {warning}")
-                    result = self._login.upload_oc_edi(
-                        prepared.upload_path,
-                        prepared.buyer,
-                        prepared.mode,
-                        self._log,
-                    )
-                    return {
-                        **result,
-                        "source_file": source.name,
-                        "row_count": prepared.row_count,
-                        "buyer": prepared.buyer,
-                        "mode": prepared.mode,
-                        "warnings": list(prepared.warnings),
-                    }
-            except OCWorkbookError as error:
-                return {
-                    "ok": False,
-                    "code": error.code,
-                    "message": error.message,
-                    "errors": list(error.errors),
-                    "source_file": source.name,
-                    "mode": selected_mode,
-                }
-
-        return self._run(
-            "upload_oc",
-            action,
-            {
-                "mode": selected_mode,
-                "file_name": source.name,
-            },
-        )
+        return self._oc.upload_oc(mode, file_path)
 
     def inspect_active_catalog_costing(self, category_name: str) -> dict:
         return self._catalog.inspect_active_costing(category_name)
@@ -3376,75 +1784,14 @@ class PanelAPI:
     def sync_article_library(self) -> dict:
         return self._catalog.sync_article_library()
 
-    def sync_reference_data(self, force: bool = True) -> dict:
-        """Tải snapshot tham chiếu; chạy NGOÀI `_run()` như sync_article_library.
-
-        Đây là một lời gọi HTTP thuần, không đụng Playwright/Chrome, nhưng
-        `_run()` giữ `_run_lock` và chiếm luôn automation worker suốt cả
-        `REQUEST_TIMEOUT_SECONDS`. Hệ quả khi bọc nó vào `_run()`:
-
-        - vòng lặp nền mỗi giờ khóa mọi thao tác của người dùng tới 60 giây và
-          UI chỉ trả `ACTION_IN_PROGRESS` dù người dùng không chạy gì;
-        - ngược lại lúc khởi động, auto-login đang giữ lock nên chính lượt sync
-          bị bỏ qua và không thử lại suốt một tiếng;
-        - mỗi lượt còn đẩy một dòng nền vào `job_history`, làm loãng trần 200
-          dòng dành cho job thật.
-
-        Không cần khóa riêng: hai lượt sync chồng nhau chỉ tải trùng, vì cache
-        được ghi bằng `write_json_atomic` và nội dung là idempotent.
-        """
-        return reference_sync.sync_latest(
-            self._base_dir,
-            self._log,
-            force=boolean(force, True),
-        )
+    def sync_reference_data(self, force: bool=True) -> dict:
+        return self._settings.sync_reference_data(force)
 
     def save_sync_admin_key(self, admin_key: str) -> dict:
-        if self._admin_access is not True:
-            return {
-                "ok": False,
-                "code": "ADMIN_ACCESS_DENIED",
-                "message": "Tài khoản WFX chưa có quyền quản trị.",
-                **reference_sync.status(self._base_dir),
-            }
-        try:
-            configured = self._prefs.save_sync_admin_key(
-                str(admin_key or ""),
-                base_dir=self._base_dir,
-            )
-        except (OSError, RuntimeError) as error:
-            return {
-                "ok": False,
-                "code": "REFERENCE_ADMIN_KEY_SAVE_FAILED",
-                "message": str(error),
-                **reference_sync.status(self._base_dir),
-            }
-        return {
-            "ok": True,
-            "code": "REFERENCE_ADMIN_KEY_SAVED",
-            "message": (
-                "Đã lưu Admin key an toàn trên máy này."
-                if configured
-                else "Đã xóa Admin key trên máy này."
-            ),
-            **reference_sync.status(self._base_dir),
-        }
+        return self._settings.save_sync_admin_key(admin_key)
 
     def publish_reference_data(self) -> dict:
-        if self._admin_access is not True:
-            return {
-                "ok": False,
-                "code": "ADMIN_ACCESS_DENIED",
-                "message": "Tài khoản WFX chưa có quyền quản trị.",
-                **reference_sync.status(self._base_dir),
-            }
-        return self._run(
-            "publish_reference_data",
-            lambda: reference_sync.publish_current(
-                self._base_dir,
-                self._log,
-            ),
-        )
+        return self._settings.publish_reference_data()
 
     def set_costing_special_options_rescan(self, value: bool) -> dict:
         return self._catalog.set_costing_special_options_rescan(value)
@@ -3569,246 +1916,37 @@ class PanelAPI:
         }
 
     def set_theme(self, theme: str) -> dict:
-        # load_prefs chuẩn hóa giá trị lạ về "light". Nếu API cũng im lặng
-        # chấp nhận thì UI báo "Đã đổi giao diện" trong khi giao diện nhảy về
-        # Sáng — người dùng không hiểu vì sao lựa chọn của họ bị bỏ.
-        wanted = str(theme or "").strip().casefold()
-        if wanted not in THEME_CHOICES:
-            return {
-                "ok": False,
-                "code": "THEME_INVALID",
-                "message": "Giao diện chỉ nhận Sáng, Tối hoặc Tự động.",
-                "theme": self._prefs.load_prefs(base_dir=self._base_dir)["theme"],
-            }
-        saved = self._prefs.save_prefs(base_dir=self._base_dir, theme=wanted)
-        return {"ok": True, "code": "THEME_SAVED", "message": "Đã đổi giao diện", "theme": saved["theme"]}
+        return self._settings.set_theme(theme)
 
-    def set_sale_asn_stages(self, stages: list[str] | None = None) -> dict:
-        """Nhớ các bước Sale ASN user đã chọn giữa các phiên chạy."""
-        if stages is not None and not isinstance(stages, (list, tuple)):
-            return {
-                "ok": False,
-                "code": "SALE_ASN_CREATE_STEPS_INVALID",
-                "message": "Danh sách bước Sale ASN không hợp lệ.",
-            }
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir,
-            sale_asn_stages=[
-                str(stage or "").strip()
-                for stage in (stages or ())
-                if isinstance(stage, str)
-            ],
-        )
-        return {
-            "ok": True,
-            "code": "PREF_SAVED",
-            "message": "Đã lưu các bước Sale ASN.",
-            "sale_asn_stages": saved["sale_asn_stages"],
-        }
+    def set_sale_asn_stages(self, stages: list[str] | None=None) -> dict:
+        return self._settings.set_sale_asn_stages(stages)
 
-    def set_sale_asn_po_search_fields(
-        self,
-        fields: list[str] | None = None,
-    ) -> dict:
-        """Nhớ các tiêu chí Add PO và luôn trả danh sách đã chuẩn hóa."""
-
-        if fields is not None and not isinstance(fields, (list, tuple)):
-            return {
-                "ok": False,
-                "code": "SALE_ASN_PO_SEARCH_FIELDS_INVALID",
-                "message": "Danh sách tiêu chí tìm PO không hợp lệ.",
-            }
-
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir,
-            sale_asn_po_search_fields=[
-                str(field or "").strip()
-                for field in (fields or ())
-                if isinstance(field, str)
-            ],
-        )
-        return {
-            "ok": True,
-            "code": "PREF_SAVED",
-            "message": "Đã lưu tiêu chí tìm PO cho Sale ASN.",
-            "sale_asn_po_search_fields": saved[
-                "sale_asn_po_search_fields"
-            ],
-        }
+    def set_sale_asn_po_search_fields(self, fields: list[str] | None=None) -> dict:
+        return self._settings.set_sale_asn_po_search_fields(fields)
 
     def set_excel_file_after_download(self, enabled: bool) -> dict:
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir,
-            open_excel_file_after_download=boolean(enabled),
-        )
-        return {
-            "ok": True,
-            "code": "PREF_SAVED",
-            "message": "Đã lưu cách mở file Excel sau khi tải.",
-            "open_excel_file_after_download": saved[
-                "open_excel_file_after_download"
-            ],
-        }
+        return self._settings.set_excel_file_after_download(enabled)
 
     def set_module_favorite(self, module_id: str, favorite: bool) -> dict:
-        module_id = str(module_id or "").strip()
-        if module_id not in constants.MODULE_BY_ID:
-            return {
-                "ok": False,
-                "code": "MODULE_UNKNOWN",
-                "message": "Không tìm thấy module để ghim.",
-            }
-        preferences = self._prefs.load_prefs(base_dir=self._base_dir)
-        ids = list(preferences["favorite_module_ids"])
-        wanted = boolean(favorite)
-        if wanted and module_id not in ids:
-            ids.append(module_id)
-        elif not wanted:
-            ids = [value for value in ids if value != module_id]
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir,
-            favorite_module_ids=ids,
-        )
-        module_name = constants.MODULE_BY_ID[module_id]["name"]
-        return {
-            "ok": True,
-            "code": "MODULE_FAVORITE_SAVED",
-            "message": (
-                f"Đã ghim {module_name} lên đầu."
-                if wanted
-                else f"Đã bỏ ghim {module_name}."
-            ),
-            "favorite_module_ids": saved["favorite_module_ids"],
-        }
+        return self._settings.set_module_favorite(module_id, favorite)
 
     def set_hotkey(self, spec: str | dict) -> dict:
-        try:
-            normalized = (
-                hotkey_spec.from_event(spec)
-                if isinstance(spec, dict)
-                else hotkey_spec.normalize(spec)
-            )
-        except (ValueError, TypeError, AttributeError) as error:
-            return {
-                "ok": False,
-                "code": "HOTKEY_INVALID",
-                "message": str(error),
-            }
-
-        previous = self._prefs.load_prefs(base_dir=self._base_dir)["hotkey"]
-        if self._hotkey_applier is not None:
-            failure = self._hotkey_applier(normalized)
-            if failure:
-                self._hotkey_applier(previous)
-                return {
-                    "ok": False,
-                    "code": "HOTKEY_REGISTER_FAILED",
-                    "message": failure,
-                    "hotkey": previous,
-                    "hotkey_label": hotkey_spec.format_label(previous),
-                }
-
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, hotkey=normalized
-        )
-        self._log(f"[SETTINGS] Đã đổi hotkey sang {saved['hotkey_label']}")
-        return {
-            "ok": True,
-            "code": "HOTKEY_SAVED",
-            "message": f"Đã đổi hotkey sang {saved['hotkey_label']}.",
-            "hotkey": saved["hotkey"],
-            "hotkey_label": saved["hotkey_label"],
-        }
+        return self._settings.set_hotkey(spec)
 
     def set_autostart(self, enabled: bool) -> dict:
-        wanted = boolean(enabled)
-        actual = autostart.sync(wanted)
-        self._prefs.save_prefs(
-            base_dir=self._base_dir, autostart=actual
-        )
-        if actual != wanted:
-            return {
-                "ok": False,
-                "code": "AUTOSTART_FAILED",
-                "message": "Không ghi được thiết lập khởi động cùng Windows.",
-                "autostart": actual,
-            }
-        return {
-            "ok": True,
-            "code": "AUTOSTART_SAVED",
-            "message": (
-                "Đã bật khởi động cùng Windows."
-                if actual
-                else "Đã tắt khởi động cùng Windows."
-            ),
-            "autostart": actual,
-        }
+        return self._settings.set_autostart(enabled)
 
     def set_start_hidden(self, enabled: bool) -> dict:
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, start_hidden=boolean(enabled)
-        )
-        return {
-            "ok": True,
-            "code": "PREF_SAVED",
-            "message": (
-                "Lần mở tới sẽ ẩn trong tray."
-                if saved["start_hidden"]
-                else "Lần mở tới sẽ hiện panel."
-            ),
-            "start_hidden": saved["start_hidden"],
-        }
+        return self._settings.set_start_hidden(enabled)
 
     def set_toast_enabled(self, enabled: bool) -> dict:
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, toast_enabled=boolean(enabled)
-        )
-        return {
-            "ok": True,
-            "code": "PREF_SAVED",
-            "message": (
-                "Đã bật thông báo."
-                if saved["toast_enabled"]
-                else "Đã tắt thông báo."
-            ),
-            "toast_enabled": saved["toast_enabled"],
-        }
+        return self._settings.set_toast_enabled(enabled)
 
     def set_focus_chrome_on_module(self, enabled: bool) -> dict:
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir,
-            focus_chrome_on_module=boolean(enabled),
-        )
-        return {
-            "ok": True,
-            "code": "PREF_SAVED",
-            "message": (
-                "Chrome sẽ tự hiện khi chạy module."
-                if saved["focus_chrome_on_module"]
-                else "Đã tắt tự động đưa Chrome lên trước."
-            ),
-            "focus_chrome_on_module": saved[
-                "focus_chrome_on_module"
-            ],
-        }
+        return self._settings.set_focus_chrome_on_module(enabled)
 
     def set_always_on_top(self, enabled: bool) -> dict:
-        value = boolean(enabled)
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, always_on_top=value
-        )
-        if self._on_top_applier is not None:
-            self._on_top_applier(saved["always_on_top"])
-        return {
-            "ok": True,
-            "code": "WINDOW_PREF_SAVED",
-            "message": (
-                "Panel sẽ luôn nằm trên cùng."
-                if saved["always_on_top"]
-                else "Panel không còn bị ghim trên cùng."
-            ),
-            "always_on_top": saved["always_on_top"],
-        }
+        return self._settings.set_always_on_top(enabled)
 
     def set_admin_mode(self, enabled: bool) -> dict:
         wanted = boolean(enabled)
@@ -3840,246 +1978,35 @@ class PanelAPI:
             **self._admin_state(),
         }
 
-    def submit_feedback(
-        self,
-        kind: str,
-        message: str,
-        include_diagnostics: bool = True,
-    ) -> dict:
-        kind = "bug" if str(kind).casefold() == "bug" else "feedback"
-        message = str(message or "").strip()
-        if len(message) < 5:
-            return {
-                "ok": False,
-                "code": "FEEDBACK_TOO_SHORT",
-                "message": "Vui lòng mô tả ít nhất 5 ký tự.",
-            }
-        if len(message) > 2_000:
-            return {
-                "ok": False,
-                "code": "FEEDBACK_TOO_LONG",
-                "message": "Nội dung góp ý tối đa 2.000 ký tự.",
-            }
-        include_diagnostics = boolean(include_diagnostics, True)
-        event = {
-            "event_type": "user_feedback",
-            "kind": kind,
-            "message": message,
-            "app_version": APP_VERSION,
-            "account": self._telemetry_account_context(),
-        }
-        if include_diagnostics:
-            recent = job_history.list_jobs(self._base_dir, 5)
-            event["diagnostics"] = {
-                **telemetry.system_summary(),
-                **self.get_status(),
-                "recent_jobs": [
-                    {
-                        "run_id": row.get("run_id"),
-                        "method": row.get("method"),
-                        "code": row.get("code"),
-                        "elapsed_ms": row.get("elapsed_ms"),
-                    }
-                    for row in recent
-                ],
-            }
-        delivery = telemetry.submit(self._base_dir, event)
-        sent = delivery.get("delivery") == "sent"
-        return {
-            **delivery,
-            "code": "FEEDBACK_SENT" if sent else "FEEDBACK_QUEUED",
-            "message": (
-                "Đã gửi góp ý. Cảm ơn bạn."
-                if sent
-                else "Đã lưu góp ý an toàn trên máy; app sẽ tự gửi khi webhook được cấu hình."
-            ),
-            "reporting_configured": telemetry.is_configured(self._base_dir),
-        }
+    def submit_feedback(self, kind: str, message: str, include_diagnostics: bool=True) -> dict:
+        return self._jobs.submit_feedback(kind, message, include_diagnostics)
 
     def flush_error_reports(self) -> dict:
-        return {
-            **telemetry.flush(self._base_dir),
-            "reporting_configured": telemetry.is_configured(self._base_dir),
-        }
+        return self._jobs.flush_error_reports()
 
     def set_update_channel(self, channel: str) -> dict:
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir, update_channel="stable"
-        )
-        return {
-            "ok": True,
-            "code": "UPDATE_CHANNEL_SAVED",
-            "message": "Ứng dụng luôn sử dụng kênh Stable.",
-            "update_channel": saved["update_channel"],
-        }
+        return self._settings.set_update_channel(channel)
 
     def check_for_updates(self) -> dict:
-        return updater.check_for_updates(channel="stable")
+        return self._settings.check_for_updates()
 
     def install_update(self) -> dict:
-        state = updater.check_for_updates(channel="stable")
-        if not state.get("can_update"):
-            return state
-        if self._update_applier is None:
-            return {
-                **state,
-                "ok": False,
-                "code": "UPDATE_APPLIER_MISSING",
-                "message": "Bộ cài cập nhật chưa sẵn sàng.",
-                "can_update": False,
-            }
-        failure = self._update_applier(state)
-        if failure:
-            return {
-                **state,
-                "ok": False,
-                "code": "UPDATE_SCHEDULE_FAILED",
-                "message": failure,
-                "can_update": False,
-            }
-        return {
-            **state,
-            "ok": True,
-            "code": "UPDATE_SCHEDULED",
-            "message": (
-                "Đang cài bản mới. Ứng dụng sẽ đóng và tự mở lại khi hoàn tất."
-            ),
-            "can_update": False,
-        }
+        return self._settings.install_update()
 
-    # -- job history ------------------------------------------------------
-    def get_job_history(self, limit: int = 30) -> dict:
-        return {
-            "ok": True,
-            "code": "JOB_HISTORY",
-            "jobs": job_history.list_jobs(self._base_dir, limit),
-        }
+    def get_job_history(self, limit: int=30) -> dict:
+        return self._jobs.get_job_history(limit)
 
     def acknowledge_job(self, run_id: str) -> dict:
-        acknowledged = job_history.acknowledge(self._base_dir, run_id)
-        return {
-            "ok": acknowledged,
-            "code": "JOB_ACKNOWLEDGED" if acknowledged else "JOB_NOT_FOUND",
-            "message": (
-                "Đã đánh dấu tác vụ là đã xử lý."
-                if acknowledged
-                else "Không tìm thấy lần chạy này."
-            ),
-            "jobs": job_history.list_jobs(self._base_dir, 30),
-        }
+        return self._jobs.acknowledge_job(run_id)
 
     def retry_job(self, run_id: str) -> dict:
-        job = job_history.get_job(self._base_dir, run_id)
-        if job is None:
-            return {
-                "ok": False,
-                "code": "JOB_NOT_FOUND",
-                "message": "Không tìm thấy lần chạy này.",
-            }
-        request = job.get("request") or {}
-        method = job.get("method")
-        if not job_history.can_retry(job):
-            return {
-                "ok": False,
-                "code": "JOB_NOT_RETRYABLE",
-                "message": (
-                    "Tác vụ này không thể chạy lại vì lịch sử không lưu "
-                    "nội dung tìm kiếm nhạy cảm."
-                ),
-            }
-        category_name = str(request.get("category_name") or "Apparel")
-        query = str(request.get("query") or "")
-        destination = request.get("destination")
-        retry_handlers: dict[str, Callable[[], dict]] = {
-            "login": self.login,
-            "check_session": self.check_session,
-            "open_module": lambda: self.open_module(
-                str(request.get("module_id") or "")
-            ),
-            "prepare_catalog": lambda: self.prepare_catalog(category_name),
-            "scan_catalog_folders": lambda: self.scan_catalog_folders(
-                category_name,
-                True,
-            ),
-            "browse_catalog": lambda: self.browse_catalog(category_name),
-            "catalog_action": lambda: self.catalog_action(
-                category_name,
-                str(request.get("filter_kind") or "code"),
-                query,
-                destination,
-            ),
-            "find_code": lambda: self.find_code(
-                category_name,
-                query,
-                destination,
-            ),
-            "find_buyer_reference": lambda: self.find_buyer_reference(
-                category_name,
-                query,
-                destination,
-            ),
-            "open_catalog_destination": lambda: self.open_catalog_destination(
-                str(destination or ""),
-                str(request.get("article_code") or ""),
-            ),
-            "download_catalog_file": lambda: self.download_catalog_file(
-                str(request.get("file_id") or "")
-            ),
-        }
-        handler = retry_handlers.get(str(method or ""))
-        if handler is not None:
-            return handler()
-        return {
-            "ok": False,
-            "code": "JOB_NOT_RETRYABLE",
-            "message": "Tác vụ này không hỗ trợ chạy lại.",
-        }
+        return self._jobs.retry_job(run_id)
 
     def open_job_screenshot(self, run_id: str) -> dict:
-        job = job_history.get_job(self._base_dir, run_id)
-        path = Path(str((job or {}).get("screenshot") or "")).resolve()
-        allowed_dir = job_history.screenshot_dir(self._base_dir).resolve()
-        if (
-            job is None
-            or not path.is_file()
-            or path.suffix.lower() != ".png"
-            or path.parent != allowed_dir
-        ):
-            return {
-                "ok": False,
-                "code": "SCREENSHOT_NOT_FOUND",
-                "message": "Không có ảnh lỗi cho lần chạy này.",
-            }
-        try:
-            if os.name == "nt":
-                os.startfile(path)  # type: ignore[attr-defined]
-            else:
-                return {
-                    "ok": False,
-                    "code": "SCREENSHOT_OPEN_UNSUPPORTED",
-                    "message": "Chỉ hỗ trợ mở ảnh trực tiếp trên Windows.",
-                }
-            return {
-                "ok": True,
-                "code": "SCREENSHOT_OPENED",
-                "message": "Đã mở ảnh lỗi.",
-            }
-        except OSError as error:
-            return {
-                "ok": False,
-                "code": "SCREENSHOT_OPEN_FAILED",
-                "message": f"Không mở được ảnh lỗi: {error}",
-            }
+        return self._jobs.open_job_screenshot(run_id)
 
     def clear_job_history(self) -> dict:
-        job_history.clear(self._base_dir)
-        return {
-            "ok": True,
-            "code": "JOB_HISTORY_CLEARED",
-            "message": "Đã xóa lịch sử và ảnh lỗi cục bộ.",
-            "jobs": [],
-        }
+        return self._jobs.clear_job_history()
 
     def clear_log(self) -> dict:
-        self._logs = []
-        return {"ok": True, "code": "LOG_CLEARED", "message": "Đã xóa nhật ký"}
+        return self._jobs.clear_log()
