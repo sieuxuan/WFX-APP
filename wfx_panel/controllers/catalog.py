@@ -20,10 +20,11 @@ from heapq import nsmallest
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from wfx_panel import article_library, constants, style_options
+from wfx_panel import constants
 from wfx_panel.coercion import bounded_int
 from wfx_panel.controllers.costing import CostingController
-from wfx_panel.style_workbook import StyleWorkbookError, read_style_workbook
+from wfx_panel.stores import article_library, style_options
+from wfx_panel.workbooks.style import StyleWorkbookError, read_style_workbook
 
 STYLE_IMPORT_TTL_SECONDS = 30 * 60
 

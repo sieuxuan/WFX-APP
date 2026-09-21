@@ -22,8 +22,8 @@ from wfx_panel.automation.costing.keys import (
     _clean_key,
     _costing_semantic_token,
 )
-from wfx_panel.costing_planner import live_signature
-from wfx_panel.costing_workbook import FORMAT_VERSION, normalize_document
+from wfx_panel.workbooks.costing import FORMAT_VERSION, normalize_document
+from wfx_panel.workbooks.costing_planner import live_signature
 
 
 def _inventory_to_document(

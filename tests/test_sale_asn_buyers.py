@@ -1,6 +1,6 @@
 import json
 
-from wfx_panel.sale_asn_buyers import SaleASNBuyerStore, normalise_buyers
+from wfx_panel.stores.sale_asn_buyers import SaleASNBuyerStore, normalise_buyers
 
 
 def test_normalise_buyers_deduplicates_labels_case_insensitively():

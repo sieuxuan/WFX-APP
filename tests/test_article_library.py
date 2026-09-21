@@ -4,7 +4,7 @@ from io import BytesIO
 
 from openpyxl import Workbook
 
-from wfx_panel import article_library
+from wfx_panel.stores import article_library
 
 
 def _xlsx_payload():

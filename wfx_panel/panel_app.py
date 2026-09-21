@@ -22,7 +22,6 @@ os.environ.setdefault(
 )
 
 from wfx_panel import (
-    article_library,
     autostart,
     crash_log,
     hotkey,
@@ -70,6 +69,7 @@ from wfx_panel.app.manual_window import ManualWindowController
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
+from wfx_panel.stores import article_library
 from wfx_panel.version import APP_VERSION
 from wfx_panel.win32_window import (
     BUBBLE_WINDOW_TITLE,

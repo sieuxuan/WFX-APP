@@ -21,8 +21,8 @@ if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
 from wfx_panel import constants
-from wfx_panel.sale_asn_buyers import SaleASNBuyerStore, normalise_buyers
-from wfx_panel.sale_asn_workbook import (
+from wfx_panel.stores.sale_asn_buyers import SaleASNBuyerStore, normalise_buyers
+from wfx_panel.workbooks.sale_asn import (
     SaleASNWorkbookError,
     read_sale_asn_workbook,
     write_sale_asn_price_check_workbook,

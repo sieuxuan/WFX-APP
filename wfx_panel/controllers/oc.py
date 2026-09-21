@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
-from wfx_panel.oc_workbook import OCWorkbookError, prepare_oc_workbook
+from wfx_panel.workbooks.oc import OCWorkbookError, prepare_oc_workbook
 
 
 def _snapshot_oc_source(source: Path, target: Path) -> str:

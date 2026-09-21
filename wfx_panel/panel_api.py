@@ -13,7 +13,6 @@ from wfx_panel import (
     job_history,
     log_bridge,
     module_controllers,
-    reference_sync,
     status,
     telemetry,
 )
@@ -33,6 +32,7 @@ from wfx_panel.controllers import (
     SaleASNController,
     SettingsController,
 )
+from wfx_panel.stores import reference_sync
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 
 SESSION_OK = frozenset(

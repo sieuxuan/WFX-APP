@@ -215,14 +215,14 @@ from wfx_panel.automation.runtime import (  # noqa: F401
     checkpoint,
 )
 from wfx_panel.automation.session import _session_is_active  # noqa: F401
-from wfx_panel.costing_planner import (  # noqa: F401
+from wfx_panel.workbooks.costing import (  # noqa: F401
+    FORMAT_VERSION,
+    normalize_document,
+)
+from wfx_panel.workbooks.costing_planner import (  # noqa: F401
     CostingPlanError,
     build_costing_plan,
     live_signature,
-)
-from wfx_panel.costing_workbook import (  # noqa: F401
-    FORMAT_VERSION,
-    normalize_document,
 )
 
 __all__ = [

@@ -18,15 +18,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from wfx_panel.controllers.catalog import CatalogController
 
-from wfx_panel import article_library
 from wfx_panel.coercion import boolean
-from wfx_panel.costing_planner import CostingPlanError, build_costing_plan
-from wfx_panel.costing_workbook import (
+from wfx_panel.stores import article_library
+from wfx_panel.workbooks.costing import (
     CostingWorkbookError,
     costing_file_summary,
     read_costing_file,
     write_costing_file,
 )
+from wfx_panel.workbooks.costing_planner import CostingPlanError, build_costing_plan
 
 COSTING_PLAN_TTL_SECONDS = 15 * 60
 _SPECIAL_COST_SECTION_KEYS = frozenset(

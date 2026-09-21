@@ -15,7 +15,7 @@ import webview
 if TYPE_CHECKING:
     from wfx_panel.panel_app import PanelApp
 
-from wfx_panel import article_library, prefs
+from wfx_panel import prefs
 from wfx_panel.app.helpers import (
     _dialog_selected_path,
     _is_excel_file,
@@ -23,9 +23,10 @@ from wfx_panel.app.helpers import (
     _reveal_downloaded_file,
     _safe_costing_file_stem,
 )
-from wfx_panel.oc_workbook import write_oc_input_template
-from wfx_panel.sale_asn_workbook import write_sale_asn_template
-from wfx_panel.style_workbook import write_style_template
+from wfx_panel.stores import article_library
+from wfx_panel.workbooks.oc import write_oc_input_template
+from wfx_panel.workbooks.sale_asn import write_sale_asn_template
+from wfx_panel.workbooks.style import write_style_template
 
 
 class FileDialogController:

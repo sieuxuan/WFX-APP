@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from wfx_panel import costing_workbook
+from wfx_panel.workbooks import costing as costing_workbook
 
 
 def _field(

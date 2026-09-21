@@ -3,7 +3,7 @@ import threading
 import time
 from pathlib import Path
 
-from wfx_panel import article_library, reference_sync, style_options
+from wfx_panel.stores import article_library, reference_sync, style_options
 
 
 class _Response:

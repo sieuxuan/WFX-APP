@@ -1,7 +1,7 @@
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-from wfx_panel.asn_workbook import merge_sale_asn_reports
+from wfx_panel.workbooks.asn import merge_sale_asn_reports
 
 
 def _report(path, title, value):

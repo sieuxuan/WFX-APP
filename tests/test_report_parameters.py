@@ -1,7 +1,7 @@
 import json
 import threading
 
-from wfx_panel.report_parameters import ReportParameterStore
+from wfx_panel.stores.report_parameters import ReportParameterStore
 
 
 def test_store_rejects_invalid_roots_and_cleans_values(tmp_path):
