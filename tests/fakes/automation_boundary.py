@@ -106,20 +106,33 @@ class FakePage:
         frames: Sequence[Any] = (),
         *,
         url: str = WFX_URL,
+        title: str = "",
         nodes: Mapping[str, Sequence[FakeNode]] | None = None,
+        scripts: Mapping[str, Any] | None = None,
         empty_selectors: Iterable[str] = (),
     ) -> None:
         self.clock = clock
         self.url = url
+        self._title = title
         self.frames = list(frames)
         self.nodes: dict[str, list[FakeNode]] = {
             key: list(value) for key, value in (nodes or {}).items()
         }
+        self.scripts = dict(scripts or {})
         self.empty_selectors = set(empty_selectors)
         self.bring_to_front_calls = 0
         self.closed = False
         self.dialog_handlers: list[Any] = []
         self.context: Any = None
+
+    def title(self) -> str:
+        return self._title
+
+    def evaluate(self, script: str, arg: Any = None) -> Any:
+        for marker, value in self.scripts.items():
+            if marker in script:
+                return value(arg) if callable(value) else value
+        raise AssertionError(f"FakePage chưa hỗ trợ script: {script[:140]}")
 
     def bring_to_front(self) -> None:
         self.bring_to_front_calls += 1
@@ -135,6 +148,12 @@ class FakePage:
 
     def on(self, event: str, handler: Any) -> None:
         self.dialog_handlers.append((event, handler))
+
+    def remove_listener(self, event: str, handler: Any) -> None:
+        # Flow nào quên gỡ listener sẽ để lại handler ở đây và test bắt được:
+        # dialog của lượt sau sẽ bị handler cũ nuốt mất.
+        if (event, handler) in self.dialog_handlers:
+            self.dialog_handlers.remove((event, handler))
 
     def frame(self, name: str | None = None, **_kwargs: Any) -> Any | None:
         return next(
