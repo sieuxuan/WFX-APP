@@ -24,8 +24,20 @@
           "title": "Đăng nhập tài khoản WFX",
           "summary": "Lưu tài khoản một lần, ứng dụng tự giữ phiên.",
           "file": "01-bat-dau/dang-nhap.md",
-          "keywords": ["tài khoản", "mật khẩu", "user id", "đăng nhập"],
-          "covers": { "errors": ["LOGIN_FAILED", "LOGIN_TIMEOUT"] }
+          "keywords": [
+            "tài khoản",
+            "mật khẩu",
+            "user id",
+            "đăng nhập",
+            "đổi tài khoản"
+          ],
+          "covers": {
+            "errors": [
+              "LOGIN_FAILED",
+              "LOGIN_TIMEOUT",
+              "SESSION_USER_MISMATCH"
+            ]
+          }
         },
         {
           "id": "bat-dau-cai-dat",
@@ -396,6 +408,22 @@
               "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS",
               "OC_FAST_CONFIRM_PROCESS_TIMEOUT",
               "OC_FAST_CONFIRM_UNCONFIRMED"
+            ]
+          }
+        },
+        {
+          "id": "don-hang-oc-reject-all",
+          "title": "Reject All OC",
+          "summary": "Reject lần lượt toàn bộ PO trong thẻ New hoặc Revision đang mở.",
+          "file": "05-don-hang/oc-reject-all.md",
+          "keywords": ["reject all", "oc", "new", "revision"],
+          "covers": {
+            "actions": ["oc-reject-all"],
+            "errors": [
+              "OC_REJECT_ALL_FAILED",
+              "OC_REJECT_ALL_NOT_READY",
+              "OC_REJECT_ALL_PROCESS_TIMEOUT",
+              "OC_REJECT_ALL_UNCONFIRMED"
             ]
           }
         },

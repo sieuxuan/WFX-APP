@@ -210,6 +210,7 @@ def test_index_html_has_contract_hooks():
         'data-module-action="oc-upload-revise"',
         'data-module-action="oc-confirm-new"',
         'data-module-action="oc-confirm-revision"',
+        'data-module-action="oc-reject-all"',
         'data-module-action="sale-asn-documents"',
         'data-module-action="sale-asn-template"',
         'data-module-action="sale-asn-import"',
@@ -772,11 +773,16 @@ def test_header_alerts_are_labeled_instead_of_ambiguous_red_dots():
     ).read_text(encoding="utf-8")
 
 
-def test_generic_svg_icon_is_present():
+def test_module_cards_have_no_letter_code_or_dead_generic_screen():
     html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
     assert 'class="toast-stack"' not in html
-    assert 'class="generic-module-icon"' in html
     assert 'class="generic-module-code"' not in html
+    # Module generic mở thẳng từ card nên màn "Sẵn sàng mở trên WFX" không còn
+    # đường vào; giữ lại chỉ mời người sau sửa nhầm một màn hình đã chết.
+    assert 'data-module-view="generic"' not in html
+    assert "generic-module" not in html
+    assert "generic-module" not in css
 
 
 def test_rmpo_indent_invoice_and_list_new_workspaces_are_present():
@@ -1224,3 +1230,15 @@ def test_po_checkpoint_selects_rows_in_app_instead_of_on_wfx():
     assert ".sale-asn-candidates[hidden] { display: none !important; }" in css
     assert ".sale-asn-candidate-list li {" in css
     assert ".sale-asn-candidate-list label {" in css
+
+
+def test_only_the_list_that_enables_a_filter_row_advertises_it():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    # Sample Order là nút List duy nhất có nhãn và thật sự chạy
+    # open_module_with_floating_filter; các List khác chỉ mở màn hình.
+    assert html.count("Mở danh sách, bật ô lọc") == 1
+    assert (
+        "<strong>Sample Order</strong>"
+        "<small>Mở danh sách, bật ô lọc</small>"
+    ) in html
+    assert html.count("Mở danh sách trên WFX") == 8

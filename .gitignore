@@ -23,3 +23,8 @@ __pycache__/
 # Runtime artifacts: ảnh lỗi WFX + file xuất ra chứa dữ liệu nghiệp vụ thật
 job-screenshots/
 outputs/
+
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/

@@ -223,3 +223,66 @@ def test_supplier_search_visits_every_category():
     assert result["code"] == "SUPPLIER_NOT_FOUND", result
     assert result["checked_categories"] == list(constants.CATEGORIES)
     _clear_company_filter("supplier")
+
+
+def _ap_invoice_column_visible(selector: str) -> bool:
+    """Supplier Inv và Expense Inv dùng chung id, chỉ khác bộ cột filter."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(login.CDP_URL)
+        page = next(
+            page
+            for context in browser.contexts
+            for page in context.pages
+            if "/wfx/default.aspx" in page.url.lower()
+        )
+        for frame in page.frames:
+            candidates = frame.locator(selector)
+            for index in range(candidates.count()):
+                if candidates.nth(index).is_visible():
+                    return True
+        return False
+
+
+def test_supplier_and_expense_invoice_lists_never_borrow_each_other():
+    account = prefs.load_account()
+    session = login.run(
+        account["user_id"],
+        account["password"],
+        login.COMPANY_ID,
+        lambda _line: None,
+    )
+    assert session["ok"], session["code"]
+
+    supplier = constants.MODULE_BY_ID["0065_0880_0020_0020"]
+    expense = constants.MODULE_BY_ID["0065_0880_0030_0020"]
+
+    # Đang mở Expense Inv List mà Search Supplier Inv thì app phải tự mở đúng
+    # Supplier Inv List, không lọc trên grid Expense đang mở.
+    assert _open("0065_0880_0030_0020")["ok"]
+    assert _ap_invoice_column_visible("#txtCreatedBy")
+    from_expense = login.search_supplier_invoice_list(
+        supplier["xpath"],
+        "",
+        SMOKE_QUERY,
+        "",
+        "",
+        lambda _line: None,
+    )
+    assert from_expense["code"] == "MODULE_SEARCH_APPLIED", from_expense
+    assert _ap_invoice_column_visible("#txtPONo")
+    _clear_visible_filter(("#txtInvoiceNo",))
+
+    # Và chiều ngược lại.
+    assert _open("0065_0880_0020_0020")["ok"]
+    assert _ap_invoice_column_visible("#txtPONo")
+    from_supplier = login.search_expense_invoice_list(
+        expense["xpath"],
+        "",
+        SMOKE_QUERY,
+        "",
+        "",
+        lambda _line: None,
+    )
+    assert from_supplier["code"] == "MODULE_SEARCH_APPLIED", from_supplier
+    assert _ap_invoice_column_visible("#txtCreatedBy")
+    _clear_visible_filter(("#txtInvoiceNo",))

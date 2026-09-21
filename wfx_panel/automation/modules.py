@@ -5,6 +5,7 @@ Tách nguyên văn từ login.py — không đổi logic.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -68,6 +69,7 @@ _MODULE_LOADING_SELECTOR = (
 )
 MODULE_CONTEXT_PROBE_SECONDS = 0.75
 MODULE_DIRECT_ROUTE_TIMEOUT_MS = 12_000
+MODULE_NEW_CONFIRM_SECONDS = 12.0
 _MENU_ROUTE_CACHE: dict[str, tuple[str, str]] = {}
 
 
@@ -103,7 +105,7 @@ def open_module(
             return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
-        browser, page = _connect_to_chrome(playwright)
+        _browser, page = _connect_to_chrome(playwright)
         _attach_dialog_handler(page, log)
         _write_log(log, f"[MODULE] Đang tìm menu: {module_name}")
 
@@ -111,19 +113,15 @@ def open_module(
         if login_form.is_visible(timeout=1_500):
             return _result(False, "NOT_LOGGED_IN", "Phiên chưa đăng nhập hoặc đã hết hạn.")
 
-        previous_left = (
-            _catalog_tree_frame_now(page) if module_name == "Catalog" else None
-        )
-        previous_grid = (
-            next((f for f in page.frames if "wfxcataloglist" in f.url.lower()), None)
-            if module_name == "Catalog"
-            else None
-        )
-        target = page.locator(f"xpath={xpath}")
-        target.wait_for(state="attached", timeout=8_000)
-        _write_log(log, f"[MODULE] Đã tìm thấy {module_name}, đang click...")
-
         if module_name == "Catalog":
+            previous_left = _catalog_tree_frame_now(page)
+            previous_grid = next(
+                (f for f in page.frames if "wfxcataloglist" in f.url.lower()),
+                None,
+            )
+            target = page.locator(f"xpath={xpath}").first
+            target.wait_for(state="attached", timeout=8_000)
+            _write_log(log, f"[MODULE] Đã tìm thấy {module_name}, đang click...")
             _open_catalog_menu_on_page(
                 page,
                 target,
@@ -136,68 +134,9 @@ def open_module(
             _write_log(log, "[CATALOG] Đã mở Master và Floating Filter")
             message = "Đã mở Catalog > Master và Floating Filter."
         else:
-            snapshots = _mark_page_documents(page, "module-open")
-            old_frame_ids = {
-                id(snapshot[0])
-                for snapshot in snapshots
-                if snapshot[0] is not None
-            }
-            page_count = len(browser.contexts[0].pages)
-            target_href = str(
-                target.evaluate("element => element.href || ''") or ""
-            )
-            target_frame_name = str(target.get_attribute("target") or "")
-            cache_hit = False
-            cached_route = _MENU_ROUTE_CACHE.get(module_name)
-            if cached_route is not None:
-                cached_href, cached_target = cached_route
-                cache_hit = _open_menu_href_in_target_frame(
-                    page,
-                    cached_href,
-                    cached_target,
-                )
-                if cache_hit:
-                    _write_log(
-                        log,
-                        f"[MODULE] Dùng route cache để mở {module_name} "
-                        "trực tiếp, bỏ qua thời gian chờ menu không phản hồi.",
-                    )
-                else:
-                    _MENU_ROUTE_CACHE.pop(module_name, None)
-
-            confirmed = cache_hit
-            if not confirmed:
-                _click(target)
-                confirmed = _wait_for_module_navigation(
-                    browser,
-                    page,
-                    snapshots,
-                    old_frame_ids,
-                    page_count,
-                    timeout_s=5,
-                )
-            if not confirmed:
-                _write_log(
-                    log,
-                    "[MODULE] Menu chưa phản hồi sau 5 giây; "
-                    "đang thử route trực tiếp...",
-                )
-            if not confirmed and _open_menu_href_in_target_frame(
-                page, target_href, target_frame_name
-            ):
-                confirmed = True
-                if _same_origin(page.url, target_href):
-                    _MENU_ROUTE_CACHE[module_name] = (
-                        target_href,
-                        target_frame_name,
-                    )
-                _write_log(
-                    log,
-                    "[MODULE] Menu không phản hồi click; "
-                    f"đã mở {module_name} trực tiếp trong frame "
-                    f"{target_frame_name}.",
-                )
-            if not confirmed:
+            opened = _open_module_menu(page, module_name, xpath, log)
+            cache_hit = opened.cache_hit
+            if not opened.confirmed:
                 raise PlaywrightTimeoutError(
                     "MODULE_OPEN_NOT_CONFIRMED:"
                     f"WFX chưa xác nhận navigation tới {module_name}."
@@ -244,16 +183,95 @@ def _active_wfx_page(playwright: Playwright, log: Callable[[str], None]) -> tupl
     return browser, page
 
 
+@dataclass(frozen=True)
+class _MenuOpenResult:
+    confirmed: bool
+    cache_hit: bool
+
+
+def _context_pages(page: Page) -> list[Page]:
+    try:
+        return list(page.context.pages)
+    except (PlaywrightError, AttributeError):
+        return [page]
+
+
+def _open_module_menu(
+    page: Page,
+    module_name: str,
+    xpath: str,
+    log: Callable[[str], None],
+) -> _MenuOpenResult:
+    """Click menu WFX rồi xác nhận navigation thật, fallback href nếu im lặng.
+
+    Mọi lối vào List/New đều dùng chung hàm này để cùng được route cache và
+    fallback `target=body`, thay vì mỗi flow tự chờ hết timeout của mình.
+    """
+    # .first: các menu bắt theo @title/@href có thể khớp nhiều node; strict
+    # locator sẽ ném lỗi thay vì mở được màn hình.
+    target = page.locator(f"xpath={xpath}").first
+    target.wait_for(state="attached", timeout=8_000)
+    _write_log(log, f"[MODULE] Đang mở {module_name}...")
+
+    snapshots = _mark_page_documents(page, "module-open")
+    old_frame_ids = {
+        id(snapshot[0]) for snapshot in snapshots if snapshot[0] is not None
+    }
+    page_count = len(_context_pages(page))
+    target_href = str(target.evaluate("element => element.href || ''") or "")
+    target_frame_name = str(target.get_attribute("target") or "")
+
+    cached_route = _MENU_ROUTE_CACHE.get(xpath)
+    cache_hit = False
+    if cached_route is not None:
+        cached_href, cached_target = cached_route
+        cache_hit = _open_menu_href_in_target_frame(
+            page,
+            cached_href,
+            cached_target,
+        )
+        if cache_hit:
+            _write_log(
+                log,
+                f"[MODULE] Dùng route cache để mở {module_name} trực tiếp, "
+                "bỏ qua thời gian chờ menu không phản hồi.",
+            )
+            return _MenuOpenResult(True, True)
+        _MENU_ROUTE_CACHE.pop(xpath, None)
+
+    _click(target)
+    if _wait_for_module_navigation(
+        page,
+        snapshots,
+        old_frame_ids,
+        page_count,
+        timeout_s=5,
+    ):
+        return _MenuOpenResult(True, False)
+
+    _write_log(
+        log,
+        "[MODULE] Menu chưa phản hồi sau 5 giây; đang thử route trực tiếp...",
+    )
+    if not _open_menu_href_in_target_frame(page, target_href, target_frame_name):
+        return _MenuOpenResult(False, False)
+    if _same_origin(page.url, target_href):
+        _MENU_ROUTE_CACHE[xpath] = (target_href, target_frame_name)
+    _write_log(
+        log,
+        f"[MODULE] Menu không phản hồi click; đã mở {module_name} trực tiếp "
+        f"trong frame {target_frame_name}.",
+    )
+    return _MenuOpenResult(True, False)
+
+
 def _click_module_menu_on_page(
     page: Page,
     module_name: str,
     xpath: str,
     log: Callable[[str], None],
-) -> None:
-    target = page.locator(f"xpath={xpath}")
-    target.wait_for(state="attached", timeout=8_000)
-    _write_log(log, f"[MODULE] Đang mở {module_name}...")
-    _click(target)
+) -> bool:
+    return _open_module_menu(page, module_name, xpath, log).confirmed
 
 
 def _mark_page_documents(
@@ -267,7 +285,6 @@ def _mark_page_documents(
 
 
 def _wait_for_module_navigation(
-    browser: Any,
     page: Page,
     snapshots: list[tuple[Frame | None, str]],
     old_frame_ids: set[int],
@@ -279,7 +296,7 @@ def _wait_for_module_navigation(
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
-            if len(browser.contexts[0].pages) > page_count:
+            if len(_context_pages(page)) > page_count:
                 return True
             current_frames = list(page.frames)
             current_frame_ids = {id(frame) for frame in current_frames}
@@ -849,11 +866,60 @@ def _apply_module_search(
     _wait_module_search_stable(page, label)
 
 
+_FRAME_MARKER_JS = """() => [
+    location.href,
+    document.title,
+    document.querySelector(
+        'h1, h2, .page-title, .clsPageTitle, td.clsPageTitle'
+    )?.textContent || ''
+].join(' ')"""
+
+
+def _frame_context_marker(frame: Frame) -> str:
+    try:
+        return str(frame.evaluate(_FRAME_MARKER_JS) or "").casefold()
+    except PlaywrightError:
+        return ""
+
+
+def _frame_has_every_search_field(
+    frame: Frame,
+    search_spec: ModuleSearchSpec,
+) -> bool:
+    """Bộ cột filter riêng là cách phân biệt hai màn dùng chung id DOM.
+
+    Supplier Inv List và Expense Inv List cùng dùng #titlebarAPInvoiceList và
+    #gridAPInvoiceList, nên context selector một mình sẽ nhận nhầm màn đang mở.
+    """
+    for field_spec in search_spec.fields.values():
+        try:
+            candidates = frame.locator(", ".join(field_spec.selectors))
+            if not candidates.count() or not candidates.first.is_visible():
+                return False
+        except PlaywrightError:
+            return False
+    return True
+
+
+def _frame_serves_search_spec(
+    frame: Frame,
+    search_spec: ModuleSearchSpec | None,
+) -> bool:
+    if search_spec is None:
+        return True
+    if search_spec.foreign_markers:
+        marker = _frame_context_marker(frame)
+        if any(token in marker for token in search_spec.foreign_markers):
+            return False
+    return _frame_has_every_search_field(frame, search_spec)
+
+
 def _frame_with_visible_context(
     page: Page,
     context_selector: str,
     module_name: str | None = None,
     timeout_s: float = 4,
+    search_spec: ModuleSearchSpec | None = None,
 ) -> Frame:
     """Chỉ nhận frame có marker riêng của đúng màn List đang mở."""
     deadline = time.monotonic() + timeout_s
@@ -865,6 +931,7 @@ def _frame_with_visible_context(
                     context.count()
                     and context.first.is_visible()
                     and _frame_matches_module_context(frame, module_name)
+                    and _frame_serves_search_spec(frame, search_spec)
                 ):
                     return frame
             except PlaywrightError:
@@ -953,11 +1020,13 @@ def _open_multi_field_search_context(
             context_selector,
             module_name=search_spec.module_name,
             timeout_s=MODULE_CONTEXT_PROBE_SECONDS,
+            search_spec=search_spec,
         )
     except PlaywrightTimeoutError:
         _write_log(
             log,
-            f"[MODULE SEARCH] {search_spec.module_name} chưa mở; "
+            f"[MODULE SEARCH] {search_spec.module_name} chưa mở "
+            "hoặc màn đang mở là module khác dùng chung selector; "
             "đang tự mở List...",
         )
         _click_module_menu_on_page(page, search_spec.module_name, xpath, log)
@@ -966,6 +1035,7 @@ def _open_multi_field_search_context(
             context_selector,
             module_name=search_spec.module_name,
             timeout_s=30,
+            search_spec=search_spec,
         )
 
 
@@ -2780,6 +2850,7 @@ def _find_supplier_invoice_frame(page: Page) -> Frame:
         ", ".join(SUPPLIER_INVOICE_SEARCH_SPEC.context_field.selectors),
         module_name=SUPPLIER_INVOICE_SEARCH_SPEC.module_name,
         timeout_s=8,
+        search_spec=SUPPLIER_INVOICE_SEARCH_SPEC,
     )
 
 
@@ -2991,6 +3062,59 @@ def cancel_supplier_invoice_choice(
             playwright.stop()
 
 
+def _menu_target_markers(page: Page, xpath: str) -> tuple[str, ...]:
+    """Trang đích + MenuName đọc từ chính link menu, dùng để xác nhận màn New.
+
+    Link menu WFX có dạng wrapper `...aspx?...RedirURL=<trang đích>.aspx...`
+    nên trang đích là `.aspx` cuối cùng trong href.
+    """
+    try:
+        href = str(
+            page.locator(f"xpath={xpath}").first.evaluate(
+                "element => element.href || ''"
+            )
+            or ""
+        ).casefold()
+    except PlaywrightError:
+        return ()
+    markers: list[str] = []
+    pages = re.findall(r"([a-z0-9_]+\.aspx)", href)
+    if pages:
+        markers.append(pages[-1])
+    menu_name = re.search(r"menuname=([a-z0-9_]+)", href)
+    if menu_name is not None:
+        markers.append(f"menuname={menu_name.group(1)}")
+    return tuple(dict.fromkeys(markers))
+
+
+def _wait_module_new_page(
+    browser: Any,
+    page: Page,
+    markers: tuple[str, ...],
+    timeout_s: float,
+) -> Page | None:
+    """Trả về page đang giữ màn New, hoặc None nếu không thấy marker nào."""
+    if not markers:
+        return None
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            candidates = list(browser.contexts[0].pages)
+        except (PlaywrightError, IndexError):
+            candidates = [page]
+        for candidate in candidates:
+            try:
+                frames = list(candidate.frames)
+            except PlaywrightError:
+                continue
+            for frame in frames:
+                url = str(getattr(frame, "url", "") or "").casefold()
+                if any(marker in url for marker in markers):
+                    return candidate
+        _wait(page, 200)
+    return None
+
+
 def open_module_new(
     module_id: str,
     log: Callable[[str], None] = print,
@@ -3033,6 +3157,7 @@ def open_module_new(
         ]
         old_frames = {snapshot[0] for snapshot in snapshots}
         page_count = len(browser.contexts[0].pages)
+        markers = _menu_target_markers(page, selector)
         _write_log(log, f"[MODULE NEW] Đang mở trực tiếp {module_name}.")
         _click_module_menu_on_page(
             page,
@@ -3064,8 +3189,20 @@ def open_module_new(
                 f"WFX chưa xác nhận màn New của {module_name}.",
                 module=module_name,
             )
+        # Một frame đổi document chưa chắc là màn New: menu WFX cũng tự reload.
+        # Trang đích đọc thẳng từ link menu mới là bằng chứng thật.
+        opened_page = _wait_module_new_page(
+            browser,
+            page,
+            markers,
+            MODULE_NEW_CONFIRM_SECONDS,
+        )
+        if opened_page is not None:
+            page = opened_page
         selected_label = ""
         if default_selection is not None:
+            # Chọn được đúng dropdown của màn New cũng là một bằng chứng độc
+            # lập, nên không chặn flow khi chỉ thiếu marker URL.
             select_selector, select_value, selected_label = default_selection
             _ensure_select_value(
                 page,
@@ -3073,6 +3210,14 @@ def open_module_new(
                 select_value,
                 selected_label,
                 log,
+            )
+        elif markers and opened_page is None:
+            return _result(
+                False,
+                "MODULE_FAILED",
+                f"WFX chưa xác nhận màn New của {module_name}: "
+                f"không thấy trang {', '.join(markers)} sau khi click menu.",
+                module=module_name,
             )
         message = f"Đã mở trực tiếp {module_name} New."
         if selected_label:

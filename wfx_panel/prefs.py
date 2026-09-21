@@ -545,6 +545,25 @@ def load_account(base_dir: Path | None = None) -> dict:
     }
 
 
+def credential_status(base_dir: Path | None = None) -> str:
+    """``ok`` | ``empty`` | ``unreadable``.
+
+    ``unreadable`` là trường hợp riêng quan trọng: trên đĩa CÓ blob DPAPI
+    nhưng tài khoản Windows/máy hiện tại không giải mã được (copy profile,
+    đổi máy, đổi user). Nếu chỉ báo "chưa có mật khẩu" thì người dùng tưởng
+    app quên dữ liệu của họ.
+    """
+    base_dir = DATA_DIR if base_dir is None else base_dir
+    values = _env_values(Path(base_dir))
+    encrypted = values.get("WFX_PASSWORD_ENC", "")
+    if encrypted and secret.unprotect(encrypted) is None:
+        return "unreadable"
+    account = load_account(base_dir=base_dir)
+    if account["user_id"].strip() and account["password"].strip():
+        return "ok"
+    return "empty"
+
+
 def save_account(user_id: str, password: str, base_dir: Path | None = None) -> None:
     base_dir = DATA_DIR if base_dir is None else base_dir
     path = _env_path(base_dir)
@@ -586,10 +605,14 @@ def save_account(user_id: str, password: str, base_dir: Path | None = None) -> N
     ]
     with _WRITE_LOCK:
         write_text_atomic(path, "\n".join(lines) + "\n")
-    # Runtime (session.run) đọc mật khẩu plaintext qua env trong tiến trình; chỉ
-    # bản trên đĩa được mã hóa.
+    # KHÔNG ghi mật khẩu vào os.environ. Chrome automation được khởi chạy như
+    # tiến trình con nên nó kế thừa toàn bộ environment của panel, và trên
+    # Windows mọi tiến trình cùng tài khoản đều đọc được environment của tiến
+    # trình khác — làm vậy là vô hiệu hóa chính lớp DPAPI ở trên. Mọi flow đều
+    # nhận credential qua tham số (panel_api.login/_restore_expired_session);
+    # env chỉ còn là fallback đọc cho người chạy CLI tự đặt biến.
+    os.environ.pop("WFX_PASSWORD", None)
     os.environ["WFX_USER_ID"] = user_id
-    os.environ["WFX_PASSWORD"] = password
 
 
 def _env_values(base_dir: Path) -> dict[str, str]:
@@ -764,6 +787,11 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "costing_special_options_rescan": data.get(
             "costing_special_options_rescan", False
         ) is True,
+        # User ID của lần đăng nhập WFX gần nhất do chính app thực hiện.
+        # Phiên WFX trong Chrome sống lâu hơn app, nên phải nhớ xuyên phiên
+        # thì lần mở app sau mới biết phiên đang mở là của ai. Không phải bí
+        # mật: đây chỉ là tên đăng nhập, mật khẩu vẫn nằm trong .env đã mã hóa.
+        "session_user_id": str(data.get("session_user_id") or "").strip()[:120],
     }
 
 
@@ -856,6 +884,7 @@ def save_prefs(
     open_excel_file_after_download: bool | None = None,
     open_costing_folder_after_export: bool | None = None,
     costing_special_options_rescan: bool | None = None,
+    session_user_id: str | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
     with _WRITE_LOCK:
@@ -886,6 +915,7 @@ def save_prefs(
             open_excel_file_after_download=open_excel_file_after_download,
             open_costing_folder_after_export=open_costing_folder_after_export,
             costing_special_options_rescan=costing_special_options_rescan,
+            session_user_id=session_user_id,
             hotkey_label=hotkey_label,
         )
 
@@ -918,6 +948,7 @@ def _save_prefs_locked(
     open_excel_file_after_download: bool | None,
     open_costing_folder_after_export: bool | None,
     costing_special_options_rescan: bool | None,
+    session_user_id: str | None,
     hotkey_label: str | None,
 ) -> dict:
     current = load_prefs(base_dir)
@@ -974,6 +1005,8 @@ def _save_prefs_locked(
         current["costing_export_dir"] = str(costing_export_dir).strip()[:32_000]
     if report_export_dir is not None:
         current["report_export_dir"] = str(report_export_dir).strip()[:32_000]
+    if session_user_id is not None:
+        current["session_user_id"] = str(session_user_id).strip()[:120]
     # Nhận tham số cũ để không phá caller, nhưng nhãn luôn được dẫn xuất từ
     # hotkey thật và không được ghi riêng xuống prefs.json.
     _ = hotkey_label

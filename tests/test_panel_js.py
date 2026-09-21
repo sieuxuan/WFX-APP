@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 _UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
@@ -204,6 +205,13 @@ def test_oc_workspace_wires_always_visible_fast_confirm_buttons():
     assert '"oc-confirm-revision": () => confirmOcPending("revision")' in JS
     assert 'call("confirm_oc_pending", mode)' in JS
     assert 'confirm_oc_pending: "Đang Confirm từng Style và chờ WFX xử lý…"' in JS
+
+
+def test_oc_workspace_wires_reject_all_for_the_active_wfx_tab():
+    assert '"oc-reject-all": rejectAllOcPending' in JS
+    assert 'call("reject_all_oc_pending")' in JS
+    assert "Reject toàn bộ PO trong tab New hoặc Revision đang mở" in JS
+    assert 'reject_all_oc_pending: "Đang Reject lần lượt từng PO…"' in JS
 
 
 def test_gdn_dispatch_requires_grn_confirmation_and_calls_one_flow():
@@ -597,7 +605,9 @@ def test_generic_modules_open_directly_from_the_card():
     assert 'call("open_module", moduleId)' in JS
     assert "openModuleDirect(button.dataset.moduleId)" in JS
     assert "withButtonLoading(" in JS
-    assert '$(".generic-module-open").addEventListener("click", openModule)' in JS
+    # Không còn màn trung gian "Mở module trên WFX" cho module generic.
+    assert "generic-module" not in JS
+    assert "async function openModule()" not in JS
 
 
 def test_special_module_workflows_are_wired():
@@ -1147,3 +1157,101 @@ def test_completed_sale_asn_scrolls_the_result_into_view():
     assert "done.hidden = false;" in body
     assert 'done.scrollIntoView({ behavior: "smooth", block: "nearest" });' in body
     assert body.index("done.hidden = false;") < body.index("done.scrollIntoView")
+
+
+def _open_module_page_body():
+    start = JS.index("function openModulePage(moduleId)")
+    return JS[start : JS.index("\n  async function stopCurrentAction", start)]
+
+
+def test_reopening_a_module_drops_the_previous_run_result_cards():
+    body = _open_module_page_body()
+
+    assert 'module.kind === "sample"' in body
+    assert "hideSampleFileResults();" in body
+    assert 'module.kind === "supplier_invoice"' in body
+    assert "hideSupplierInvoiceCancelResults();" in body
+
+
+def test_two_modules_sharing_a_workspace_do_not_inherit_each_other_filters():
+    assert 'SHARED_WORKSPACE_VALIDATION_GROUPS = { indent: "indent" }' in JS
+    assert "function clearSharedWorkspaceInputs(kind)" in JS
+    body = _open_module_page_body()
+
+    assert "const previousModule = selectedModule;" in body
+    assert "previousModule.id !== module.id" in body
+    assert "previousModule.kind === module.kind" in body
+    assert "clearSharedWorkspaceInputs(module.kind);" in body
+
+
+def _statement_end(body: str, cursor: int) -> int:
+    """Vị trí ngay sau dấu ; kết thúc câu lệnh chứa await tại ``cursor``."""
+    depth = 0
+    for index in range(cursor, len(body)):
+        char = body[index]
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == ";" and depth <= 0:
+            return index + 1
+    return len(body)
+
+
+def test_no_click_handler_touches_event_currenttarget_after_await():
+    """``event.currentTarget`` là null ngay khi dispatch kết thúc.
+
+    Một handler ``async`` trả promise tại ``await`` đầu tiên, nên mọi lần
+    đụng vào ``event.currentTarget`` SAU khi câu lệnh await đó chạy xong đều
+    ném TypeError trong một promise không ai bắt: nút vừa disable sẽ kẹt
+    disable vĩnh viễn và người dùng không nhận được thông báo nào. Đọc
+    ``event.currentTarget`` làm tham số của chính lời gọi được await thì vẫn
+    an toàn vì nó được tính đồng bộ.
+    """
+    offenders = []
+    pattern = r'addEventListener\(\s*"[^"]+",\s*async '
+    for match in re.finditer(pattern, JS):
+        start = match.start()
+        stops = [
+            position
+            for position in (
+                JS.find("addEventListener(", match.end()),
+                JS.find("\n    });", start),
+            )
+            if position != -1
+        ]
+        body = re.sub(r"//.*", "", JS[start : min(stops) if stops else len(JS)])
+        cursor = body.find("await ")
+        if cursor == -1:
+            continue
+        if "event.currentTarget" in body[_statement_end(body, cursor):]:
+            offenders.append(JS[:start].count("\n") + 1)
+
+    assert offenders == [], (
+        f"Giữ tham chiếu nút vào biến TRƯỚC await. Dòng: {offenders}"
+    )
+
+
+def test_session_badge_and_account_card_show_the_last_login_time():
+    start = JS.index("function setSessionStatus(")
+    body = JS[start : JS.index("\n  window.wfxSetSessionStatus", start)]
+
+    assert "function setSessionStatus(active, lastLoginAt)" in body
+    assert "lastLoginTime" in body
+    assert "Đã đăng nhập lúc" in body
+
+
+def test_background_session_check_never_forces_the_locked_account_sheet():
+    """Heartbeat chạy mỗi bốn phút; không được cướp màn hình của người dùng."""
+    start = JS.index('"MISSING_CREDENTIALS", "PASSWORD_REQUIRED"')
+    body = JS[start : JS.index("\n  }", start)]
+
+    assert 'result.method !== "maintain_session"' in body
+    assert "SESSION_USER_MISMATCH" in body
+
+
+def test_successful_auto_relogin_clears_the_credential_prompt():
+    start = JS.index('["LOGGED_IN", "LOGGED_IN_AFTER_DELAY"')
+    body = JS[start : start + 220]
+
+    assert "SESSION_RESTORED" in body

@@ -2399,3 +2399,37 @@ def test_quit_survives_a_window_that_fails_to_destroy(monkeypatch):
     app.quit()
 
     assert sorted(destroyed) == ["bubble_menu", "panel"]
+
+
+def test_result_payload_tells_the_ui_which_flow_produced_it():
+    """UI phải phân biệt được kết quả do user bấm với kiểm tra nền.
+
+    Nếu không, một heartbeat hỏng lúc 4 phút/lần sẽ ép mở sheet tài khoản bị
+    khóa ngay giữa lúc người dùng đang làm việc khác.
+    """
+    import json
+
+    from wfx_panel.panel_app import PanelApp
+
+    app = PanelApp()
+    scripts = []
+
+    class Window:
+        def evaluate_js(self, script):
+            scripts.append(script)
+
+    app.window = Window()
+    app._show_notification = lambda result, **context: None
+
+    app._on_result(
+        "maintain_session",
+        {"ok": False, "code": "LOGIN_TIMEOUT", "message": "chậm"},
+        0.1,
+    )
+
+    assert len(scripts) == 1
+    payload = json.loads(
+        scripts[0][len("window.wfxHandleBackendResult(") : -1]
+    )
+    assert payload["method"] == "maintain_session"
+    assert payload["code"] == "LOGIN_TIMEOUT"

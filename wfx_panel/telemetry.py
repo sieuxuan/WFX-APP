@@ -56,6 +56,7 @@ METHOD_LABELS = {
     "review_oc_upload": "Review file Upload OC",
     "confirm_oc_upload": "Xác nhận Upload OC qua EDI Buyer PO",
     "confirm_oc_pending": "Confirm nhanh OC theo Style",
+    "reject_all_oc_pending": "Reject toàn bộ PO trong tab OC đang mở",
     "run_gdn_dispatch": "Tạo (GDN) Dispatch",
     "cancel_oc_upload_review": "Hủy bước xem lại Upload OC",
     "search_sample": "Tìm trong Sample List",
@@ -409,6 +410,10 @@ ERROR_CODE_INFO.update(
             "Đăng nhập WFX thất bại",
             "Kiểm tra tài khoản, Company và trạng thái trang đăng nhập.",
         ),
+        "SESSION_USER_MISMATCH": (
+            "Trình duyệt đang mở tài khoản WFX khác",
+            "Đăng xuất WFX trong trình duyệt làm việc rồi đăng nhập lại từ app.",
+        ),
         "COSTING_CLEAR_FAILED": (
             "Không thể Clear toàn bộ Dependency",
             "Giữ đúng CostSheet Open đang chọn, kiểm tra Log rồi thử lại.",
@@ -464,6 +469,22 @@ ERROR_CODE_INFO.update(
         "OC_FAST_CONFIRM_UNCONFIRMED": (
             "Chưa đọc được kết quả Confirm OC",
             "Kiểm tra tab New hoặc Revision trước khi chạy lại.",
+        ),
+        "OC_REJECT_ALL_FAILED": (
+            "Không hoàn tất được Reject All OC",
+            "Kiểm tra màn EDI Buyer PO và Log kỹ thuật rồi thử lại.",
+        ),
+        "OC_REJECT_ALL_NOT_READY": (
+            "Màn Reject OC chưa sẵn sàng",
+            "Mở tab New hoặc Revision cần xử lý trên WFX rồi thử lại.",
+        ),
+        "OC_REJECT_ALL_PROCESS_TIMEOUT": (
+            "PO chưa rời khỏi tab sau khi Reject",
+            "Kiểm tra PO đang dừng trên WFX trước khi tiếp tục.",
+        ),
+        "OC_REJECT_ALL_UNCONFIRMED": (
+            "Chưa đọc được kết quả Reject OC",
+            "Kiểm tra tab đang mở trên WFX trước khi chạy lại.",
         ),
         "LOGIN_TIMEOUT": (
             "WFX phản hồi quá chậm khi đăng nhập",
@@ -933,6 +954,7 @@ _METHOD_MODULES = {
     "review_oc_upload": "OC List",
     "confirm_oc_upload": "OC List",
     "confirm_oc_pending": "OC List",
+    "reject_all_oc_pending": "OC List",
     "cancel_oc_upload_review": "OC List",
     "search_sample": "Sample List",
     "check_sample_files": "Sample List",

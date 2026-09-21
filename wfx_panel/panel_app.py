@@ -133,6 +133,7 @@ MODULE_NOTIFICATION_METHODS = frozenset(
         "upload_oc",
         "confirm_oc_upload",
         "confirm_oc_pending",
+        "reject_all_oc_pending",
         "run_gdn_dispatch",
         "open_gdn_status",
         "search_sample",
@@ -172,6 +173,7 @@ NOTIFICATION_ACTION_LABELS = {
     "upload_oc": "Upload OC",
     "confirm_oc_upload": "Upload OC",
     "confirm_oc_pending": "Confirm nhanh OC",
+    "reject_all_oc_pending": "Reject All OC",
     "run_gdn_dispatch": "(GDN) Dispatch",
     "open_gdn_status": "Kiểm tra GDN",
     "test_notification": "Thông báo thử",
@@ -2096,9 +2098,14 @@ class PanelApp:
             import json
 
             try:
+                # UI cần biết kết quả đến từ flow nào: kiểm tra nền không được
+                # ép mở sheet tài khoản như một thao tác do user bấm.
+                payload = json.dumps(
+                    {**result, **state, "method": method},
+                    ensure_ascii=False,
+                )
                 self.window.evaluate_js(
-                    "window.wfxHandleBackendResult("
-                    f"{json.dumps({**result, **state}, ensure_ascii=False)})"
+                    f"window.wfxHandleBackendResult({payload})"
                 )
             except Exception:
                 pass

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import os
 import secrets
 import shutil
@@ -97,6 +98,7 @@ SESSION_OK = frozenset(
         "OC_REVISION_REPORT_READY",
         "OC_TRANSACTION_CREATED",
         "OC_FAST_CONFIRM_COMPLETED",
+        "OC_REJECT_ALL_COMPLETED",
         "GDN_DISPATCH_COMPLETED",
         "GDN_STATUS_READY",
         "SUPPLIER_INVOICE_DELETE_SUBMITTED",
@@ -107,6 +109,7 @@ SESSION_LOST = frozenset(
     {
         "NOT_LOGGED_IN",
         "CHROME_CLOSED",
+        "SESSION_USER_MISMATCH",
         "MISSING_CREDENTIALS",
         "LOGIN_FAILED",
         "LOGIN_TIMEOUT",
@@ -119,6 +122,7 @@ LOGIN_CODES = frozenset(
 AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
     {"login", "open_chrome", "maintain_session"}
 )
+THEME_CHOICES = frozenset({"light", "dark", "system"})
 
 
 def _snapshot_oc_source(source: Path, target: Path) -> str:
@@ -174,6 +178,7 @@ NON_REPORTABLE_FAILURES = frozenset(
         "BUYER_NOT_FOUND",
         "PASSWORD_REQUIRED",
         "USER_ID_REQUIRED",
+        "SESSION_USER_MISMATCH",
         "DIVISION_UNKNOWN",
         "DIVISION_OPTION_NOT_FOUND",
         "CATALOG_RESULT_REQUIRED",
@@ -257,6 +262,8 @@ NON_REPORTABLE_FAILURES = frozenset(
         "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS",
         "OC_FAST_CONFIRM_PROCESS_TIMEOUT",
         "OC_FAST_CONFIRM_UNCONFIRMED",
+        "OC_REJECT_ALL_PROCESS_TIMEOUT",
+        "OC_REJECT_ALL_UNCONFIRMED",
         "GDN_INVOICE_REQUIRED",
         "GDN_INVOICE_INVALID",
         "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
@@ -373,6 +380,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
         "upload_oc",
         "confirm_oc_upload",
         "confirm_oc_pending",
+        "reject_all_oc_pending",
         "run_gdn_dispatch",
         "open_gdn_status",
         "prepare_catalog_style_row",
@@ -403,6 +411,14 @@ class PanelAPI:
         self._on_top_applier: Callable[[bool], None] | None = None
         self._session_active: bool | None = None
         self._last_login_at: str | None = None
+        # User ID mà app tin rằng đang sở hữu phiên Chrome hiện tại. Đọc trễ:
+        # __init__ chạy trước khi UI kịp hiện, không được chạm đĩa ở đây.
+        self._session_user_id_loaded = False
+        self._session_user_id_value: str | None = None
+        # Chặn vòng lặp tự đăng nhập lại bằng đúng bộ credential vừa bị WFX
+        # từ chối: mỗi cú bấm của người dùng là một lần nhập sai nữa, đủ nhiều
+        # là WFX khóa tài khoản.
+        self._rejected_credential: str | None = None
         self._current_run_id: str | None = None
         self._admin_access: bool | None = None
         self._admin_module_ids: set[str] = set()
@@ -535,6 +551,77 @@ class PanelAPI:
     def _account(self) -> dict:
         return self._prefs.load_account(base_dir=self._base_dir)
 
+    @property
+    def _session_user_id(self) -> str | None:
+        """Chủ phiên Chrome hiện tại, nhớ xuyên lần chạy qua prefs."""
+        if not self._session_user_id_loaded:
+            self._session_user_id_loaded = True
+            try:
+                stored = self._prefs.load_prefs(
+                    base_dir=self._base_dir
+                ).get("session_user_id")
+            except OSError:
+                stored = ""
+            self._session_user_id_value = str(stored or "").strip() or None
+        return self._session_user_id_value
+
+    @_session_user_id.setter
+    def _session_user_id(self, value: str | None) -> None:
+        self._session_user_id_loaded = True
+        self._session_user_id_value = str(value or "").strip() or None
+
+    def _login_run(self, user_id: str, password: str) -> dict:
+        """Gọi login module kèm chủ phiên hiện tại nếu module hỗ trợ.
+
+        Các login module cũ/giả lập trong test không có tham số
+        ``session_owner``; kiểm tra chữ ký thay vì bắt TypeError để không
+        nuốt nhầm lỗi thật phát sinh bên trong flow đăng nhập.
+        """
+        kwargs: dict[str, Any] = {}
+        try:
+            parameters = inspect.signature(self._login.run).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        if "session_owner" in parameters:
+            kwargs["session_owner"] = self._session_user_id
+        return self._login.run(
+            user_id,
+            password,
+            self._login.COMPANY_ID,
+            self._log,
+            **kwargs,
+        )
+
+    def _remember_session_user(self, user_id: str | None) -> None:
+        value = str(user_id or "").strip() or None
+        if value == self._session_user_id:
+            return
+        self._session_user_id = value
+        try:
+            self._prefs.save_prefs(
+                base_dir=self._base_dir,
+                session_user_id=value or "",
+            )
+        except TypeError:
+            # prefs module cũ chưa biết khóa này; trạng thái trong bộ nhớ vẫn
+            # đủ để bảo vệ trong phiên chạy hiện tại.
+            pass
+
+    @staticmethod
+    def _credential_fingerprint(user_id: str, password: str) -> str:
+        return hashlib.sha256(
+            f"{user_id.strip().casefold()}\x00{password}".encode()
+        ).hexdigest()
+
+    def _credential_state(self) -> str:
+        reader = getattr(self._prefs, "credential_status", None)
+        if not callable(reader):
+            return "ok" if self._account()["password"].strip() else "empty"
+        try:
+            return str(reader(base_dir=self._base_dir))
+        except OSError:
+            return "empty"
+
     def _telemetry_account_context(self) -> dict:
         account = self._account()
         return {
@@ -606,6 +693,7 @@ class PanelAPI:
             "has_credentials": bool(
                 account["user_id"].strip() and account["password"].strip()
             ),
+            "credential_state": self._credential_state(),
             "theme": preferences["theme"],
             "favorite_module_ids": preferences["favorite_module_ids"],
             "hotkey": preferences["hotkey"],
@@ -690,6 +778,26 @@ class PanelAPI:
             self._division_name = None
             self._catalog.reset_context()
 
+        if code in {"LOGGED_IN", "LOGGED_IN_AFTER_DELAY"}:
+            self._remember_session_user(
+                result.get("session_user_id") or self._account()["user_id"]
+            )
+        elif (
+            code in {"SESSION_REUSED", "SESSION_ACTIVE"}
+            and self._session_user_id is None
+        ):
+            # Phiên có sẵn trong Chrome không chứng minh được là của ai. Giả
+            # định nó thuộc tài khoản đang lưu: đoán sai thì lần đổi tài khoản
+            # sau chỉ tốn thêm một lần đăng nhập, còn bỏ trống thì mất luôn
+            # lớp chặn "chạy nhầm bằng tài khoản người khác".
+            self._remember_session_user(
+                result.get("session_user_id") or self._account()["user_id"]
+            )
+        elif code in {"NOT_LOGGED_IN", "MISSING_CREDENTIALS"}:
+            # Phiên trong Chrome đã mất -> không còn tài khoản nào "đang sở
+            # hữu" nó. Giữ lại giá trị cũ sẽ ép một lần đổi tài khoản thừa.
+            self._remember_session_user(None)
+
         if code in SESSION_LOST or code in {
             "DIVISION_CHANGED",
             "LOGGED_IN",
@@ -767,6 +875,7 @@ class PanelAPI:
         request: dict | None = None,
         *,
         record_job: bool = True,
+        record_job_on_failure: bool = False,
         announce: bool = True,
         emit_result: bool = True,
     ) -> dict:
@@ -780,6 +889,7 @@ class PanelAPI:
                     action,
                     request,
                     record_job=record_job,
+                    record_job_on_failure=record_job_on_failure,
                     announce=announce,
                     emit_result=emit_result,
                 )
@@ -795,6 +905,7 @@ class PanelAPI:
         request: dict | None = None,
         *,
         record_job: bool = True,
+        record_job_on_failure: bool = False,
         announce: bool = True,
         emit_result: bool = True,
     ) -> dict:
@@ -826,6 +937,11 @@ class PanelAPI:
             }
         elapsed = time.monotonic() - started
         code = str(result.get("code") or "UNKNOWN")
+        # Kiểm tra nền thành công phải im lặng tuyệt đối, nhưng khi nó hỏng
+        # thì người dùng bị hỏi đăng nhập lại mà không có chỗ nào tra ra vì
+        # sao — nên một lần hỏng vẫn phải để lại đúng một dòng lịch sử.
+        if record_job_on_failure and not result.get("ok"):
+            record_job = True
         screenshot: str | None = None
         if (
             record_job
@@ -855,6 +971,7 @@ class PanelAPI:
                 "upload_oc",
                 "confirm_oc_upload",
                 "confirm_oc_pending",
+                "reject_all_oc_pending",
                 "run_gdn_dispatch",
                 "search_sample",
                 "check_sample_files",
@@ -963,24 +1080,43 @@ class PanelAPI:
         password = str(account.get("password") or "")
         if not user_id or not password:
             return None
+        # WFX khóa tài khoản sau vài lần sai liên tiếp. Một bộ credential đã
+        # bị từ chối thì mọi cú bấm tiếp theo của người dùng không được biến
+        # thành một lần nhập sai nữa — chờ tới khi họ lưu credential khác.
+        fingerprint = self._credential_fingerprint(user_id, password)
+        if self._rejected_credential == fingerprint:
+            self._log(
+                "[SESSION] Bỏ qua tự đăng nhập lại: WFX đã từ chối đúng tài "
+                "khoản/mật khẩu này. Hãy cập nhật lại trong Cài đặt."
+            )
+            return {
+                "ok": False,
+                "code": "LOGIN_FAILED",
+                "message": (
+                    "WFX đã từ chối tài khoản đang lưu. Mở Cài đặt và nhập "
+                    "lại mật khẩu WFX trước khi chạy tiếp."
+                ),
+            }
         self._log("[SESSION] Phiên WFX đã hết hạn; đang tự đăng nhập lại...")
-        restored = self._login.run(
-            user_id,
-            password,
-            self._login.COMPANY_ID,
-            self._log,
-        )
+        restored = self._login_run(user_id, password)
         if not isinstance(restored, dict) or not restored.get("ok"):
+            if (
+                isinstance(restored, dict)
+                and str(restored.get("code") or "") == "LOGIN_FAILED"
+            ):
+                self._rejected_credential = fingerprint
             return restored if isinstance(restored, dict) else {
                 "ok": False,
                 "code": "LOGIN_FAILED",
                 "message": "Kết quả tự đăng nhập lại không hợp lệ.",
             }
 
+        self._rejected_credential = None
         self._session_active = True
         self._last_login_at = time.strftime("%H:%M:%S")
         self._admin_access = None
         self._admin_module_ids.clear()
+        self._remember_session_user(restored.get("session_user_id") or user_id)
         self._catalog.reset_context()
         if restored.get("current_division") is not None:
             self._current_division = str(restored["current_division"])
@@ -1130,11 +1266,12 @@ class PanelAPI:
     def login(self) -> dict:
         def action() -> dict:
             account = self._account()
-            result = self._login.run(
+            # Người dùng vừa chủ động bấm đăng nhập: cho phép thử lại đúng bộ
+            # credential mà lần trước WFX từ chối (họ có thể đã sửa mật khẩu).
+            self._rejected_credential = None
+            result = self._login_run(
                 account["user_id"],
                 account["password"],
-                self._login.COMPANY_ID,
-                self._log,
             )
             return self._with_admin_access(result)
 
@@ -1178,6 +1315,7 @@ class PanelAPI:
             "maintain_session",
             action,
             record_job=False,
+            record_job_on_failure=True,
             announce=False,
         )
 
@@ -1187,11 +1325,10 @@ class PanelAPI:
             if not browser.get("ok"):
                 return browser
             account = self._account()
-            logged_in = self._login.run(
+            self._rejected_credential = None
+            logged_in = self._login_run(
                 account["user_id"],
                 account["password"],
-                self._login.COMPANY_ID,
-                self._log,
             )
             result = {
                 **logged_in,
@@ -3161,6 +3298,13 @@ class PanelAPI:
             {"mode": selected_mode},
         )
 
+    def reject_all_oc_pending(self) -> dict:
+        """Reject tuần tự PO trong tab New hoặc Revision đang mở trên WFX."""
+        return self._run(
+            "reject_all_oc_pending",
+            lambda: self._login.reject_all_oc_pending(self._log),
+        )
+
     def upload_oc(self, mode: str, file_path: str) -> dict:
         selected_mode = str(mode or "").strip().casefold()
         source = Path(str(file_path or "")).expanduser().resolve()
@@ -3358,7 +3502,20 @@ class PanelAPI:
                 "code": "USER_ID_REQUIRED",
                 "message": "Vui lòng nhập User ID trước khi kết nối.",
             }
+        account_changed = previous_user_id.casefold() != user_id.casefold()
         if not password.strip():
+            # Kế thừa mật khẩu cũ CHỈ đúng khi vẫn là tài khoản cũ. Ghép User
+            # ID mới với mật khẩu của người khác thì lần đăng nhập nào cũng
+            # sai, và mỗi lần sai là một bước tới khóa tài khoản trên WFX.
+            if account_changed and previous_user_id:
+                return {
+                    "ok": False,
+                    "code": "PASSWORD_REQUIRED",
+                    "message": (
+                        "Đổi sang User ID khác thì phải nhập mật khẩu của "
+                        "chính tài khoản đó."
+                    ),
+                }
             existing_password = self._account().get("password", "")
             if not existing_password.strip():
                 return {
@@ -3379,7 +3536,19 @@ class PanelAPI:
                 "code": "CREDENTIAL_PROTECTION_FAILED",
                 "message": str(error),
             }
-        if previous_user_id.casefold() != user_id.casefold():
+        self._rejected_credential = None
+        if account_changed:
+            # Chrome vẫn đang giữ phiên của tài khoản CŨ. Giữ nguyên cờ "đã
+            # đăng nhập" ở đây là nói dối: mọi automation chạy sau đó vẫn là
+            # người cũ. Hạ toàn bộ trạng thái dẫn xuất và để lần login kế
+            # tiếp tự đổi phiên (_session_user_id vẫn là chủ phiên cũ).
+            self._session_active = None
+            self._last_login_at = None
+            self._current_division = None
+            self._division_label = None
+            self._division_name = None
+            self._admin_access = None
+            self._admin_module_ids.clear()
             self._catalog.reset_for_account_change()
         self._log("[SETTINGS] Đã lưu tài khoản")
         return {
@@ -3388,10 +3557,25 @@ class PanelAPI:
             "message": "Đã lưu tài khoản.",
             "user_id": user_id,
             "has_credentials": True,
+            "credential_state": self._credential_state(),
+            **self._session_status(),
+            **self._division_state(),
+            **self._admin_state(),
         }
 
     def set_theme(self, theme: str) -> dict:
-        saved = self._prefs.save_prefs(base_dir=self._base_dir, theme=theme)
+        # load_prefs chuẩn hóa giá trị lạ về "light". Nếu API cũng im lặng
+        # chấp nhận thì UI báo "Đã đổi giao diện" trong khi giao diện nhảy về
+        # Sáng — người dùng không hiểu vì sao lựa chọn của họ bị bỏ.
+        wanted = str(theme or "").strip().casefold()
+        if wanted not in THEME_CHOICES:
+            return {
+                "ok": False,
+                "code": "THEME_INVALID",
+                "message": "Giao diện chỉ nhận Sáng, Tối hoặc Tự động.",
+                "theme": self._prefs.load_prefs(base_dir=self._base_dir)["theme"],
+            }
+        saved = self._prefs.save_prefs(base_dir=self._base_dir, theme=wanted)
         return {"ok": True, "code": "THEME_SAVED", "message": "Đã đổi giao diện", "theme": saved["theme"]}
 
     def set_sale_asn_stages(self, stages: list[str] | None = None) -> dict:

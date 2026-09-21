@@ -14,7 +14,24 @@ def test_account_updates_environ(tmp_path: Path, monkeypatch):
     prefs.save_account("abc", "pw", base_dir=tmp_path)
     import os
     assert os.environ["WFX_USER_ID"] == "abc"
-    assert os.environ["WFX_PASSWORD"] == "pw"
+
+
+def test_password_is_never_exported_to_the_process_environment(
+    tmp_path: Path, monkeypatch
+):
+    """Chrome là tiến trình con nên kế thừa environment của panel.
+
+    Ghi mật khẩu vào ``os.environ`` sẽ vô hiệu hóa lớp DPAPI at-rest: mọi
+    tiến trình chạy cùng tài khoản Windows đều đọc được environment đó.
+    """
+    import os
+
+    monkeypatch.setenv("WFX_PASSWORD", "left-over")
+
+    prefs.save_account("abc", "pw", base_dir=tmp_path)
+
+    assert "WFX_PASSWORD" not in os.environ
+    assert prefs.load_account(base_dir=tmp_path)["password"] == "pw"
 
 
 def test_load_account_missing_returns_empty(tmp_path: Path):

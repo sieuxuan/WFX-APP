@@ -435,6 +435,7 @@ def test_confirm_page_size_reresolves_select_after_wfx_postback(monkeypatch):
     frames = [object(), object()]
     selects = [OldSelect(), NewSelect()]
     resolved = []
+    waited = []
 
     def resolve(*_args, **_kwargs):
         index = len(resolved)
@@ -443,11 +444,61 @@ def test_confirm_page_size_reresolves_select_after_wfx_postback(monkeypatch):
 
     monkeypatch.setattr(oc, "_visible_in_frames", resolve)
     monkeypatch.setattr(oc, "_wait", lambda *_args: None)
+    monkeypatch.setattr(
+        oc,
+        "_wait_confirm_grid_ready",
+        lambda page, frame: waited.append((page, frame)) or frame,
+    )
 
-    frame = oc._set_confirm_page_size(object())
+    page = object()
+    frame = oc._set_confirm_page_size(page)
 
     assert frame is frames[1]
     assert resolved == [0, 1]
+    assert waited == [(page, frames[1])]
+
+
+def test_confirm_page_size_waits_until_the_wfx_grid_is_actionable():
+    markup = """
+      <style>
+        #grid-blocker {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          display: none;
+        }
+      </style>
+      <div id="grid-blocker"></div>
+      <div id="gridEDIBuyerPO_divPageSize">
+        <select onchange="
+          window.gridReady = false;
+          document.querySelector('#grid-blocker').style.display = 'block';
+          setTimeout(() => {
+            window.gridReady = true;
+            document.querySelector('#grid-blocker').style.display = 'none';
+          }, 900);
+        ">
+          <option value="20" selected>20</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <table id="gridEDIBuyerPO_tblGridContent"><tbody><tr>
+        <td id="colSelector"><input type="radio"></td>
+        <td id="colStyle">STYLE-A</td>
+      </tr></tbody></table>
+      <script>window.gridReady = true;</script>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+
+            oc._set_confirm_page_size(page)
+
+            assert page.evaluate("window.gridReady") is True
+        finally:
+            browser.close()
 
 
 def test_revision_prepare_selects_single_option_without_matching_row_po():
@@ -624,3 +675,119 @@ def test_confirm_stops_when_style_does_not_finish_processing(monkeypatch):
     assert result["code"] == "OC_FAST_CONFIRM_PROCESS_TIMEOUT"
     assert result["stopped_style"] == "STYLE-A"
     assert result["confirmation_submitted"] is True
+
+
+def test_reject_all_detects_the_active_new_or_revision_tab():
+    markup = """
+      <table id="EDIBuyerPOTabControl"><tbody><tr class="clsTabtr">
+        <td id="tabNew" class="clsTabtd clsTabtdselected">
+          <div id="TABName_tabNew" class="tabTextDIV">New</div>
+        </td>
+        <td id="tabRevision" class="clsTabtd">
+          <div id="TABName_tabRevision" class="tabTextDIV">Revision</div>
+        </td>
+      </tr></tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+
+            assert oc._active_confirm_mode(page) == "new"
+
+            page.locator("#tabNew").evaluate(
+                "element => { element.className = 'clsTabtd'; }"
+            )
+            page.locator("#tabRevision").evaluate(
+                "element => { element.className = 'clsTabtd clsTabtdselected'; }"
+            )
+
+            assert oc._active_confirm_mode(page) == "revision"
+        finally:
+            browser.close()
+
+
+def test_reject_toolbar_accepts_the_wfx_confirmation_dialog():
+    markup = """
+      <table id="sectionEDIBuyerPO"><tbody><tr><td></td><td><span>
+        <div></div><div></div><div></div><div></div>
+        <div><a href="#" onclick="if (confirm('Reject selected PO?')) window.rejected = true; return false;">Reject</a></div>
+      </span></td></tr></tbody></table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+
+            oc._click_reject_toolbar(page)
+
+            assert page.evaluate("window.rejected === true") is True
+        finally:
+            browser.close()
+
+
+def test_reject_all_processes_one_pending_group_at_a_time(monkeypatch):
+    frame = object()
+    snapshots = iter(
+        [
+            [{"key": "po-a", "label": "PO-A", "row_count": 1}],
+            [{"key": "po-b", "label": "PO-B", "row_count": 1}],
+            [],
+        ]
+    )
+    calls = []
+    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: next(snapshots))
+    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
+    monkeypatch.setattr(
+        oc,
+        "_select_confirm_style",
+        lambda _frame, key: calls.append(("select", key)),
+    )
+    monkeypatch.setattr(
+        oc,
+        "_click_reject_toolbar",
+        lambda _page: calls.append(("reject",)),
+    )
+    monkeypatch.setattr(
+        oc,
+        "_wait_style_processed",
+        lambda _page, _frame, key, **_kwargs: calls.append(("wait", key)) or True,
+    )
+
+    result = oc._reject_all_pending(object(), frame, "new", log=lambda _: None)
+
+    assert result["ok"] is True
+    assert result["code"] == "OC_REJECT_ALL_COMPLETED"
+    assert result["rejected_rows"] == 2
+    assert calls == [
+        ("select", "po-a"),
+        ("reject",),
+        ("wait", "po-a"),
+        ("select", "po-b"),
+        ("reject",),
+        ("wait", "po-b"),
+    ]
+
+
+def test_reject_all_stops_before_next_row_when_wfx_does_not_finish(monkeypatch):
+    style = {"key": "po-a", "label": "PO-A", "row_count": 1}
+    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: [style])
+    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
+    monkeypatch.setattr(oc, "_select_confirm_style", lambda *_args: None)
+    clicks = []
+    monkeypatch.setattr(
+        oc,
+        "_click_reject_toolbar",
+        lambda *_args: clicks.append("reject"),
+    )
+    monkeypatch.setattr(oc, "_wait_style_processed", lambda *_args, **_kwargs: False)
+
+    result = oc._reject_all_pending(object(), object(), "revision", log=lambda _: None)
+
+    assert result["ok"] is False
+    assert result["code"] == "OC_REJECT_ALL_PROCESS_TIMEOUT"
+    assert result["stopped_row"] == "PO-A"
+    assert result["rejection_submitted"] is True
+    assert clicks == ["reject"]
