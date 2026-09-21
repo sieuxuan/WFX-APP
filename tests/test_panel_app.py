@@ -2,11 +2,30 @@ import os
 import threading
 from pathlib import Path
 
-from wfx_panel import panel_app, prefs
+import wfx_panel.app
+from tests.fakes.module_reflection import _binding_sites
+from wfx_panel import panel_app, prefs, win32_window
 from wfx_panel.app import bridges as app_bridges
 from wfx_panel.app import dialogs as app_dialogs
 from wfx_panel.app import helpers as app_helpers
 from wfx_panel.app import manual_window as app_manual
+
+
+def patch_shell(monkeypatch, name, value):
+    """Vá một tên của lớp vỏ desktop, kể cả khi nó đã dời sang wfx_panel/app.
+
+    ``panel_app`` re-export một phần; các controller trong ``wfx_panel.app`` đã
+    ``from ... import`` tên này vào namespace riêng nên vá mỗi panel_app không
+    tới được thân hàm.
+    """
+    patched = False
+    if hasattr(panel_app, name):
+        monkeypatch.setattr(panel_app, name, value)
+        patched = True
+    for site in _binding_sites(wfx_panel.app, name):
+        monkeypatch.setattr(site, name, value)
+        patched = True
+    assert patched, f"không module nào của lớp vỏ bind {name!r}"
 
 
 def test_icon_and_ui_paths_resolve_under_resource_dir():
@@ -766,10 +785,9 @@ def test_activate_shows_panel_and_fronts_window(monkeypatch):
     monkeypatch.setattr(
         module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
-    monkeypatch.setattr(module, "_window_rect_by_title", lambda _title: None)
+    patch_shell(monkeypatch, "_window_rect_by_title", lambda _title: None)
     monkeypatch.setattr(module, "_set_process_window_bounds", lambda *_a: True)
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_native_window_visibility",
         lambda *_args, **_kwargs: False,
     )
@@ -799,10 +817,9 @@ def test_taskbar_activation_opens_full_ui_without_winforms_restore(monkeypatch):
         return {"ok": True}
 
     app.show_panel = show_panel
-    app._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
+    app._bubble._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
     monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_native_window_visibility",
         lambda *_args, **_kwargs: True,
     )
@@ -827,10 +844,9 @@ def test_show_from_tray_repairs_hidden_bubble_before_opening_panel(monkeypatch):
 
     app.bubble_window = FakeBubble()
     app._bubble_hidden = True
-    app._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
+    app._bubble._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
     app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_native_window_visibility",
         lambda *_args, **_kwargs: False,
     )
@@ -914,7 +930,7 @@ def test_taskbar_foreground_transition_opens_only_for_bubble(monkeypatch):
     monkeypatch.setattr(
         module, "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
-    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 4242)
+    patch_shell(monkeypatch, "_find_window_hwnd", lambda _title: 4242)
     app._open_panel_from_taskbar = lambda: calls.append("open")
 
     app._taskbar_activation_loop()
@@ -936,8 +952,7 @@ def test_taskbar_foreground_transition_accepts_main_panel_hwnd(monkeypatch):
     monkeypatch.setattr(
         module, "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_find_window_hwnd",
         lambda title: 4242 if title == module.BUBBLE_WINDOW_TITLE else 5151,
     )
@@ -962,7 +977,7 @@ def test_tray_foreground_window_cancels_taskbar_activation(monkeypatch):
     monkeypatch.setattr(
         module, "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
-    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 4242)
+    patch_shell(monkeypatch, "_find_window_hwnd", lambda _title: 4242)
     app._open_panel_from_taskbar = lambda: calls.append("open")
 
     app._taskbar_activation_loop()
@@ -985,13 +1000,11 @@ def test_native_drag_saves_final_bubble_position(monkeypatch):
     app = module.PanelApp()
     saved = []
 
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_window_rect_by_title",
         lambda _title: (2160, 280, 2208, 328),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_work_area_for_window_title",
         lambda _title: (1920, 0, 3840, 1080),
     )
@@ -1012,16 +1025,14 @@ def test_native_drag_clamps_bubble_before_saving(monkeypatch):
     app = module.PanelApp()
     moved = []
     saved = []
-    monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (1950, 1100, 1998, 1148)
+    patch_shell(monkeypatch,
+        "_window_rect_by_title", lambda _title: (1950, 1100, 1998, 1148)
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_work_area_for_window_title",
         lambda _title: (0, 0, 1920, 1080),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_set_bounds_by_title",
         lambda title, x, y, width, height: (
             moved.append((title, x, y, width, height)) or True
@@ -1070,7 +1081,7 @@ def test_show_panel_shows_window_and_hide_panel_hides_it(monkeypatch):
     monkeypatch.setattr(
         module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
-    monkeypatch.setattr(module, "_window_rect_by_title", lambda _title: None)
+    patch_shell(monkeypatch, "_window_rect_by_title", lambda _title: None)
     monkeypatch.setattr(module, "_set_process_window_bounds", lambda *_a: True)
     monkeypatch.setattr(
         module, "_bring_process_window_to_front", lambda **_kwargs: True
@@ -1198,10 +1209,10 @@ def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
             pass
 
     app.window = FakeWindow()
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
+    patch_shell(monkeypatch, "_window_dpi_by_title", lambda _title: 96)
     # Bubble sát góc phải-dưới → panel phải bung sang TRÁI và clamp vào trong.
-    monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (1880, 1040, 1934, 1094)
+    patch_shell(monkeypatch,
+        "_window_rect_by_title", lambda _title: (1880, 1040, 1934, 1094)
     )
     monkeypatch.setattr(
         module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
@@ -1239,14 +1250,12 @@ def test_panel_keeps_two_column_logical_width_at_125_percent_scale(
             pass
 
     app.window = FakeWindow()
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 120)
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch, "_window_dpi_by_title", lambda _title: 120)
+    patch_shell(monkeypatch,
         "_window_rect_by_title",
         lambda _title: (1880, 500, 1928, 548),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_work_area_for_window_title",
         lambda _title: (0, 0, 1920, 1080),
     )
@@ -1284,14 +1293,12 @@ def test_panel_pywebview_fallback_uses_logical_size_at_high_dpi(monkeypatch):
 
     app = module.PanelApp()
     app.window = FakeWindow()
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 144)
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch, "_window_dpi_by_title", lambda _title: 144)
+    patch_shell(monkeypatch,
         "_window_rect_by_title",
         lambda _title: (1800, 300, 1848, 348),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_work_area_for_window_title",
         lambda _title: (0, 0, 1920, 1200),
     )
@@ -1327,13 +1334,13 @@ def test_panel_stays_inside_bubble_monitor_at_all_four_corners(monkeypatch):
 
     app = module.PanelApp()
     app.window = FakeWindow()
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
-    monkeypatch.setattr(module, "_work_area_for_window_title", lambda _title: area)
+    patch_shell(monkeypatch, "_window_dpi_by_title", lambda _title: 96)
+    patch_shell(monkeypatch, "_work_area_for_window_title", lambda _title: area)
 
     for bubble in corners:
         calls = []
-        monkeypatch.setattr(
-            module, "_window_rect_by_title", lambda _title, rect=bubble: rect
+        patch_shell(monkeypatch,
+            "_window_rect_by_title", lambda _title, rect=bubble: rect
         )
         monkeypatch.setattr(
             module,
@@ -1367,11 +1374,11 @@ def test_panel_shrinks_to_fit_a_small_work_area(monkeypatch):
 
     app = module.PanelApp()
     app.window = FakeWindow()
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 96)
-    monkeypatch.setattr(
-        module, "_window_rect_by_title", lambda _title: (372, 302, 420, 350)
+    patch_shell(monkeypatch, "_window_dpi_by_title", lambda _title: 96)
+    patch_shell(monkeypatch,
+        "_window_rect_by_title", lambda _title: (372, 302, 420, 350)
     )
-    monkeypatch.setattr(module, "_work_area_for_window_title", lambda _title: area)
+    patch_shell(monkeypatch, "_work_area_for_window_title", lambda _title: area)
     monkeypatch.setattr(
         module,
         "_set_process_window_bounds",
@@ -1395,25 +1402,23 @@ def test_bubble_loaded_repairs_an_offscreen_saved_position(monkeypatch):
             (1860, 1020, 1920, 1080),
         ]
     )
-    monkeypatch.setattr(
-        module, "_window_rect_by_title_any_state", lambda _title: next(rects)
+    patch_shell(monkeypatch,
+        "_window_rect_by_title_any_state", lambda _title: next(rects)
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_work_area_for_window_title_any_state",
         lambda _title: (0, 0, 1920, 1080),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_set_bounds_by_title",
         lambda title, x, y, width, height: (
             moved.append((title, x, y, width, height)) or True
         ),
     )
-    monkeypatch.setattr(
-        module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
+    patch_shell(monkeypatch,
+        "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
     )
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 120)
+    patch_shell(monkeypatch, "_window_dpi_by_title", lambda _title: 120)
     monkeypatch.setattr(
         module.prefs, "save_prefs", lambda **kwargs: saved.append(kwargs) or {}
     )
@@ -1443,25 +1448,23 @@ def test_bubble_loaded_preserves_48_logical_pixels_at_150_percent(monkeypatch):
     app = module.PanelApp()
     moved = []
     rects = iter([(100, 100, 148, 148), (100, 100, 172, 172)])
-    monkeypatch.setattr(
-        module, "_window_rect_by_title_any_state", lambda _title: next(rects)
+    patch_shell(monkeypatch,
+        "_window_rect_by_title_any_state", lambda _title: next(rects)
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_work_area_for_window_title_any_state",
         lambda _title: (0, 0, 1920, 1080),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_set_bounds_by_title",
         lambda title, x, y, width, height: (
             moved.append((title, x, y, width, height)) or True
         ),
     )
-    monkeypatch.setattr(
-        module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
+    patch_shell(monkeypatch,
+        "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
     )
-    monkeypatch.setattr(module, "_window_dpi_by_title", lambda _title: 144)
+    patch_shell(monkeypatch, "_window_dpi_by_title", lambda _title: 144)
     monkeypatch.setattr(module.prefs, "save_prefs", lambda **_kwargs: {})
 
     app._on_bubble_loaded()
@@ -1481,19 +1484,17 @@ def test_bubble_bounds_reject_false_success_until_rect_is_exact(monkeypatch):
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_window_rect_by_title_any_state",
         lambda _title: (100, 100, 220, 139),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_work_area_for_window_title_any_state",
         lambda _title: (0, 0, 1920, 1080),
     )
-    monkeypatch.setattr(module, "_set_bounds_by_title", lambda *_args: True)
-    monkeypatch.setattr(
-        module, "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
+    patch_shell(monkeypatch, "_set_bounds_by_title", lambda *_args: True)
+    patch_shell(monkeypatch,
+        "_set_smooth_corners_by_title", lambda *_args, **_kwargs: True
     )
 
     assert app._enforce_bubble_native_bounds() is False
@@ -1556,15 +1557,14 @@ def test_bubble_context_menu_shows_dedicated_dpi_aware_popup(monkeypatch):
     app.bubble_menu_window = object()
     shown = []
     monkeypatch.setattr(
-        app, "_bubble_menu_position", lambda: (1400, 200, 230, 103)
+        app._bubble, "_bubble_menu_position", lambda: (1400, 200, 230, 103)
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_native_popup_visibility",
         lambda *args, **kwargs: shown.append((args, kwargs)) or True,
     )
-    monkeypatch.setattr(
-        module, "_set_smooth_corners_by_title", lambda _title: True
+    patch_shell(monkeypatch,
+        "_set_smooth_corners_by_title", lambda _title: True
     )
 
     result = app.bubble_context_menu()
@@ -1572,7 +1572,7 @@ def test_bubble_context_menu_shows_dedicated_dpi_aware_popup(monkeypatch):
     assert result["code"] == "MENU_OPENED"
     assert shown == [
         (
-            (module.BUBBLE_MENU_TITLE, True, 1400, 200, 230, 103),
+            (win32_window.BUBBLE_MENU_TITLE, True, 1400, 200, 230, 103),
             {"activate": True},
         )
     ]
@@ -1639,13 +1639,11 @@ def test_late_bubble_menu_loaded_event_does_not_hide_open_menu(monkeypatch):
     calls = []
     app = panel_app.PanelApp()
     app._bubble_menu_visible = True
-    monkeypatch.setattr(
-        panel_app,
+    patch_shell(monkeypatch,
         "_native_popup_visibility",
         lambda *args, **kwargs: calls.append((args, kwargs)),
     )
-    monkeypatch.setattr(
-        panel_app,
+    patch_shell(monkeypatch,
         "_set_smooth_corners_by_title",
         lambda title: calls.append((title,)),
     )
@@ -1653,7 +1651,7 @@ def test_late_bubble_menu_loaded_event_does_not_hide_open_menu(monkeypatch):
     app._on_bubble_menu_loaded()
 
     assert app._bubble_menu_visible is True
-    assert calls == [(panel_app.BUBBLE_MENU_TITLE,)]
+    assert calls == [(win32_window.BUBBLE_MENU_TITLE,)]
 
 
 def test_requested_taskbar_minimize_event_does_not_reopen_panel(monkeypatch):
@@ -1689,11 +1687,11 @@ def test_native_bubble_right_click_fallback_opens_menu(monkeypatch):
             return self.count > 2
 
     app._stop_status = FakeStop()
-    app.note_bubble_interaction = lambda: calls.append("noted") or {"ok": True}
-    app.bubble_context_menu = lambda: calls.append("menu") or {"ok": True}
-    monkeypatch.setattr(module, "_find_window_hwnd", lambda _title: 123)
-    monkeypatch.setattr(
-        module, "_right_mouse_state_over_hwnd", lambda _hwnd: next(states)
+    app._bubble.note_bubble_interaction = lambda: calls.append("noted") or {"ok": True}
+    app._bubble.bubble_context_menu = lambda: calls.append("menu") or {"ok": True}
+    patch_shell(monkeypatch, "_find_window_hwnd", lambda _title: 123)
+    patch_shell(monkeypatch,
+        "_right_mouse_state_over_hwnd", lambda _hwnd: next(states)
     )
 
     app._bubble_context_menu_loop()
@@ -1731,19 +1729,17 @@ def test_click_outside_dismisses_bubble_menu_after_opening_click_is_released(
         app._bubble_menu_visible = False
         return {"ok": True}
 
-    app.dismiss_bubble_menu = dismiss
-    monkeypatch.setattr(
-        module,
+    app._bubble.dismiss_bubble_menu = dismiss
+    patch_shell(monkeypatch,
         "_find_window_hwnd",
-        lambda title: 456 if title == module.BUBBLE_MENU_TITLE else 123,
+        lambda title: 456 if title == win32_window.BUBBLE_MENU_TITLE else 123,
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_mouse_buttons_state_over_hwnd",
         lambda _hwnd: next(menu_states),
     )
-    monkeypatch.setattr(
-        module, "_right_mouse_state_over_hwnd", lambda _hwnd: (False, False)
+    patch_shell(monkeypatch,
+        "_right_mouse_state_over_hwnd", lambda _hwnd: (False, False)
     )
 
     app._bubble_context_menu_loop()
@@ -1767,19 +1763,17 @@ def test_click_inside_does_not_dismiss_bubble_menu(monkeypatch):
             return self.count > 2
 
     app._stop_status = FakeStop()
-    app.dismiss_bubble_menu = lambda: calls.append("dismiss")
-    monkeypatch.setattr(
-        module,
+    app._bubble.dismiss_bubble_menu = lambda: calls.append("dismiss")
+    patch_shell(monkeypatch,
         "_find_window_hwnd",
-        lambda title: 456 if title == module.BUBBLE_MENU_TITLE else 123,
+        lambda title: 456 if title == win32_window.BUBBLE_MENU_TITLE else 123,
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_mouse_buttons_state_over_hwnd",
         lambda _hwnd: next(menu_states),
     )
-    monkeypatch.setattr(
-        module, "_right_mouse_state_over_hwnd", lambda _hwnd: (False, False)
+    patch_shell(monkeypatch,
+        "_right_mouse_state_over_hwnd", lambda _hwnd: (False, False)
     )
 
     app._bubble_context_menu_loop()
@@ -2206,8 +2200,15 @@ def test_focus_automation_browser_respects_default_on_setting(monkeypatch):
     assert focused == [(922200, None)]
 
 
+def _shell_source() -> str:
+    """Source của cả lớp vỏ desktop: panel_app + mọi controller trong app/."""
+    root = Path(panel_app.__file__).parent
+    files = [Path(panel_app.__file__), *sorted((root / "app").glob("*.py"))]
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+
 def test_only_panel_and_bubble_webviews_are_created_at_startup():
-    source = Path(panel_app.__file__).read_text(encoding="utf-8")
+    source = _shell_source()
     assert "url=str(BUBBLE_INDEX)" in source
     assert "url=str(BUBBLE_MENU_INDEX)" in source
     assert "def _ensure_bubble_menu_window" in source
