@@ -717,6 +717,7 @@ class MiniFrame:
         # Marker document: automation ghi rồi đọc lại để biết frame đã reload.
         for name in (
             "__wfxArticleFileMarker",
+            "__wfxAsnReportMarker",
             "__wfxAutomationDocumentMarker",
             "__wfxPanelDocumentMarker",
         ):
