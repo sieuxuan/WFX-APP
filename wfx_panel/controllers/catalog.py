@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from wfx_panel import constants
 from wfx_panel.coercion import bounded_int
 from wfx_panel.controllers.catalog_files import ArticleFileController
+from wfx_panel.controllers.catalog_folders import CatalogFolderController
 from wfx_panel.controllers.catalog_style import StyleImportController
 from wfx_panel.controllers.costing import CostingController
 from wfx_panel.stores import article_library
@@ -46,13 +47,13 @@ class CatalogController:
         # context này để không click Costsheet/reload/chuyển tab lần nữa.
         self.active_article_destination: tuple[str, str] | None = None
         self.prepared_category: str | None = None
-        self.folder_cache: dict[str, list[dict]] = {}
         # URL tải thật không đưa ra WebView. UI chỉ nhận token ngẫu nhiên và
         # metadata; khi click tải, token được resolve lại trong process Python.
         # Kết quả Sample nhiều dòng cũng chỉ đưa token ra UI. Row key dùng để
         # click tiếp trên grid WFX được giữ hoàn toàn trong backend.
         # Luồng file Costing sống trong controller riêng; nó đọc lại kết quả
         # Catalog hiện tại thay vì chạy lại cả luồng tìm Style.
+        self.folders = CatalogFolderController(self)
         self.costing = CostingController(self)
         self.style = StyleImportController(self)
         self.files_view = ArticleFileController(self)
@@ -72,7 +73,7 @@ class CatalogController:
 
     def reset_for_account_change(self) -> None:
         """Đổi tài khoản: cache cây folder theo user cũ cũng không còn dùng được."""
-        self.folder_cache.clear()
+        self.folders.cache.clear()
         self.result = None
         self.active_article_destination = None
         self.prepared_category = None
@@ -81,55 +82,14 @@ class CatalogController:
         self.costing.plans.clear()
         self.style.imports.clear()
 
-    # -- helpers -----------------------------------------------------------
-    def default_folder_for_account(
-        self,
-        preferences: Mapping | None = None,
-    ) -> dict | None:
-        panel = self._panel
-        if preferences is None:
-            preferences = panel._prefs.load_prefs(base_dir=panel._base_dir)
-        folder = preferences["catalog_default_folder"]
-        if not folder:
-            return None
-        user_id = str(panel._account().get("user_id") or "").strip()
-        owner = str(folder.get("user_id") or "").strip()
-        if not user_id or owner.casefold() != user_id.casefold():
-            return None
-        return folder
+    def default_folder_for_account(self, preferences: Mapping | None=None) -> dict | None:
+        return self.folders.default_folder_for_account(preferences)
 
     def _master_folder(self, category_name: str) -> dict:
-        return {
-            "category_name": category_name,
-            "category_value": constants.CATEGORIES.get(category_name, ""),
-            "user_id": str(self._panel._account().get("user_id") or "").strip(),
-            "node_id": "",
-            "node_code": "Master",
-            "name": "Master",
-            "path": ["Master"],
-            "path_label": "Master",
-            "kind": "master",
-            "depth": 0,
-        }
+        return self.folders._master_folder(category_name)
 
     def _cached_folders(self, category_name: str) -> list[dict] | None:
-        cached = self.folder_cache.get(category_name)
-        if cached:
-            return cached
-        panel = self._panel
-        account = panel._account()
-        loader = getattr(panel._prefs, "load_catalog_folder_cache", None)
-        if not callable(loader):
-            return None
-        persisted = loader(
-            str(account.get("user_id") or ""),
-            category_name,
-            base_dir=panel._base_dir,
-        )
-        if persisted:
-            self.folder_cache[category_name] = persisted
-            return persisted
-        return None
+        return self.folders._cached_folders(category_name)
 
     def _scan_open_article_files(self, article_code: str) -> dict:
         return self.files_view._scan_open_article_files(article_code)
@@ -140,186 +100,11 @@ class CatalogController:
         self.active_article_destination = None
         self.prepared_category = None
 
-    # -- workflows ---------------------------------------------------------
-    def scan_folders(self, category_name: str, force: bool = False) -> dict:
-        """Quét cây folder user được quyền xem, không mở Master."""
-        panel = self._panel
-        if category_name != "Apparel":
-            return {
-                "ok": False,
-                "code": "CATALOG_DEFAULT_APPAREL_ONLY",
-                "message": "Vị trí mặc định chỉ áp dụng cho Apparel.",
-            }
-        if not force:
-            cached = self._cached_folders(category_name)
-            if cached:
-                return {
-                    "ok": True,
-                    "code": "CATALOG_FOLDERS_CACHED",
-                    "message": "Đã tải cây Catalog đã lưu.",
-                    "category": category_name,
-                    "value": constants.CATEGORIES[category_name],
-                    "folders": cached,
-                    "default_folder": self.default_folder_for_account(),
-                    **panel._session_status(),
-                    **panel._division_state(),
-                }
-        scan_user_id = str(panel._account().get("user_id") or "").strip()
-
-        def action() -> dict:
-            # Reset context CHỈ sau khi đã giành được run lock (bên trong _run).
-            # Nếu đặt ở đầu method, một lần gọi bị từ chối ACTION_IN_PROGRESS vẫn
-            # xóa mất Catalog đang chuẩn bị của workflow đang chạy.
-            self.result = None
-            self.active_article_destination = None
-            self.prepared_category = None
-            self.files_view.tokens.clear()
-            value = constants.CATEGORIES.get(category_name)
-            if value is None:
-                return {
-                    "ok": False,
-                    "code": "CATEGORY_UNKNOWN",
-                    "message": f"Category lạ: {category_name}",
-                }
-            scanner = getattr(panel._login, "scan_catalog_folders", None)
-            if not callable(scanner):
-                return {
-                    "ok": False,
-                    "code": "CATALOG_FOLDER_SCAN_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ quét thư mục Catalog.",
-                }
-            return scanner(category_name, value, panel._log)
-
-        result = panel._run(
-            "scan_catalog_folders",
-            action,
-            {
-                "category_name": category_name,
-                "force": bool(force),
-            },
-        )
-        if result.get("code") == "CATALOG_FOLDERS_SCANNED":
-            current_user_id = str(panel._account().get("user_id") or "").strip()
-            if scan_user_id.casefold() != current_user_id.casefold():
-                return {
-                    "ok": False,
-                    "code": "CATALOG_SCAN_ACCOUNT_CHANGED",
-                    "message": (
-                        "Tài khoản đã đổi trong lúc tải Catalog. "
-                        "Hãy mở Catalog lại."
-                    ),
-                    **panel._session_status(),
-                    **panel._division_state(),
-                }
-            folders = [
-                folder
-                for folder in result.get("folders", [])
-                if isinstance(folder, dict)
-                and str(folder.get("node_id") or "").isdigit()
-            ]
-            self.folder_cache[category_name] = folders
-            saver = getattr(panel._prefs, "save_catalog_folder_cache", None)
-            if callable(saver):
-                try:
-                    persisted = saver(
-                        scan_user_id,
-                        folders,
-                        category_name,
-                        base_dir=panel._base_dir,
-                    )
-                    if persisted:
-                        folders = persisted
-                        result["folders"] = folders
-                        self.folder_cache[category_name] = folders
-                except OSError:
-                    # Cache chỉ là tối ưu UX; scan thành công không được biến
-                    # thành lỗi chỉ vì ổ đĩa tạm thời không ghi được.
-                    pass
-            saved = self.default_folder_for_account()
-            if (
-                saved
-                and saved.get("category_name") == category_name
-                and saved.get("node_id")
-                and not any(
-                    folder.get("node_id") == saved.get("node_id")
-                    for folder in folders
-                )
-            ):
-                master = self._master_folder(category_name)
-                panel._prefs.save_prefs(
-                    base_dir=panel._base_dir,
-                    catalog_default_folder=master,
-                )
-                result["default_folder"] = master
-                # `+=` trên key có thể vắng: automation chỉ bảo đảm ok/code,
-                # còn `message` là tuỳ chọn. KeyError ở đây xảy ra NGOÀI _run
-                # nên không có handler nào biến nó thành PANEL_ERROR.
-                result["message"] = (
-                    f"{str(result.get('message') or '').rstrip()} "
-                    "Folder mặc định cũ không còn quyền truy cập; "
-                    "đã chuyển về Master."
-                ).strip()
-            else:
-                result["default_folder"] = saved
-        return result
+    def scan_folders(self, category_name: str, force: bool=False) -> dict:
+        return self.folders.scan_folders(category_name, force)
 
     def set_default_folder(self, category_name: str, node_id: str) -> dict:
-        panel = self._panel
-        if category_name != "Apparel":
-            return {
-                "ok": False,
-                "code": "CATALOG_DEFAULT_APPAREL_ONLY",
-                "message": "Vị trí mặc định chỉ áp dụng cho Apparel.",
-            }
-        value = constants.CATEGORIES.get(category_name)
-        if value is None:
-            return {
-                "ok": False,
-                "code": "CATEGORY_UNKNOWN",
-                "message": f"Category lạ: {category_name}",
-            }
-        node_id = str(node_id or "").strip()
-        if not node_id:
-            folder = self._master_folder(category_name)
-        else:
-            folder = next(
-                (
-                    item
-                    for item in self.folder_cache.get(category_name, [])
-                    if str(item.get("node_id") or "") == node_id
-                ),
-                None,
-            )
-            if folder is None:
-                return {
-                    "ok": False,
-                    "code": "CATALOG_FOLDER_NOT_SCANNED",
-                    "message": "Hãy quét lại cây Catalog trước khi chọn folder.",
-                }
-            folder = {
-                **folder,
-                "category_name": category_name,
-                "category_value": value,
-                "user_id": str(panel._account().get("user_id") or "").strip(),
-            }
-        saved = panel._prefs.save_prefs(
-            base_dir=panel._base_dir,
-            catalog_default_folder=folder,
-        )["catalog_default_folder"]
-        panel._log(
-            f"[SETTINGS] Folder Catalog mặc định: "
-            f"{saved['path_label'] if saved else 'Master'}"
-        )
-        return {
-            "ok": True,
-            "code": "CATALOG_DEFAULT_FOLDER_SAVED",
-            "message": (
-                f"Đã đặt folder mặc định: {saved['path_label']}."
-                if saved
-                else "Đã đặt folder mặc định: Master."
-            ),
-            "default_folder": saved,
-        }
+        return self.folders.set_default_folder(category_name, node_id)
 
     def browse(self, category_name: str) -> dict:
         """Mở Category để duyệt; riêng Apparel dùng folder mặc định đã lưu."""

@@ -10,6 +10,7 @@ import json
 import re
 import zipfile
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -857,3 +858,36 @@ def _preflight_xlsx_archive(path: Path) -> None:
             "COSTING_VALIDATION_FAILED",
             "File XLSX bị hỏng hoặc không đúng định dạng.",
         ) from error
+
+
+@dataclass(frozen=True)
+class _CostingFormLayout:
+    section_rows: list[list[int]]
+    template_rows: list[tuple[int, str]]
+    row_by_item: dict[tuple[str, str], int]
+
+def _base_field_key(value: Any) -> str:
+    return re.sub(r"__\d+$", "", _text(value)).casefold()
+
+
+def _form_field_index(
+    document: Mapping[str, Any],
+) -> dict[tuple[str, str, str], Mapping[str, Any]]:
+    return {
+        (
+            field["section_key"].casefold(),
+            field["item_key"].casefold(),
+            _base_field_key(field["field_key"]),
+        ): field
+        for field in document["fields"]
+    }
+
+def _form_items_by_section(
+    document: Mapping[str, Any],
+) -> dict[str, list[Mapping[str, Any]]]:
+    grouped: dict[str, list[Mapping[str, Any]]] = {}
+    for item in document["items"]:
+        grouped.setdefault(item["section_key"].casefold(), []).append(item)
+    for items in grouped.values():
+        items.sort(key=lambda value: value["row_order"])
+    return grouped

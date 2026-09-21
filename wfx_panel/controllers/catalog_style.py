@@ -34,7 +34,7 @@ class StyleImportController:
         return next(
             (
                 item
-                for item in catalog.folder_cache.get("Apparel", [])
+                for item in catalog.folders.cache.get("Apparel", [])
                 if str(item.get("node_id") or "") == group_id
                 and str(item.get("kind") or "").casefold() == "group"
             ),
