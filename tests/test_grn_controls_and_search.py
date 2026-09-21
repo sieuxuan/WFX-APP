@@ -557,3 +557,91 @@ def test_search_grn_maps_a_closed_browser_to_the_shared_boundary(
     result = grn_search.search_grn_receipt("invoice", "INV-1", _quiet())
 
     assert result["code"] == "CHROME_CLOSED"
+
+
+# --- nhánh chịu lỗi khi WFX thay frame giữa chừng -----------------------
+
+
+def test_a_result_window_that_cannot_be_fronted_is_still_accepted(
+    clock, monkeypatch
+):
+    """Cửa sổ GRN đã mở là đủ; không đưa được lên trước không phải lỗi."""
+    frame = _result_frame(clock)
+
+    class StubbornPage(_ResultPage):
+        def bring_to_front(self):
+            raise grn_search.PlaywrightError("target đã đóng")
+
+    page = StubbornPage(clock, [frame])
+    frame.page = page
+    context = _ResultContext([page])
+    monkeypatch.setattr(grn_search, "_context_frames", lambda _ctx: [frame])
+    monkeypatch.setattr(grn_search, "_document_changed", lambda _f, _s: True)
+
+    grn_search._wait_grn_result_opened(context, set(), {})
+
+
+def test_a_filter_that_cannot_be_cleared_does_not_stop_the_search(
+    clock, monkeypatch
+):
+    frame = _search_frame(clock, results=["GRN-1 INV-1"])
+    _wire_search(monkeypatch, clock, frame)
+    original = grn_search._set_grn_search_filter
+    seen: list[tuple] = []
+
+    def flaky(target, kind, query, *, enabled):
+        seen.append((kind, enabled))
+        if not enabled and kind == "rmpo":
+            raise grn_search.PlaywrightError("ô RMPO đã biến mất")
+        return original(target, kind, query, enabled=enabled)
+
+    monkeypatch.setattr(grn_search, "_set_grn_search_filter", flaky)
+
+    result = grn_search.search_grn_receipt("invoice", "INV-1", _quiet())
+
+    assert result["code"] == "GRN_SEARCH_OPENED"
+    assert ("rmpo", False) in seen
+
+
+def test_a_frame_that_detaches_while_the_results_are_scanned_is_skipped(
+    clock, monkeypatch
+):
+    frame = _search_frame(clock, results=["GRN-1 INV-1"])
+    _wire_search(monkeypatch, clock, frame)
+
+    class Detached:
+        url = "https://wfx.test/detached"
+
+        def locator(self, _selector):
+            raise grn_search.PlaywrightError("frame đã detach")
+
+    monkeypatch.setattr(
+        grn_search, "_context_frames", lambda _ctx: [Detached(), frame]
+    )
+
+    assert (
+        grn_search.search_grn_receipt("invoice", "INV-1", _quiet())["code"]
+        == "GRN_SEARCH_OPENED"
+    )
+
+
+def test_a_row_that_cannot_be_read_back_does_not_stop_the_click(
+    clock, monkeypatch
+):
+    from tests.fakes.mini_dom import Locator
+
+    frame = _search_frame(clock, results=["GRN-1 INV-1"])
+    _wire_search(monkeypatch, clock, frame)
+    real_locator = Locator.locator
+
+    def flaky(self, selector):
+        if selector.startswith("xpath=ancestor::tr"):
+            raise grn_search.PlaywrightError("dòng đã bị thay")
+        return real_locator(self, selector)
+
+    monkeypatch.setattr(Locator, "locator", flaky)
+
+    assert (
+        grn_search.search_grn_receipt("invoice", "INV-1", _quiet())["code"]
+        == "GRN_SEARCH_OPENED"
+    )
