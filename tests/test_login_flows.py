@@ -15,8 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from wfx_panel import constants, panel_api, prefs, secret, settings_controller
+from wfx_panel import constants, panel_api, prefs, secret
 from wfx_panel.automation import session
+from wfx_panel.controllers import settings as settings_controller
 from wfx_panel.panel_api import PanelAPI
 
 

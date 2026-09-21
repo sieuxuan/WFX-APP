@@ -405,7 +405,7 @@ class _FakePanel:
 
 
 def _controller(login: _FakeLogin):
-    from wfx_panel.catalog_controller import CatalogController
+    from wfx_panel.controllers.catalog import CatalogController
 
     return CatalogController(_FakePanel(login))
 
@@ -586,7 +586,7 @@ def test_giao_dien_an_danh_sach_khi_lua_chon_het_hieu_luc():
 def test_khong_con_entry_point_sample_mot_dieu_kien():
     """UI chỉ đi đường `*_with_filters`; bản một filter là code chết."""
     from wfx_panel import automation
-    from wfx_panel.catalog_controller import CatalogController
+    from wfx_panel.controllers.catalog import CatalogController
 
     assert not hasattr(automation, "search_sample_list")
     assert not hasattr(automation, "find_sample_file_results")
@@ -601,7 +601,7 @@ def test_thong_bao_loi_goi_dung_ten_nut_tren_panel():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    sources = [root / "wfx_panel/catalog_controller.py"]
+    sources = [root / "wfx_panel/controllers/catalog.py"]
     sources += sorted((root / "wfx_panel/automation/modules").rglob("*.py"))
     for path in sources:
         assert "bấm Check File" not in path.read_text(encoding="utf-8")
