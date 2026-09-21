@@ -283,3 +283,103 @@ def test_real_login_is_still_allowed_to_activate_the_auth_tab():
     ]
     assert calls, "session.run không còn tự kết nối Chrome — cập nhật test"
     assert not any(_keyword_is_false(call, "bring_to_front") for call in calls)
+
+
+# --- Mã ranh giới trình duyệt không được nguỵ trang --------------------
+
+
+def _codes_from_str_of_exception(handler: ast.ExceptHandler) -> set[str]:
+    """Tên biến được gán từ chính thông điệp của exception."""
+    names: set[str] = set()
+    for node in ast.walk(handler):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name) and "str(" in ast.unparse(node.value):
+            names.add(target.id)
+    return names
+
+
+def _returns_code_variable(handler: ast.ExceptHandler, names: set[str]) -> bool:
+    for node in ast.walk(handler):
+        if not isinstance(node, ast.Call) or len(node.args) < 2:
+            continue
+        called = getattr(node.func, "id", "") or getattr(node.func, "attr", "")
+        if called != "_result":
+            continue
+        ok_node, code_node = node.args[:2]
+        if not (isinstance(ok_node, ast.Constant) and ok_node.value is False):
+            continue
+        if isinstance(code_node, ast.Name) and code_node.id in names:
+            return True
+    return False
+
+
+def _has_whitelist_guard(handler: ast.ExceptHandler, names: set[str]) -> bool:
+    """Whitelist hợp lệ: `in {...}`, `== "CODE"`, `messages[code]`, `startswith`."""
+    for node in ast.walk(handler):
+        compared = (
+            isinstance(node, ast.Compare)
+            and isinstance(node.left, ast.Name)
+            and node.left.id in names
+        )
+        looked_up = (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Name)
+            and node.slice.id in names
+        )
+        prefixed = (
+            isinstance(node, ast.Call)
+            and getattr(node.func, "attr", "") == "startswith"
+        )
+        if compared or looked_up or prefixed:
+            return True
+    return False
+
+
+def test_no_handler_turns_an_arbitrary_exception_into_an_error_code():
+    """`code = str(exc)` biến mọi exception thành một "mã lỗi" tự do.
+
+    `_active_wfx_page` báo trình duyệt đóng bằng
+    ``RuntimeError("CHROME_CLOSED")``, nên nhiều handler từng gán thẳng
+    ``code = str(exc)`` rồi trả về. Một exception khác — ví dụ
+    "Đã kết nối Chrome nhưng không tìm thấy browser context." — trở thành mã
+    lỗi là cả một câu tiếng Việt: không có trong ``ERROR_CODE_INFO`` lẫn
+    ``NON_REPORTABLE_FAILURES``, telemetry nhận mã rác còn người dùng đọc sai
+    nguyên nhân.
+
+    Cách đúng: `_browser_boundary_result()`, hoặc tự whitelist mã trước khi
+    dùng nó làm `code`.
+    """
+    offenders = []
+    for path in _automation_sources():
+        tree = _tree(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler):
+                continue
+            names = _codes_from_str_of_exception(node)
+            if not names:
+                continue
+            if not _returns_code_variable(node, names):
+                continue
+            if _has_whitelist_guard(node, names):
+                continue
+            offenders.append(f"{path.name}:{node.lineno}")
+
+    assert not offenders, (
+        "Handler trả mã lỗi lấy thẳng từ str(exc) mà không whitelist: "
+        + ", ".join(offenders)
+    )
+
+
+def test_the_browser_boundary_helper_is_the_single_whitelist():
+    """Whitelist chỉ được sống ở một chỗ, nếu không lại trôi ra như trước."""
+    from wfx_panel.automation import _common
+
+    assert {"CHROME_CLOSED", "NOT_LOGGED_IN"} == _common.BROWSER_BOUNDARY_CODES
+    for code in _common.BROWSER_BOUNDARY_CODES:
+        assert _common._browser_boundary_result(RuntimeError(code))["code"] == code
+    assert _common._browser_boundary_result(RuntimeError("WFX đổi DOM")) is None
+    assert _common._browser_boundary_result(ValueError("CHROME_CLOSED"))["code"] == (
+        "CHROME_CLOSED"
+    ), "Helper đọc thông điệp, không phụ thuộc kiểu exception"
