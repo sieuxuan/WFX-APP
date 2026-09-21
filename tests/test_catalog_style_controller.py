@@ -63,8 +63,8 @@ def test_style_controller_freezes_review_to_selected_group_and_row(tmp_path):
         }
     ]
 
-    review = controller.review_style_import(str(source), "774001163")
-    prepared = controller.prepare_style_row(
+    review = controller.style.review_style_import(str(source), "774001163")
+    prepared = controller.style.prepare_style_row(
         review["review_token"],
         review["rows"][0]["source_row"],
     )
@@ -93,7 +93,7 @@ def test_style_controller_rejects_folder_that_is_not_group(tmp_path):
         }
     ]
 
-    result = controller.review_style_import(str(source), "42")
+    result = controller.style.review_style_import(str(source), "42")
 
     assert result["code"] == "STYLE_GROUP_REQUIRED"
 
@@ -111,9 +111,9 @@ def test_style_controller_forwards_explicit_auto_save(tmp_path):
             "path_label": "Master / Jackets",
         }
     ]
-    review = controller.review_style_import(str(source), "774001163")
+    review = controller.style.review_style_import(str(source), "774001163")
 
-    controller.prepare_style_row(
+    controller.style.prepare_style_row(
         review["review_token"],
         review["rows"][0]["source_row"],
         auto_save=True,

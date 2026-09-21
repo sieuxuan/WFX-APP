@@ -1255,17 +1255,17 @@ class PanelAPI:
         file_path: str,
         group_id: str,
     ) -> dict:
-        return self._catalog.review_style_import(file_path, group_id)
+        return self._catalog.style.review_style_import(file_path, group_id)
 
     def clear_catalog_style_import(self, review_token: str) -> dict:
-        return self._catalog.clear_style_import(review_token)
+        return self._catalog.style.clear_style_import(review_token)
 
     def ensure_catalog_style_options(
         self,
         group_id: str,
         force: bool = False,
     ) -> dict:
-        return self._catalog.ensure_style_options(group_id, boolean(force))
+        return self._catalog.style.ensure_style_options(group_id, boolean(force))
 
     def prepare_catalog_style_row(
         self,
@@ -1274,7 +1274,7 @@ class PanelAPI:
         copy_choice: int | None = None,
         auto_save: bool = False,
     ) -> dict:
-        return self._catalog.prepare_style_row(
+        return self._catalog.style.prepare_style_row(
             review_token,
             source_row,
             copy_choice,
@@ -1320,7 +1320,7 @@ class PanelAPI:
         return self._catalog.open_destination(destination, article_code)
 
     def download_catalog_file(self, file_id: str) -> dict:
-        return self._catalog.download_file(file_id)
+        return self._catalog.files_view.download_file(file_id)
 
     def export_catalog_costing(
         self,
@@ -1345,7 +1345,7 @@ class PanelAPI:
         created_by: str = "",
         buyer: str = "",
     ) -> dict:
-        return self._catalog.check_sample_files_with_filters(
+        return self._catalog.files_view.check_sample_files_with_filters(
             {
                 "sample_no": str(sample_no or "").strip(),
                 "style": str(style or "").strip(),
@@ -1355,7 +1355,7 @@ class PanelAPI:
         )
 
     def open_sample_file_choice(self, choice_id: str) -> dict:
-        return self._catalog.open_sample_file_choice(choice_id)
+        return self._catalog.files_view.open_sample_file_choice(choice_id)
 
     def open_oc_revision_report(self) -> dict:
         return self._oc.open_oc_revision_report()

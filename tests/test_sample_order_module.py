@@ -414,7 +414,7 @@ def _controller(login: _FakeLogin):
 def test_row_key_cua_grid_khong_bao_gio_ra_webview():
     controller = _controller(_FakeLogin())
 
-    published = controller._publish_sample_file_choices(
+    published = controller.files_view._publish_sample_file_choices(
         {
             "code": "SAMPLE_MULTIPLE_RESULTS",
             "samples": [
@@ -430,7 +430,7 @@ def test_row_key_cua_grid_khong_bao_gio_ra_webview():
     assert len(published["samples"]) == 1
     assert "row_key" not in published["samples"][0]
     assert published["samples"][0]["style_code"] == "ABC123"
-    assert list(controller.sample_file_choices.values()) == [
+    assert list(controller.files_view.sample_choices.values()) == [
         {"row_key": "17", "style_code": "ABC123"}
     ]
 
@@ -438,22 +438,22 @@ def test_row_key_cua_grid_khong_bao_gio_ra_webview():
 def test_token_la_khong_the_doan_va_khong_dung_lai_sau_khi_mo():
     login = _FakeLogin()
     controller = _controller(login)
-    controller._publish_sample_file_choices(
+    controller.files_view._publish_sample_file_choices(
         {
             "code": "SAMPLE_MULTIPLE_RESULTS",
             "samples": [{"row_key": "17", "style_code": "ABC123"}],
         }
     )
-    choice_id = next(iter(controller.sample_file_choices))
+    choice_id = next(iter(controller.files_view.sample_choices))
 
-    opened = controller.open_sample_file_choice(choice_id)
+    opened = controller.files_view.open_sample_file_choice(choice_id)
 
     assert opened["code"] == "CATALOG_FILES_SCANNED"
     assert opened["source"] == "sample"
     assert opened["article_code"] == "ABC123"
     assert login.open_calls == [("17", "ABC123")]
 
-    again = controller.open_sample_file_choice(choice_id)
+    again = controller.files_view.open_sample_file_choice(choice_id)
 
     assert again["code"] == "SAMPLE_RESULT_EXPIRED"
     assert login.open_calls == [("17", "ABC123")]
@@ -463,7 +463,7 @@ def test_token_la_khong_cham_automation():
     login = _FakeLogin()
     controller = _controller(login)
 
-    result = controller.open_sample_file_choice("khong-ton-tai")
+    result = controller.files_view.open_sample_file_choice("khong-ton-tai")
 
     assert result["ok"] is False
     assert result["code"] == "SAMPLE_RESULT_EXPIRED"
@@ -517,7 +517,7 @@ def test_mo_that_bai_vi_grid_doi_thi_xoa_het_token_cu():
         }
     )
     controller = _controller(login)
-    controller._publish_sample_file_choices(
+    controller.files_view._publish_sample_file_choices(
         {
             "code": "SAMPLE_MULTIPLE_RESULTS",
             "samples": [
@@ -526,15 +526,15 @@ def test_mo_that_bai_vi_grid_doi_thi_xoa_het_token_cu():
             ],
         }
     )
-    first, second = list(controller.sample_file_choices)
+    first, second = list(controller.files_view.sample_choices)
 
-    failed = controller.open_sample_file_choice(first)
+    failed = controller.files_view.open_sample_file_choice(first)
 
     assert failed["code"] == "SAMPLE_RESULT_EXPIRED"
     assert failed["source"] == "sample"
-    assert controller.sample_file_choices == {}
+    assert controller.files_view.sample_choices == {}
 
-    again = controller.open_sample_file_choice(second)
+    again = controller.files_view.open_sample_file_choice(second)
 
     assert again["code"] == "SAMPLE_RESULT_EXPIRED"
     assert login.open_calls == [("17", "ABC123")]
@@ -550,20 +550,20 @@ def test_loi_khac_khong_xoa_token_de_con_thu_lai():
         }
     )
     controller = _controller(login)
-    controller._publish_sample_file_choices(
+    controller.files_view._publish_sample_file_choices(
         {
             "code": "SAMPLE_MULTIPLE_RESULTS",
             "samples": [{"row_key": "17", "style_code": "ABC123"}],
         }
     )
-    choice_id = next(iter(controller.sample_file_choices))
+    choice_id = next(iter(controller.files_view.sample_choices))
 
-    failed = controller.open_sample_file_choice(choice_id)
+    failed = controller.files_view.open_sample_file_choice(choice_id)
 
     assert failed["code"] == "CHROME_CLOSED"
-    assert choice_id in controller.sample_file_choices
+    assert choice_id in controller.files_view.sample_choices
 
-    controller.open_sample_file_choice(choice_id)
+    controller.files_view.open_sample_file_choice(choice_id)
 
     assert login.open_calls == [("17", "ABC123"), ("17", "ABC123")]
 
@@ -588,7 +588,9 @@ def test_khong_con_entry_point_sample_mot_dieu_kien():
     assert hasattr(automation, "search_sample_list_with_filters")
     assert hasattr(automation, "find_sample_file_results_with_filters")
     assert not hasattr(CatalogController, "check_sample_files")
-    assert hasattr(CatalogController, "check_sample_files_with_filters")
+    from wfx_panel.controllers.catalog_files import ArticleFileController
+
+    assert hasattr(ArticleFileController, "check_sample_files_with_filters")
 
 
 def test_thong_bao_loi_goi_dung_ten_nut_tren_panel():
