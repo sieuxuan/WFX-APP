@@ -10,6 +10,7 @@ bridge gọn và từng luồng test được độc lập.
 
 from __future__ import annotations
 
+from wfx_panel.controllers.access import AccessController
 from wfx_panel.controllers.catalog import CatalogController
 from wfx_panel.controllers.catalog_files import ArticleFileController
 from wfx_panel.controllers.catalog_style import StyleImportController
@@ -18,12 +19,15 @@ from wfx_panel.controllers.directory import DirectoryController
 from wfx_panel.controllers.finance import FinanceController
 from wfx_panel.controllers.inventory import InventoryController
 from wfx_panel.controllers.jobs import JobsController
+from wfx_panel.controllers.modules import ModulesController
 from wfx_panel.controllers.oc import OCController
 from wfx_panel.controllers.reports import ReportsController
 from wfx_panel.controllers.sale_asn import SaleASNController
+from wfx_panel.controllers.session import SessionController
 from wfx_panel.controllers.settings import SettingsController
 
 __all__ = [
+    "AccessController",
     "ArticleFileController",
     "CatalogController",
     "CostingController",
@@ -32,8 +36,10 @@ __all__ = [
     "FinanceController",
     "InventoryController",
     "JobsController",
+    "ModulesController",
     "OCController",
     "ReportsController",
     "SaleASNController",
+    "SessionController",
     "SettingsController",
 ]
