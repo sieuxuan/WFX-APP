@@ -97,23 +97,37 @@ def test_cancellation_is_not_an_exception_subclass():
 
 
 def test_panel_api_handles_cancellation_before_generic_exception():
-    """Thứ tự handler trong _run_unlocked quyết định mã trả về: nếu `except
-    Exception` đứng trước, cancel sẽ thành PANEL_ERROR và bị gửi telemetry."""
+    """Thứ tự handler quyết định mã trả về: nếu `except Exception` đứng trước,
+    cancel sẽ thành PANEL_ERROR và bị gửi telemetry.
+
+    Việc bắt lỗi nằm ở `_normalised_result`, và `_run_unlocked` phải đi qua nó —
+    canh cả hai để tách hàm không làm mất ràng buộc.
+    """
     from wfx_panel import panel_api
 
     tree = ast.parse(Path(panel_api.__file__).read_text(encoding="utf-8"))
-    target = next(
-        node
+    functions = {
+        node.name: node
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "_run_unlocked"
-    )
+        if isinstance(node, ast.FunctionDef)
+    }
     handler_names = [
         getattr(handler.type, "id", None)
-        for block in ast.walk(target)
+        for block in ast.walk(functions["_normalised_result"])
         if isinstance(block, ast.Try)
         for handler in block.handlers
     ]
     assert "AutomationCancelled" in handler_names
     assert handler_names.index("AutomationCancelled") < handler_names.index(
         "Exception"
+    )
+
+    called = {
+        node.func.attr
+        for node in ast.walk(functions["_run_unlocked"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "_normalised_result" in called, (
+        "_run_unlocked không còn đi qua _normalised_result nên ràng buộc trên "
+        "không còn bảo vệ luồng thật"
     )

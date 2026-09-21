@@ -32,318 +32,18 @@ from wfx_panel.controllers import (
     SaleASNController,
     SettingsController,
 )
+from wfx_panel.run_policy import (  # noqa: F401
+    AUTO_RELOGIN_EXCLUDED_METHODS,
+    CATALOG_CONTEXT_INVALIDATING_METHODS,
+    DIAGNOSTIC_FAILURES,
+    LOGIN_CODES,
+    NON_REPORTABLE_FAILURES,
+    SCREENSHOT_METHODS,
+    SESSION_LOST,
+    SESSION_OK,
+)
 from wfx_panel.stores import reference_sync
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
-
-SESSION_OK = frozenset(
-    {
-        "LOGGED_IN",
-        "LOGGED_IN_AFTER_DELAY",
-        "SESSION_REUSED",
-        "SESSION_ACTIVE",
-        "SESSION_RESTORED",
-        "MODULE_OPENED",
-        "CATEGORY_SELECTED",
-        "MASTER_OPENED",
-        "CATALOG_PREPARED",
-        "RESULT_OPENED",
-        "MULTIPLE_RESULTS",
-        "NO_RESULTS",
-        "CODE_OPENED",
-        "DIVISION_CHANGED",
-        "DIVISION_ALREADY_ACTIVE",
-        "CATALOG_DESTINATION_OPENED",
-        "CATALOG_FILES_SCANNED",
-        "CATALOG_FILE_DOWNLOADED",
-        "CATALOG_FOLDER_OPENED",
-        "CATALOG_FOLDER_FALLBACK",
-        "CATALOG_FOLDERS_SCANNED",
-        "CATALOG_FOLDERS_CACHED",
-        "COSTING_CONTEXT_INSPECTED",
-        "COSTING_FILE_VALID",
-        "COSTING_EXPORTED",
-        "COSTING_DRY_RUN_READY",
-        "COSTING_APPLIED",
-        "MODULE_FILTER_READY",
-        "MODULE_SEARCH_APPLIED",
-        "MODULE_NEW_READY",
-        "SAMPLE_NEW_READY",
-        "SAMPLE_STYLE_OPENED",
-        "SAMPLE_MULTIPLE_RESULTS",
-        "SALE_ASN_NEW_READY",
-        "SALE_ASN_DOCUMENTS_PREPARED",
-        "SALE_ASN_DOCUMENTS_EXPORTED",
-        "SALE_ASN_BUYERS_SCANNED",
-        "SALE_ASN_CREATE_REVIEW_READY",
-        "SALE_ASN_PO_SELECTION_REQUIRED",
-        "SALE_ASN_FORM_COMPLETED",
-        "SALE_ASN_ORDER_DETAILS_SCANNED",
-        "SALE_ASN_ORDER_DETAILS_REVIEW_READY",
-        "SALE_ASN_ORDER_DETAILS_COMPLETED",
-        "STYLE_COPY_MULTIPLE_RESULTS",
-        "STYLE_FORM_READY",
-        "COMPANY_FOC_CHANGED",
-        "SUPPLIER_CATEGORY_READY",
-        "SUPPLIER_FOUND",
-        "SUPPLIER_FOUND_PARTIAL",
-        "SUPPLIER_NOT_FOUND",
-        "BUYER_EDIT_OPENED",
-        "BUYER_NOT_FOUND",
-        "OC_REVISION_REPORT_READY",
-        "OC_TRANSACTION_CREATED",
-        "OC_FAST_CONFIRM_COMPLETED",
-        "OC_REJECT_ALL_COMPLETED",
-        "GDN_DISPATCH_COMPLETED",
-        "GDN_STATUS_READY",
-        "SUPPLIER_INVOICE_DELETE_SUBMITTED",
-        "SUPPLIER_INVOICE_CANCEL_SUBMITTED",
-    }
-)
-SESSION_LOST = frozenset(
-    {
-        "NOT_LOGGED_IN",
-        "CHROME_CLOSED",
-        "SESSION_USER_MISMATCH",
-        "MISSING_CREDENTIALS",
-        "LOGIN_FAILED",
-        "LOGIN_TIMEOUT",
-        "SESSION_CHECK_FAILED",
-    }
-)
-LOGIN_CODES = frozenset(
-    {"LOGGED_IN", "LOGGED_IN_AFTER_DELAY", "SESSION_REUSED", "SESSION_ACTIVE"}
-)
-AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
-    {"login", "open_chrome", "maintain_session"}
-)
-
-
-
-NON_REPORTABLE_FAILURES = frozenset(
-    {
-        "BROWSER_NOT_FOUND",
-        "CHROME_CLOSED",
-        "MISSING_CREDENTIALS",
-        "NOT_LOGGED_IN",
-        "NO_RESULTS",
-        "MULTIPLE_RESULTS",
-        "SAMPLE_MULTIPLE_RESULTS",
-        "CATEGORY_UNKNOWN",
-        "MODULE_UNKNOWN",
-        "ADMIN_ACCESS_DENIED",
-        "SUPPLIER_NOT_FOUND",
-        "BUYER_NOT_FOUND",
-        "PASSWORD_REQUIRED",
-        "USER_ID_REQUIRED",
-        "SESSION_USER_MISMATCH",
-        "DIVISION_UNKNOWN",
-        "DIVISION_OPTION_NOT_FOUND",
-        "CATALOG_RESULT_REQUIRED",
-        "CATALOG_RESULT_CHANGED",
-        "CATALOG_RESULT_EXPIRED",
-        "SAMPLE_RESULT_EXPIRED",
-        "SAMPLE_STYLE_NOT_FOUND",
-        "RMPO_NO_RESULTS",
-        "RMPO_RESULT_EXPIRED",
-        "RMPO_ACTION_INVALID",
-        "RMPO_ACTION_NOT_CONFIRMED",
-        "RMPO_ACTION_NOT_READY",
-        "GRN_RMPO_REQUIRED",
-        "GRN_MODE_INVALID",
-        "GRN_RMPO_NOT_FOUND",
-        "GRN_RMPO_SUPPLIER_NOT_FOUND",
-        "GRN_RMPO_AMBIGUOUS",
-        "GRN_ALREADY_RECEIVED",
-        "GRN_SUPPLIER_AMBIGUOUS",
-        "GRN_RMPO_SELECTION_EXPIRED",
-        "GRN_SESSION_EXPIRED",
-        "GRN_SOURCING_CONFIRM_REQUIRED",
-        "GRN_SITE_REQUIRED",
-        "GRN_SITE_INVALID",
-        "GRN_SEARCH_NO_RESULTS",
-        "CATALOG_FILES_CONTEXT_EXPIRED",
-        "CATALOG_FILE_EXPIRED",
-        "CATALOG_PREPARE_REQUIRED",
-        "CATALOG_SEARCH_CONTEXT_LOST",
-        "CATALOG_FOLDER_STALE",
-        "CATALOG_FOLDER_TREE_EMPTY",
-        "CATALOG_FOLDER_INVALID",
-        "CATALOG_FOLDER_SCAN_IN_PROGRESS",
-        "CATALOG_SCAN_ACCOUNT_CHANGED",
-        "QUERY_REQUIRED",
-        "INVALID_FILTER",
-        "APPAREL_ONLY",
-        "CODE_REQUIRED",
-        "CODE_NOT_FOUND",
-        "MODULE_LIST_NOT_OPEN",
-        "BUYER_LIST_NOT_OPEN",
-        "COMPANY_LIST_NOT_OPEN",
-        "ACTION_IN_PROGRESS",
-        "ACTION_CANCELLED",
-        "ARTICLE_DESTINATION_UNKNOWN",
-        "HOTKEY_INVALID",
-        "JOB_NOT_FOUND",
-        "JOB_NOT_RETRYABLE",
-        "COSTING_FILE_REQUIRED",
-        "COSTING_FILE_TYPE_UNSUPPORTED",
-        "COSTING_FILE_TOO_LARGE",
-        "COSTING_FORMAT_UNSUPPORTED",
-        "COSTING_FORMULA_NOT_ALLOWED",
-        "COSTING_VALIDATION_FAILED",
-        "COSTING_REQUIRED_FIELD_MISSING",
-        "COSTING_STYLE_MISMATCH",
-        "COSTING_NOT_OPEN",
-        "COSTING_ARTICLE_NOT_FOUND",
-        "COSTING_ARTICLE_AMBIGUOUS",
-        "COSTING_PLAN_EXPIRED",
-        "COSTING_PLAN_STALE",
-        "COSTING_ARTICLE_FLOW_PENDING",
-        "COSTING_SOURCE_REQUIRED",
-        "COSTING_ACTIVE_TAB_NOT_FOUND",
-        "COSTING_ACTIVE_TAB_AMBIGUOUS",
-        "COSTING_STYLE_NOT_DETECTED",
-        "OC_FILE_TYPE_UNSUPPORTED",
-        "OC_FILE_NOT_FOUND",
-        "OC_FILE_TOO_LARGE",
-        "OC_FILE_UNSAFE",
-        "OC_FILE_INVALID",
-        "OC_FILE_HEADERS_INVALID",
-        "OC_FILE_VALIDATION_FAILED",
-        "OC_FILE_FORMULA_ERROR",
-        "OC_FILE_EMPTY",
-        "OC_FILE_TOO_MANY_ROWS",
-        "OC_MODE_INVALID",
-        "OC_TEMPLATE_SHEET_MISSING",
-        "OC_EDI_VALIDATION_FAILED",
-        "OC_TRANSACTION_UNCONFIRMED",
-        "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS",
-        "OC_FAST_CONFIRM_PROCESS_TIMEOUT",
-        "OC_FAST_CONFIRM_UNCONFIRMED",
-        "OC_REJECT_ALL_PROCESS_TIMEOUT",
-        "OC_REJECT_ALL_UNCONFIRMED",
-        "GDN_INVOICE_REQUIRED",
-        "GDN_INVOICE_INVALID",
-        "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
-        "GDN_REPORT_EMPTY",
-        "GDN_PACKAGE_PROCESS_FAILED",
-        "GDN_PENDING_NOT_FOUND",
-        "GDN_TRANSACTION_FAILED",
-        "GDN_TRANSACTION_UNCONFIRMED",
-        "OC_UPLOAD_REVIEW_EXPIRED",
-        "OC_UPLOAD_FILE_SAVE_FAILED",
-        "SALE_ASN_INVOICE_NOT_FOUND",
-        "SALE_ASN_MULTIPLE_RESULTS",
-        "SALE_ASN_SELECTION_REQUIRED",
-        "SALE_ASN_DOCUMENTS_EXPIRED",
-        "SALE_ASN_FILE_DIALOG_CANCELLED",
-        "SALE_ASN_FILE_TYPE_UNSUPPORTED",
-        "SALE_ASN_FILE_NOT_FOUND",
-        "SALE_ASN_FILE_TOO_LARGE",
-        "SALE_ASN_FILE_UNSAFE",
-        "SALE_ASN_FILE_INVALID",
-        "SALE_ASN_FILE_HEADERS_INVALID",
-        "SALE_ASN_FILE_FORMULA_ERROR",
-        "SALE_ASN_FILE_EMPTY",
-        "SALE_ASN_FILE_TOO_MANY_ROWS",
-        "SALE_ASN_FILE_VALIDATION_FAILED",
-        "SALE_ASN_BUYER_REQUIRED",
-        "SALE_ASN_BUYER_NOT_FOUND",
-        "SALE_ASN_CREATE_REVIEW_EXPIRED",
-        "SALE_ASN_CREATE_STEPS_REQUIRED",
-        "SALE_ASN_PO_SELECTION_REQUIRED",
-        "SALE_ASN_ORDER_FILE_HEADERS_INVALID",
-        "SALE_ASN_ORDER_FILE_EMPTY",
-        "SALE_ASN_ORDER_FILE_VALIDATION_FAILED",
-        "SALE_ASN_ORDER_ROWS_NOT_FOUND",
-        "SALE_ASN_ORDER_REVIEW_EXPIRED",
-        "STYLE_FILE_TYPE_UNSUPPORTED",
-        "STYLE_FILE_NOT_FOUND",
-        "STYLE_FILE_TOO_LARGE",
-        "STYLE_FILE_UNSAFE",
-        "STYLE_FILE_INVALID",
-        "STYLE_FILE_HEADERS_INVALID",
-        "STYLE_FILE_VALIDATION_FAILED",
-        "STYLE_FILE_EMPTY",
-        "STYLE_TEMPLATE_SHEET_MISSING",
-        "STYLE_GROUP_REQUIRED",
-        "STYLE_GROUP_STALE",
-        "STYLE_IMPORT_EXPIRED",
-        "STYLE_ROW_INVALID",
-        "STYLE_TYPE_INVALID",
-        "STYLE_COPY_NOT_FOUND",
-        "STYLE_COPY_CHOICE_INVALID",
-        "STYLE_REQUIRED_FIELD_MISSING",
-        "REFERENCE_SYNC_NOT_CONFIGURED",
-        "REFERENCE_SYNC_FAILED",
-        "REFERENCE_ADMIN_KEY_REQUIRED",
-        "REFERENCE_SYNC_PUBLISH_FAILED",
-        "COLOR_REPORT_STYLE_LIST_EMPTY",
-        "COLOR_REPORT_NO_STYLE_SELECTED",
-        "COLOR_REPORT_OUTPUT_DIR_REQUIRED",
-        "COLOR_REPORT_CANCELLED",
-        "REPORT_DIR_DIALOG_CANCELLED",
-        "REPORT_DIR_DIALOG_UNAVAILABLE",
-        "REPORT_DIR_DIALOG_FAILED",
-        "REPORT_DIR_MISSING",
-    }
-)
-
-# Lỗi nội dung file không gửi telemetry, nhưng riêng lỗi EDI cần ảnh popup
-# Failed Record để người dùng tự sửa đúng Mapping/Doc No. trong Lịch sử tác vụ.
-DIAGNOSTIC_FAILURES = frozenset(
-    {
-        "OC_EDI_VALIDATION_FAILED",
-        "GDN_PACKAGE_PROCESS_FAILED",
-        "GDN_TRANSACTION_FAILED",
-    }
-)
-
-# Các flow này điều hướng tab WFX chính ra khỏi Catalog. Xóa dấu "Master đã
-# chuẩn bị" ngay khi flow thành công để lần Search Catalog kế tiếp tự mở đúng
-# List, thay vì thử dùng một grid cũ không còn tồn tại.
-CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
-    {
-        "open_module",
-        "open_sale_asn_new",
-        "scan_sale_asn_buyers",
-        "scan_sale_asn_order_details",
-        "start_sale_asn_create",
-        "continue_sale_asn_create",
-        "skip_sale_asn_create_step",
-        "search_oc",
-        "search_sample",
-        "open_sample_new",
-        "search_sale_asn",
-        "prepare_sale_asn_documents",
-        "search_rmpo",
-        "run_rmpo_action",
-        "prepare_grn_receipt",
-        "continue_grn_receipt",
-        "finalize_grn_receipt",
-        "search_grn",
-        "search_indent",
-        "search_advance_pr",
-        "search_supplier_invoice",
-        "search_expense_invoice",
-        "cancel_supplier_invoice",
-        "cancel_supplier_invoice_choice",
-        "open_module_new",
-        "toggle_company_foc",
-        "open_supplier_category",
-        "find_supplier",
-        "find_supplier_in_category",
-        "find_buyer",
-        "open_oc_revision_report",
-        "upload_oc",
-        "confirm_oc_upload",
-        "confirm_oc_pending",
-        "reject_all_oc_pending",
-        "run_gdn_dispatch",
-        "open_gdn_status",
-        "prepare_catalog_style_row",
-        "scan_catalog_style_options",
-    }
-)
 
 
 class PanelAPI:
@@ -839,6 +539,92 @@ class PanelAPI:
             self._exit_run()
             self._run_lock.release()
 
+    def _normalised_result(self, method_name: str, action: Callable[[], dict]) -> dict:
+        """Chạy action và quy mọi kết cục về đúng một dict kết quả."""
+        try:
+            result = self._run_action_with_auto_relogin(method_name, action)
+        except AutomationCancelled:
+            return {
+                "ok": False,
+                "code": "ACTION_CANCELLED",
+                "message": "Đã dừng tác vụ tại checkpoint an toàn.",
+            }
+        except Exception as error:
+            return {
+                "ok": False,
+                "code": "PANEL_ERROR",
+                "message": f"{type(error).__name__}: {error}",
+            }
+        if not isinstance(result, dict):
+            return {
+                "ok": False,
+                "code": "PANEL_ERROR",
+                "message": "Kết quả không hợp lệ.",
+            }
+        return result
+
+    def _wants_failure_screenshot(self, method_name: str, code: str) -> bool:
+        if method_name not in SCREENSHOT_METHODS:
+            return False
+        if code in NON_REPORTABLE_FAILURES and code not in DIAGNOSTIC_FAILURES:
+            return False
+        return hasattr(self._login, "capture_failure_screenshot")
+
+    def _capture_failure_screenshot(self, run_id: str) -> str | None:
+        """Ảnh chẩn đoán cho một lượt hỏng; None nếu không chụp được."""
+        shot = job_history.screenshot_dir(self._base_dir) / f"{run_id}.png"
+        try:
+            if self._login.capture_failure_screenshot(shot, self._log):
+                return str(shot)
+        except Exception:
+            return None
+        return None
+
+    def _append_job_history(
+        self,
+        run_id: str,
+        method_name: str,
+        request: dict | None,
+        result: dict,
+        started_at: str,
+        elapsed: float,
+        screenshot: str | None,
+    ) -> None:
+        """Ghi một dòng lịch sử. Lỗi ghi KHÔNG được làm hỏng kết quả flow.
+
+        Ổ đĩa đầy, jobs.json bị khóa hoặc payload không serialize được mà ném
+        ra bridge pywebview là UI mất kết quả và các nút workflow đứng busy
+        vĩnh viễn.
+        """
+        try:
+            job_history.append(
+                self._base_dir,
+                {
+                    "run_id": run_id,
+                    "method": method_name,
+                    "request": dict(request or {}),
+                    "ok": bool(result.get("ok")),
+                    "code": str(result.get("code") or "UNKNOWN"),
+                    "message": str(result.get("message") or ""),
+                    "started_at": started_at,
+                    "elapsed_ms": int(elapsed * 1000),
+                    "screenshot": screenshot,
+                },
+            )
+        except Exception as error:
+            self._log(f"[RUN] Không ghi được lịch sử: {type(error).__name__}")
+
+    def _announce_finish(
+        self, method_name: str, result: dict, elapsed: float, announce: bool
+    ) -> None:
+        code = result.get("code", "UNKNOWN")
+        if announce:
+            self._log(
+                f"[RUN] Kết thúc {method_name}: {code} ({int(elapsed * 1000)} ms)"
+            )
+        elif not result.get("ok"):
+            self._log(f"[SESSION] Kiểm tra nền cần chú ý: {code}.")
+
     def _run_unlocked(
         self,
         method_name: str,
@@ -856,163 +642,46 @@ class PanelAPI:
         self._current_run_id = run_id
         if announce:
             self._log(f"[RUN] Bắt đầu {method_name}")
-        try:
-            result = self._run_action_with_auto_relogin(method_name, action)
-        except AutomationCancelled:
-            result = {
-                "ok": False,
-                "code": "ACTION_CANCELLED",
-                "message": "Đã dừng tác vụ tại checkpoint an toàn.",
-            }
-        except Exception as error:
-            result = {
-                "ok": False,
-                "code": "PANEL_ERROR",
-                "message": f"{type(error).__name__}: {error}",
-            }
-        if not isinstance(result, dict):
-            result = {
-                "ok": False,
-                "code": "PANEL_ERROR",
-                "message": "Kết quả không hợp lệ.",
-            }
+
+        result = self._normalised_result(method_name, action)
         elapsed = time.monotonic() - started
         code = str(result.get("code") or "UNKNOWN")
-        # Kiểm tra nền thành công phải im lặng tuyệt đối, nhưng khi nó hỏng
-        # thì người dùng bị hỏi đăng nhập lại mà không có chỗ nào tra ra vì
-        # sao — nên một lần hỏng vẫn phải để lại đúng một dòng lịch sử.
-        if record_job_on_failure and not result.get("ok"):
+        failed = not result.get("ok")
+
+        # Kiểm tra nền thành công phải im lặng tuyệt đối, nhưng khi nó hỏng thì
+        # người dùng bị hỏi đăng nhập lại mà không có chỗ nào tra ra vì sao —
+        # nên một lần hỏng vẫn phải để lại đúng một dòng lịch sử.
+        if record_job_on_failure and failed:
             record_job = True
-        screenshot: str | None = None
-        if (
-            record_job
-            and
-            not result.get("ok")
-            and (
-                code not in NON_REPORTABLE_FAILURES
-                or code in DIAGNOSTIC_FAILURES
-            )
-            and method_name
-            in {
-                "login",
-                "check_session",
-                "open_module",
-                "prepare_catalog",
-                "find_code",
-                "find_buyer_reference",
-                "open_sale_asn_new",
-                "scan_sale_asn_buyers",
-                "scan_sale_asn_order_details",
-                "start_sale_asn_create",
-                "continue_sale_asn_create",
-                "skip_sale_asn_create_step",
-                "open_sample_new",
-                "search_oc",
-                "open_oc_revision_report",
-                "upload_oc",
-                "confirm_oc_upload",
-                "confirm_oc_pending",
-                "reject_all_oc_pending",
-                "run_gdn_dispatch",
-                "search_sample",
-                "check_sample_files",
-                "open_sample_file_choice",
-                "search_sale_asn",
-                "prepare_sale_asn_documents",
-                "search_rmpo",
-                "run_rmpo_action",
-                "prepare_grn_receipt",
-                "continue_grn_receipt",
-                "finalize_grn_receipt",
-                "search_grn",
-                "search_indent",
-                "search_advance_pr",
-                "open_module_new",
-                "open_supplier_category",
-                "find_supplier",
-                "find_supplier_in_category",
-                "find_buyer",
-                "toggle_company_foc",
-                "switch_division",
-                "open_catalog_destination",
-                "download_catalog_file",
-                "export_catalog_costing",
-                "prepare_catalog_costing_import",
-                "apply_catalog_costing",
-                "load_report_parameters",
-                "export_report_excel",
-                "load_color_report_options",
-                "run_color_report_batch",
-            }
-            and hasattr(self._login, "capture_failure_screenshot")
-        ):
-            shot = (
-                job_history.screenshot_dir(self._base_dir)
-                / f"{run_id}.png"
-            )
-            try:
-                if self._login.capture_failure_screenshot(shot, self._log):
-                    screenshot = str(shot)
-            except Exception:
-                screenshot = None
+
+        screenshot = (
+            self._capture_failure_screenshot(run_id)
+            if record_job and failed and self._wants_failure_screenshot(method_name, code)
+            else None
+        )
         result = {
             **result,
             "run_id": run_id,
             "requires_attention": job_history.requires_attention(result),
         }
-        if announce:
-            self._log(
-                f"[RUN] Kết thúc {method_name}: {result.get('code', 'UNKNOWN')} "
-                f"({int(elapsed * 1000)} ms)"
-            )
-        elif not result.get("ok"):
-            self._log(
-                "[SESSION] Kiểm tra nền cần chú ý: "
-                f"{result.get('code', 'UNKNOWN')}."
-            )
+        self._announce_finish(method_name, result, elapsed, announce)
         self._current_run_id = None
-        # Lịch sử và telemetry là phụ trợ. Ổ đĩa đầy, file jobs.json bị khóa
-        # hoặc payload không serialize được KHÔNG được biến một flow đã chạy
-        # xong thành exception bay ra bridge pywebview — khi đó UI mất kết quả
-        # và các nút workflow đứng ở trạng thái busy vĩnh viễn.
+
+        # Lịch sử và telemetry là phụ trợ: hỏng thì ghi log, không ném ra bridge.
         if record_job:
-            try:
-                job_history.append(
-                    self._base_dir,
-                    {
-                        "run_id": run_id,
-                        "method": method_name,
-                        "request": dict(request or {}),
-                        "ok": bool(result.get("ok")),
-                        "code": str(result.get("code") or "UNKNOWN"),
-                        "message": str(result.get("message") or ""),
-                        "started_at": started_at,
-                        "elapsed_ms": int(elapsed * 1000),
-                        "screenshot": screenshot,
-                    },
-                )
-            except Exception as error:
-                self._log(f"[RUN] Không ghi được lịch sử: {type(error).__name__}")
-        if not result.get("ok") and code not in NON_REPORTABLE_FAILURES:
+            self._append_job_history(
+                run_id, method_name, request, result, started_at, elapsed, screenshot
+            )
+        if failed and code not in NON_REPORTABLE_FAILURES:
             try:
                 self._report_automation_error(
                     method_name, result, request, code, run_id, elapsed
                 )
             except Exception as error:
-                self._log(
-                    f"[RUN] Không xếp được báo lỗi: {type(error).__name__}"
-                )
-        self._observe(
-            method_name,
-            result,
-            elapsed,
-            emit_result=emit_result,
-        )
-        return {
-            **result,
-            **self._session_status(),
-            **self._division_state(),
-        }
+                self._log(f"[RUN] Không xếp được báo lỗi: {type(error).__name__}")
+
+        self._observe(method_name, result, elapsed, emit_result=emit_result)
+        return {**result, **self._session_status(), **self._division_state()}
 
     def _restore_expired_session(self) -> dict | None:
         """Đăng nhập lại bằng credential đã lưu; ``None`` nếu chưa cấu hình."""
