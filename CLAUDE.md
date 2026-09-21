@@ -26,14 +26,20 @@ Bản đồ nhanh — bốn tầng, phụ thuộc chỉ đi một chiều từ t
   sync + CDP connection bền vững và cờ cancel theo checkpoint.
 - `wfx_panel/panel_api.py` — bridge `PanelAPI`: hạ tầng dùng chung (`_run` kèm
   khóa + lịch sử, phiên, Division, telemetry) và delegator mỏng sang controller.
-- `wfx_panel/controllers/` — `catalog` (browse/prepare/find + cây folder),
-  `catalog_style` (tạo Style hàng loạt), `catalog_files` (file đính kèm
-  Article/Sample), `costing` (export/import/apply file Costing), `oc`,
-  `sale_asn`, `inventory` (RMPO + GRN), `reports`, `finance`, `directory`,
-  `settings`, `jobs`. Mỗi controller sở hữu state nghiệp vụ của nó và mượn hạ
-  tầng qua tham chiếu `panel`.
-- `wfx_panel/run_policy.py` — luật phân loại kết quả một lượt chạy: mã nào là
-  mất phiên, mã nào không gửi telemetry, method nào được chụp ảnh chẩn đoán.
+- `wfx_panel/controllers/` — một file cho mỗi màn nghiệp vụ: `catalog`,
+  `catalog_folders`, `catalog_style`, `catalog_files`, `costing`,
+  `costing_options`, `oc`, `sale_asn`, `inventory` (RMPO + GRN), `modules`
+  (List/New/Search dùng chung + GDN), `reports`, `finance`, `directory`,
+  `session`, `access`, `settings`, `jobs`. Mỗi controller sở hữu state nghiệp
+  vụ của nó và mượn hạ tầng qua tham chiếu `panel`.
+- `wfx_panel/run_engine.py` — engine chạy một flow: khóa, hủy theo checkpoint,
+  lịch sử, telemetry. `wfx_panel/run_policy.py` là luật phân loại kết quả: mã
+  nào là mất phiên, mã nào không gửi telemetry, method nào được chụp ảnh.
+- `wfx_panel/paths.py` — `RESOURCE_DIR` (tài nguyên chỉ đọc) và `DATA_DIR` (nơi
+  ghi). PHẢI nằm ngay trong `wfx_panel/` vì neo theo `__file__.parent.parent`.
+- Hợp đồng JS ↔ bridge được canh bằng `tests/test_bridge_contract.py`: mọi tên
+  method JavaScript gọi phải tồn tại trên `PanelAPI` hoặc `PanelApp`. Một
+  delegator bị sót không làm test nào khác đỏ.
 - `wfx_panel/workbooks/` — `costing`, `oc`, `asn`, `sale_asn`, `style`,
   `costing_planner`. Python thuần, không chạm Playwright: đây là nơi test được
   toàn bộ luật file Excel mà không cần Chrome.
@@ -46,8 +52,7 @@ Bản đồ nhanh — bốn tầng, phụ thuộc chỉ đi một chiều từ t
   `manual_window`, `bridges`, `helpers`, `layout`; `win32_window.py` là lớp
   Win32.
 - `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
-  `prefs.py` PHẢI ở lại gốc `wfx_panel/`: `RESOURCE_DIR` neo theo
-  `__file__.parent.parent` để bản PyInstaller tìm đúng `ui/` và `assets/`.
+  Cache cây folder/option Costing nằm ở `wfx_panel/stores/panel_cache.py`.
 - `wfx_panel/ui/panel/` — panel.js đã tách thành 17 script cổ điển chia chung
   global scope, nạp theo đúng thứ tự `index.html` khai báo. Hoisting chỉ còn
   trong từng file, nên khai báo top-level KHÔNG được đọc hàm của file nạp sau;

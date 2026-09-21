@@ -150,7 +150,9 @@ Bốn tầng, phụ thuộc chỉ đi một chiều từ trên xuống:
 - `wfx_panel/panel_api.py` + `wfx_panel/controllers/`: bridge giữa UI và
   automation. `panel_api` giữ hạ tầng dùng chung; mỗi màn nghiệp vụ có
   controller riêng (`catalog`, `costing`, `oc`, `sale_asn`, `inventory`,
-  `reports`, `finance`, `directory`, `settings`, `jobs`).
+  `modules`, `reports`, `finance`, `directory`, `session`, `access`,
+  `settings`, `jobs`). `run_engine.py` chạy flow, `run_policy.py` giữ luật
+  phân loại kết quả.
 - `wfx_panel/automation/`: Playwright/CDP và các workflow WFX. Bốn module lớn
   là package: `costing/`, `modules/`, `catalog/`, `sale_asn_create/`.
 - `wfx_panel/workbooks/` và `wfx_panel/stores/`: Python thuần, không chạm
