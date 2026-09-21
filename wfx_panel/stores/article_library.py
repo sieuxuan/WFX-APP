@@ -445,10 +445,16 @@ def seed_bundled(base_dir: Path, source: Path) -> bool:
     if target.is_file() or not Path(source).is_file():
         return False
     payload = Path(source).read_bytes()
-    sections, generated_at = _sections_from_payload(
-        payload,
-        data_format="csv",
-    )
+    try:
+        sections, generated_at = _sections_from_payload(
+            payload,
+            data_format="csv",
+        )
+    except (ValueError, UnicodeError, json.JSONDecodeError):
+        # Hàm này chạy trong `PanelApp.__init__` của bản đóng gói. Một file
+        # `Article List.csv` sai encoding hoặc sai định dạng chỉ được làm mất
+        # gợi ý Article, tuyệt đối không được chặn app khởi động.
+        return False
     if not sections:
         return False
     digest = hashlib.sha256(payload).hexdigest()
