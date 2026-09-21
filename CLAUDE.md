@@ -9,21 +9,46 @@ WorldFashionExchange qua Playwright/CDP, đóng gói bằng PyInstaller
 Mọi code sản phẩm nằm trong `wfx_panel/`. Khi sửa code, luôn sửa trong
 `wfx_panel/` (nguồn), không sửa mỗi file trong `dist/`.
 
-Bản đồ nhanh:
+Bản đồ nhanh — bốn tầng, phụ thuộc chỉ đi một chiều từ trên xuống:
 
-- `wfx_panel/automation/` — lớp Playwright (login/session/catalog/directory/
-  modules/browser). `login.py` chỉ còn shim re-export để tương thích ngược.
+| Tầng | Ở đâu | Trách nhiệm |
+| --- | --- | --- |
+| Vỏ desktop | `wfx_panel/panel_app.py` + `wfx_panel/app/` | cửa sổ pywebview, tray, bubble, hộp thoại file, Manual |
+| Bridge | `wfx_panel/panel_api.py` + `wfx_panel/controllers/` | bề mặt JS gọi tới; mỗi màn nghiệp vụ một controller |
+| Automation | `wfx_panel/automation/` | mọi thao tác Playwright/CDP trên WFX |
+| Dữ liệu | `wfx_panel/workbooks/`, `wfx_panel/stores/` | Excel và dữ liệu tham chiếu, Python thuần |
+
+- `wfx_panel/automation/` — lớp Playwright. Bốn module lớn đã tách thành
+  package cùng tên: `costing/`, `modules/`, `catalog/`, `sale_asn_create/`. Mỗi
+  `__init__.py` re-export nguyên bề mặt cũ nên caller và test không đổi hợp
+  đồng import. `login.py` chỉ còn shim re-export để tương thích ngược.
 - `wfx_panel/automation/runtime.py` — worker tuần tự duy nhất sở hữu Playwright
   sync + CDP connection bền vững và cờ cancel theo checkpoint.
-- `wfx_panel/panel_api.py` — bridge `PanelAPI` giữa UI và automation.
-- `wfx_panel/catalog_controller.py` — toàn bộ luồng Catalog (browse/prepare/find/
-  Costing/BOM + cây folder), tách khỏi `PanelAPI`.
-- `wfx_panel/oc_workbook.py` — tạo form OC một-header, validate workbook New/
-  Revise và sinh `Sheet1` EDI 51 cột chỉ chứa giá trị.
+- `wfx_panel/panel_api.py` — bridge `PanelAPI`: hạ tầng dùng chung (`_run` kèm
+  khóa + lịch sử, phiên, Division, telemetry) và delegator mỏng sang controller.
+- `wfx_panel/controllers/` — `catalog` (browse/prepare/find + cây folder),
+  `costing` (export/import/apply file Costing), `oc`, `sale_asn`, `inventory`
+  (RMPO + GRN), `reports`, `finance`, `directory`, `settings`, `jobs`. Mỗi
+  controller sở hữu state nghiệp vụ của nó và mượn hạ tầng qua tham chiếu
+  `panel`.
+- `wfx_panel/workbooks/` — `costing`, `oc`, `asn`, `sale_asn`, `style`,
+  `costing_planner`. Python thuần, không chạm Playwright: đây là nơi test được
+  toàn bộ luật file Excel mà không cần Chrome.
+- `wfx_panel/stores/` — `article_library`, `style_options`, `reference_sync`,
+  `report_parameters`, `sale_asn_buyers`: dữ liệu sống lâu hơn một phiên.
 - `wfx_panel/automation/oc.py` — mở report Revise OC, điều khiển EDI Buyer PO
   tới Create Transaction, Confirm tuần tự theo Style và Reject All trên tab mở.
-- `wfx_panel/panel_app.py` — pywebview + tray + hotkey toàn cục + lớp win32.
+- `wfx_panel/panel_app.py` — orchestrator: pywebview + tray + hotkey toàn cục +
+  vòng lặp nền. `wfx_panel/app/` giữ `dialogs`, `bubble`, `manual_window`,
+  `bridges`, `helpers`, `layout`; `win32_window.py` là lớp Win32.
 - `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
+  `prefs.py` PHẢI ở lại gốc `wfx_panel/`: `RESOURCE_DIR` neo theo
+  `__file__.parent.parent` để bản PyInstaller tìm đúng `ui/` và `assets/`.
+- `wfx_panel/ui/panel/` — panel.js đã tách thành 17 script cổ điển chia chung
+  global scope, nạp theo đúng thứ tự `index.html` khai báo. Hoisting chỉ còn
+  trong từng file, nên khai báo top-level KHÔNG được đọc hàm của file nạp sau;
+  bảng tra nằm ở `module_actions.js`, nạp áp chót trước `bootstrap.js`.
+  `tests/test_panel_script_contract.py` canh đúng ràng buộc này.
 
 ## Trạng thái sản phẩm hiện tại
 
@@ -813,7 +838,7 @@ Các workflow riêng hiện có:
 ## Mục tiêu
 
 File này là đặc tả hành vi bắt buộc cho lớp automation Catalog trong
-`wfx_panel/automation/catalog.py`. Không được coi việc “đã click”, “đã tìm thấy
+`wfx_panel/automation/catalog/`. Không được coi việc “đã click”, “đã tìm thấy
 frame” hoặc “đã thấy input” là thành công nếu trạng thái thật trên UI chưa được
 xác nhận.
 
