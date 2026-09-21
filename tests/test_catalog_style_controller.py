@@ -54,7 +54,7 @@ def test_style_controller_freezes_review_to_selected_group_and_row(tmp_path):
     _new_style_file(source)
     panel = _FakePanel()
     controller = CatalogController(panel)
-    controller.folder_cache["Apparel"] = [
+    controller.folders.cache["Apparel"] = [
         {
             "node_id": "774001163",
             "kind": "group",
@@ -84,7 +84,7 @@ def test_style_controller_rejects_folder_that_is_not_group(tmp_path):
     source = tmp_path / "styles.xlsx"
     _new_style_file(source)
     controller = CatalogController(_FakePanel())
-    controller.folder_cache["Apparel"] = [
+    controller.folders.cache["Apparel"] = [
         {
             "node_id": "42",
             "kind": "folder",
@@ -103,7 +103,7 @@ def test_style_controller_forwards_explicit_auto_save(tmp_path):
     _new_style_file(source)
     panel = _FakePanel()
     controller = CatalogController(panel)
-    controller.folder_cache["Apparel"] = [
+    controller.folders.cache["Apparel"] = [
         {
             "node_id": "774001163",
             "kind": "group",
