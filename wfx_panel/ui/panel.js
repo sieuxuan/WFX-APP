@@ -1352,6 +1352,10 @@
       else renderCatalogResults(result);
     } else if (result.code === "SAMPLE_MULTIPLE_RESULTS") {
       renderSampleFileResults(result);
+    } else if (result.code === "SAMPLE_RESULT_EXPIRED") {
+      // Danh sách đang hiện trỏ vào grid đã đổi. Giữ lại là mời người dùng
+      // bấm tiếp vào dòng đã chết và nhận đúng lỗi này thêm một lần nữa.
+      hideSampleFileResults();
     } else if (result.code === "SUPPLIER_INVOICE_MULTIPLE_RESULTS") {
       renderSupplierInvoiceCancelResults(result);
     }

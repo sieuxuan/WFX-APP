@@ -133,22 +133,9 @@ class FakeLogin:
             "rejected_rows": 3,
         }
 
-    def search_sample_list(self, xpath, filter_kind, query, log=print):
-        self.calls.append(("search_sample", xpath, filter_kind, query))
-        return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
-
     def search_sample_list_with_filters(self, xpath, values, log=print):
         self.calls.append(("search_sample_filters", xpath, dict(values)))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
-
-    def find_sample_file_results(self, xpath, filter_kind, query, log=print):
-        self.calls.append(("find_sample_files", xpath, filter_kind, query))
-        return {
-            "ok": True,
-            "code": "SAMPLE_STYLE_OPENED",
-            "message": "opened",
-            "article_code": "ABC123",
-        }
 
     def run_gdn_dispatch(self, invoice, log=print, progress=None):
         self.calls.append(("run_gdn_dispatch", invoice))
