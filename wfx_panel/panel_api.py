@@ -659,7 +659,7 @@ class PanelAPI:
             "article_library": self._catalog.article_library_status(),
             "reference_sync": reference_sync.status(self._base_dir),
             "costing_special_options": (
-                self._catalog.costing_special_options_state(preferences)
+                self._catalog.costing.special_options_state(preferences)
             ),
             **self._admin_state(preferences),
             "reporting_configured": telemetry.is_configured(self._base_dir),
@@ -1661,7 +1661,7 @@ class PanelAPI:
         file_path: str,
         scan_article_options: bool = False,
     ) -> dict:
-        return self._catalog.export_costing(
+        return self._catalog.costing.export(
             category_name,
             filter_kind,
             query,
@@ -1778,10 +1778,10 @@ class PanelAPI:
         return self._oc.upload_oc(mode, file_path)
 
     def inspect_active_catalog_costing(self, category_name: str) -> dict:
-        return self._catalog.inspect_active_costing(category_name)
+        return self._catalog.costing.inspect_active(category_name)
 
     def clear_catalog_costing_dependencies(self) -> dict:
-        return self._catalog.clear_active_costing_dependencies()
+        return self._catalog.costing.clear_active_dependencies()
 
     def sync_article_library(self) -> dict:
         return self._catalog.sync_article_library()
@@ -1796,7 +1796,7 @@ class PanelAPI:
         return self._settings.publish_reference_data()
 
     def set_costing_special_options_rescan(self, value: bool) -> dict:
-        return self._catalog.set_costing_special_options_rescan(value)
+        return self._catalog.costing.set_special_options_rescan(value)
 
     def suggest_articles(
         self,
@@ -1813,7 +1813,7 @@ class PanelAPI:
         )
 
     def validate_catalog_costing_file(self, file_path: str) -> dict:
-        return self._catalog.validate_costing_file(file_path)
+        return self._catalog.costing.validate_file(file_path)
 
     def prepare_catalog_costing_import(
         self,
@@ -1822,7 +1822,7 @@ class PanelAPI:
         query: str,
         file_path: str,
     ) -> dict:
-        return self._catalog.prepare_costing_import(
+        return self._catalog.costing.prepare_import(
             category_name,
             filter_kind,
             query,
@@ -1830,14 +1830,14 @@ class PanelAPI:
         )
 
     def clear_catalog_costing_plan(self, plan_token: str) -> dict:
-        return self._catalog.clear_costing_plan(plan_token)
+        return self._catalog.costing.clear_plan(plan_token)
 
     def apply_catalog_costing(
         self,
         plan_token: str,
         article_resolutions: dict | None = None,
     ) -> dict:
-        return self._catalog.apply_costing(plan_token, article_resolutions)
+        return self._catalog.costing.apply(plan_token, article_resolutions)
 
     # -- settings ----------------------------------------------------------
     def save_account(self, user_id: str, password: str) -> dict:
