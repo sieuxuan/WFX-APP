@@ -207,6 +207,13 @@ class FakeLocator:
     def check(self, timeout: float | None = None) -> None:
         self._node.check(timeout)
 
+    def evaluate_all(self, script: str, arg: Any = None) -> list[Any]:
+        if not self._nodes:
+            return []
+        raise AssertionError(
+            f"Fake DOM chưa hỗ trợ evaluate_all trên {self.selector}"
+        )
+
     def locator(self, selector: str) -> FakeLocator:
         # WFX gắn onclick vào TD cha của anchor, nên automation phải leo lên
         # một bậc: `link.locator("xpath=..")`.
