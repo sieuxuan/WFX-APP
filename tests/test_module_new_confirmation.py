@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from tests.fakes.module_reflection import patch_automation
 from wfx_panel.automation import modules
 
 QA_MODULE_ID = "0063_0030_0020"
@@ -46,18 +47,18 @@ def _run_qa_new(monkeypatch, frame_urls, *, markers):
     )
     browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[page])])
 
-    monkeypatch.setattr(modules, "MODULE_NEW_CONFIRM_SECONDS", 0.3)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(monkeypatch, modules, "MODULE_NEW_CONFIRM_SECONDS", 0.3)
+    patch_automation(
+        monkeypatch, modules,
         "sync_playwright",
         lambda: SimpleNamespace(start=lambda: SimpleNamespace(stop=lambda: None)),
     )
-    monkeypatch.setattr(modules, "_active_wfx_page", lambda *_a: (browser, page))
-    monkeypatch.setattr(modules, "_click_module_menu_on_page", lambda *_a: True)
-    monkeypatch.setattr(modules, "_document_changed", lambda *_a: True)
-    monkeypatch.setattr(modules, "_wait", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(monkeypatch, modules, "_active_wfx_page", lambda *_a: (browser, page))
+    patch_automation(monkeypatch, modules, "_click_module_menu_on_page", lambda *_a: True)
+    patch_automation(monkeypatch, modules, "_document_changed", lambda *_a: True)
+    patch_automation(monkeypatch, modules, "_wait", lambda *_a, **_k: None)
+    patch_automation(
+        monkeypatch, modules,
         "_menu_target_markers",
         lambda *_a: reads.pop(0) if len(reads) > 1 else reads[0],
     )

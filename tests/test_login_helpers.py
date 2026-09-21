@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import login
+from tests.fakes.module_reflection import module_source, patch_automation
 from wfx_panel.automation import browser, catalog, modules, session
 
 
@@ -91,14 +92,14 @@ def test_shared_indent_grid_is_bound_to_the_page_title(
 
 def test_article_file_tabs_match_requested_wfx_positions():
     assert catalog.ARTICLE_FILE_TAB_INDEXES == (5, 6, 8, 9)
-    source = Path(catalog.__file__).read_text(encoding="utf-8")
+    source = module_source(catalog)
     assert "def _ensure_article_techpack" in source
     assert 'article_top.locator("#Versions")' in source
 
 
 def test_article_file_tabs_click_the_actionable_child_and_confirm_navigation():
     source = (
-        Path(catalog.__file__).read_text(encoding="utf-8")
+        module_source(catalog)
     )
     assert '"a[onclick], button[onclick], a[href], "' in source
     assert "_mark_article_documents(page)" in source
@@ -108,7 +109,7 @@ def test_article_file_tabs_click_the_actionable_child_and_confirm_navigation():
 
 
 def test_company_foc_uses_misc_settings_save_and_persistence_confirmation():
-    source = Path(modules.__file__).read_text(encoding="utf-8")
+    source = module_source(modules)
     assert 'onclick*="CurrentTab=4"' in source
     assert 'onclick*="CurrentItem=12"' in source
     assert "#chkAllowToMarkFOCQtyOnRMPOASN" in source
@@ -191,7 +192,7 @@ def test_rmpo_row_reader_reports_loading_even_when_no_records_is_visible(
             "loading": True,
         }
     )
-    monkeypatch.setattr(modules, "_rmpo_grid", lambda _frame: grid)
+    patch_automation(monkeypatch, modules, "_rmpo_grid", lambda _frame: grid)
 
     assert modules._read_rmpo_rows(object()) == ([], True, True)
 
@@ -202,7 +203,7 @@ def test_navigation_click_accepts_frame_detach_after_aspnet_navigation(
     def detached(_locator):
         raise modules.PlaywrightError("Locator.click: Frame was detached")
 
-    monkeypatch.setattr(modules, "_click", detached)
+    patch_automation(monkeypatch, modules, "_click", detached)
 
     modules._click_navigation_control(object())
 
@@ -211,7 +212,7 @@ def test_navigation_click_does_not_hide_unrelated_errors(monkeypatch):
     def failed(_locator):
         raise modules.PlaywrightError("Element is disabled")
 
-    monkeypatch.setattr(modules, "_click", failed)
+    patch_automation(monkeypatch, modules, "_click", failed)
 
     with pytest.raises(modules.PlaywrightError, match="disabled"):
         modules._click_navigation_control(object())
@@ -301,13 +302,13 @@ def test_unresponsive_menu_route_is_cached_until_session_reset(monkeypatch):
             return PlaywrightLease()
 
     modules.reset_menu_route_cache()
-    monkeypatch.setattr(modules, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(modules, "sync_playwright", lambda: PlaywrightFactory())
-    monkeypatch.setattr(modules, "_connect_to_chrome", lambda _pw: (browser, page))
-    monkeypatch.setattr(modules, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(modules, "_mark_page_documents", lambda *_args: [])
-    monkeypatch.setattr(modules, "_wait_for_module_navigation", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(modules, "_click", lambda _target: clicks.append(True))
+    patch_automation(monkeypatch, modules, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, modules, "sync_playwright", lambda: PlaywrightFactory())
+    patch_automation(monkeypatch, modules, "_connect_to_chrome", lambda _pw: (browser, page))
+    patch_automation(monkeypatch, modules, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, modules, "_mark_page_documents", lambda *_args: [])
+    patch_automation(monkeypatch, modules, "_wait_for_module_navigation", lambda *_args, **_kwargs: False)
+    patch_automation(monkeypatch, modules, "_click", lambda _target: clicks.append(True))
 
     first = modules.open_module("Org Structure", '//*[@id="0090_0001"]/a')
     second = modules.open_module("Org Structure", '//*[@id="0090_0001"]/a')

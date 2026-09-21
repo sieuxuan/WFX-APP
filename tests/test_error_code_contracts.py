@@ -28,23 +28,23 @@ WFX_PANEL = ROOT / "wfx_panel"
 # thô hơn và đưa chi tiết vào `message`. Bảng này ghi lại phép gom đó, KÈM module
 # sở hữu mã, để việc đổi tên hoặc dời mã không âm thầm làm mất một trạng thái.
 _SPEC_STATE_CODES = {
-    "CATALOG_MENU_NOT_FOUND": ("CATALOG_NOT_OPEN", "catalog.py"),
-    "CATALOG_LEFT_NOT_FOUND": ("CATALOG_NOT_OPEN", "catalog.py"),
-    "CATALOG_GRID_NOT_FOUND": ("CATALOG_NOT_OPEN", "catalog.py"),
-    "CATALOG_DATA_NOT_READY": ("CATALOG_NOT_OPEN", "catalog.py"),
-    "CATEGORY_OPTION_NOT_FOUND": ("CATEGORY_FAILED", "catalog.py"),
-    "CATEGORY_NOT_CONFIRMED": ("CATEGORY_FAILED", "catalog.py"),
-    "MASTER_NOT_FOUND": ("MASTER_NOT_FOUND", "catalog.py"),
-    "MASTER_CLICK_NO_NAVIGATION": ("MASTER_FAILED", "catalog.py"),
+    "CATALOG_MENU_NOT_FOUND": ("CATALOG_NOT_OPEN", "catalog"),
+    "CATALOG_LEFT_NOT_FOUND": ("CATALOG_NOT_OPEN", "catalog"),
+    "CATALOG_GRID_NOT_FOUND": ("CATALOG_NOT_OPEN", "catalog"),
+    "CATALOG_DATA_NOT_READY": ("CATALOG_NOT_OPEN", "catalog"),
+    "CATEGORY_OPTION_NOT_FOUND": ("CATEGORY_FAILED", "catalog"),
+    "CATEGORY_NOT_CONFIRMED": ("CATEGORY_FAILED", "catalog"),
+    "MASTER_NOT_FOUND": ("MASTER_NOT_FOUND", "catalog"),
+    "MASTER_CLICK_NO_NAVIGATION": ("MASTER_FAILED", "catalog"),
     # Floating Filter dùng chung cho mọi grid WFX nên mã nằm ở modules.py.
-    "FLOATING_FILTER_NOT_READY": ("FLOATING_FILTER_NOT_READY", "modules.py"),
-    "FILTER_VALUE_NOT_CONFIRMED": ("FILTER_VALUE_NOT_CONFIRMED", "catalog.py"),
-    "FILTER_RESULTS_NOT_READY": ("FILTER_RESULTS_NOT_READY", "catalog.py"),
-    "RESULT_DETACHED": ("RESULT_DETACHED", "catalog.py"),
-    "ARTICLE_OPEN_NOT_CONFIRMED": ("CATALOG_DESTINATION_FAILED", "catalog.py"),
+    "FLOATING_FILTER_NOT_READY": ("FLOATING_FILTER_NOT_READY", "modules"),
+    "FILTER_VALUE_NOT_CONFIRMED": ("FILTER_VALUE_NOT_CONFIRMED", "catalog"),
+    "FILTER_RESULTS_NOT_READY": ("FILTER_RESULTS_NOT_READY", "catalog"),
+    "RESULT_DETACHED": ("RESULT_DETACHED", "catalog"),
+    "ARTICLE_OPEN_NOT_CONFIRMED": ("CATALOG_DESTINATION_FAILED", "catalog"),
     "ARTICLE_DESTINATION_NOT_FOUND": (
         "CATALOG_DESTINATION_FAILED",
-        "catalog.py",
+        "catalog",
     ),
 }
 
@@ -96,15 +96,23 @@ def _spec_error_codes() -> list[str]:
 
 
 def _literals_by_module() -> dict[str, set[str]]:
-    """Literal chuỗi của từng module automation, tra theo tên file."""
+    """Literal chuỗi của từng module automation, tra theo tên module.
+
+    Module lớn đã tách thành package (``costing/``, ``modules/``…) nên một tên
+    module gom literal của mọi file con. Bảng ánh xạ vì thế nói "mã này thuộc
+    module nào", không phải "nằm ở file nào".
+    """
+    automation_dir = Path(catalog.__file__).parent
     values: dict[str, set[str]] = {}
-    for path in (Path(catalog.__file__).parent).glob("*.py"):
+    for path in automation_dir.rglob("*.py"):
+        relative = path.relative_to(automation_dir)
+        module = relative.parts[0].removesuffix(".py")
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        values[path.name] = {
+        values.setdefault(module, set()).update(
             node.value
             for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
-        }
+        )
     return values
 
 

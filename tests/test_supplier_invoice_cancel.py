@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from tests.fakes.automation_boundary import WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from wfx_panel.automation import modules
 
@@ -48,24 +49,24 @@ def submitted(monkeypatch):
         calls.append(dict(row))
         return {"ok": True, "code": "SUPPLIER_INVOICE_CANCEL_SUBMITTED"}
 
-    monkeypatch.setattr(modules, "_submit_supplier_invoice_cancel", fake_submit)
+    patch_automation(monkeypatch, modules, "_submit_supplier_invoice_cancel", fake_submit)
     return calls
 
 
 def _stub_search(monkeypatch, rows: list[dict]) -> None:
-    monkeypatch.setattr(
-        modules, "_open_multi_field_search_context", lambda *_a, **_k: "frame"
+    patch_automation(
+        monkeypatch, modules, "_open_multi_field_search_context", lambda *_a, **_k: "frame"
     )
-    monkeypatch.setattr(
-        modules, "_resolve_multi_search_fields", lambda *_a, **_k: {"invoice_no": "field"}
+    patch_automation(
+        monkeypatch, modules, "_resolve_multi_search_fields", lambda *_a, **_k: {"invoice_no": "field"}
     )
-    monkeypatch.setattr(modules, "_clear_multi_search_fields", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        modules, "_fill_multi_search_fields", lambda *_a, **_k: (["Invoice No."], "field")
+    patch_automation(monkeypatch, modules, "_clear_multi_search_fields", lambda *_a, **_k: None)
+    patch_automation(
+        monkeypatch, modules, "_fill_multi_search_fields", lambda *_a, **_k: (["Invoice No."], "field")
     )
-    monkeypatch.setattr(modules, "_submit_multi_search", lambda *_a, **_k: None)
-    monkeypatch.setattr(modules, "_wait_module_search_settled", lambda *_a, **_k: None)
-    monkeypatch.setattr(modules, "_supplier_invoice_rows", lambda _frame: list(rows))
+    patch_automation(monkeypatch, modules, "_submit_multi_search", lambda *_a, **_k: None)
+    patch_automation(monkeypatch, modules, "_wait_module_search_settled", lambda *_a, **_k: None)
+    patch_automation(monkeypatch, modules, "_supplier_invoice_rows", lambda _frame: list(rows))
 
 
 def _cancel(invoice_no: str) -> dict:
