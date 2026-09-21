@@ -17,7 +17,7 @@ import ast
 import re
 from pathlib import Path
 
-from wfx_panel import automation, telemetry
+from wfx_panel import automation, telemetry, telemetry_labels
 from wfx_panel.panel_api import NON_REPORTABLE_FAILURES
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -179,11 +179,16 @@ def _unused_entries(table: frozenset[str] | dict, skip: dict[Path, list]) -> set
 
 
 def _skip_ranges() -> dict[Path, list[tuple[int, int]]]:
+    """Vùng dòng của chính hai bảng khai báo, để không tự đếm mình là một lần dùng.
+
+    ``ERROR_CODE_INFO`` sống ở ``telemetry_labels`` chứ không phải ``telemetry``:
+    nó là dữ liệu, còn ``telemetry.py`` chỉ giữ logic gửi.
+    """
     panel_api = WFX_PANEL / "panel_api.py"
-    telemetry_path = Path(telemetry.__file__)
+    labels_path = Path(telemetry_labels.__file__)
     return {
         panel_api: _table_line_ranges(panel_api, "NON_REPORTABLE_FAILURES"),
-        telemetry_path: _table_line_ranges(telemetry_path, "ERROR_CODE_INFO"),
+        labels_path: _table_line_ranges(labels_path, "ERROR_CODE_INFO"),
     }
 
 

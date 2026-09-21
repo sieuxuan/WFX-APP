@@ -42,6 +42,7 @@ a = Analysis(
         "wfx_panel.manual_book",
         "wfx_panel._signing_identity",
         "wfx_panel.secret",
+        "wfx_panel.telemetry_labels",
         "wfx_panel.automation",
         "wfx_panel.automation.browser",
         "wfx_panel.automation.session",
