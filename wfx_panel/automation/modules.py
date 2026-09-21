@@ -2631,8 +2631,12 @@ def search_expense_invoice_list(
     )
 
 
-_SUPPLIER_INVOICE_ROWS_JS = """root => {
-    const norm = value => String(value || '').replace(/\\s+/g, ' ').trim();
+# Đọc dòng và click dòng phải nhìn thấy CÙNG một danh sách. `row_key` có thể
+# chỉ là chỉ số dòng khi WFX không gắn id, nên hai script lọc khác nhau là đủ để
+# lệch chỉ số và bấm Delete/Cancel lên dòng khác. Vì vậy cả hai dùng chung đúng
+# một hàm quét.
+_SUPPLIER_INVOICE_SCAN_JS = r"""
+    const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
     const shown = element => {
         if (!element || !element.isConnected) return false;
         const style = getComputedStyle(element);
@@ -2663,44 +2667,61 @@ _SUPPLIER_INVOICE_ROWS_JS = """root => {
             || cell?.querySelector('input[value], a, button')?.textContent
             || cell?.textContent || '');
     };
-    return [...root.querySelectorAll('tbody tr, tr')]
+    const scanRows = root => [...root.querySelectorAll('tbody tr, tr')]
         .filter(row => shown(row) && row.querySelector('td'))
         .map((row, index) => {
             const cells = [...row.querySelectorAll('td')];
             return {
+                element: row,
                 row_key: row.id || row.getAttribute('data-key')
                     || row.getAttribute('data-row-key') || String(index),
-                invoice_no: field(cells, [/invoice\\s*(no|number)?/, /apinvoice/]),
+                invoice_no: field(cells, [/invoice\s*(no|number)?/, /apinvoice/]),
                 supplier: field(cells, [/supplier/, /vendor/]),
-                po_no: field(cells, [/\\bpo\\s*(no|number)?\\b/, /purchase\\s*order/]),
+                po_no: field(cells, [/\bpo\s*(no|number)?\b/, /purchase\s*order/]),
                 asn_grn_no: field(cells, [/asn/, /grn/]),
                 status: field(cells, [/status/]),
             };
         })
         .filter(row => row.invoice_no || row.status || row.supplier);
+"""
+
+
+_SUPPLIER_INVOICE_ROWS_JS = (
+    "root => {"
+    + _SUPPLIER_INVOICE_SCAN_JS
+    + """
+    return scanRows(root).map(row => {
+        const {element, ...rest} = row;
+        return rest;
+    });
 }"""
+)
 
 
-_CLICK_SUPPLIER_INVOICE_ROW_JS = """(root, expected) => {
-    const norm = value => String(value || '').replace(/\\s+/g, ' ').trim();
+# Dòng đích phải khớp cả row_key lẫn exact Invoice No. Trước đây fallback dùng
+# `row.textContent.includes(invoice)`, nên một dòng khác chỉ cần *chứa* số
+# invoice ở bất kỳ cột nào cũng bị chọn rồi Delete/Cancel.
+_CLICK_SUPPLIER_INVOICE_ROW_JS = (
+    "(root, expected) => {"
+    + _SUPPLIER_INVOICE_SCAN_JS
+    + """
     const wantedKey = String(expected.row_key || '');
     const wantedInvoice = norm(expected.invoice_no).toLowerCase();
-    const rows = [...root.querySelectorAll('tbody tr, tr')]
-        .filter(row => row.querySelector('td'));
-    const row = rows.find((candidate, index) => {
-        const key = candidate.id || candidate.getAttribute('data-key')
-            || candidate.getAttribute('data-row-key') || String(index);
-        if (wantedKey && key === wantedKey) return true;
-        return wantedInvoice && norm(candidate.textContent).toLowerCase()
-            .includes(wantedInvoice);
-    });
-    if (!row) return false;
+    const sameInvoice = row =>
+        !wantedInvoice || row.invoice_no.toLowerCase() === wantedInvoice;
+    const rows = scanRows(root);
+    const match = rows.find(row => wantedKey && row.row_key === wantedKey
+        && sameInvoice(row))
+        || rows.find(row => wantedInvoice && sameInvoice(row));
+    if (!match) return false;
+    const row = match.element;
     const control = row.querySelector(
         'input[type="radio"], input[type="checkbox"], input[type="button"]'
     );
     (control || row.cells?.[0] || row).click();
     return true;
 }"""
+)
 
 
 def _supplier_invoice_grid(frame: Frame) -> Any | None:
@@ -2879,15 +2900,34 @@ def prepare_supplier_invoice_cancel(
                 "SUPPLIER_INVOICE_NOT_FOUND",
                 "Không tìm thấy Supplier Invoice phù hợp.",
             )
-        if len(rows) > 1:
-            return _result(
-                True,
-                "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
-                "Có nhiều Supplier Invoice phù hợp; hãy chọn đúng invoice để tiếp tục.",
-                invoices=rows[:20],
-                result_count=len(rows),
+        # Search của WFX là tìm chứa chuỗi: gõ "SI-102" vẫn ra "SI-1024". Đây là
+        # nhánh bấm Delete/Cancel nên chỉ exact Invoice No. mới được tự chạy;
+        # mọi dòng gần đúng phải để người dùng tự chọn.
+        exact = [
+            row
+            for row in rows
+            if row["invoice_no"].strip().casefold() == invoice_no.casefold()
+        ]
+        if len(exact) == 1:
+            return _submit_supplier_invoice_cancel(page, frame, exact[0], log)
+        candidates = exact or rows
+        message = (
+            "Có nhiều Supplier Invoice trùng đúng Invoice No.; "
+            "hãy chọn đúng dòng để tiếp tục."
+            if exact
+            else (
+                f"Không có Supplier Invoice nào đúng Invoice No. {invoice_no}; "
+                "hãy chọn đúng invoice trong danh sách gần đúng để tiếp tục."
             )
-        return _submit_supplier_invoice_cancel(page, frame, rows[0], log)
+        )
+        return _result(
+            True,
+            "SUPPLIER_INVOICE_MULTIPLE_RESULTS",
+            message,
+            invoices=candidates[:20],
+            result_count=len(candidates),
+            exact_match=bool(exact),
+        )
     except PlaywrightTimeoutError as exc:
         message = f"Supplier Inv List chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
@@ -3048,6 +3088,7 @@ def open_module_new(
         old_frames = {snapshot[0] for snapshot in snapshots}
         page_count = len(browser.contexts[0].pages)
         markers = _menu_target_markers(page, selector)
+        menu_page = page
         _write_log(log, f"[MODULE NEW] Đang mở trực tiếp {module_name}.")
         _click_module_menu_on_page(
             page,
@@ -3079,6 +3120,11 @@ def open_module_new(
                 f"WFX chưa xác nhận màn New của {module_name}.",
                 module=module_name,
             )
+        if not markers:
+            # Link menu có thể chưa attach lúc đọc marker lần đầu (WFX còn đang
+            # render menu). Sau click nó chắc chắn có trong DOM, nên đọc lại
+            # trên chính trang giữ menu thay vì hạ chuẩn xác nhận.
+            markers = _menu_target_markers(menu_page, selector)
         # Một frame đổi document chưa chắc là màn New: menu WFX cũng tự reload.
         # Trang đích đọc thẳng từ link menu mới là bằng chứng thật.
         opened_page = _wait_module_new_page(
@@ -3101,12 +3147,18 @@ def open_module_new(
                 selected_label,
                 log,
             )
-        elif markers and opened_page is None:
+        elif opened_page is None:
+            # Không có dropdown mặc định để làm bằng chứng thay thế, nên thiếu
+            # trang đích là thiếu xác nhận — kể cả khi không đọc nổi marker.
+            detail = (
+                f"không thấy trang {', '.join(markers)} sau khi click menu"
+                if markers
+                else "không đọc được trang đích từ link menu để xác nhận"
+            )
             return _result(
                 False,
                 "MODULE_FAILED",
-                f"WFX chưa xác nhận màn New của {module_name}: "
-                f"không thấy trang {', '.join(markers)} sau khi click menu.",
+                f"WFX chưa xác nhận màn New của {module_name}: {detail}.",
                 module=module_name,
             )
         message = f"Đã mở trực tiếp {module_name} New."

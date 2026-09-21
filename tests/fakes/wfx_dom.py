@@ -90,11 +90,11 @@ class FakeNode:
         if self.detached:
             raise PlaywrightError("Element is not attached to the DOM")
 
-    def is_visible(self) -> bool:
+    def is_visible(self, timeout: float | None = None) -> bool:
         self._guard()
         return self.visible
 
-    def is_enabled(self) -> bool:
+    def is_enabled(self, timeout: float | None = None) -> bool:
         self._guard()
         return self.enabled
 
@@ -176,11 +176,11 @@ class FakeLocator:
         """Phần tử đứng sau locator — để test khẳng định đúng node nào."""
         return self._node
 
-    def is_visible(self) -> bool:
-        return self._node.is_visible()
+    def is_visible(self, timeout: float | None = None) -> bool:
+        return self._node.is_visible(timeout)
 
-    def is_enabled(self) -> bool:
-        return self._node.is_enabled()
+    def is_enabled(self, timeout: float | None = None) -> bool:
+        return self._node.is_enabled(timeout)
 
     def input_value(self, timeout: float | None = None) -> str:
         return self._node.input_value(timeout)
@@ -275,7 +275,7 @@ class FilterNode(FakeNode):
         self.accepts_fill = accepts_fill
         self.grid: FakeCatalogGrid | None = None
 
-    def is_visible(self) -> bool:
+    def is_visible(self, timeout: float | None = None) -> bool:
         self._guard()
         grid = self.grid
         if grid is None or not grid.filter_row_visible:

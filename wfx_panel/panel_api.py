@@ -2679,7 +2679,11 @@ class PanelAPI:
                     "code": "SUPPLIER_INVOICE_RESULT_EXPIRED",
                     "message": "Không đọc được dòng Supplier Invoice để chọn an toàn.",
                 }
-            return {**result, "invoices": public_invoices}
+            return {
+                **result,
+                "invoices": public_invoices,
+                "exact_match": bool(result.get("exact_match")),
+            }
 
         return self._run(
             "cancel_supplier_invoice",
