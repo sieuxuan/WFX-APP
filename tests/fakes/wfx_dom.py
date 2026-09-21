@@ -19,6 +19,12 @@ from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
 
+from tests.fakes.module_reflection import (  # noqa: F401
+    _binding_sites,
+    module_source,
+    patch_automation,
+)
+
 ROOT_SELECTOR = ".ag-root-wrapper"
 SHOW_FILTER_SELECTOR = "#showfloatingfilter"
 STYLE_BUTTON_SELECTOR = (
@@ -59,7 +65,7 @@ def install_fake_clock(monkeypatch, *modules: Any) -> FakeClock:
     """Gắn một FakeClock chung cho các module automation được liệt kê."""
     clock = FakeClock()
     for module in modules:
-        monkeypatch.setattr(module, "time", clock)
+        patch_automation(monkeypatch, module, "time", clock)
     return clock
 
 

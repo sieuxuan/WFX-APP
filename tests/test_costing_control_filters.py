@@ -19,7 +19,7 @@ from __future__ import annotations
 import pytest
 
 from tests.fakes.wfx_costing_dom import Control, ControlFrame, ControlLocator
-from tests.fakes.wfx_dom import install_fake_clock
+from tests.fakes.wfx_dom import install_fake_clock, patch_automation
 from wfx_panel.automation import _common, costing
 
 
@@ -93,7 +93,7 @@ def test_a_frame_that_detaches_mid_scan_yields_nothing(clock):
 def test_every_scan_passes_a_cancellation_checkpoint(clock, monkeypatch):
     """Nút Stop chỉ phản hồi ở checkpoint; quét cả dòng mà không có là kẹt."""
     calls: list[int] = []
-    monkeypatch.setattr(costing, "checkpoint", lambda: calls.append(1))
+    patch_automation(monkeypatch, costing, "checkpoint", lambda: calls.append(1))
     frame = _frame(clock, [Control(dom_id="txtA")])
 
     costing._visible_controls(frame, "input,select,textarea")
@@ -105,7 +105,7 @@ def test_a_cancelled_run_stops_before_touching_the_dom(clock, monkeypatch):
     def cancelled():
         raise RuntimeError("ACTION_CANCELLED")
 
-    monkeypatch.setattr(costing, "checkpoint", cancelled)
+    patch_automation(monkeypatch, costing, "checkpoint", cancelled)
     frame = _frame(clock, [Control(dom_id="txtA")])
 
     with pytest.raises(RuntimeError, match="ACTION_CANCELLED"):

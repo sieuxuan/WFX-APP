@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from tests.fakes.automation_boundary import FakeFrame
-from tests.fakes.wfx_dom import FakeNode, install_fake_clock
+from tests.fakes.wfx_dom import FakeNode, install_fake_clock, patch_automation
 from wfx_panel.automation import _common, costing
 
 
@@ -63,8 +63,8 @@ def _mapping_field(document: dict) -> dict:
 @pytest.fixture
 def no_page_data(monkeypatch):
     """Ép đi vào đường chậm: đọc popup thay vì lấy thẳng từ page data."""
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_scan_dependency_tables_from_page_data",
         lambda *_a, **_k: ({}, {"Color": [], "Size": []}),
     )
@@ -83,7 +83,7 @@ def test_a_popup_that_opens_late_is_read_on_the_second_attempt(
             raise costing.PlaywrightTimeoutError("popup chưa hiện")
         return "RED => Style A", ["Style A", "Style B"]
 
-    monkeypatch.setattr(costing, "_scan_dependency_table", flaky)
+    patch_automation(monkeypatch, costing, "_scan_dependency_table", flaky)
     document = _document()
 
     costing._scan_costing_dependency_tables(frame, document)
@@ -105,7 +105,7 @@ def test_a_first_attempt_that_works_is_never_repeated(
         attempts.append(len(attempts))
         return "RED => Style A", ["Style A"]
 
-    monkeypatch.setattr(costing, "_scan_dependency_table", once)
+    patch_automation(monkeypatch, costing, "_scan_dependency_table", once)
 
     costing._scan_costing_dependency_tables(frame, _document())
 
@@ -120,7 +120,7 @@ def test_the_retry_is_bounded(monkeypatch, frame, no_page_data):
         attempts.append(len(attempts))
         raise costing.PlaywrightTimeoutError("popup không mở")
 
-    monkeypatch.setattr(costing, "_scan_dependency_table", always_fails)
+    patch_automation(monkeypatch, costing, "_scan_dependency_table", always_fails)
     document = _document()
 
     costing._scan_costing_dependency_tables(frame, document)
@@ -135,8 +135,8 @@ def test_every_failed_attempt_closes_the_popup_it_opened(
     no_page_data,
 ):
     """Popup còn mở sẽ che grid và làm field kế tiếp hỏng theo dây chuyền."""
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_scan_dependency_table",
         lambda *_a: (_ for _ in ()).throw(costing.PlaywrightError("detach")),
     )
@@ -148,16 +148,16 @@ def test_every_failed_attempt_closes_the_popup_it_opened(
 
 def test_a_value_already_read_from_page_data_skips_the_popup(monkeypatch, frame):
     """Đường nhanh vẫn phải được ưu tiên: mở popup là đắt nhất trong Export."""
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_scan_dependency_tables_from_page_data",
         lambda *_a, **_k: (
             {(3, "Color"): "RED => Style A"},
             {"Color": ["Style A"], "Size": []},
         ),
     )
-    monkeypatch.setattr(
-        costing,
+    patch_automation(
+        monkeypatch, costing,
         "_scan_dependency_table",
         lambda *_a: pytest.fail("Đã có giá trị thì không được mở popup"),
     )
