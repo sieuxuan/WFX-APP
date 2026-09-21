@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 
 import pytest
 
@@ -518,3 +519,197 @@ def test_consume_update_result_is_one_shot(tmp_path):
 def test_version_comparison_accepts_display_and_release_forms():
     assert updater._version_tuple("v1.2.3") == (1, 2, 3)
     assert updater._version_tuple("1.2") == (1, 2, 0)
+
+
+# --- đọc release từ GitHub ----------------------------------------------
+
+
+class _Response:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def read(self):
+        return self.payload
+
+
+def test_the_latest_release_is_read_from_the_github_api(monkeypatch):
+    seen = []
+
+    def urlopen(request, timeout=None):
+        seen.append(request)
+        return _Response(b'{"tag_name": "v1.1.0"}')
+
+    monkeypatch.setattr(updater, "urlopen", urlopen)
+
+    assert updater._load_latest_release()["tag_name"] == "v1.1.0"
+    assert seen[0].full_url == updater.LATEST_RELEASE_API
+    assert "WFX-Smart/" in seen[0].headers["User-agent"]
+
+
+def test_a_release_response_that_is_not_an_object_is_refused(monkeypatch):
+    monkeypatch.setattr(
+        updater, "urlopen", lambda *_a, **_k: _Response(b'["khong phai release"]')
+    )
+
+    with pytest.raises(ValueError, match="không hợp lệ"):
+        updater._load_latest_release()
+
+
+@pytest.mark.parametrize("value", ["", "moi nhat", "1", "v1.2.3.4"])
+def test_a_version_string_github_did_not_publish_properly_is_refused(value):
+    with pytest.raises(ValueError, match="Phiên bản"):
+        updater._version_tuple(value)
+
+
+def test_a_release_without_an_asset_list_is_refused():
+    with pytest.raises(ValueError, match="gói cài đặt"):
+        updater._release_assets(
+            {"tag_name": "v1.1.0", "assets": None},
+            updater.UPDATE_MODE_PORTABLE,
+        )
+
+
+def test_an_unknown_update_mode_has_no_asset_name():
+    with pytest.raises(ValueError, match="Chế độ cập nhật"):
+        updater._asset_name("1.1.0", "khong-co-that")
+
+
+# --- nhận diện kiểu cài đặt ----------------------------------------------
+
+
+def test_a_machine_without_the_windows_registry_has_no_setup_locations(
+    monkeypatch,
+):
+    monkeypatch.setattr(updater.os, "name", "posix")
+
+    assert updater._inno_install_locations() == []
+
+
+def test_a_python_build_without_winreg_has_no_setup_locations(monkeypatch):
+    monkeypatch.setattr(updater.os, "name", "nt")
+    monkeypatch.setitem(sys.modules, "winreg", None)
+
+    assert updater._inno_install_locations() == []
+
+
+def test_an_exe_in_the_default_setup_folder_counts_as_a_setup_install(
+    monkeypatch, tmp_path
+):
+    install_dir = tmp_path / "local" / "Programs" / "WFX Smart"
+    install_dir.mkdir(parents=True)
+    executable = install_dir / updater.EXPECTED_EXECUTABLE_NAME
+    executable.write_bytes(b"app")
+    monkeypatch.setattr(updater, "_inno_install_locations", lambda: [])
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+
+    assert updater.detect_update_mode(executable) == updater.UPDATE_MODE_INSTALLER
+
+
+# --- kết quả lần cập nhật trước ------------------------------------------
+
+
+def test_a_damaged_update_result_is_still_cleared(tmp_path):
+    path = tmp_path / "update-result.json"
+    path.write_text("{khong phai json", encoding="utf-8")
+
+    assert updater.consume_update_result(tmp_path) is None
+    assert not path.exists()
+
+
+def test_an_update_result_that_is_not_an_object_reads_as_nothing(tmp_path):
+    (tmp_path / "update-result.json").write_text('["xong"]', encoding="utf-8")
+
+    assert updater.consume_update_result(tmp_path) is None
+
+
+def test_an_update_result_file_windows_will_not_release_is_not_fatal(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "update-result.json"
+    path.write_text('{"code": "UPDATE_INSTALLED"}', encoding="utf-8")
+
+    def refuse(self, **_kwargs):
+        raise PermissionError("file đang bị khóa")
+
+    monkeypatch.setattr(type(path), "unlink", refuse)
+
+    assert updater.consume_update_result(tmp_path)["code"] == "UPDATE_INSTALLED"
+
+
+def test_no_previous_update_result_reads_as_nothing(tmp_path):
+    assert updater.consume_update_result(tmp_path) is None
+
+
+# --- những gì updater từ chối làm ----------------------------------------
+
+
+def _installed(tmp_path):
+    executable = tmp_path / "WFX-Panel.exe"
+    executable.write_bytes(b"old")
+    (tmp_path / "_internal").mkdir()
+    return executable
+
+
+def test_an_update_the_user_cannot_take_is_never_scheduled():
+    with pytest.raises(ValueError, match="Không có bản cập nhật"):
+        updater.schedule_update({"can_update": False})
+
+
+def test_a_setup_package_is_never_installed_over_a_portable_build(
+    monkeypatch, tmp_path
+):
+    executable = _installed(tmp_path)
+    monkeypatch.setattr(updater, "EXPECTED_SIGNER_THUMBPRINT", "A" * 40)
+    monkeypatch.setattr(updater, "_inno_install_locations", lambda: [])
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+
+    with pytest.raises(ValueError, match="không đúng kiểu cài đặt"):
+        updater.schedule_update(
+            update_state(update_mode=updater.UPDATE_MODE_INSTALLER),
+            executable=executable,
+        )
+
+
+def test_the_running_version_is_never_reinstalled(monkeypatch, tmp_path):
+    executable = _installed(tmp_path)
+    monkeypatch.setattr(updater, "EXPECTED_SIGNER_THUMBPRINT", "A" * 40)
+
+    with pytest.raises(ValueError, match="mới hơn bản đang chạy"):
+        updater.schedule_update(
+            update_state(version=updater.APP_VERSION), executable=executable
+        )
+
+
+def test_an_executable_that_vanished_stops_the_update(monkeypatch, tmp_path):
+    executable = _installed(tmp_path)
+    monkeypatch.setattr(updater, "EXPECTED_SIGNER_THUMBPRINT", "A" * 40)
+    executable.unlink()
+
+    with pytest.raises(ValueError, match="Không tìm thấy WFX-Panel.exe"):
+        updater.schedule_update(update_state(), executable=executable)
+
+
+def test_a_build_without_a_signing_identity_never_self_updates(
+    monkeypatch, tmp_path
+):
+    executable = _installed(tmp_path)
+    monkeypatch.setattr(updater, "EXPECTED_SIGNER_THUMBPRINT", "")
+
+    with pytest.raises(ValueError, match="ký số"):
+        updater.schedule_update(update_state(), executable=executable)
+
+
+def test_an_impossible_process_id_stops_the_update(monkeypatch, tmp_path):
+    executable = _installed(tmp_path)
+    monkeypatch.setattr(updater, "EXPECTED_SIGNER_THUMBPRINT", "A" * 40)
+
+    with pytest.raises(ValueError, match="Process ID"):
+        updater.schedule_update(
+            update_state(), current_pid=-1, executable=executable
+        )
