@@ -68,12 +68,14 @@ def _fill_shipping(
                 "Country Of Destination mặc định vì không chọn được country.",
             )
             continue
-        if key == "__FIRST":
-            value = ""
-        elif key.startswith("__"):
-            value = key[2:]
-        else:
-            value = str(shipping_values.get(key) or "")
+        # `__` mở đầu nghĩa là hằng số điền thẳng (Consignor Address), phần còn
+        # lại là khóa đọc từ file. `tests/test_sale_asn_stages.py` canh để không
+        # ai thêm sentinel mới mà quên xử lý ở đây.
+        value = (
+            key[2:]
+            if key.startswith("__")
+            else str(shipping_values.get(key) or "")
+        )
         if key in {"invoice_date", "shipping_bill_date"}:
             value = _date_for_wfx(value)
         if not value.strip() and not key.startswith("__"):
