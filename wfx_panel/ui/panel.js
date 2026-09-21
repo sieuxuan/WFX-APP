@@ -4426,7 +4426,11 @@
       hideSupplierInvoiceCancelResults();
       return;
     }
-    $(".supplier-invoice-cancel-results-title").textContent = "Chọn Supplier Invoice để Cancel";
+    // Danh sách gần đúng phải trông khác danh sách trùng khớp: người dùng đang
+    // ở một bước bấm là Delete/Cancel thật trên WFX.
+    $(".supplier-invoice-cancel-results-title").textContent = result.exact_match
+      ? "Chọn Supplier Invoice để Cancel"
+      : "Không có Invoice No. trùng khớp — chọn thủ công";
     $(".supplier-invoice-cancel-results-count").textContent =
       `${Number(result.result_count || invoices.length)} kết quả`;
     list.innerHTML = invoices.map((invoice) => {

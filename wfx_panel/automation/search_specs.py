@@ -310,6 +310,10 @@ EXPENSE_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
             "#gridAPInvoiceList_tblGridHeader",
         ),
     ),
+    # Đối xứng với Supplier Inv: bộ cột filter là dấu hiệu chính, nhưng nếu WFX
+    # render thêm Created By/Status trên màn Supplier thì chỉ marker mới chặn
+    # được việc lọc nhầm trên grid của module kia.
+    foreign_markers=("supplier invoice", "supplier inv"),
 )
 
 RMPO_SEARCH_SPEC = ModuleSearchSpec(

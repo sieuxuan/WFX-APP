@@ -10,11 +10,15 @@ Bạn cũng có thể mở Org Structure và System Coding trên WFX.
 3. Bấm `Tìm`.
 4. Để Cancel, nhập đúng Invoice No. vào phần `Cancel Supplier Invoice` rồi bấm
    nút Cancel.
-5. Nếu chỉ có một dòng, ứng dụng chọn dòng đó rồi bấm `Delete` khi Status là
-   `Save`, hoặc `Cancel` khi Status là `Confirm`.
-6. Nếu có nhiều dòng, chọn đúng invoice trong danh sách của ứng dụng để tiếp
+5. Nếu có đúng một invoice trùng khớp hoàn toàn Invoice No. bạn gõ, ứng dụng
+   chọn dòng đó rồi bấm `Delete` khi Status là `Save`, hoặc `Cancel` khi Status
+   là `Confirm`.
+6. Nếu không có dòng nào trùng khớp hoàn toàn, ứng dụng dừng lại và hiện danh
+   sách gần đúng với tiêu đề `Không có Invoice No. trùng khớp — chọn thủ công`.
+   Tìm kiếm của WFX là tìm chứa chuỗi, nên gõ `SI-102` vẫn ra `SI-1024`.
+7. Nếu có nhiều dòng, chọn đúng invoice trong danh sách của ứng dụng để tiếp
    tục; ứng dụng kiểm tra lại Status trước khi bấm nút trên WFX.
-7. Kiểm tra hộp xác nhận native của WFX trong Chrome trước khi xác nhận thao tác.
+8. Kiểm tra hộp xác nhận native của WFX trong Chrome trước khi xác nhận thao tác.
 
 Để mở Org Structure hoặc System Coding, bật Chế độ quản trị rồi bấm thẳng thẻ
 module trong danh sách; ứng dụng mở ngay trên WFX, không có màn trung gian.
@@ -37,3 +41,4 @@ module trong danh sách; ứng dụng mở ngay trên WFX, không có màn trung
 | Màn hình không đổi | Chờ WFX tải xong rồi bấm lại thẻ module. |
 | Status không phải Save/Confirm | Ứng dụng dừng, không bấm nút thay đổi hóa đơn. Kiểm tra lại invoice và Status trên WFX. |
 | Có nhiều invoice | Chọn một dòng trong danh sách ứng dụng rồi Cancel; không thao tác trực tiếp từ kết quả mơ hồ. |
+| Ứng dụng báo không có Invoice No. trùng khớp | Bạn gõ thiếu hoặc thừa ký tự. Đối chiếu lại Invoice No. trên WFX, hoặc chọn đúng dòng trong danh sách gần đúng. |

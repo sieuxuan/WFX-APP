@@ -315,10 +315,11 @@ def test_qa_advance_pr_and_expense_new_use_direct_menu_links():
     assert "_document_changed" in new_block
     assert '"MODULE_NEW_READY"' in new_block
     # Frame đổi document chưa phải bằng chứng: menu WFX cũng tự reload.
+    # Hành vi thật của phần xác nhận này nằm ở tests/test_module_new_confirmation.py.
     assert "_menu_target_markers(page, selector)" in new_block
     assert "_wait_module_new_page(" in new_block
     assert "MODULE_NEW_CONFIRM_SECONDS" in new_block
-    assert "elif markers and opened_page is None:" in new_block
+    assert "elif opened_page is None:" in new_block
 
 
 def test_generic_module_open_requires_real_navigation_confirmation():
@@ -495,6 +496,27 @@ def test_supplier_invoice_context_rejects_a_frame_marked_as_expense():
             "wfxapinvoicelist.aspx expense invoice list",
         ),
         search_specs.SUPPLIER_INVOICE_SEARCH_SPEC,
+    )
+
+
+def test_expense_invoice_context_rejects_a_frame_marked_as_supplier():
+    """Đối xứng với Supplier Inv: marker của màn kia phải loại frame đó ra."""
+    assert search_specs.EXPENSE_INVOICE_SEARCH_SPEC.foreign_markers == (
+        "supplier invoice",
+        "supplier inv",
+    )
+    # WFX render đủ cột Created By/Status trên màn Supplier vẫn không được nhận.
+    assert not modules._frame_serves_search_spec(
+        _APInvoiceFrame(
+            _EXPENSE_INVOICE_IDS,
+            "wfxapinvoicelist.aspx supplier invoice list",
+        ),
+        search_specs.EXPENSE_INVOICE_SEARCH_SPEC,
+    )
+    # Và marker riêng của Expense vẫn phải được nhận.
+    assert modules._frame_serves_search_spec(
+        _expense_invoice_frame(),
+        search_specs.EXPENSE_INVOICE_SEARCH_SPEC,
     )
 
 
