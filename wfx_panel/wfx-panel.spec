@@ -30,6 +30,7 @@ a = Analysis(
         "login",
         "wfx_panel.controllers",
         "wfx_panel.controllers.catalog",
+        "wfx_panel.controllers.costing",
         "wfx_panel.controllers.directory",
         "wfx_panel.controllers.finance",
         "wfx_panel.controllers.inventory",

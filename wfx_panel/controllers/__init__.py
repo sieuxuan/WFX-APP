@@ -11,6 +11,7 @@ bridge gọn và từng luồng test được độc lập.
 from __future__ import annotations
 
 from wfx_panel.controllers.catalog import CatalogController
+from wfx_panel.controllers.costing import CostingController
 from wfx_panel.controllers.directory import DirectoryController
 from wfx_panel.controllers.finance import FinanceController
 from wfx_panel.controllers.inventory import InventoryController
@@ -22,6 +23,7 @@ from wfx_panel.controllers.settings import SettingsController
 
 __all__ = [
     "CatalogController",
+    "CostingController",
     "DirectoryController",
     "FinanceController",
     "InventoryController",
