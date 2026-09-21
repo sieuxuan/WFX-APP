@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from playwright.sync_api import sync_playwright
 
+from tests.fakes.module_reflection import patch_automation
 from wfx_panel.automation import oc
 from wfx_panel.automation.oc import _status_kind
 
@@ -12,24 +13,24 @@ class _Lease:
 
 
 def _stub_edi_before_transaction(monkeypatch, rows):
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "sync_playwright",
         lambda: SimpleNamespace(start=_Lease),
     )
-    monkeypatch.setattr(oc, "_active_wfx_page", lambda *_args: (object(), object()))
-    monkeypatch.setattr(oc, "_open_edi_form", lambda *_args: None)
-    monkeypatch.setattr(oc, "_process_package", lambda *_args: None)
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_active_wfx_page", lambda *_args: (object(), object()))
+    patch_automation(monkeypatch, oc, "_open_edi_form", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "_process_package", lambda *_args: None)
+    patch_automation(
+        monkeypatch, oc,
         "_toolbar_link",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             oc.PlaywrightTimeoutError("no separate resolution link")
         ),
     )
-    monkeypatch.setattr(oc, "_wait_statuses", lambda *_args: rows)
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_wait_statuses", lambda *_args: rows)
+    patch_automation(
+        monkeypatch, oc,
         "_open_status_error_details",
         lambda *_args: (
             "Mapping Resolved",
@@ -61,10 +62,10 @@ def test_mapping_in_progress_returns_immediately_without_waiting(monkeypatch):
     ]
     clock = [0.0]
     monkeypatch.setattr(oc.time, "monotonic", lambda: clock[0])
-    monkeypatch.setattr(oc, "checkpoint", lambda: None)
-    monkeypatch.setattr(oc, "_status_rows", lambda _page: (object(), rows))
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "checkpoint", lambda: None)
+    patch_automation(monkeypatch, oc, "_status_rows", lambda _page: (object(), rows))
+    patch_automation(
+        monkeypatch, oc,
         "_wait",
         lambda _page, milliseconds: clock.__setitem__(
             0, clock[0] + milliseconds / 1000
@@ -105,14 +106,14 @@ def test_upload_opens_mapping_details_without_creating_transaction(
         "Field Mapping not resolved — EDI Package Field Mapping Not Resolved "
         "For Season: FH25 (Doc No.: JK-FH25-KNIT- BUY 1-FLAT; InActive: No)"
     )
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_open_status_error_details",
         lambda *_args: ("Mapping Resolved", resolution_rows, [detail]),
     )
     create_calls = []
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_click_pending_transaction",
         lambda *_args: create_calls.append("pending"),
     )
@@ -195,12 +196,12 @@ def test_select_exact_option_waits_for_package_options(monkeypatch):
             return self.selected
 
     select = Select()
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_visible_in_frames",
         lambda *_args, **_kwargs: (object(), select),
     )
-    monkeypatch.setattr(oc, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "_wait", lambda *_args: None)
 
     selected = oc._select_exact_option(
         object(), "#ddlPackage", "1", "StandardSalesOrder", "Package", timeout_s=1
@@ -225,8 +226,8 @@ def test_upload_does_not_create_transaction_when_any_edi_status_fails(
     ]
     _stub_edi_before_transaction(monkeypatch, rows)
     create_calls = []
-    monkeypatch.setattr(oc, "_click_pending_transaction", lambda *_: create_calls.append("pending"))
-    monkeypatch.setattr(oc, "_create_transaction", lambda *_: create_calls.append("create"))
+    patch_automation(monkeypatch, oc, "_click_pending_transaction", lambda *_: create_calls.append("pending"))
+    patch_automation(monkeypatch, oc, "_create_transaction", lambda *_: create_calls.append("create"))
 
     result = oc.upload_oc_edi(path, "J.LINDEBERG", "new", log=lambda _: None)
 
@@ -250,10 +251,10 @@ def test_upload_creates_exactly_one_transaction_after_all_statuses_succeed(
     ]
     _stub_edi_before_transaction(monkeypatch, rows)
     calls = []
-    monkeypatch.setattr(oc, "_click_pending_transaction", lambda *_: calls.append("pending"))
-    monkeypatch.setattr(oc, "_select_first_transaction", lambda *_: calls.append("select"))
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_click_pending_transaction", lambda *_: calls.append("pending"))
+    patch_automation(monkeypatch, oc, "_select_first_transaction", lambda *_: calls.append("select"))
+    patch_automation(
+        monkeypatch, oc,
         "_create_transaction",
         lambda *_: (calls.append("create") or (True, ["Created successfully"])),
     )
@@ -293,18 +294,18 @@ def test_create_transaction_reselects_once_after_no_record_selected(monkeypatch)
     selections = []
     clicks = []
 
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_select_first_transaction",
         lambda _page, *, force=False: selections.append(force),
     )
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_toolbar_link",
         lambda *_args, **_kwargs: (page, object()),
     )
-    monkeypatch.setattr(oc, "checkpoint", lambda: None)
-    monkeypatch.setattr(oc, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "checkpoint", lambda: None)
+    patch_automation(monkeypatch, oc, "_wait", lambda *_args: None)
 
     def click(_link):
         clicks.append(len(clicks) + 1)
@@ -313,7 +314,7 @@ def test_create_transaction_reselects_once_after_no_record_selected(monkeypatch)
         page.listeners["dialog"](dialog)
         assert dialog.accepted is True
 
-    monkeypatch.setattr(oc, "_click", click)
+    patch_automation(monkeypatch, oc, "_click", click)
 
     confirmed, messages = oc._create_transaction(page, lambda _message: None)
 
@@ -337,10 +338,10 @@ def test_upload_marks_transaction_unconfirmed_if_connection_drops_after_submit(
         }
     ]
     _stub_edi_before_transaction(monkeypatch, rows)
-    monkeypatch.setattr(oc, "_click_pending_transaction", lambda *_: None)
-    monkeypatch.setattr(oc, "_select_first_transaction", lambda *_: None)
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_click_pending_transaction", lambda *_: None)
+    patch_automation(monkeypatch, oc, "_select_first_transaction", lambda *_: None)
+    patch_automation(
+        monkeypatch, oc,
         "_create_transaction",
         lambda *_: (_ for _ in ()).throw(oc.PlaywrightTimeoutError("CDP lost")),
     )
@@ -442,10 +443,10 @@ def test_confirm_page_size_reresolves_select_after_wfx_postback(monkeypatch):
         resolved.append(index)
         return frames[index], selects[index]
 
-    monkeypatch.setattr(oc, "_visible_in_frames", resolve)
-    monkeypatch.setattr(oc, "_wait", lambda *_args: None)
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_visible_in_frames", resolve)
+    patch_automation(monkeypatch, oc, "_wait", lambda *_args: None)
+    patch_automation(
+        monkeypatch, oc,
         "_wait_confirm_grid_ready",
         lambda page, frame: waited.append((page, frame)) or frame,
     )
@@ -586,25 +587,25 @@ def test_confirm_waits_for_same_style_to_process_before_continuing(monkeypatch):
     )
     wait_results = iter([False, True, True])
     calls = []
-    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: next(snapshots))
-    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_read_confirm_styles", lambda _frame: next(snapshots))
+    patch_automation(monkeypatch, oc, "_focus_confirm_grid", lambda *_args: None)
+    patch_automation(
+        monkeypatch, oc,
         "_prepare_revision_style",
         lambda *_args: {"ok": True, "selected_count": 0, "empty_count": 0},
     )
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_select_confirm_style",
         lambda _frame, key: calls.append(("select", key)),
     )
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_click_confirm_toolbar",
         lambda _page: calls.append(("confirm",)),
     )
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_wait_style_processed",
         lambda _page, _frame, key, **_kwargs: (
             calls.append(("wait", key)) or next(wait_results)
@@ -633,10 +634,10 @@ def test_revision_confirm_stops_before_confirm_when_style_has_many_sales_orders(
     monkeypatch,
 ):
     style = {"key": "style-a", "label": "STYLE-A", "row_count": 2}
-    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: [style])
-    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_read_confirm_styles", lambda _frame: [style])
+    patch_automation(monkeypatch, oc, "_focus_confirm_grid", lambda *_args: None)
+    patch_automation(
+        monkeypatch, oc,
         "_prepare_revision_style",
         lambda *_args: {
             "ok": False,
@@ -646,8 +647,8 @@ def test_revision_confirm_stops_before_confirm_when_style_has_many_sales_orders(
         },
     )
     confirm_calls = []
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_click_confirm_toolbar",
         lambda *_args: confirm_calls.append("confirm"),
     )
@@ -663,11 +664,11 @@ def test_revision_confirm_stops_before_confirm_when_style_has_many_sales_orders(
 
 def test_confirm_stops_when_style_does_not_finish_processing(monkeypatch):
     style = {"key": "style-a", "label": "STYLE-A", "row_count": 1}
-    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: [style])
-    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
-    monkeypatch.setattr(oc, "_select_confirm_style", lambda *_args: None)
-    monkeypatch.setattr(oc, "_click_confirm_toolbar", lambda *_args: None)
-    monkeypatch.setattr(oc, "_wait_style_processed", lambda *_args, **_kwargs: False)
+    patch_automation(monkeypatch, oc, "_read_confirm_styles", lambda _frame: [style])
+    patch_automation(monkeypatch, oc, "_focus_confirm_grid", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "_select_confirm_style", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "_click_confirm_toolbar", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "_wait_style_processed", lambda *_args, **_kwargs: False)
 
     result = oc._confirm_all_pending(object(), object(), "new", log=lambda _: None)
 
@@ -738,20 +739,20 @@ def test_reject_all_processes_one_pending_group_at_a_time(monkeypatch):
         ]
     )
     calls = []
-    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: next(snapshots))
-    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
-    monkeypatch.setattr(
-        oc,
+    patch_automation(monkeypatch, oc, "_read_confirm_styles", lambda _frame: next(snapshots))
+    patch_automation(monkeypatch, oc, "_focus_confirm_grid", lambda *_args: None)
+    patch_automation(
+        monkeypatch, oc,
         "_select_confirm_style",
         lambda _frame, key: calls.append(("select", key)),
     )
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_click_reject_toolbar",
         lambda _page: calls.append(("reject",)),
     )
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_wait_style_processed",
         lambda _page, _frame, key, **_kwargs: calls.append(("wait", key)) or True,
     )
@@ -773,16 +774,16 @@ def test_reject_all_processes_one_pending_group_at_a_time(monkeypatch):
 
 def test_reject_all_stops_before_next_row_when_wfx_does_not_finish(monkeypatch):
     style = {"key": "po-a", "label": "PO-A", "row_count": 1}
-    monkeypatch.setattr(oc, "_read_confirm_styles", lambda _frame: [style])
-    monkeypatch.setattr(oc, "_focus_confirm_grid", lambda *_args: None)
-    monkeypatch.setattr(oc, "_select_confirm_style", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "_read_confirm_styles", lambda _frame: [style])
+    patch_automation(monkeypatch, oc, "_focus_confirm_grid", lambda *_args: None)
+    patch_automation(monkeypatch, oc, "_select_confirm_style", lambda *_args: None)
     clicks = []
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_click_reject_toolbar",
         lambda *_args: clicks.append("reject"),
     )
-    monkeypatch.setattr(oc, "_wait_style_processed", lambda *_args, **_kwargs: False)
+    patch_automation(monkeypatch, oc, "_wait_style_processed", lambda *_args, **_kwargs: False)
 
     result = oc._reject_all_pending(object(), object(), "revision", log=lambda _: None)
 
