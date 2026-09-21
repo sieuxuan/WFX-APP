@@ -19,6 +19,7 @@ import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.fakes.automation_boundary import WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from wfx_panel.automation import grn
 
@@ -46,8 +47,8 @@ def _quiet():
 
 def _rmpo_list(monkeypatch, rows, *, ok: bool = True, code: str = "RMPO_ROWS_READY"):
     """Thay đúng lời gọi RMPO List mà `_resolve_rmpo` dùng."""
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "search_rmpo_list",
         lambda *_args, **_kwargs: {
             "ok": ok,
@@ -91,8 +92,8 @@ def test_an_unknown_mode_never_opens_the_browser(monkeypatch, world, mode):
 def test_mode_is_normalised_before_validation(monkeypatch, world, mode):
     """UI có thể gửi nhãn hoa/thường lẫn khoảng trắng."""
     wire_automation(monkeypatch, grn, world)
-    monkeypatch.setattr(grn, "_prepare_sourcing_asn", lambda *_a, **_k: None)
-    monkeypatch.setattr(grn, "_prepare_grn_pending", lambda *_a, **_k: ["HANOI"])
+    patch_automation(monkeypatch, grn, "_prepare_sourcing_asn", lambda *_a, **_k: None)
+    patch_automation(monkeypatch, grn, "_prepare_grn_pending", lambda *_a, **_k: ["HANOI"])
 
     result = _prepare(mode=mode, rmpo="PO-2345", supplier="SUP-A")
 
@@ -156,8 +157,8 @@ def test_a_partial_rmpo_resolves_only_when_exactly_one_row_matches(
     wire_automation(monkeypatch, grn, world)
     _rmpo_list(monkeypatch, [_row("PO-2345-A", "SUP-A")])
     prepared = {}
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "_prepare_grn_pending",
         lambda _ctx, _page, supplier, mode, _log: prepared.update(
             supplier=supplier, mode=mode
@@ -179,8 +180,8 @@ def test_a_partial_rmpo_matching_several_rows_asks_for_more_digits(
 ):
     wire_automation(monkeypatch, grn, world)
     _rmpo_list(monkeypatch, [_row("PO-2345-A"), _row("PO-2345-B")])
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "_prepare_grn_pending",
         lambda *_a, **_k: pytest.fail("Không được mở GRN khi RMPO còn mơ hồ"),
     )
@@ -195,8 +196,8 @@ def test_a_partial_rmpo_matching_several_rows_asks_for_more_digits(
 def test_an_exact_order_no_wins_over_other_rows_containing_it(monkeypatch, world):
     wire_automation(monkeypatch, grn, world)
     _rmpo_list(monkeypatch, [_row("PO-2345", "SUP-EXACT"), _row("PO-23456", "SUP-X")])
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "_prepare_grn_pending",
         lambda *_a, **_k: ["HANOI"],
     )
@@ -210,8 +211,8 @@ def test_a_row_without_a_supplier_stops_instead_of_guessing(monkeypatch, world):
     """CLAUDE.md: không được đoán Supplier hay mở GRN khi chưa đọc được."""
     wire_automation(monkeypatch, grn, world)
     _rmpo_list(monkeypatch, [_row("PO-2345", supplier="")])
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "_prepare_grn_pending",
         lambda *_a, **_k: pytest.fail("Không được mở GRN khi thiếu Supplier"),
     )
@@ -232,13 +233,13 @@ def test_an_already_received_rmpo_never_opens_sourcing_asn_or_grn(
 ):
     wire_automation(monkeypatch, grn, world)
     _rmpo_list(monkeypatch, [_row("PO-2345", status=status)])
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "_prepare_sourcing_asn",
         lambda *_a, **_k: pytest.fail("RMPO đã Received thì không được mở ASN"),
     )
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "_prepare_grn_pending",
         lambda *_a, **_k: pytest.fail("RMPO đã Received thì không được mở GRN"),
     )
@@ -252,8 +253,8 @@ def test_an_already_received_rmpo_never_opens_sourcing_asn_or_grn(
 
 def test_no_rmpo_row_at_all_is_reported_as_not_found(monkeypatch, world):
     wire_automation(monkeypatch, grn, world)
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "search_rmpo_list",
         lambda *_a, **_k: {"ok": False, "code": "RMPO_NO_RESULTS"},
     )
@@ -270,12 +271,12 @@ def test_a_supplier_supplied_by_the_caller_skips_the_rmpo_lookup(
 ):
     """Chuyển từ RMPO List sang thì Supplier đã biết, không tra lại."""
     wire_automation(monkeypatch, grn, world)
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "search_rmpo_list",
         lambda *_a, **_k: pytest.fail("Đã có Supplier thì không được tra lại"),
     )
-    monkeypatch.setattr(grn, "_prepare_grn_pending", lambda *_a, **_k: ["HANOI"])
+    patch_automation(monkeypatch, grn, "_prepare_grn_pending", lambda *_a, **_k: ["HANOI"])
 
     result = _prepare(rmpo="PO-2345", supplier="SUP-A")
 
@@ -289,9 +290,9 @@ def test_a_supplier_supplied_by_the_caller_skips_the_rmpo_lookup(
 def test_foreign_mode_stops_at_the_sourcing_asn_checkpoint(monkeypatch, world):
     """App không tự Confirm; phải trả về cho user nhập số lượng và Confirm."""
     wire_automation(monkeypatch, grn, world)
-    monkeypatch.setattr(grn, "_prepare_sourcing_asn", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        grn,
+    patch_automation(monkeypatch, grn, "_prepare_sourcing_asn", lambda *_a, **_k: None)
+    patch_automation(
+        monkeypatch, grn,
         "_prepare_grn_pending",
         lambda *_a, **_k: pytest.fail("Chưa được mở GRN trước khi user Confirm"),
     )
@@ -342,7 +343,7 @@ def test_a_timeout_while_preparing_is_a_grn_prepare_failure(monkeypatch, world):
     def slow(*_args, **_kwargs):
         raise PlaywrightTimeoutError("GRN Pending chưa render")
 
-    monkeypatch.setattr(grn, "_prepare_grn_pending", slow)
+    patch_automation(monkeypatch, grn, "_prepare_grn_pending", slow)
 
     result = _prepare(rmpo="PO-2345", supplier="SUP-A")
 
@@ -366,7 +367,7 @@ def test_continue_failure_is_reported_as_continue_failed(monkeypatch, world):
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi DOM")
 
-    monkeypatch.setattr(grn, "_prepare_grn_pending", boom)
+    patch_automation(monkeypatch, grn, "_prepare_grn_pending", boom)
 
     result = grn.continue_grn_receipt("SUP-A", _quiet())
 

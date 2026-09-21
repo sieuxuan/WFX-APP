@@ -2,27 +2,26 @@ from __future__ import annotations
 
 import ast
 import inspect
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import Error as PlaywrightError
 
 from tests.fakes.automation_boundary import wire_automation
-from tests.fakes.module_reflection import module_source
+from tests.fakes.module_reflection import module_source, module_trees, patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from tests.fakes.wfx_style import StyleWorld, build_style_fields
 from wfx_panel.automation import bulk_style, catalog, runtime
 
 
 def test_copy_search_rule_uses_article_code_or_name_only():
-    source = Path(bulk_style.__file__).read_text(encoding="utf-8")
+    source = module_source(bulk_style)
     assert "COPY_ARTICLE_CODE_NAME_XPATH" in source
     assert "COPY_BUYER_REFERENCE_XPATH" not in source
     assert "ArticleCode/Name" in source
 
 
 def test_copy_flow_selects_costsheet_then_copy_as_variant():
-    source = Path(bulk_style.__file__).read_text(encoding="utf-8")
+    source = module_source(bulk_style)
     assert "COPY_COSTSHEET_XPATH" in source
     assert "COPY_AS_VARIANT_XPATH" in source
     assert source.index("costsheet.check()") < source.index("variant.click()")
@@ -58,7 +57,7 @@ def test_group_class_detection_accepts_actual_lowercase_wfx_class():
 
 
 def test_style_flow_selects_exact_new_toolbar_action():
-    source = Path(bulk_style.__file__).read_text(encoding="utf-8")
+    source = module_source(bulk_style)
     assert "def _new_style_link" in source
     assert 'candidate.inner_text().strip().casefold() == "new"' in source
 
@@ -70,12 +69,7 @@ def test_auto_save_click_is_wrapped_in_cancellation_deferred():
     người dùng nhận báo đã hủy trong khi WFX đã tạo Style, chạy lại dòng đó là
     sinh Style trùng.
     """
-    tree = ast.parse(Path(bulk_style.__file__).read_text(encoding="utf-8"))
-    target = next(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "_save_style"
-    )
+    target = _function("_save_style")
     guarded = [
         node
         for node in ast.walk(target)
@@ -186,13 +180,11 @@ def test_nothing_is_closed_when_the_run_opened_nothing():
 
 
 def _function(name: str) -> ast.FunctionDef:
-    tree = ast.parse(
-        Path(bulk_style.__file__).read_text(encoding="utf-8"),
-        filename=bulk_style.__file__,
-    )
+    """Định nghĩa của một hàm trong package bulk_style, dù nó ở file con nào."""
     found = next(
         (
             node
+            for _path, tree in module_trees(bulk_style)
             for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
             and node.name == name
@@ -292,8 +284,8 @@ def _wire(
     **boundary,
 ) -> None:
     """Chỉ giả lập ranh giới ngoài module: folder + Playwright/trang WFX."""
-    monkeypatch.setattr(
-        bulk_style,
+    patch_automation(
+        monkeypatch, bulk_style,
         "open_catalog_folder",
         lambda *_args, **_kwargs: {
             "ok": True,
@@ -629,8 +621,8 @@ def test_a_non_numeric_group_id_is_rejected_before_opening_the_folder(
     world,
 ):
     opened: list[str] = []
-    monkeypatch.setattr(
-        bulk_style,
+    patch_automation(
+        monkeypatch, bulk_style,
         "open_catalog_folder",
         lambda *args, **_kwargs: opened.append(str(args)) or {"ok": True},
     )
@@ -654,8 +646,8 @@ def test_only_new_or_copy_are_accepted(monkeypatch, world, kind):
 
 
 def test_a_failing_folder_open_is_returned_unchanged(monkeypatch, world):
-    monkeypatch.setattr(
-        bulk_style,
+    patch_automation(
+        monkeypatch, bulk_style,
         "open_catalog_folder",
         lambda *_args, **_kwargs: {
             "ok": False,

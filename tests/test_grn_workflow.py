@@ -1,5 +1,5 @@
-from pathlib import Path
 
+from tests.fakes.module_reflection import module_source, patch_automation
 from wfx_panel.automation import grn
 
 
@@ -12,8 +12,8 @@ def _search_result(*rows):
 
 
 def test_partial_rmpo_number_resolves_to_the_only_full_order(monkeypatch):
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "search_rmpo_list",
         lambda *_args: _search_result(
             {
@@ -32,8 +32,8 @@ def test_partial_rmpo_number_resolves_to_the_only_full_order(monkeypatch):
 
 
 def test_partial_rmpo_number_requires_a_unique_result(monkeypatch):
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "search_rmpo_list",
         lambda *_args: _search_result(
             {"order_no": "PSW-23-2345", "supplier": "A", "status": "Save"},
@@ -49,8 +49,8 @@ def test_partial_rmpo_number_requires_a_unique_result(monkeypatch):
 
 
 def test_received_rmpo_cannot_start_another_receipt(monkeypatch):
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "search_rmpo_list",
         lambda *_args: _search_result(
             {
@@ -70,8 +70,8 @@ def test_received_rmpo_cannot_start_another_receipt(monkeypatch):
 
 
 def test_matched_rmpo_reports_missing_supplier_separately(monkeypatch):
-    monkeypatch.setattr(
-        grn,
+    patch_automation(
+        monkeypatch, grn,
         "search_rmpo_list",
         lambda *_args: _search_result(
             {"order_no": "PSW-TRM-23-2345", "supplier": "", "status": "Save"}
@@ -84,7 +84,7 @@ def test_matched_rmpo_reports_missing_supplier_separately(monkeypatch):
 
 
 def test_grn_search_never_fills_the_filter_checkbox():
-    source = Path(grn.__file__).read_text(encoding="utf-8")
+    source = module_source(grn)
 
     assert '"#chk_8", "#txtDocNum"' in source
     assert '"#chk_9", "#txtOrderNum"' in source
