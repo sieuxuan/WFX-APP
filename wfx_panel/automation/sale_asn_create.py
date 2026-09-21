@@ -14,6 +14,8 @@ from wfx_panel.automation._common import (
     Page,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _browser_boundary_result,
+    _domain_error_code,
     _ensure_select_value,
     _first_line,
     _result,
@@ -1000,8 +1002,12 @@ def scan_sale_asn_buyers(
             buyers=buyers,
         )
     except RuntimeError as error:
-        code = str(error)
-        return _result(False, code, "Không mở được phiên Sale ASN để quét Buyer.")
+        boundary = _browser_boundary_result(error)
+        if boundary is not None:
+            return boundary
+        message = f"Không mở được phiên Sale ASN để quét Buyer: {_first_line(error)}"
+        _write_log(log, message)
+        return _result(False, "SALE_ASN_BUYER_SCAN_FAILED", message)
     except (PlaywrightError, PlaywrightTimeoutError) as error:
         message = f"Không quét được Buyer Sale ASN: {_first_line(error)}"
         _write_log(log, message)
@@ -2241,7 +2247,7 @@ def scan_sale_asn_order_details(
             po_count=len(rows),
         )
     except RuntimeError as error:
-        code = str(error).split(":", 1)[0] or "SALE_ASN_ORDER_SCAN_FAILED"
+        code = _domain_error_code(error, "SALE_ASN_ORDER_SCAN_FAILED")
         message = f"Không xuất được Order Details: {_first_line(error)}"
         _write_log(log, message)
         return _result(False, code, message)
@@ -2692,7 +2698,7 @@ def run_sale_asn_create(
             total=len(rows),
         )
     except RuntimeError as error:
-        code = str(error).split(":", 1)[0] or "SALE_ASN_CREATE_FAILED"
+        code = _domain_error_code(error, "SALE_ASN_CREATE_FAILED")
         message = f"Không hoàn tất Sale ASN: {_first_line(error)}"
         _write_log(log, message)
         return _result(

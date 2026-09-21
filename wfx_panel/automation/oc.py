@@ -13,6 +13,7 @@ from wfx_panel.automation._common import (
     Playwright,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _browser_boundary_result,
     _click,
     _first_line,
     _result,
@@ -1603,13 +1604,14 @@ def open_oc_revision_report(
             report_node_id="258",
         )
     except RuntimeError as error:
-        code = str(error)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên WFX chưa đăng nhập hoặc đã hết hạn."
+        boundary = _browser_boundary_result(error)
+        if boundary is not None:
+            return boundary
+        return _result(
+            False,
+            "OC_REVISION_REPORT_FAILED",
+            f"RuntimeError: {_first_line(error)}",
         )
-        return _result(False, code, message)
     except PlaywrightTimeoutError as error:
         return _result(
             False,

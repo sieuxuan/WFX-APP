@@ -19,6 +19,7 @@ from wfx_panel.automation._common import (
     Playwright,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _browser_boundary_result,
     _click,
     _document_changed,
     _ensure_select_value,
@@ -534,19 +535,14 @@ def open_module_with_floating_filter(
             f"Đã mở {module_name} và bật Floating Filter.",
             module=module_name,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module=module_name)
     except PlaywrightTimeoutError as exc:
         message = f"Timeout khi mở {module_name}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "FLOATING_FILTER_NOT_READY", message, module=module_name)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module=module_name)
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "MODULE_FAILED", message, module=module_name)
@@ -587,19 +583,14 @@ def open_sale_asn_new(
             asn_type=asn_type,
             asn_against=against,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         message = f"Sale ASN New chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SALE_ASN_NEW_NOT_READY", message)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc)
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SALE_ASN_NEW_FAILED", message)
@@ -1190,13 +1181,20 @@ def _search_module_fields(
             filter_kinds=active,
         )
     except RuntimeError as exc:
-        code = str(exc)
+        boundary = _browser_boundary_result(exc, module=search_spec.module_name)
+        if boundary is not None:
+            return boundary
         message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+            f"Không thể tìm trong {search_spec.module_name}: "
+            f"RuntimeError: {_first_line(exc)}"
         )
-        return _result(False, code, message, module=search_spec.module_name)
+        _write_log(log, message)
+        return _result(
+            False,
+            "MODULE_SEARCH_FAILED",
+            message,
+            module=search_spec.module_name,
+        )
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
         if search_started:
@@ -1385,13 +1383,20 @@ def _search_module_list(
             filter_kind=selected_field.label,
         )
     except RuntimeError as exc:
-        code = str(exc)
+        boundary = _browser_boundary_result(exc, module=search_spec.module_name)
+        if boundary is not None:
+            return boundary
         message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
+            f"Không thể tìm theo {selected_field.label} trong "
+            f"{search_spec.module_name}: RuntimeError: {_first_line(exc)}"
         )
-        return _result(False, code, message, module=search_spec.module_name)
+        _write_log(log, message)
+        return _result(
+            False,
+            "MODULE_SEARCH_FAILED",
+            message,
+            module=search_spec.module_name,
+        )
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
         if search_started:
@@ -1811,14 +1816,6 @@ def find_sample_file_results(
         search_started = True
         _apply_module_search(page, field, query, selected_field.label, log)
         return _sample_file_result(frame, log)
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="Sample List")
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
         code = (
@@ -1830,6 +1827,9 @@ def find_sample_file_results(
         _write_log(log, message)
         return _result(False, code, message, module="Sample List")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="Sample List")
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(
@@ -1928,14 +1928,6 @@ def search_sample_list_with_filters(
             module="Sample List",
             filter_kinds=active_fields,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="Sample List")
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
         code = (
@@ -1947,6 +1939,9 @@ def search_sample_list_with_filters(
         _write_log(log, message)
         return _result(False, code, message, module="Sample List")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="Sample List")
+        if boundary is not None:
+            return boundary
         message = f"Không thể tìm Sample List: {type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "MODULE_SEARCH_FAILED", message, module="Sample List")
@@ -1986,14 +1981,6 @@ def find_sample_file_results_with_filters(
             log,
         )
         return _sample_file_result(frame, log)
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="Sample List")
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
         code = (
@@ -2005,6 +1992,9 @@ def find_sample_file_results_with_filters(
         _write_log(log, message)
         return _result(False, code, message, module="Sample List")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="Sample List")
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(
@@ -2054,14 +2044,6 @@ def open_sample_file_result(
             f"Đã mở Style Code {style_code} từ Sample List.",
             article_code=style_code,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="Sample List")
     except (PlaywrightTimeoutError, PlaywrightError):
         return _result(
             False,
@@ -2069,6 +2051,9 @@ def open_sample_file_result(
             "Sample List hoặc dòng đã chọn không còn mở. Hãy bấm Check File lại.",
         )
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="Sample List")
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SAMPLE_FILE_OPEN_FAILED", message)
@@ -2191,14 +2176,6 @@ def search_rmpo_list(
             rmpo_rows=rows,
             result_count=len(rows),
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module=RMPO_SEARCH_SPEC.module_name)
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
         if search_started:
@@ -2216,6 +2193,9 @@ def search_rmpo_list(
         _write_log(log, message)
         return _result(False, code, message, module=RMPO_SEARCH_SPEC.module_name)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module=RMPO_SEARCH_SPEC.module_name)
+        if boundary is not None:
+            return boundary
         detail = f"{type(exc).__name__}: {_first_line(exc)}"
         message = f"Không thể tìm trong RMPO List: {detail}"
         _write_log(log, message)
@@ -2618,19 +2598,14 @@ def open_rmpo_result_action(
             status=selected["status"],
             action=action,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="RMPO List")
     except PlaywrightTimeoutError as exc:
         message = f"RMPO chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "RMPO_ACTION_NOT_READY", message, module="RMPO List")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="RMPO List")
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "MODULE_FAILED", message, module="RMPO List")
@@ -2988,19 +2963,14 @@ def prepare_supplier_invoice_cancel(
                 result_count=len(rows),
             )
         return _submit_supplier_invoice_cancel(page, frame, rows[0], log)
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="Supplier Inv List")
     except PlaywrightTimeoutError as exc:
         message = f"Supplier Inv List chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SUPPLIER_INVOICE_NOT_READY", message)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="Supplier Inv List")
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SUPPLIER_INVOICE_CANCEL_FAILED", message)
@@ -3041,19 +3011,14 @@ def cancel_supplier_invoice_choice(
                 "Danh sách hoặc Status Supplier Invoice đã thay đổi. Hãy tìm lại.",
             )
         return _submit_supplier_invoice_cancel(page, frame, selected, log)
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="Supplier Inv List")
     except PlaywrightTimeoutError as exc:
         message = f"Supplier Inv List không còn mở: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SUPPLIER_INVOICE_RESULT_EXPIRED", message)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="Supplier Inv List")
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SUPPLIER_INVOICE_CANCEL_FAILED", message)
@@ -3228,15 +3193,10 @@ def open_module_new(
             message,
             module=module_name,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module=module_name)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module=module_name)
+        if boundary is not None:
+            return boundary
         detail = f"{type(exc).__name__}: {_first_line(exc)}"
         message = f"Không thể mở New từ {module_name}: {detail}"
         _write_log(log, message)
@@ -3274,19 +3234,14 @@ def open_sample_new(
         raise PlaywrightTimeoutError(
             "WFX chưa xác nhận màn New Sample Order."
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         message = f"Sample New chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SAMPLE_NEW_NOT_READY", message)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc)
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "SAMPLE_NEW_FAILED", message)
@@ -3497,14 +3452,6 @@ def toggle_company_foc(
         )
         _click_navigation_control(misc)
         return _toggle_company_foc_setting(page, log)
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         message = (
             "Company Setup chưa sẵn sàng: "
@@ -3513,6 +3460,9 @@ def toggle_company_foc(
         _write_log(log, message)
         return _result(False, "COMPANY_FOC_NOT_READY", message)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc)
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "COMPANY_FOC_FAILED", message)

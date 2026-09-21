@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -151,6 +152,50 @@ def _result(
     **data: Any,
 ) -> dict[str, Any]:
     return {"ok": ok, "code": code, "message": message, **data}
+
+
+_ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{3,}$")
+
+
+def _domain_error_code(error: BaseException, fallback: str) -> str:
+    """Mã nghiệp vụ mà flow tự raise bằng ``RuntimeError("CODE: chi tiết")``.
+
+    Chỉ nhận token thật sự trông như một mã lỗi. Nếu không, một exception bất
+    ngờ sẽ biến cả câu thành "mã lỗi" — telemetry nhận mã rác và người dùng
+    không tra được trong Hướng dẫn sử dụng.
+    """
+    token = str(error).partition(":")[0].strip()
+    return token if _ERROR_CODE_RE.match(token) else fallback
+
+
+BROWSER_BOUNDARY_CODES = frozenset({"CHROME_CLOSED", "NOT_LOGGED_IN"})
+
+
+def _browser_boundary_result(
+    error: BaseException,
+    **data: Any,
+) -> dict[str, Any] | None:
+    """Kết quả cho đúng hai mã ranh giới trình duyệt, None nếu không phải.
+
+    `_active_wfx_page` báo trình duyệt đóng/phiên hết hạn bằng
+    ``RuntimeError("CHROME_CLOSED")``. Nhiều handler trước đây gán thẳng
+    ``code = str(exc)`` rồi ghép sẵn thông điệp của hai mã đó, nên MỌI
+    RuntimeError khác biến thành một "mã lỗi" là cả một câu tiếng Việt: không
+    có trong ``ERROR_CODE_INFO`` lẫn ``NON_REPORTABLE_FAILURES``, telemetry
+    nhận mã rác còn người dùng đọc sai nguyên nhân.
+
+    Handler chỉ được dùng nhánh này khi mã thực sự nằm trong whitelist; lỗi
+    khác phải rơi xuống mã nghiệp vụ riêng của flow.
+    """
+    code = str(error).partition(":")[0]
+    if code not in BROWSER_BOUNDARY_CODES:
+        return None
+    message = (
+        "Trình duyệt làm việc chưa được mở."
+        if code == "CHROME_CLOSED"
+        else "Phiên chưa đăng nhập hoặc đã hết hạn."
+    )
+    return _result(False, code, message, **data)
 
 
 def _style_status_suffix(style: dict[str, Any] | None) -> str:

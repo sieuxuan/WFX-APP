@@ -11,6 +11,7 @@ from wfx_panel.automation._common import (
     Playwright,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _browser_boundary_result,
     _click,
     _document_changed,
     _first_line,
@@ -595,19 +596,14 @@ def prepare_grn_receipt(
             mode=mode,
             sites=sites,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="(GRN) Nhập kho")
     except (PlaywrightError, PlaywrightTimeoutError) as exc:
         message = f"Chưa chuẩn bị được nhập kho: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "GRN_PREPARE_FAILED", message, module="(GRN) Nhập kho")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="(GRN) Nhập kho")
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "GRN_PREPARE_FAILED", message, module="(GRN) Nhập kho")
@@ -643,15 +639,10 @@ def continue_grn_receipt(
             mode="foreign",
             sites=sites,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="(GRN) Nhập kho")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="(GRN) Nhập kho")
+        if boundary is not None:
+            return boundary
         message = f"Chưa tiếp tục được GRN: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "GRN_CONTINUE_FAILED", message, module="(GRN) Nhập kho")
@@ -700,15 +691,10 @@ def finalize_grn_receipt(
             rmpo_no=rmpo_no,
             site=site,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="(GRN) Nhập kho")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="(GRN) Nhập kho")
+        if boundary is not None:
+            return boundary
         message = f"Chưa mở được New GRN: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "GRN_FINALIZE_FAILED", message, module="(GRN) Nhập kho")
@@ -882,15 +868,10 @@ def search_grn_receipt(
             "Đã mở GRN phù hợp trên WFX.",
             filter_kind=filter_kind,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message, module="(GRN) Nhập kho")
     except Exception as exc:
+        boundary = _browser_boundary_result(exc, module="(GRN) Nhập kho")
+        if boundary is not None:
+            return boundary
         message = f"Chưa tìm được GRN: {_first_line(exc)}"
         _write_log(log, message)
         return _result(False, "GRN_SEARCH_FAILED", message, module="(GRN) Nhập kho")
