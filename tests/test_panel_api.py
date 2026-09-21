@@ -12,11 +12,11 @@ from wfx_panel import (
     oc_workbook,
     panel_api,
     prefs,
-    sale_asn_controller,
     telemetry,
 )
 from wfx_panel.atomic_io import write_json_atomic
 from wfx_panel.automation import runtime as automation_runtime
+from wfx_panel.controllers import sale_asn as sale_asn_controller
 from wfx_panel.panel_api import PanelAPI
 
 
@@ -2363,7 +2363,7 @@ def test_release_update_methods_delegate_and_schedule(tmp_path, monkeypatch):
         "checksum_url": "https://github.com/example/update.zip.sha256",
     }
     monkeypatch.setattr(
-        "wfx_panel.settings_controller.updater.check_for_updates",
+        "wfx_panel.controllers.settings.updater.check_for_updates",
         lambda **_kwargs: dict(state),
     )
     applied = []
@@ -2379,7 +2379,7 @@ def test_panel_update_channel_is_always_stable(tmp_path, monkeypatch):
     api, _ = make_api(tmp_path)
     calls = []
     monkeypatch.setattr(
-        "wfx_panel.settings_controller.updater.check_for_updates",
+        "wfx_panel.controllers.settings.updater.check_for_updates",
         lambda **kwargs: calls.append(kwargs) or {
             "ok": True,
             "code": "UP_TO_DATE",

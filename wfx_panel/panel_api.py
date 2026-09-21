@@ -21,16 +21,18 @@ from wfx_panel import prefs as prefs_default
 from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.automation.runtime import RUNTIME as AUTOMATION_RUNTIME
 from wfx_panel.automation.runtime import AutomationCancelled
-from wfx_panel.catalog_controller import CatalogController
 from wfx_panel.coercion import boolean
-from wfx_panel.directory_controller import DirectoryController
-from wfx_panel.finance_controller import FinanceController
-from wfx_panel.inventory_controller import InventoryController
-from wfx_panel.jobs_controller import JobsController
-from wfx_panel.oc_controller import OCController
-from wfx_panel.reports_controller import ReportsController
-from wfx_panel.sale_asn_controller import SaleASNController
-from wfx_panel.settings_controller import SettingsController
+from wfx_panel.controllers import (
+    CatalogController,
+    DirectoryController,
+    FinanceController,
+    InventoryController,
+    JobsController,
+    OCController,
+    ReportsController,
+    SaleASNController,
+    SettingsController,
+)
 from wfx_panel.version import APP_VERSION, DISPLAY_VERSION
 
 SESSION_OK = frozenset(

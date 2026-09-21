@@ -1,6 +1,6 @@
 from openpyxl import load_workbook
 
-from wfx_panel.catalog_controller import CatalogController
+from wfx_panel.controllers.catalog import CatalogController
 from wfx_panel.style_workbook import STYLE_SHEET, write_style_template
 
 
