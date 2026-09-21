@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
-from wfx_panel import job_history, telemetry
+from wfx_panel import crash_log, job_history, telemetry
 from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.run_policy import (
@@ -35,6 +35,25 @@ from wfx_panel.run_policy import (
     SESSION_OK,
 )
 from wfx_panel.version import APP_VERSION
+
+
+def _flush_telemetry_quietly(base_dir, endpoint: str) -> None:
+    """Gửi outbox ở thread nền mà không bao giờ để lỗi giết thread im lặng.
+
+    ``telemetry.flush`` ghi lại outbox bằng temp file + replace, nên ổ đĩa đầy,
+    quyền bị chặn hay antivirus khoá file tạm đều làm nó ném ``OSError``. Thread
+    này là daemon và không ai join, nên một exception ở đây chỉ làm thread chết
+    không dấu vết — đúng loại lỗi mà ``crash_log`` sinh ra để thấy được. Cùng
+    tinh thần với docstring module: telemetry là phụ trợ, không được làm hỏng
+    tiến trình đang chạy.
+    """
+    try:
+        telemetry.flush(base_dir, endpoint)
+    except Exception as error:  # noqa: BLE001 - thread nền phải nuốt mọi lỗi
+        crash_log.record(
+            "TELEMETRY_FLUSH_FAILED",
+            exception=f"{type(error).__name__}: {error}",
+        )
 
 
 class AutomationRunEngine:
@@ -257,8 +276,9 @@ class AutomationRunEngine:
         # DEFAULT_WEBHOOK_URL và gửi payload sang production.
         telemetry_endpoint = telemetry.webhook_url(panel._base_dir)
         threading.Thread(
-            target=telemetry.flush,
+            target=_flush_telemetry_quietly,
             args=(panel._base_dir, telemetry_endpoint),
+            name="wfx-telemetry-flush",
             daemon=True,
         ).start()
 

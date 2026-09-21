@@ -66,9 +66,12 @@ class JobsController:
                     "nội dung tìm kiếm nhạy cảm."
                 ),
             }
+        # Chỉ những method mà `job_history.can_retry` cho qua mới cần handler.
+        # Các flow mang query/Article Code bị `_safe_request` xóa khỏi lịch sử
+        # nên không bao giờ tới được đây; giữ handler cho chúng chỉ tạo ảo giác
+        # là app chạy lại được. `tests/test_jobs_controller.py` canh hai danh
+        # sách này luôn trùng nhau.
         category_name = str(request.get("category_name") or "Apparel")
-        query = str(request.get("query") or "")
-        destination = request.get("destination")
         retry_handlers: dict[str, Callable[[], dict]] = {
             "login": panel.login,
             "check_session": panel.check_session,
@@ -81,29 +84,6 @@ class JobsController:
                 True,
             ),
             "browse_catalog": lambda: panel.browse_catalog(category_name),
-            "catalog_action": lambda: panel.catalog_action(
-                category_name,
-                str(request.get("filter_kind") or "code"),
-                query,
-                destination,
-            ),
-            "find_code": lambda: panel.find_code(
-                category_name,
-                query,
-                destination,
-            ),
-            "find_buyer_reference": lambda: panel.find_buyer_reference(
-                category_name,
-                query,
-                destination,
-            ),
-            "open_catalog_destination": lambda: panel.open_catalog_destination(
-                str(destination or ""),
-                str(request.get("article_code") or ""),
-            ),
-            "download_catalog_file": lambda: panel.download_catalog_file(
-                str(request.get("file_id") or "")
-            ),
         }
         handler = retry_handlers.get(str(method or ""))
         if handler is not None:

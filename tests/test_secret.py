@@ -1,3 +1,5 @@
+import base64
+import ctypes
 import os
 
 import pytest
@@ -79,3 +81,114 @@ def test_save_account_preserves_unknown_env_lines(tmp_path):
     assert "WFX_ERROR_WEBHOOK_URL=https://hooks.example.test/x" in raw
     assert "CUSTOM_FLAG=keep-me" in raw
     assert prefs.load_account(base_dir=tmp_path)["user_id"] == "newuser"
+
+
+class _FakeCrypt:
+    """crypt32 giả: điều khiển được kết quả CryptProtect/UnprotectData."""
+
+    def __init__(self, *, ok=True, payload=b"", error=None):
+        self.ok = ok
+        self.payload = payload
+        self.error = error
+        self.calls = 0
+
+    def _run(self, blob_in, _desc, _entropy, _reserved, _prompt, _flags, blob_out):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        if not self.ok:
+            return 0
+        data = self.payload
+        buffer = ctypes.create_string_buffer(data, len(data))
+        target = blob_out._obj
+        target.cbData = len(data)
+        target.pbData = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char))
+        # Giữ buffer sống tới hết lời gọi; LocalFree của fake không giải phóng.
+        self._buffer = buffer
+        return 1
+
+    CryptProtectData = _run
+    CryptUnprotectData = _run
+
+
+class _FakeKernel:
+    def LocalFree(self, _pointer):
+        return 0
+
+
+def _install_fake_dpapi(monkeypatch, crypt):
+    monkeypatch.setattr(secret, "_available", lambda: True)
+    monkeypatch.setattr(ctypes.windll, "crypt32", crypt, raising=False)
+    monkeypatch.setattr(ctypes.windll, "kernel32", _FakeKernel(), raising=False)
+
+
+def test_protect_refuses_an_empty_password():
+    assert secret.protect("") is None
+
+
+def test_protect_returns_none_off_windows(monkeypatch):
+    monkeypatch.setattr(secret, "_available", lambda: False)
+
+    assert secret.protect("pw") is None
+
+
+def test_protect_returns_none_when_dpapi_reports_failure(monkeypatch):
+    _install_fake_dpapi(monkeypatch, _FakeCrypt(ok=False))
+
+    assert secret.protect("pw") is None
+
+
+def test_protect_returns_none_when_the_dll_call_raises(monkeypatch):
+    _install_fake_dpapi(monkeypatch, _FakeCrypt(error=OSError("crypt32 hỏng")))
+
+    assert secret.protect("pw") is None
+
+
+def test_protect_encodes_the_ciphertext_as_base64(monkeypatch):
+    _install_fake_dpapi(monkeypatch, _FakeCrypt(payload=b"\x00\x01\xffcipher"))
+
+    token = secret.protect("pw")
+
+    assert token == "dpapi:v1:" + base64.b64encode(b"\x00\x01\xffcipher").decode()
+
+
+def test_unprotect_returns_none_off_windows(monkeypatch):
+    monkeypatch.setattr(secret, "_available", lambda: False)
+
+    assert secret.unprotect("dpapi:v1:AAAA") is None
+
+
+def test_unprotect_rejects_a_token_with_broken_base64(monkeypatch):
+    monkeypatch.setattr(secret, "_available", lambda: True)
+
+    assert secret.unprotect("dpapi:v1:!!!not-base64!!!") is None
+
+
+def test_unprotect_returns_none_when_dpapi_reports_failure(monkeypatch):
+    _install_fake_dpapi(monkeypatch, _FakeCrypt(ok=False))
+
+    assert secret.unprotect("dpapi:v1:AAAA") is None
+
+
+def test_unprotect_returns_none_when_the_dll_call_raises(monkeypatch):
+    _install_fake_dpapi(monkeypatch, _FakeCrypt(error=OSError("crypt32 hỏng")))
+
+    assert secret.unprotect("dpapi:v1:AAAA") is None
+
+
+def test_unprotect_returns_none_when_the_plaintext_is_not_utf8(monkeypatch):
+    _install_fake_dpapi(monkeypatch, _FakeCrypt(payload=b"\xff\xfe\xfd"))
+
+    assert secret.unprotect("dpapi:v1:AAAA") is None
+
+
+def test_unprotect_decodes_the_plaintext(monkeypatch):
+    _install_fake_dpapi(monkeypatch, _FakeCrypt(payload="mật khẩu".encode()))
+
+    assert secret.unprotect("dpapi:v1:AAAA") == "mật khẩu"
+
+
+def test_blob_round_trip_keeps_every_byte():
+    data = b"\x00binary\xff payload"
+
+    assert secret._from_blob(secret._to_blob(data)) == data
