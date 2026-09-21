@@ -847,3 +847,202 @@ def test_the_automation_pid_is_none_when_nothing_listens(monkeypatch):
     )
 
     assert browser_module.automation_browser_pid() is None
+
+
+# --- Chrome không hợp tác -------------------------------------------------
+
+
+def test_a_downloads_folder_windows_will_not_create_does_not_stop_the_profile(
+    tmp_path, monkeypatch
+):
+    real_mkdir = Path.mkdir
+
+    def refuse(self, *args, **kwargs):
+        if self.name == "Downloads":
+            raise PermissionError("OneDrive đang khóa thư mục")
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        browser_module, "_user_downloads_dir", lambda: tmp_path / "Downloads"
+    )
+    monkeypatch.setattr(Path, "mkdir", refuse)
+
+    browser_module._disable_password_manager(tmp_path / "profile")
+
+
+def test_a_connection_that_drops_on_the_first_read_is_made_again(monkeypatch):
+    main = _Page("https://wfx.test/wfx/default.aspx")
+    attempts: list[int] = []
+
+    class Flaky:
+        def __init__(self, index):
+            self.index = index
+
+        @property
+        def contexts(self):
+            attempts.append(self.index)
+            if self.index == 0:
+                raise PlaywrightError("Connection closed")
+            return [_Context([main])]
+
+    browsers = [Flaky(0), Flaky(1)]
+    invalidated: list[object] = []
+    monkeypatch.setattr(
+        browser_module, "connect_browser", lambda *_a: browsers.pop(0)
+    )
+    monkeypatch.setattr(
+        browser_module, "invalidate_browser", invalidated.append
+    )
+
+    _browser, page = browser_module._connect_to_chrome(object())
+
+    assert page is main
+    assert attempts == [0, 1]
+    assert len(invalidated) == 1
+
+
+def test_a_dialog_page_that_cannot_be_fronted_still_logs_the_alert(monkeypatch):
+    page = _DialogPage()
+    logs: list[str] = []
+    browser_module._attach_dialog_handler(page, logs.append)
+    _event, handler = page.handlers[0]
+
+    class Dialog:
+        message = ""
+
+        class page:
+            @staticmethod
+            def bring_to_front():
+                raise RuntimeError("tab đã đóng")
+
+    handler(Dialog())
+
+    assert any("Chrome đang chờ bạn xác nhận" in line for line in logs)
+
+
+def test_a_tab_that_refuses_to_remember_its_handler_is_not_fatal(monkeypatch):
+    class Locked(_DialogPage):
+        def __setattr__(self, name, value):
+            if name == "_wfx_dialog_handler":
+                raise AttributeError("không gán được thuộc tính")
+            super().__setattr__(name, value)
+
+    page = Locked()
+
+    browser_module._attach_dialog_handler(page, _quiet())
+
+    assert page.handlers
+
+
+def test_a_tab_whose_old_handler_cannot_be_removed_still_gets_a_new_one():
+    class Stubborn(_DialogPage):
+        def remove_listener(self, _event, _handler):
+            raise RuntimeError("listener đã biến mất")
+
+    page = Stubborn()
+    browser_module._attach_dialog_handler(page, _quiet())
+
+    browser_module._attach_dialog_handler(page, _quiet())
+
+    assert len(page.handlers) == 2
+
+
+def test_a_context_whose_old_page_handler_cannot_be_removed_still_listens():
+    class Stubborn(_DialogContext):
+        def remove_listener(self, _event, _handler):
+            raise RuntimeError("listener đã biến mất")
+
+    page = _DialogPage()
+    context = Stubborn([page])
+    page.context = context
+    browser_module._attach_dialog_handler(page, _quiet())
+
+    browser_module._attach_dialog_handler(page, _quiet())
+
+    assert len(context.handlers) == 2
+
+
+def test_a_context_that_refuses_to_remember_its_handler_is_not_fatal():
+    class Locked(_DialogContext):
+        def __setattr__(self, name, value):
+            if name == "_wfx_page_dialog_handler":
+                raise AttributeError("không gán được thuộc tính")
+            super().__setattr__(name, value)
+
+    page = _DialogPage()
+    context = Locked([page])
+    page.context = context
+
+    browser_module._attach_dialog_handler(page, _quiet())
+
+    assert context.handlers
+
+
+def test_a_machine_where_netstat_will_not_run_reports_no_automation_browser(
+    monkeypatch
+):
+    monkeypatch.setattr(browser_module.os, "name", "nt")
+    monkeypatch.setattr(browser_module, "CDP_HOST", "127.0.0.1")
+
+    def refuse(*_args, **_kwargs):
+        raise OSError("netstat không có trong PATH")
+
+    monkeypatch.setattr(browser_module.subprocess, "run", refuse)
+
+    assert browser_module.automation_browser_pid() is None
+
+
+def test_a_browser_handle_is_released_when_cdp_drops_mid_close(monkeypatch):
+    states = [True, False]
+    released: list[object] = []
+    monkeypatch.setattr(
+        browser_module,
+        "_chrome_is_ready",
+        lambda: states.pop(0) if len(states) > 1 else states[0],
+    )
+    monkeypatch.setattr(browser_module, "sync_playwright", lambda: _Starter())
+    monkeypatch.setattr(browser_module, "invalidate_browser", released.append)
+    handle = _Browser([])
+
+    def connect(_playwright, **_kwargs):
+        raise PlaywrightError("đã ngắt")
+
+    monkeypatch.setattr(browser_module, "_connect_to_chrome", connect)
+
+    assert browser_module.close_chrome(_quiet())["code"] == "CHROME_CLOSED"
+    assert released == []
+
+    # Khi đã kết nối được rồi mới rơi, handle đó phải được nhả.
+    states[:] = [True, False]
+
+    def connect_then_fail(_playwright, **_kwargs):
+        return handle, object()
+
+    monkeypatch.setattr(browser_module, "_connect_to_chrome", connect_then_fail)
+    monkeypatch.setattr(
+        type(handle),
+        "new_browser_cdp_session",
+        lambda _self: (_ for _ in ()).throw(PlaywrightError("đã ngắt")),
+    )
+
+    assert browser_module.close_chrome(_quiet())["code"] == "CHROME_CLOSED"
+    assert released == [handle]
+
+
+def test_a_driver_that_will_not_stop_does_not_change_the_close_result(
+    monkeypatch,
+):
+    class StubbornDriver:
+        def stop(self):
+            raise RuntimeError("driver treo")
+
+    class StubbornStarter:
+        def start(self):
+            return StubbornDriver()
+
+    _wire_close(monkeypatch, alive=[True, False])
+    monkeypatch.setattr(
+        browser_module, "sync_playwright", lambda: StubbornStarter()
+    )
+
+    assert browser_module.close_chrome(_quiet())["code"] == "CHROME_CLOSED"
