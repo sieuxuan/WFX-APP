@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
-from wfx_panel import constants, module_controllers
+from wfx_panel import constants, module_registry
 from wfx_panel.coercion import boolean
 
 
@@ -28,7 +28,7 @@ class ModulesController:
     def open_module(self, module_id: str) -> dict:
         panel = self._panel
         def action() -> dict:
-            controller = module_controllers.get(module_id)
+            controller = module_registry.get(module_id)
             if controller is None:
                 return {
                     "ok": False,

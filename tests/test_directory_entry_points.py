@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from tests.fakes.automation_boundary import WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from wfx_panel.automation import directory
 
@@ -82,8 +83,8 @@ def test_an_unknown_expected_kind_matches_nothing(kind):
 
 def test_the_buyer_frame_helper_asks_for_the_buyer_party_type(monkeypatch):
     seen = {}
-    monkeypatch.setattr(
-        directory,
+    patch_automation(
+        monkeypatch, directory,
         "_company_search_frame",
         lambda _page, kind, timeout_s=4: seen.setdefault("kind", kind),
     )
@@ -122,10 +123,10 @@ class _Scan:
 
 
 def _wire_scan(monkeypatch, scan: _Scan) -> None:
-    monkeypatch.setattr(
-        directory, "_open_supplier_category_on_page", scan.open_category
+    patch_automation(
+        monkeypatch, directory, "_open_supplier_category_on_page", scan.open_category
     )
-    monkeypatch.setattr(directory, "_filter_company_rows", scan.filter_rows)
+    patch_automation(monkeypatch, directory, "_filter_company_rows", scan.filter_rows)
 
 
 def _search(world, query="ABC"):
@@ -280,7 +281,7 @@ def test_an_unexpected_error_keeps_the_categories_already_checked(
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi DOM")
 
-    monkeypatch.setattr(directory, "_scan_supplier_categories", boom)
+    patch_automation(monkeypatch, directory, "_scan_supplier_categories", boom)
 
     result = _search(world)
 

@@ -9,7 +9,7 @@ from wfx_panel import (
     constants,
     job_history,
     log_bridge,
-    module_controllers,
+    module_registry,
     status,
     telemetry,
 )
@@ -246,7 +246,7 @@ class PanelAPI:
             "reporting_configured": telemetry.is_configured(self._base_dir),
             "pending_reports": telemetry.outbox_count(self._base_dir),
             "update_channel": "stable",
-            "module_groups": module_controllers.manifest_groups(),
+            "module_groups": module_registry.manifest_groups(),
             "divisions": list(constants.DIVISIONS.values()),
             "jobs": job_history.list_jobs(self._base_dir, 20),
             "sale_asn_buyers": list(self._sale_asn.buyers),

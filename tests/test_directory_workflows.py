@@ -1,3 +1,4 @@
+from tests.fakes.module_reflection import patch_automation
 from wfx_panel.automation import directory
 
 
@@ -151,18 +152,18 @@ def test_supplier_search_continues_after_one_category_fails(monkeypatch):
         assert expected_kind == "supplier"
         return frame, {"rows": rows[frame], "noRows": False, "loading": False}
 
-    monkeypatch.setattr(directory, "sync_playwright", lambda: _Starter())
-    monkeypatch.setattr(
-        directory,
+    patch_automation(monkeypatch, directory, "sync_playwright", lambda: _Starter())
+    patch_automation(
+        monkeypatch, directory,
         "_active_wfx_page",
         lambda _playwright, _log: (object(), object()),
     )
-    monkeypatch.setattr(
-        directory,
+    patch_automation(
+        monkeypatch, directory,
         "_open_supplier_category_on_page",
         open_category,
     )
-    monkeypatch.setattr(directory, "_filter_company_rows", filter_rows)
+    patch_automation(monkeypatch, directory, "_filter_company_rows", filter_rows)
 
     result = directory.find_supplier_across_categories(
         "//supplier",
