@@ -24,17 +24,17 @@ def test_catalog_prepare_reuses_only_valid_ready_master(monkeypatch):
     tree = SimpleNamespace(locator=lambda selector: category)
     grid = object()
     calls = []
-    monkeypatch.setattr(catalog, "_catalog_tree_frame_now", lambda _page: tree)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_catalog_tree_frame_now", lambda _page: tree)
+    patch_automation(
+        monkeypatch, catalog,
         "_catalog_grid_frame",
         lambda _page, timeout_seconds: (
             calls.append(("grid", timeout_seconds)) or grid
         ),
     )
-    monkeypatch.setattr(catalog, "_catalog_filter_row_active", lambda item: item is grid)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_catalog_filter_row_active", lambda item: item is grid)
+    patch_automation(
+        monkeypatch, catalog,
         "_wait_catalog_grid_data_ready",
         lambda item, timeout_seconds: calls.append(("ready", item, timeout_seconds)),
     )
@@ -392,15 +392,15 @@ def test_catalog_attachment_defaults_to_windows_known_downloads(
     connected_browser = type("Browser", (), {"contexts": [browser_context]})()
 
     monkeypatch.setattr(catalog.Path, "home", lambda: fallback_home)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_user_downloads_dir",
         lambda: known_folder,
         raising=False,
     )
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(
+        monkeypatch, catalog,
         "sync_playwright",
         type(
             "Factory",
@@ -411,19 +411,19 @@ def test_catalog_attachment_defaults_to_windows_known_downloads(
             },
         )(),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda _playwright: (connected_browser, object()),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _page: True)
 
     def download(_request, _url, stream, _log):
         stream.write(b"pdf")
         return 3
 
-    monkeypatch.setattr(catalog, "_download_attachment_in_chunks", download)
+    patch_automation(monkeypatch, catalog, "_download_attachment_in_chunks", download)
 
     result = catalog.download_catalog_file(
         {
@@ -890,17 +890,17 @@ def test_catalog_destination_uses_existing_article_popup(monkeypatch):
     context = object()
     browser_instance = SimpleNamespace(contexts=[context])
     page = object()
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, catalog, "sync_playwright", PlaywrightStarter)
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda _playwright, **_kwargs: (browser_instance, page),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _page: True)
+    patch_automation(
+        monkeypatch, catalog,
         "_open_article_destination",
         lambda actual_context, destination, previous, _log, timeout_seconds,
         expected_article_code="": (
@@ -966,8 +966,8 @@ def test_exact_code_opens_directly_even_when_fuzzy_grid_has_similar_codes(
             "internalCostSheetStatus": "",
         },
     ]
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_click_catalog_style",
         lambda actual_grid, code, label, _log: (
             clicks.append((actual_grid, code, label)) or True
@@ -1011,19 +1011,19 @@ def test_catalog_destination_recycles_only_after_probe_times_out(monkeypatch):
     page1 = object()
     page2 = object()
 
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
-    monkeypatch.setattr(
-        catalog, "_connect_to_chrome", lambda _pw, **_kwargs: (browser1, page1)
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, catalog, "sync_playwright", PlaywrightStarter)
+    patch_automation(
+        monkeypatch, catalog, "_connect_to_chrome", lambda _pw, **_kwargs: (browser1, page1)
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_a: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _p: True)
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_a: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _p: True)
 
     def refresh(_pw, browser, _page, _log):
         calls.append(("recycle", browser))
         return refreshed_playwright, browser2, page2
 
-    monkeypatch.setattr(catalog, "_refresh_article_context", refresh)
+    patch_automation(monkeypatch, catalog, "_refresh_article_context", refresh)
 
     attempts = []
 
@@ -1042,7 +1042,7 @@ def test_catalog_destination_recycles_only_after_probe_times_out(monkeypatch):
             raise catalog.PlaywrightTimeoutError("ArticleTop chưa sẵn sàng")
         return "BOM"
 
-    monkeypatch.setattr(catalog, "_open_article_destination", open_dest)
+    patch_automation(monkeypatch, catalog, "_open_article_destination", open_dest)
 
     result = catalog.open_catalog_destination("ABC123", "bom")
 
@@ -1078,29 +1078,29 @@ def test_detached_article_frame_recycles_driver_and_cdp(monkeypatch):
     playwright = object()
     page = object()
 
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "invalidate_browser",
         lambda browser: calls.append(("invalidate", browser)),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "recycle_playwright",
         lambda actual: (
             calls.append(("recycle", actual))
             or refreshed_playwright
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda actual, **kwargs: (
             calls.append(("connect", actual, kwargs))
             or (refreshed_browser, refreshed_page)
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_attach_dialog_handler",
         lambda actual_page, _log: calls.append(("dialogs", actual_page)),
     )
@@ -1153,29 +1153,29 @@ def test_article_recovery_rebuilds_driver_when_invoked(monkeypatch):
     refreshed_page = object()
     refreshed_playwright = object()
     calls = []
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "invalidate_browser",
         lambda browser: calls.append(("invalidate", browser)),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "recycle_playwright",
         lambda actual: (
             calls.append(("recycle", actual))
             or refreshed_playwright
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda actual, **kwargs: (
             calls.append(("connect", actual, kwargs))
             or (refreshed_browser, refreshed_page)
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_attach_dialog_handler",
         lambda actual_page, _log: calls.append(("dialogs", actual_page)),
     )
@@ -1216,26 +1216,26 @@ def test_article_recovery_recycles_when_stale_cdp_cannot_see_popup(monkeypatch):
     refreshed_page = object()
     refreshed_playwright = object()
     calls = []
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "invalidate_browser",
         lambda browser: calls.append(("invalidate", browser)),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "recycle_playwright",
         lambda runtime: calls.append(("recycle", runtime))
         or refreshed_playwright,
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda runtime, **kwargs: calls.append(
             ("connect", runtime, kwargs)
         )
         or (refreshed_browser, refreshed_page),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
 
     result = catalog._refresh_article_context(
         object(),
@@ -1267,17 +1267,17 @@ def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch)
 
     page = object()
     grid = object()
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, catalog, "sync_playwright", PlaywrightStarter)
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda _playwright: (object(), page),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _page: True)
+    patch_automation(
+        monkeypatch, catalog,
         "_show_catalog_floating_filter",
         lambda actual_page, _log, timeout_seconds: (
             calls.append(("grid-timeout", timeout_seconds))
@@ -1285,8 +1285,8 @@ def test_catalog_search_uses_existing_grid_without_reopening_module(monkeypatch)
             calls.append(("existing-grid", actual_page)) or grid
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_filter_grid_and_maybe_open",
         lambda actual_grid, kind, query, _log: (
             calls.append(("filter", actual_grid, kind, query))
@@ -1334,24 +1334,24 @@ def test_catalog_search_and_destination_share_popup_driver(monkeypatch):
     browser_instance = SimpleNamespace(contexts=[context])
     page = object()
     grid = object()
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, catalog, "sync_playwright", PlaywrightStarter)
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda _playwright: (browser_instance, page),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _page: True)
+    patch_automation(
+        monkeypatch, catalog,
         "_show_catalog_floating_filter",
         lambda _page, _log, timeout_seconds: (
             calls.append(("grid-timeout", timeout_seconds)) or grid
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_filter_grid_and_maybe_open",
         lambda _grid, _kind, _query, _log: {
             "ok": True,
@@ -1381,7 +1381,7 @@ def test_catalog_search_and_destination_share_popup_driver(monkeypatch):
         )
         return "Costsheet"
 
-    monkeypatch.setattr(catalog, "_open_article_destination", open_destination)
+    patch_automation(monkeypatch, catalog, "_open_article_destination", open_destination)
 
     result = catalog.find_and_open_catalog_destination(
         "Apparel",
@@ -1440,17 +1440,17 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
     new_page = object()
     grid = object()
 
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, catalog, "sync_playwright", PlaywrightStarter)
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda _playwright: (old_browser, old_page),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _page: True)
+    patch_automation(
+        monkeypatch, catalog,
         "_show_catalog_floating_filter",
         lambda _page, _log, timeout_seconds: (
             calls.append(("grid-timeout", timeout_seconds)) or grid
@@ -1466,7 +1466,7 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
             "style_status": {},
         }
 
-    monkeypatch.setattr(catalog, "_filter_grid_and_maybe_open", filter_once)
+    patch_automation(monkeypatch, catalog, "_filter_grid_and_maybe_open", filter_once)
 
     def refresh(actual_runtime, actual_browser, actual_page, _log):
         calls.append(
@@ -1474,7 +1474,7 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
         )
         return refreshed_runtime, new_browser, new_page
 
-    monkeypatch.setattr(catalog, "_refresh_article_context", refresh)
+    patch_automation(monkeypatch, catalog, "_refresh_article_context", refresh)
     attempts = []
 
     def open_destination(
@@ -1498,7 +1498,7 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
             raise catalog.PlaywrightTimeoutError("ArticleTop detached")
         return "Costsheet"
 
-    monkeypatch.setattr(catalog, "_open_article_destination", open_destination)
+    patch_automation(monkeypatch, catalog, "_open_article_destination", open_destination)
 
     result = catalog.find_and_open_catalog_destination(
         "Apparel",
@@ -1557,22 +1557,22 @@ def test_new_article_popup_reclicks_same_grid_before_cdp_recovery(monkeypatch):
     clicks = []
     attempts = []
 
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, catalog, "sync_playwright", PlaywrightStarter)
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda _playwright: (old_browser, page),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _page: True)
+    patch_automation(
+        monkeypatch, catalog,
         "_show_catalog_floating_filter",
         lambda *_args, **_kwargs: grid,
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_filter_grid_and_maybe_open",
         lambda *_args: {
             "ok": True,
@@ -1581,15 +1581,15 @@ def test_new_article_popup_reclicks_same_grid_before_cdp_recovery(monkeypatch):
             "style_status": {},
         },
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_click_catalog_style",
         lambda actual_grid, code, label, _log: (
             clicks.append((actual_grid, code, label)) or True
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_refresh_article_context",
         lambda *_args: (Runtime(), new_browser, object()),
     )
@@ -1609,7 +1609,7 @@ def test_new_article_popup_reclicks_same_grid_before_cdp_recovery(monkeypatch):
             raise catalog.PlaywrightTimeoutError("popup invisible")
         return "Costsheet"
 
-    monkeypatch.setattr(catalog, "_open_article_destination", open_destination)
+    patch_automation(monkeypatch, catalog, "_open_article_destination", open_destination)
 
     result = catalog.find_and_open_catalog_destination(
         "Apparel",
@@ -1709,31 +1709,31 @@ def test_catalog_folder_scan_uses_tree_without_clicking_master(monkeypatch):
             "kind": "group",
         }
     ]
-    monkeypatch.setattr(catalog, "_chrome_is_ready", lambda: True)
-    monkeypatch.setattr(catalog, "sync_playwright", PlaywrightStarter)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_chrome_is_ready", lambda: True)
+    patch_automation(monkeypatch, catalog, "sync_playwright", PlaywrightStarter)
+    patch_automation(
+        monkeypatch, catalog,
         "_connect_to_chrome",
         lambda _playwright: (object(), page),
     )
-    monkeypatch.setattr(catalog, "_attach_dialog_handler", lambda *_args: None)
-    monkeypatch.setattr(catalog, "_session_is_active", lambda _page: True)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_attach_dialog_handler", lambda *_args: None)
+    patch_automation(monkeypatch, catalog, "_session_is_active", lambda _page: True)
+    patch_automation(
+        monkeypatch, catalog,
         "_open_catalog_tree_on_page",
         lambda actual_page, category, value, _log: (
             calls.append(("tree", actual_page, category, value)) or frame
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_catalog_folder_nodes",
         lambda actual_frame: (
             calls.append(("scan", actual_frame)) or folders
         ),
     )
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_click_catalog_master",
         lambda *_args, **_kwargs: calls.append(("master",)),
     )

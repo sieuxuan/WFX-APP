@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from tests.fakes.module_reflection import module_trees, patch_automation
 from tests.fakes.wfx_dom import (
     BUYER_REFERENCE_FILTER,
     CODE_FILTER,
@@ -100,8 +100,8 @@ def test_catalog_menu_falls_back_to_direct_url_when_wrapper_does_not_load(
             raise catalog.PlaywrightTimeoutError("wrapper did not load")
         return expected_frame
 
-    monkeypatch.setattr(catalog, "_catalog_left_frame", wait_for_tree)
-    monkeypatch.setattr(catalog, "_click", lambda target: clicked.append(target))
+    patch_automation(monkeypatch, catalog, "_catalog_left_frame", wait_for_tree)
+    patch_automation(monkeypatch, catalog, "_click", lambda target: clicked.append(target))
 
     result = catalog._open_catalog_menu_on_page(
         page,
@@ -127,9 +127,9 @@ def test_catalog_menu_keeps_normal_navigation_when_wrapper_loads(monkeypatch):
     )
     expected_frame = object()
 
-    monkeypatch.setattr(catalog, "_click", lambda _target: None)
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(monkeypatch, catalog, "_click", lambda _target: None)
+    patch_automation(
+        monkeypatch, catalog,
         "_catalog_left_frame",
         lambda _page, previous_frame=None, timeout_s=10: expected_frame,
     )
@@ -165,8 +165,8 @@ def test_catalog_tree_rejects_supplier_category_frame():
 
 def test_catalog_left_accepts_same_frame_after_in_place_reload(monkeypatch):
     frame = object()
-    monkeypatch.setattr(
-        catalog,
+    patch_automation(
+        monkeypatch, catalog,
         "_catalog_tree_frame_now",
         lambda _page: frame,
     )
@@ -680,33 +680,29 @@ def test_every_flow_that_opens_master_waits_for_grid_data():
     Test hành vi phủ được một lời gọi; ràng buộc này nói về *mọi* call site nên
     phải quét AST, giống `test_cancellation_contract.py`.
     """
-    tree = ast.parse(
-        Path(catalog.__file__).read_text(encoding="utf-8"),
-        filename=catalog.__file__,
-    )
     offenders = []
     checked = 0
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        target = node.func
-        if not isinstance(target, ast.Name):
-            continue
-        if target.id != "_show_catalog_floating_filter":
-            continue
-        owner = _enclosing_function(tree, node)
-        if owner in _FAST_PATHS_WITHOUT_DATA_READY:
-            continue
-        checked += 1
-        waits = any(
-            keyword.arg == "require_data_ready"
-            and isinstance(keyword.value, ast.Constant)
-            and keyword.value.value is True
-            for keyword in node.keywords
-        )
-        if not waits:
-            offenders.append(f"{owner} (dòng {node.lineno})")
-
+    for _path, tree in module_trees(catalog):
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            target = node.func
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id != "_show_catalog_floating_filter":
+                continue
+            owner = _enclosing_function(tree, node)
+            if owner in _FAST_PATHS_WITHOUT_DATA_READY:
+                continue
+            checked += 1
+            waits = any(
+                keyword.arg == "require_data_ready"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True
+                for keyword in node.keywords
+            )
+            if not waits:
+                offenders.append(f"{owner} (dòng {node.lineno})")
     assert checked >= 5, "AST scan không còn thấy call site nào — test đã mục"
     assert not offenders, (
         "Các flow sau mở Master nhưng không chờ dữ liệu grid: "

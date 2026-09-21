@@ -8,6 +8,7 @@ bind nó, và đọc source của cả package thay vì một file.
 
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -38,12 +39,15 @@ def _binding_sites(module: ModuleType, name: str) -> list[ModuleType]:
     return sites
 
 
-def patch_automation(monkeypatch, module: ModuleType, name: str, value) -> None:
+def patch_automation(
+    monkeypatch, module: ModuleType, name: str, value, *, raising: bool = True
+) -> None:
     """Thay ``name`` trên một module automation, kể cả khi nó là package."""
     sites = _binding_sites(module, name)
-    assert sites, f"{module.__name__} không bind {name!r} ở đâu cả"
-    for site in sites:
-        monkeypatch.setattr(site, name, value)
+    if raising:
+        assert sites, f"{module.__name__} không bind {name!r} ở đâu cả"
+    for site in sites or [module]:
+        monkeypatch.setattr(site, name, value, raising=raising)
 
 
 def module_source(module: ModuleType) -> str:
@@ -61,3 +65,21 @@ def module_source(module: ModuleType) -> str:
         sibling.read_text(encoding="utf-8")
         for sibling in sorted(path.parent.glob("*.py"))
     )
+
+
+def module_files(module: ModuleType) -> list[Path]:
+    """Mọi file nguồn của module — với package là toàn bộ file con."""
+    file_path = getattr(module, "__file__", None)
+    assert file_path, f"{module.__name__} không có __file__"
+    path = Path(file_path)
+    if path.name != "__init__.py":
+        return [path]
+    return sorted(path.parent.glob("*.py"))
+
+
+def module_trees(module: ModuleType) -> list[tuple[Path, ast.Module]]:
+    """AST của mọi file nguồn, cho các canh quét toàn bộ call site."""
+    return [
+        (path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        for path in module_files(module)
+    ]
