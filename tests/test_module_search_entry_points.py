@@ -21,6 +21,7 @@ import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.fakes.automation_boundary import WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from wfx_panel.automation import modules
 from wfx_panel.automation.search_specs import (
@@ -57,13 +58,13 @@ def _search(query: str = "OC-1", kind: str = "oc_no", log=None) -> dict:
 
 
 def _stub_context(monkeypatch, *, frame: object = "frame") -> None:
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_open_list_search_context",
         lambda *_args, **_kwargs: frame,
     )
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_clear_list_search_fields",
         lambda *_args, **_kwargs: None,
     )
@@ -116,8 +117,8 @@ def test_multi_field_search_needs_at_least_one_condition(monkeypatch, world):
 def test_a_successful_search_names_the_module_and_the_filter(monkeypatch, world):
     wire_automation(monkeypatch, modules, world)
     _stub_context(monkeypatch)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_search_input_in_frame",
         lambda *_args, **_kwargs: "field",
     )
@@ -127,7 +128,7 @@ def test_a_successful_search_names_the_module_and_the_filter(monkeypatch, world)
         applied["query"] = query
         applied["label"] = label
 
-    monkeypatch.setattr(modules, "_apply_module_search", record)
+    patch_automation(monkeypatch, modules, "_apply_module_search", record)
 
     result = _search(query="OC-99")
 
@@ -152,7 +153,7 @@ def test_a_field_that_never_appears_says_the_app_already_opened_the_list(
     def slow(*_args, **_kwargs):
         raise PlaywrightTimeoutError("ô tìm chưa render")
 
-    monkeypatch.setattr(modules, "_search_input_in_frame", slow)
+    patch_automation(monkeypatch, modules, "_search_input_in_frame", slow)
 
     result = _search()
 
@@ -168,8 +169,8 @@ def test_a_search_that_was_typed_but_not_confirmed_is_reported_differently(
 ):
     wire_automation(monkeypatch, modules, world)
     _stub_context(monkeypatch)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_search_input_in_frame",
         lambda *_args, **_kwargs: "field",
     )
@@ -177,7 +178,7 @@ def test_a_search_that_was_typed_but_not_confirmed_is_reported_differently(
     def slow(*_args, **_kwargs):
         raise PlaywrightTimeoutError("grid chưa ổn định")
 
-    monkeypatch.setattr(modules, "_apply_module_search", slow)
+    patch_automation(monkeypatch, modules, "_apply_module_search", slow)
 
     result = _search()
 
@@ -195,7 +196,7 @@ def test_an_unexpected_error_falls_back_to_module_search_failed(
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi DOM")
 
-    monkeypatch.setattr(modules, "_search_input_in_frame", boom)
+    patch_automation(monkeypatch, modules, "_search_input_in_frame", boom)
 
     result = _search()
 
@@ -256,7 +257,7 @@ def test_search_never_tells_the_user_to_open_the_list_first(
     def boom(*_args, **_kwargs):
         raise failure
 
-    monkeypatch.setattr(modules, "_search_input_in_frame", boom)
+    patch_automation(monkeypatch, modules, "_search_input_in_frame", boom)
 
     result = _search()
 
@@ -277,7 +278,7 @@ def test_an_unrelated_runtime_error_is_not_disguised_as_a_browser_code(
     def boom(*_args, **_kwargs):
         raise RuntimeError("Đã kết nối Chrome nhưng không tìm thấy browser context.")
 
-    monkeypatch.setattr(modules, "_search_input_in_frame", boom)
+    patch_automation(monkeypatch, modules, "_search_input_in_frame", boom)
 
     result = _search()
 
@@ -290,8 +291,8 @@ def test_multi_field_search_also_keeps_unrelated_runtime_errors_distinct(
     world,
 ):
     wire_automation(monkeypatch, modules, world)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_open_multi_field_search_context",
         lambda *_a, **_k: "frame",
     )
@@ -299,7 +300,7 @@ def test_multi_field_search_also_keeps_unrelated_runtime_errors_distinct(
     def boom(*_args, **_kwargs):
         raise RuntimeError("Đã kết nối Chrome nhưng không tìm thấy browser context.")
 
-    monkeypatch.setattr(modules, "_resolve_multi_search_fields", boom)
+    patch_automation(monkeypatch, modules, "_resolve_multi_search_fields", boom)
 
     result = modules._search_module_fields(
         RMPO_SEARCH_SPEC,

@@ -4,17 +4,17 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.fakes.module_reflection import patch_automation
 from wfx_panel.automation import modules, search_specs
 
 # login.py giờ là shim; code automation nằm ở package wfx_panel/automation/.
-# Gộp source mọi module (thứ tự sorted: __init__, _common, browser, catalog,
-# directory, modules, session) để các assert theo mẫu chuỗi vẫn đúng — và
-# _actionable_master/_company_search_frame vẫn nằm cùng directory.py theo thứ tự.
+# Gộp source MỌI file, kể cả subpackage (costing/, modules/…), để các assert
+# theo mẫu chuỗi canh đúng nội dung chứ không canh code nằm ở file nào.
 _AUTOMATION_DIR = (
     Path(__file__).resolve().parent.parent / "wfx_panel" / "automation"
 )
 SOURCE = "\n".join(
-    path.read_text(encoding="utf-8") for path in sorted(_AUTOMATION_DIR.glob("*.py"))
+    path.read_text(encoding="utf-8") for path in sorted(_AUTOMATION_DIR.rglob("*.py"))
 )
 
 
@@ -522,8 +522,8 @@ def test_expense_invoice_context_rejects_a_frame_marked_as_supplier():
 
 def _ap_invoice_search_page(monkeypatch, frames):
     page = SimpleNamespace(frames=list(frames))
-    monkeypatch.setattr(modules, "MODULE_CONTEXT_PROBE_SECONDS", 0.05)
-    monkeypatch.setattr(modules, "_wait", lambda *_args, **_kwargs: None)
+    patch_automation(monkeypatch, modules, "MODULE_CONTEXT_PROBE_SECONDS", 0.05)
+    patch_automation(monkeypatch, modules, "_wait", lambda *_args, **_kwargs: None)
     return page
 
 
@@ -538,7 +538,7 @@ def test_supplier_inv_search_opens_its_own_list_instead_of_the_expense_list(
         clicks.append((module_name, xpath))
         page.frames = [_expense_invoice_frame(), supplier]
 
-    monkeypatch.setattr(modules, "_click_module_menu_on_page", click_menu)
+    patch_automation(monkeypatch, modules, "_click_module_menu_on_page", click_menu)
 
     frame = modules._open_multi_field_search_context(
         page,
@@ -564,7 +564,7 @@ def test_expense_inv_search_opens_its_own_list_instead_of_the_supplier_list(
         clicks.append((module_name, xpath))
         page.frames = [_supplier_invoice_frame(), expense]
 
-    monkeypatch.setattr(modules, "_click_module_menu_on_page", click_menu)
+    patch_automation(monkeypatch, modules, "_click_module_menu_on_page", click_menu)
 
     frame = modules._open_multi_field_search_context(
         page,
@@ -584,8 +584,8 @@ def test_search_reuses_the_matching_list_without_clicking_the_menu_again(
 ):
     supplier = _supplier_invoice_frame()
     page = _ap_invoice_search_page(monkeypatch, [supplier])
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_click_module_menu_on_page",
         lambda *_args: pytest.fail("Đã mở đúng List thì không được click lại"),
     )
@@ -610,7 +610,7 @@ def test_cancel_supplier_invoice_resolves_the_frame_with_its_own_spec(
         seen["selector"] = selector
         return "frame"
 
-    monkeypatch.setattr(modules, "_frame_with_visible_context", fake_context)
+    patch_automation(monkeypatch, modules, "_frame_with_visible_context", fake_context)
 
     assert modules._find_supplier_invoice_frame(object()) == "frame"
     assert seen["search_spec"] is search_specs.SUPPLIER_INVOICE_SEARCH_SPEC
@@ -701,20 +701,20 @@ def _run_qa_new(monkeypatch, frame_urls):
     page.locator = lambda _selector: _MenuLinkLocator(_QA_NEW_HREF)
     browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[page])])
 
-    monkeypatch.setattr(modules, "MODULE_NEW_CONFIRM_SECONDS", 0.3)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(monkeypatch, modules, "MODULE_NEW_CONFIRM_SECONDS", 0.3)
+    patch_automation(
+        monkeypatch, modules,
         "sync_playwright",
         lambda: SimpleNamespace(start=lambda: SimpleNamespace(stop=lambda: None)),
     )
-    monkeypatch.setattr(
-        modules, "_active_wfx_page", lambda *_args: (browser, page)
+    patch_automation(
+        monkeypatch, modules, "_active_wfx_page", lambda *_args: (browser, page)
     )
-    monkeypatch.setattr(
-        modules, "_click_module_menu_on_page", lambda *_args: True
+    patch_automation(
+        monkeypatch, modules, "_click_module_menu_on_page", lambda *_args: True
     )
-    monkeypatch.setattr(modules, "_document_changed", lambda *_args: True)
-    monkeypatch.setattr(modules, "_wait", lambda *_args, **_kwargs: None)
+    patch_automation(monkeypatch, modules, "_document_changed", lambda *_args: True)
+    patch_automation(monkeypatch, modules, "_wait", lambda *_args, **_kwargs: None)
     return modules.open_module_new("0063_0030_0020", lambda _line: None)
 
 

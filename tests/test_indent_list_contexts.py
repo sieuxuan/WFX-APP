@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.fakes.module_reflection import patch_automation
 from wfx_panel import constants
 from wfx_panel.automation import modules
 from wfx_panel.automation.search_specs import INDENT_SEARCH_SPECS
@@ -69,8 +70,8 @@ class _Nodes:
 
 
 def _page(monkeypatch, frames):
-    monkeypatch.setattr(modules, "MODULE_CONTEXT_PROBE_SECONDS", 0.05)
-    monkeypatch.setattr(modules, "_wait", lambda *_a, **_k: None)
+    patch_automation(monkeypatch, modules, "MODULE_CONTEXT_PROBE_SECONDS", 0.05)
+    patch_automation(monkeypatch, modules, "_wait", lambda *_a, **_k: None)
 
     class _Page:
         def __init__(self) -> None:
@@ -112,7 +113,7 @@ def test_search_opens_its_own_list_instead_of_the_other_indent(
         clicks.append((name, xpath))
         page.frames = [_IndentFrame(open_title), wanted]
 
-    monkeypatch.setattr(modules, "_click_module_menu_on_page", click_menu)
+    patch_automation(monkeypatch, modules, "_click_module_menu_on_page", click_menu)
 
     frame = modules._open_multi_field_search_context(
         page,
@@ -132,8 +133,8 @@ def test_the_right_list_is_reused_without_clicking_the_menu_again(
     title = "User Indent List" if module_name == "User Indent" else "Indent List"
     open_frame = _IndentFrame(title)
     page = _page(monkeypatch, [open_frame])
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_click_module_menu_on_page",
         lambda *_a: pytest.fail("Đã mở đúng List thì không được click lại"),
     )

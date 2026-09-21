@@ -24,6 +24,7 @@ from __future__ import annotations
 import pytest
 
 from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from tests.fakes.wfx_sample_grid import (
     SampleGridFrame,
@@ -235,17 +236,17 @@ def test_search_khong_bao_gio_bao_nguoi_dung_bam_list(clock, monkeypatch):
     frame = _grid(clock, rows=[], no_rows=True, filter_row_visible=False)
     world = _world(clock, frame)
     wire_automation(monkeypatch, modules, world)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_click_module_menu_on_page",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_show_module_floating_filter",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(modules, "_mark_grid_roots", lambda _page: None)
+    patch_automation(monkeypatch, modules, "_mark_grid_roots", lambda _page: None)
 
     result = modules.search_sample_list_with_filters(
         SAMPLE_XPATH,
@@ -600,11 +601,9 @@ def test_thong_bao_loi_goi_dung_ten_nut_tren_panel():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    for name in (
-        "wfx_panel/automation/modules.py",
-        "wfx_panel/catalog_controller.py",
-    ):
-        source = (root / name).read_text(encoding="utf-8")
-        assert "bấm Check File" not in source
+    sources = [root / "wfx_panel/catalog_controller.py"]
+    sources += sorted((root / "wfx_panel/automation/modules").rglob("*.py"))
+    for path in sources:
+        assert "bấm Check File" not in path.read_text(encoding="utf-8")
     index_html = (root / "wfx_panel/ui/index.html").read_text(encoding="utf-8")
     assert "Xem file đính kèm" in index_html

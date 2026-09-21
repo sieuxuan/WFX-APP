@@ -12,6 +12,7 @@ import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.fakes.automation_boundary import WfxWorld, wire_automation
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import FakeNode, install_fake_clock
 from wfx_panel import constants
 from wfx_panel.automation import modules
@@ -45,7 +46,7 @@ def _menu(monkeypatch, *, confirmed=True, cache_hit=False):
         seen.append((module_name, xpath))
         return modules._MenuOpenResult(confirmed, cache_hit)
 
-    monkeypatch.setattr(modules, "_open_module_menu", fake_menu)
+    patch_automation(monkeypatch, modules, "_open_module_menu", fake_menu)
     return seen
 
 
@@ -84,7 +85,7 @@ def test_a_missing_menu_node_is_reported_as_not_found(monkeypatch, world):
     def missing(*_args):
         raise PlaywrightTimeoutError("Locator không tìm thấy node menu")
 
-    monkeypatch.setattr(modules, "_open_module_menu", missing)
+    patch_automation(monkeypatch, modules, "_open_module_menu", missing)
 
     result = _open()
 
@@ -94,8 +95,8 @@ def test_a_missing_menu_node_is_reported_as_not_found(monkeypatch, world):
 
 def test_a_closed_browser_never_starts_a_driver(monkeypatch, world):
     wire_automation(monkeypatch, modules, world, chrome_ready=False)
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_open_module_menu",
         lambda *_a: pytest.fail("Chrome đã đóng thì không được chạm menu"),
     )
@@ -109,8 +110,8 @@ def test_a_closed_browser_never_starts_a_driver(monkeypatch, world):
 def test_a_visible_login_form_stops_before_touching_the_menu(monkeypatch, world):
     wire_automation(monkeypatch, modules, world)
     world.page.nodes["#txtUserID"] = [FakeNode(visible=True)]
-    monkeypatch.setattr(
-        modules,
+    patch_automation(
+        monkeypatch, modules,
         "_open_module_menu",
         lambda *_a: pytest.fail("Chưa đăng nhập thì không được click menu"),
     )
