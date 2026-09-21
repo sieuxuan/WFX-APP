@@ -26,6 +26,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
+from tests.fakes.ui_source import panel_js
 from tests.fakes.wfx_dom import install_fake_clock
 from tests.fakes.wfx_supplier import (
     BUYER_URL,
@@ -94,9 +95,9 @@ _UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
 
 def _panel_js_action(action: str) -> str:
     """Thân handler của một `data-module-action` trong bảng action panel.js."""
-    js = (_UI / "panel.js").read_text(encoding="utf-8")
+    js = panel_js()
     start = js.index(f'"{action}": ')
-    return js[start : js.index("\n    \"", start + 10)]
+    return js[start : js.index("\n\"", start + 10)]
 
 
 def _supplier_workspace_html() -> str:

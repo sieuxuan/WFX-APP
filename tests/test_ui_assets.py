@@ -4,6 +4,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+from tests.fakes.ui_source import panel_js, panel_script_paths
 from wfx_panel import panel_app
 
 UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
@@ -12,15 +13,16 @@ UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
 def test_ui_assets_are_utf8_nfc_and_declare_charset():
     """Thiếu khai báo charset hoặc lẫn NFD là ra chữ Việt vỡ trên WebView2.
 
-    Manual đã có canh tương tự; ba file UI này cũng chứa chuỗi tiếng Việt hiển
+    Manual đã có canh tương tự; các file UI này cũng chứa chuỗi tiếng Việt hiển
     thị trực tiếp cho người dùng nên phải chịu cùng ràng buộc.
     """
     assert '<meta charset="utf-8">' in (UI / "index.html").read_text(encoding="utf-8")
-    for name in ("index.html", "panel.js", "style.css"):
-        raw = (UI / name).read_bytes()
-        assert not raw.startswith(b"\xef\xbb\xbf"), f"{name} có BOM"
+    files = [UI / "index.html", UI / "style.css", *panel_script_paths()]
+    for path in files:
+        raw = path.read_bytes()
+        assert not raw.startswith(b"\xef\xbb\xbf"), f"{path.name} có BOM"
         text = raw.decode("utf-8")  # ném UnicodeDecodeError nếu không phải UTF-8
-        assert text == unicodedata.normalize("NFC", text), f"{name} có ký tự NFD"
+        assert text == unicodedata.normalize("NFC", text), f"{path.name} có ký tự NFD"
 
 
 def test_style_css_exists_and_scoped_to_root():
@@ -157,7 +159,7 @@ def test_overlay_toggle_classes_match_the_css():
     được Settings.
     """
     css = (UI / "style.css").read_text(encoding="utf-8")
-    js = (UI / "panel.js").read_text(encoding="utf-8")
+    js = panel_js()
     assert ".settings-open" in css
     assert ".log-open" in css
     assert '"settings-open"' in js
@@ -232,9 +234,11 @@ def test_index_html_has_contract_hooks():
         'class="oc-review-metrics"',
         'class="oc-flow-grid"',
         'class="oc-list-search"',
-        'src="panel.js?v=20260805-1"',
     ]:
         assert hook in html, hook
+    # Panel nạp nhiều script chia chung global scope; thứ tự là hợp đồng.
+    assert [path.name for path in panel_script_paths()][0] == "core.js"
+    assert [path.name for path in panel_script_paths()][-1] == "bootstrap.js"
     assert "Tìm và mở đúng Style" not in html
     assert "Costing workspace" not in html
     assert "Xuất để chỉnh sửa" not in html
@@ -317,9 +321,9 @@ def test_sale_asn_workspace_uses_one_flat_guided_flow():
     assert 'class="sale-asn-buyer-dropdown"' in workspace
     assert 'aria-label="Mở danh sách Buyer"' in workspace
 
-    panel_js = (UI / "panel.js").read_text(encoding="utf-8")
-    assert "renderSaleAsnBuyerSuggestions({ showAll: true })" in panel_js
-    assert '.sale-asn-buyer-dropdown")?.addEventListener("click"' in panel_js
+    source = panel_js()
+    assert "renderSaleAsnBuyerSuggestions({ showAll: true })" in source
+    assert '.sale-asn-buyer-dropdown")?.addEventListener("click"' in source
 
 
 def test_no_module_screen_repeats_a_button_label():
@@ -413,7 +417,7 @@ def test_catalog_folder_picker_is_searchable_and_hides_technical_copy():
     # thuộc tính hidden, nên element đó là markup chết.
     assert 'class="catalog-folder-current"' not in html
     assert 'class="catalog-folder-summary"' in html
-    assert 'Sửa vị trí mặc định' in (UI / "panel.js").read_text(encoding="utf-8")
+    assert 'Sửa vị trí mặc định' in panel_js()
     assert "Duyệt Catalog" not in html
     assert "WFX Smart tự quét" not in html
 
@@ -547,7 +551,7 @@ def test_header_exposes_wfx_manual_button():
 def test_panel_uses_custom_tooltips_instead_of_native_titles():
     html = (UI / "index.html").read_text(encoding="utf-8")
     bubble_html = (UI / "bubble.html").read_text(encoding="utf-8")
-    js = (UI / "panel.js").read_text(encoding="utf-8")
+    js = panel_js()
     css = (UI / "style.css").read_text(encoding="utf-8")
 
     assert 'id="app-tooltip" role="tooltip"' in html
@@ -613,7 +617,7 @@ def test_settings_has_new_toggles_and_enabled_hotkey_button():
 
 def test_sale_asn_po_search_settings_expose_all_three_persisted_fields():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    js = (UI / "panel.js").read_text(encoding="utf-8")
+    js = panel_js()
 
     for field in ("po", "style", "destination"):
         assert f'data-sale-asn-po-search-field="{field}"' in html
@@ -768,9 +772,7 @@ def test_header_alerts_are_labeled_instead_of_ambiguous_red_dots():
     assert '.log-alert::before { content: "!"; }' in css
     assert '.manual-alert::before { content: "Mới"; }' in css
     assert ".log-alert { background: var(--warn); }" in css
-    assert "Có tác vụ cần xử lý" not in (
-        UI / "panel.js"
-    ).read_text(encoding="utf-8")
+    assert "Có tác vụ cần xử lý" not in panel_js()
 
 
 def test_module_cards_have_no_letter_code_or_dead_generic_screen():
@@ -920,7 +922,7 @@ def test_settings_are_split_into_three_focused_tabs_with_auth_prompt():
 def test_settings_sheet_is_pinned_to_top_and_catalog_keeps_browse_card():
     html = (UI / "index.html").read_text(encoding="utf-8")
     css = (UI / "style.css").read_text(encoding="utf-8")
-    js = (UI / "panel.js").read_text(encoding="utf-8")
+    js = panel_js()
 
     assert ".settings-main-overlay { align-items: flex-start; }" in css
     assert 'openSettings("automation")' in js
