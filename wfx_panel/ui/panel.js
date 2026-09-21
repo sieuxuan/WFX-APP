@@ -2826,11 +2826,19 @@
     "color-report-run": () => runColorReportBatch(),
     "list-new-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
     "list-new-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
-    // Supplier là luồng 3 bước; giữ panel mở để người dùng tiếp tục bước kế.
+    // Supplier: mỗi nút là một flow độc lập và tự mở List khi cần, nên giữ
+    // panel mở để người dùng còn đổi Category hoặc tìm tiếp.
     "supplier-list": () => selectedModule && call("open_module", selectedModule.id),
     "supplier-open": () => call("open_supplier_category", $(".supplier-category").value),
     "supplier-find": () => runSelectedModuleAction(
       "find_supplier",
+      $(".supplier-query").value.trim(),
+    ),
+    // Quét cả 6 Category tốn tới 6 lượt đổi Category + lọc. Khi user đã biết
+    // Supplier nằm ở Category nào thì đi thẳng, không bắt chờ hết vòng quét.
+    "supplier-find-category": () => runSelectedModuleAction(
+      "find_supplier_in_category",
+      $(".supplier-category").value,
       $(".supplier-query").value.trim(),
     ),
     "buyer-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),

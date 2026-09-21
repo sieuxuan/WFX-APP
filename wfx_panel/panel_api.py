@@ -92,6 +92,7 @@ SESSION_OK = frozenset(
         "COMPANY_FOC_CHANGED",
         "SUPPLIER_CATEGORY_READY",
         "SUPPLIER_FOUND",
+        "SUPPLIER_FOUND_PARTIAL",
         "SUPPLIER_NOT_FOUND",
         "BUYER_EDIT_OPENED",
         "BUYER_NOT_FOUND",
