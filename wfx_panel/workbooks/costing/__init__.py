@@ -1,0 +1,186 @@
+"""Workbook Costing: chuẩn hoá, ghi và đọc lại file Excel.
+
+Trước đây là một file 2225 dòng. Nay tách theo vai trò: ``schema`` (hình dạng
+và luật) → ``writer`` (sinh file) / ``reader`` (đọc lại). Package re-export
+nguyên bề mặt cũ nên caller và test không đổi.
+"""
+
+from __future__ import annotations
+
+# Bề mặt cũ của file gốc: các tên này từng ở module level nên caller và
+# test vẫn đọc/gắn qua tên package. Giữ nguyên để tách file không đổi
+# hợp đồng import.
+import json  # noqa: F401
+import re  # noqa: F401
+import zipfile  # noqa: F401
+from collections.abc import Iterable, Mapping, Sequence  # noqa: F401
+from dataclasses import dataclass  # noqa: F401
+from dataclasses import field as dataclass_field  # noqa: F401
+from pathlib import Path  # noqa: F401
+from typing import Any  # noqa: F401
+
+from openpyxl import Workbook, load_workbook  # noqa: F401
+from openpyxl.comments import Comment  # noqa: F401
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: F401
+from openpyxl.utils import column_index_from_string, get_column_letter  # noqa: F401
+from openpyxl.worksheet.datavalidation import DataValidation  # noqa: F401
+
+from wfx_panel.workbooks.costing.reader import (  # noqa: F401
+    _ARTICLE_NAME_FORMULA,
+    _ARTICLE_VALIDATION_RANGE,
+    _costing_form_rows,
+    _CostingFormReadState,
+    _form_fields_for_item,
+    _form_item_key,
+    _form_row_has_data,
+    _form_section_key_index,
+    _FormItemMetadata,
+    _missing_form_columns,
+    _read_costing_form,
+    _read_costing_form_row,
+    _read_guide_meta,
+    _register_form_section,
+    _resolve_article_codes_selected_by_name,
+    _resolve_generated_article_name_formulas,
+    _validate_form_item_row,
+    _worksheet_rows,
+    costing_file_summary,
+    read_costing_file,
+    read_costing_xlsx,
+)
+from wfx_panel.workbooks.costing.schema import (  # noqa: F401
+    _DANGEROUS_EXCEL_PREFIXES,
+    _EXCLUDED_FIELD_KEYS,
+    _EXCLUDED_FIELD_LABELS,
+    _EXCLUDED_FIELD_TOKENS,
+    _HEADER_FILL,
+    _HEADER_FONT,
+    _INPUT_FILL,
+    _META_FILL,
+    _READ_ONLY_FILL,
+    _READ_ONLY_HEADER_FILL,
+    _SECTION_BORDER,
+    _SECTION_SIDE,
+    _STRUCTURE_BORDER,
+    _SUBHEADER_FILL,
+    _TEMPLATE_INPUT_FILL,
+    _THIN_GRAY,
+    _TITLE_FONT,
+    ARTICLE_SECTION_TOKENS,
+    CLEAR_MARKER,
+    DEFAULT_NEW_ITEM_ROWS_PER_SECTION,
+    FIELD_SCOPES,
+    FORM_BASE_COLUMNS,
+    FORM_COLUMNS,
+    FORM_SHEET,
+    FORM_TECH_COLUMNS,
+    FORMAT_VERSION,
+    GUIDE_SHEET,
+    ITEM_ACTIONS,
+    ITEM_TYPES,
+    MAX_CELL_CHARS,
+    MAX_FIELDS,
+    MAX_FILE_BYTES,
+    MAX_ITEMS,
+    MAX_SECTIONS,
+    MAX_XLSX_MEMBERS,
+    MAX_XLSX_UNCOMPRESSED_BYTES,
+    OPTIONAL_FORM_COLUMNS,
+    SPECIAL_COST_SECTION_ROWS,
+    STANDARD_ITEM_FIELDS,
+    STANDARD_SECTIONS,
+    SUPPORTED_EXTENSIONS,
+    CostingWorkbookError,
+    _article_lookup_options,
+    _bool,
+    _clean_cell,
+    _document_size_errors,
+    _excel_safe,
+    _excel_unescape,
+    _field_is_excluded,
+    _field_validation_errors,
+    _form_field_key,
+    _item_validation_errors,
+    _normalized_field,
+    _normalized_item,
+    _normalized_section,
+    _options,
+    _order,
+    _preflight_path,
+    _preflight_xlsx_archive,
+    _production_summary_item,
+    _reject_formula,
+    _section_item_type,
+    _section_validation_errors,
+    _semantic_token,
+    _standard_section,
+    _standard_section_token,
+    _template_row_count,
+    _text,
+    _validate_document,
+    normalize_document,
+    workbook_document,
+)
+from wfx_panel.workbooks.costing.writer import (  # noqa: F401
+    _add_dependency_mapping_comments,
+    _add_form_dropdowns,
+    _add_item_option_dropdowns,
+    _add_material_article_dropdowns,
+    _add_special_article_dropdowns,
+    _base_field_key,
+    _CostingFormLayout,
+    _finish_costing_form,
+    _finish_sheet,
+    _form_column_widths,
+    _form_dropdown_options,
+    _form_field_index,
+    _form_items_by_section,
+    _form_row_values,
+    _set_header,
+    _split_wfx_multiselect,
+    _style_form_sections,
+    _style_form_templates,
+    _style_formula_columns,
+    _unique_values,
+    _write_costing_form,
+    _write_costing_formulas,
+    _write_form_data_rows,
+    _write_guide,
+    write_costing_file,
+    write_costing_xlsx,
+)
+
+__all__ = [
+    "ARTICLE_SECTION_TOKENS",
+    "CLEAR_MARKER",
+    "CostingWorkbookError",
+    "DEFAULT_NEW_ITEM_ROWS_PER_SECTION",
+    "FIELD_SCOPES",
+    "FORMAT_VERSION",
+    "FORM_BASE_COLUMNS",
+    "FORM_COLUMNS",
+    "FORM_SHEET",
+    "FORM_TECH_COLUMNS",
+    "GUIDE_SHEET",
+    "ITEM_ACTIONS",
+    "ITEM_TYPES",
+    "MAX_CELL_CHARS",
+    "MAX_FIELDS",
+    "MAX_FILE_BYTES",
+    "MAX_ITEMS",
+    "MAX_SECTIONS",
+    "MAX_XLSX_MEMBERS",
+    "MAX_XLSX_UNCOMPRESSED_BYTES",
+    "OPTIONAL_FORM_COLUMNS",
+    "SPECIAL_COST_SECTION_ROWS",
+    "STANDARD_ITEM_FIELDS",
+    "STANDARD_SECTIONS",
+    "SUPPORTED_EXTENSIONS",
+    "costing_file_summary",
+    "normalize_document",
+    "read_costing_file",
+    "read_costing_xlsx",
+    "workbook_document",
+    "write_costing_file",
+    "write_costing_xlsx",
+]
