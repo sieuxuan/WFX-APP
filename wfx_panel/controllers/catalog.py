@@ -12,21 +12,17 @@ Hành vi giữ NGUYÊN so với bản cũ trong panel_api: cùng method_name cho
 
 from __future__ import annotations
 
-import time
-import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from heapq import nsmallest
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wfx_panel import constants
 from wfx_panel.coercion import bounded_int
+from wfx_panel.controllers.catalog_files import ArticleFileController
+from wfx_panel.controllers.catalog_style import StyleImportController
 from wfx_panel.controllers.costing import CostingController
-from wfx_panel.stores import article_library, style_options
-from wfx_panel.workbooks.style import StyleWorkbookError, read_style_workbook
-
-STYLE_IMPORT_TTL_SECONDS = 30 * 60
+from wfx_panel.stores import article_library
 
 
 @dataclass(frozen=True)
@@ -53,16 +49,15 @@ class CatalogController:
         self.folder_cache: dict[str, list[dict]] = {}
         # URL tải thật không đưa ra WebView. UI chỉ nhận token ngẫu nhiên và
         # metadata; khi click tải, token được resolve lại trong process Python.
-        self.files: dict[str, dict] = {}
         # Kết quả Sample nhiều dòng cũng chỉ đưa token ra UI. Row key dùng để
         # click tiếp trên grid WFX được giữ hoàn toàn trong backend.
-        self.sample_file_choices: dict[str, dict] = {}
         # Luồng file Costing sống trong controller riêng; nó đọc lại kết quả
         # Catalog hiện tại thay vì chạy lại cả luồng tìm Style.
         self.costing = CostingController(self)
+        self.style = StyleImportController(self)
+        self.files_view = ArticleFileController(self)
         # Workbook Style chỉ tồn tại trong process qua token ngẫu nhiên. Mỗi
         # lần chạy chỉ chuẩn bị một dòng và luôn dừng trước Save.
-        self.style_imports: dict[str, dict] = {}
 
     # -- state hooks do panel gọi -----------------------------------------
     def reset_context(self) -> None:
@@ -70,10 +65,10 @@ class CatalogController:
         self.result = None
         self.active_article_destination = None
         self.prepared_category = None
-        self.files.clear()
-        self.sample_file_choices.clear()
+        self.files_view.tokens.clear()
+        self.files_view.sample_choices.clear()
         self.costing.plans.clear()
-        self.style_imports.clear()
+        self.style.imports.clear()
 
     def reset_for_account_change(self) -> None:
         """Đổi tài khoản: cache cây folder theo user cũ cũng không còn dùng được."""
@@ -81,10 +76,10 @@ class CatalogController:
         self.result = None
         self.active_article_destination = None
         self.prepared_category = None
-        self.files.clear()
-        self.sample_file_choices.clear()
+        self.files_view.tokens.clear()
+        self.files_view.sample_choices.clear()
         self.costing.plans.clear()
-        self.style_imports.clear()
+        self.style.imports.clear()
 
     # -- helpers -----------------------------------------------------------
     def default_folder_for_account(
@@ -136,365 +131,14 @@ class CatalogController:
             return persisted
         return None
 
-    def _publish_file_scan(self, result: dict) -> dict:
-        """Giữ URL trong backend, chỉ trả token + metadata an toàn cho UI."""
-        if result.get("code") != "CATALOG_FILES_SCANNED":
-            return result
-        self.files.clear()
-        public_files: list[dict] = []
-        for raw in result.get("files") or []:
-            if not isinstance(raw, dict) or not raw.get("download_url"):
-                continue
-            file_id = uuid.uuid4().hex
-            stored = dict(raw)
-            stored["file_id"] = file_id
-            self.files[file_id] = stored
-            public_files.append(
-                {
-                    "file_id": file_id,
-                    "section": str(raw.get("section") or ""),
-                    "section_index": int(raw.get("section_index") or 0),
-                    "file_name": str(raw.get("file_name") or ""),
-                    "comments": str(raw.get("comments") or ""),
-                    "uploaded_on": str(raw.get("uploaded_on") or ""),
-                    "uploaded_by": str(raw.get("uploaded_by") or ""),
-                }
-            )
-        return {
-            **result,
-            "files": public_files,
-            "file_count": len(public_files),
-        }
-
     def _scan_open_article_files(self, article_code: str) -> dict:
-        scanner = getattr(self._panel._login, "scan_catalog_files", None)
-        if not callable(scanner):
-            return {
-                "ok": False,
-                "code": "CATALOG_FILES_UNSUPPORTED",
-                "message": "Phiên bản tự động hóa chưa hỗ trợ kiểm tra file Style.",
-            }
-        return self._publish_file_scan(
-            scanner(article_code, self._panel._log)
-        )
-
-    def _publish_sample_file_choices(self, result: dict) -> dict:
-        """Ẩn row key của grid Sample sau token ngẫu nhiên cho WebView."""
-        if result.get("code") != "SAMPLE_MULTIPLE_RESULTS":
-            return result
-        self.sample_file_choices.clear()
-        public_samples: list[dict] = []
-        for raw in result.get("samples") or []:
-            if not isinstance(raw, dict):
-                continue
-            style_code = str(raw.get("style_code") or "").strip()
-            row_key = str(raw.get("row_key") or "").strip()
-            if not style_code or not row_key:
-                continue
-            choice_id = uuid.uuid4().hex
-            self.sample_file_choices[choice_id] = {
-                "row_key": row_key,
-                "style_code": style_code,
-            }
-            public_samples.append(
-                {
-                    "choice_id": choice_id,
-                    "style_code": style_code,
-                    "sample_no": str(raw.get("sample_no") or ""),
-                    "created_by": str(raw.get("created_by") or ""),
-                    "buyer": str(raw.get("buyer") or ""),
-                }
-            )
-        return {
-            **result,
-            "samples": public_samples,
-            "source": "sample",
-        }
-
-    def _sample_files_result(self, article_code: str) -> dict:
-        scanned = self._scan_open_article_files(article_code)
-        return {
-            **scanned,
-            "source": "sample",
-            "article_code": article_code,
-        }
+        return self.files_view._scan_open_article_files(article_code)
 
     def _invalidate_catalog_search_only(self) -> None:
         """Sample đã đổi trang WFX; bỏ Catalog context nhưng giữ token file."""
         self.result = None
         self.active_article_destination = None
         self.prepared_category = None
-
-    def _style_group(self, group_id: str) -> dict | None:
-        group_id = str(group_id or "").strip()
-        return next(
-            (
-                item
-                for item in self.folder_cache.get("Apparel", [])
-                if str(item.get("node_id") or "") == group_id
-                and str(item.get("kind") or "").casefold() == "group"
-            ),
-            None,
-        )
-
-    def _active_style_import(self, token: str) -> dict | None:
-        now = time.monotonic()
-        for old_token, review in tuple(self.style_imports.items()):
-            if now - float(review.get("created_at") or 0) > STYLE_IMPORT_TTL_SECONDS:
-                self.style_imports.pop(old_token, None)
-        return self.style_imports.get(str(token or "").strip())
-
-    def review_style_import(self, file_path: str, group_id: str) -> dict:
-        """Validate file local và tạo queue; chưa mở hoặc thay đổi WFX."""
-        source = Path(str(file_path or "")).expanduser().resolve()
-        group = self._style_group(group_id)
-        if group is None:
-            return {
-                "ok": False,
-                "code": "STYLE_GROUP_REQUIRED",
-                "message": "Hãy quét cây và chọn đúng một Group Apparel.",
-            }
-
-        def action() -> dict:
-            try:
-                rows = read_style_workbook(source)
-            except StyleWorkbookError as error:
-                return {
-                    "ok": False,
-                    "code": error.code,
-                    "message": error.message,
-                    "errors": list(error.errors),
-                    "file_name": source.name,
-                }
-            self.style_imports.clear()
-            token = uuid.uuid4().hex
-            self.style_imports[token] = {
-                "created_at": time.monotonic(),
-                "group": dict(group),
-                "rows": [row.automation_payload() for row in rows],
-                "file_name": source.name,
-            }
-            public_rows = [
-                {
-                    "source_row": row.source_row,
-                    "type": row.type,
-                    "style_copy": row.style_copy,
-                    "buyer_style_ref": row.buyer_style_ref,
-                    "internal_style_ref": row.internal_style_ref,
-                }
-                for row in rows
-            ]
-            return {
-                "ok": True,
-                "code": "STYLE_IMPORT_REVIEW_READY",
-                "message": (
-                    f"File hợp lệ: {len(rows)} dòng. App sẽ chuẩn bị từng dòng "
-                    "theo chế độ Save đang chọn."
-                ),
-                "review_token": token,
-                "file_name": source.name,
-                "group": {
-                    "node_id": str(group.get("node_id") or ""),
-                    "name": str(group.get("name") or ""),
-                    "path_label": str(group.get("path_label") or ""),
-                },
-                "row_count": len(rows),
-                "rows": public_rows,
-                "requires_manual_save": True,
-            }
-
-        return self._panel._run(
-            "review_catalog_style_import",
-            action,
-            {"file_name": source.name, "group_id": str(group_id or "")},
-        )
-
-    def clear_style_import(self, token: str) -> dict:
-        self.style_imports.pop(str(token or "").strip(), None)
-        return {
-            "ok": True,
-            "code": "STYLE_IMPORT_CANCELLED",
-            "message": "Đã hủy danh sách Tạo Style; WFX chưa được Save.",
-        }
-
-    def ensure_style_options(self, group_id: str, force: bool = False) -> dict:
-        """Lấy dropdown server/cache; chỉ quét WFX khi snapshot đã quá 30 ngày."""
-        group = self._style_group(group_id)
-        if group is None:
-            return {
-                "ok": False,
-                "code": "STYLE_GROUP_REQUIRED",
-                "message": "Hãy quét cây và chọn đúng một Group Apparel.",
-            }
-        cached = style_options.load_cached(self._panel._base_dir)
-        if not force and cached is not None and style_options.status(
-            self._panel._base_dir
-        )["fresh"]:
-            return {
-                "ok": True,
-                "code": "STYLE_OPTIONS_CACHED",
-                "message": "Đang dùng danh sách dropdown Style trong tháng này.",
-                "options": cached,
-                **style_options.status(self._panel._base_dir),
-            }
-        if not force:
-            remote = style_options.sync_remote(self._panel._base_dir)
-            if remote is not None and style_options.status(
-                self._panel._base_dir
-            )["fresh"]:
-                return {
-                    "ok": True,
-                    "code": "STYLE_OPTIONS_SERVER",
-                "message": "Đã lấy danh sách dropdown Style từ GitHub.",
-                    "options": remote,
-                    **style_options.status(self._panel._base_dir),
-                }
-
-        panel = self._panel
-
-        def action() -> dict:
-            scanner = getattr(panel._login, "scan_catalog_style_options", None)
-            if not callable(scanner):
-                return {
-                    "ok": False,
-                    "code": "STYLE_OPTIONS_SCAN_UNSUPPORTED",
-                    "message": "Phiên bản automation chưa hỗ trợ quét dropdown Style.",
-                }
-            result = scanner(
-                constants.CATEGORIES["Apparel"],
-                str(group.get("node_id") or ""),
-                panel._log,
-            )
-            if not result.get("ok"):
-                return result
-            account = panel._account()
-            snapshot = style_options.save_snapshot(
-                panel._base_dir,
-                {
-                    "generated_at": time.time(),
-                    "source": "wfx-scan",
-                    "company_id": str(account.get("company_id") or ""),
-                    "division_key": str(panel._current_division or ""),
-                    "group_id": str(group.get("node_id") or ""),
-                    "fields": result.get("fields") or {},
-                    "subcategories_by_product_group": result.get(
-                        "subcategories_by_product_group"
-                    )
-                    or {},
-                },
-            )
-            uploaded = style_options.publish_snapshot(snapshot)
-            return {
-                "ok": True,
-                "code": "STYLE_OPTIONS_SCANNED",
-                "message": (
-                    "Đã quét dropdown Style và cập nhật snapshot trên GitHub."
-                    if uploaded
-                    else "Đã quét dropdown Style và lưu cache tháng trên máy."
-                ),
-                "uploaded": uploaded,
-                "options": snapshot,
-                **style_options.status(panel._base_dir),
-            }
-
-        result = panel._run(
-            "scan_catalog_style_options",
-            action,
-            {"group_id": str(group_id or ""), "force": bool(force)},
-        )
-        if not result.get("ok") and cached is not None:
-            return {
-                "ok": True,
-                "code": "STYLE_OPTIONS_STALE_CACHE",
-                "message": (
-                    "Chưa quét mới được; form Excel dùng danh sách gần nhất trên máy."
-                ),
-                "warning": result.get("message") or "",
-                "options": cached,
-                **style_options.status(panel._base_dir),
-            }
-        return result
-
-    def prepare_style_row(
-        self,
-        token: str,
-        source_row: int,
-        copy_choice: int | None = None,
-        auto_save: bool = False,
-    ) -> dict:
-        """Mở/điền một dòng; mặc định trả quyền Save cho người dùng."""
-        review = self._active_style_import(token)
-        if review is None:
-            return {
-                "ok": False,
-                "code": "STYLE_IMPORT_EXPIRED",
-                "message": "Danh sách Tạo Style đã hết hạn; hãy chọn lại file.",
-            }
-        group = review["group"]
-        current_group = self._style_group(str(group.get("node_id") or ""))
-        if current_group is None:
-            return {
-                "ok": False,
-                "code": "STYLE_GROUP_STALE",
-                "message": "Group đã đổi hoặc không còn quyền; hãy quét và chọn lại.",
-            }
-        try:
-            wanted_row = int(source_row)
-        except (TypeError, ValueError):
-            wanted_row = -1
-        row = next(
-            (
-                item
-                for item in review["rows"]
-                if int(item.get("source_row") or 0) == wanted_row
-            ),
-            None,
-        )
-        if row is None:
-            return {
-                "ok": False,
-                "code": "STYLE_ROW_INVALID",
-                "message": "Không tìm thấy dòng Excel cần chuẩn bị.",
-            }
-        if copy_choice is not None:
-            try:
-                copy_choice = int(copy_choice)
-            except (TypeError, ValueError, OverflowError):
-                return {
-                    "ok": False,
-                    "code": "STYLE_COPY_CHOICE_INVALID",
-                    "message": "Lựa chọn Style nguồn không hợp lệ.",
-                }
-
-        panel = self._panel
-
-        def action() -> dict:
-            preparer = getattr(panel._login, "prepare_catalog_style_row", None)
-            if not callable(preparer):
-                return {
-                    "ok": False,
-                    "code": "STYLE_PREPARE_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ Tạo Style.",
-                }
-            return preparer(
-                constants.CATEGORIES["Apparel"],
-                str(group.get("node_id") or ""),
-                dict(row),
-                copy_choice,
-                bool(auto_save),
-                panel._log,
-            )
-
-        return panel._run(
-            "prepare_catalog_style_row",
-            action,
-            {
-                "source_row": wanted_row,
-                "style_type": str(row.get("type") or ""),
-                "group_id": str(group.get("node_id") or ""),
-                "auto_save": bool(auto_save),
-            },
-        )
 
     # -- workflows ---------------------------------------------------------
     def scan_folders(self, category_name: str, force: bool = False) -> dict:
@@ -529,7 +173,7 @@ class CatalogController:
             self.result = None
             self.active_article_destination = None
             self.prepared_category = None
-            self.files.clear()
+            self.files_view.tokens.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -687,7 +331,7 @@ class CatalogController:
             self.result = None
             self.active_article_destination = None
             self.prepared_category = None
-            self.files.clear()
+            self.files_view.tokens.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -759,7 +403,7 @@ class CatalogController:
             self.result = None
             self.active_article_destination = None
             self.prepared_category = None
-            self.files.clear()
+            self.files_view.tokens.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -800,7 +444,7 @@ class CatalogController:
         panel = self._panel
 
         def action() -> dict:
-            self.files.clear()
+            self.files_view.tokens.clear()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -1077,7 +721,7 @@ class CatalogController:
         if validation_error is not None:
             return validation_error
         if request.destination != "files":
-            self.files.clear()
+            self.files_view.tokens.clear()
 
         reused_result = self._reuse_current_catalog_result(request)
         if reused_result is not None:
@@ -1259,130 +903,6 @@ class CatalogController:
             "suggestions": suggestions,
             **self.article_library_status(),
         }
-
-    def download_file(self, file_id: str) -> dict:
-        """Tải một file đã quét; WebView không được tự truyền URL tùy ý."""
-        panel = self._panel
-        file_id = str(file_id or "").strip()
-
-        def action() -> dict:
-            file_info = self.files.get(file_id)
-            if file_info is None:
-                return {
-                    "ok": False,
-                    "code": "CATALOG_FILE_EXPIRED",
-                    "message": "Danh sách file đã hết hiệu lực. Hãy bấm File lại.",
-                }
-            downloader = getattr(panel._login, "download_catalog_file", None)
-            if not callable(downloader):
-                return {
-                    "ok": False,
-                    "code": "CATALOG_FILE_DOWNLOAD_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ tải file.",
-                }
-            result = downloader(file_info, panel._log)
-            if result.get("ok"):
-                result["file_id"] = file_id
-                result["section"] = str(file_info.get("section") or "")
-            return result
-
-        return panel._run(
-            "download_catalog_file",
-            action,
-            {"file_id": file_id},
-        )
-
-    def check_sample_files_with_filters(
-        self,
-        values: Mapping[str, str],
-    ) -> dict:
-        """Check File Sample theo các filter mà người dùng đã nhập."""
-        panel = self._panel
-        cleaned_values = {
-            name: str(values.get(name) or "").strip()
-            for name in ("sample_no", "style", "created_by", "buyer")
-        }
-        active_filters = [
-            name for name, value in cleaned_values.items() if value
-        ]
-
-        def action() -> dict:
-            self._invalidate_catalog_search_only()
-            self.files.clear()
-            self.sample_file_choices.clear()
-            finder = getattr(
-                panel._login,
-                "find_sample_file_results_with_filters",
-                None,
-            )
-            if not callable(finder):
-                return {
-                    "ok": False,
-                    "code": "SAMPLE_FILES_UNSUPPORTED",
-                    "message": (
-                        "Phiên bản tự động hóa chưa hỗ trợ lọc nhiều điều kiện "
-                        "ở Sample List."
-                    ),
-                }
-            sample = constants.MODULE_BY_ID["0004_0056_4070"]
-            found = finder(sample["xpath"], cleaned_values, panel._log)
-            if found.get("code") == "SAMPLE_MULTIPLE_RESULTS":
-                return self._publish_sample_file_choices(found)
-            if found.get("code") != "SAMPLE_STYLE_OPENED":
-                return {**found, "source": "sample"}
-            article_code = str(found.get("article_code") or "").strip()
-            return self._sample_files_result(article_code)
-
-        return panel._run(
-            "check_sample_files",
-            action,
-            {"filter_kind": "multiple", "filter_kinds": active_filters},
-        )
-
-    def open_sample_file_choice(self, choice_id: str) -> dict:
-        """Mở lựa chọn Sample đã token hóa và tiếp tục quét file."""
-        panel = self._panel
-        choice_id = str(choice_id or "").strip()
-
-        def action() -> dict:
-            choice = self.sample_file_choices.get(choice_id)
-            if choice is None:
-                return {
-                    "ok": False,
-                    "code": "SAMPLE_RESULT_EXPIRED",
-                    "source": "sample",
-                    "message": (
-                        "Lựa chọn Sample đã hết hiệu lực. "
-                        "Hãy bấm Xem file đính kèm lại."
-                    ),
-                }
-            opener = getattr(panel._login, "open_sample_file_result", None)
-            if not callable(opener):
-                return {
-                    "ok": False,
-                    "code": "SAMPLE_FILES_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ mở Style từ Sample.",
-                }
-            opened = opener(
-                choice["row_key"],
-                choice["style_code"],
-                panel._log,
-            )
-            if opened.get("code") != "SAMPLE_STYLE_OPENED":
-                if opened.get("code") == "SAMPLE_RESULT_EXPIRED":
-                    # Grid đã khác lúc phát token, nên CẢ danh sách đang hiện
-                    # đều trỏ vào dòng cũ — không riêng dòng vừa bấm. Giữ lại
-                    # token là mời người dùng bấm tiếp vào dòng đã chết.
-                    self.sample_file_choices.clear()
-                return {**opened, "source": "sample"}
-            self.sample_file_choices.clear()
-            return self._sample_files_result(choice["style_code"])
-
-        return panel._run(
-            "open_sample_file_choice",
-            action,
-            {"choice_id": choice_id},
-        )
 
     def open_destination(self, destination: str, article_code: str) -> dict:
         """Mở Costing/BOM từ kết quả tìm hiện tại, không search Catalog lại."""
