@@ -5,6 +5,7 @@ import pytest
 from openpyxl import Workbook, load_workbook
 from playwright.sync_api import sync_playwright
 
+from tests.fakes.module_reflection import patch_automation
 from wfx_panel import prefs
 from wfx_panel.automation import sale_asn_create
 from wfx_panel.automation.sale_asn_create import (
@@ -328,8 +329,8 @@ def test_buyer_scan_waits_for_lazy_bound_select_options(monkeypatch):
 
     cell = FakeCell()
     frame = object()
-    monkeypatch.setattr(sale_asn_create, "_buyer_cell", lambda _frame: cell)
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda _frame, _milliseconds: None)
+    patch_automation(monkeypatch, sale_asn_create, "_buyer_cell", lambda _frame: cell)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda _frame, _milliseconds: None)
 
     assert _buyer_options(frame, timeout_s=1) == [
         {"label": "PUMA", "value": "77540"}
@@ -349,13 +350,13 @@ def test_start_refreshes_existing_new_form_before_selecting_buyer(monkeypatch):
     frame = FakeFrame()
     page = type("FakePage", (), {"context": object()})()
     logs = []
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         lambda _context, _selector, timeout_s: (page, frame),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_ensure_select_value",
         lambda _page, selector, value, label, _log: calls.append(
             ("select", selector, value, label)
@@ -427,14 +428,14 @@ def test_auto_add_po_selects_checkbox_by_exact_identity(
         "selection_order_id": "220106328",
         "po_no": "PO-1",
     }
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_search_po",
         lambda *_args, **_kwargs: [candidate],
     )
     waits = []
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_wait",
         lambda *_args: waits.append(_args),
     )
@@ -488,8 +489,8 @@ def test_auto_add_po_narrows_by_enabled_fields_in_fixed_order(monkeypatch):
         def locator(self, _selector):
             return FakeLocator()
 
-    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_search_po", fake_search)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     added, _candidates, _reason = _auto_add_po(
         FakeFrame(),
@@ -553,12 +554,12 @@ def test_auto_add_po_rejects_partial_po_match_before_qty_selection(monkeypatch):
         def locator(self, selector):
             return FakeLocator(selector)
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_search_po",
         lambda _frame, _row, *, fields: candidates,
     )
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     added, returned, reason = _auto_add_po(
         FakeFrame(),
@@ -613,12 +614,12 @@ def test_auto_add_po_uses_qty_when_po_column_cannot_be_read(monkeypatch):
         def locator(self, _selector):
             return FakeLocator()
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_search_po",
         lambda _frame, _row, *, fields: candidates,
     )
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
     logs = []
 
     added, returned, _reason = _auto_add_po(
@@ -690,8 +691,8 @@ def test_auto_add_po_respects_disabled_fields_and_selects_all_at_end(monkeypatch
         def locator(self, selector):
             return FakeLocator(selector)
 
-    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_search_po", fake_search)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     added, returned, reason = _auto_add_po(
         FakeFrame(),
@@ -725,8 +726,8 @@ def test_auto_add_po_asks_user_when_ambiguous_rows_have_wrong_total_qty(monkeypa
     ]
     logs = []
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_search_po",
         lambda _frame, _row, *, fields: candidates,
     )
@@ -759,8 +760,8 @@ def test_auto_add_po_asks_user_when_multiple_rows_have_missing_qty(monkeypatch):
         },
     ]
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_search_po",
         lambda _frame, _row, *, fields: candidates,
     )
@@ -795,9 +796,9 @@ def test_auto_add_po_recovers_once_when_popup_document_changes(monkeypatch):
         assert 0 < timeout_s <= sale_asn_create.PO_POPUP_RECOVERY_TIMEOUT_SECONDS
         return object(), fresh_frame
 
-    monkeypatch.setattr(sale_asn_create, "_auto_add_po", fake_auto)
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(monkeypatch, sale_asn_create, "_auto_add_po", fake_auto)
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         fake_frame,
     )
@@ -846,17 +847,17 @@ def test_auto_add_po_uses_results_already_rendered_after_document_change(monkeyp
         assert recovered_search == (("po",), candidates)
         return True, candidates, "PO"
 
-    monkeypatch.setattr(sale_asn_create, "_auto_add_po", fake_auto)
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(monkeypatch, sale_asn_create, "_auto_add_po", fake_auto)
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_recover_submitted_po_results",
         lambda selected_context, *, timeout_s: (
             result_frame,
             candidates,
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         lambda *_args, **_kwargs: pytest.fail("không được Search lại"),
     )
@@ -918,8 +919,8 @@ def test_auto_add_po_resumes_later_recovered_filter_without_restarting_po(monkey
         def locator(self, selector):
             return FakeLocator(selector)
 
-    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_search_po", fake_search)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     added, returned, reason = _auto_add_po(
         FakeFrame(),
@@ -960,8 +961,8 @@ def test_auto_add_po_skips_blank_optional_destination(monkeypatch):
         def locator(self, _selector):
             return FakeLocator()
 
-    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_search_po", fake_search)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     added, _returned, reason = _auto_add_po(
         FakeFrame(),
@@ -1063,8 +1064,8 @@ def test_sale_asn_style_details_targets_exact_hts_cell(monkeypatch):
             captured["spec"] = spec
             return {"ok": True, "style": "RVR-STYLE A", "column_id": "colHTSCode"}
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_edit_marked_table_cell",
         lambda frame, value: captured.update(frame=frame, value=value),
     )
@@ -1093,8 +1094,8 @@ def test_sale_asn_style_details_targets_exact_goods_description_cell(monkeypatch
                 "column_id": "colGoodsDescription",
             }
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_edit_marked_table_cell",
         lambda frame, value: captured.update(frame=frame, value=value),
     )
@@ -1122,8 +1123,8 @@ def test_sale_asn_style_details_updates_all_strong_matching_variant_rows(monkeyp
                 "target_index": spec["target_index"],
             }
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_edit_marked_table_cell",
         lambda _frame, value: calls.append(("edit", value)),
     )
@@ -1268,13 +1269,13 @@ def test_sale_asn_order_grid_retries_only_rows_missing_after_final_ok(monkeypatc
         )
         return True, [], "PO No"
 
-    monkeypatch.setattr(sale_asn_create, "_wait_order_grid", fake_wait)
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(monkeypatch, sale_asn_create, "_wait_order_grid", fake_wait)
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         fake_frame_with_selector,
     )
-    monkeypatch.setattr(sale_asn_create, "_auto_add_po", fake_auto_add)
+    patch_automation(monkeypatch, sale_asn_create, "_auto_add_po", fake_auto_add)
     logs = []
 
     result = sale_asn_create._ensure_order_grid_rows(
@@ -1352,13 +1353,13 @@ def test_reopens_add_order_popup_when_wfx_closes_it_between_rows(monkeypatch):
         assert selector == "#sectionOrderDetails"
         return page, main_frame
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         fake_frame_with_selector,
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_wait_order_grid",
         lambda frame, rows, timeout_s: calls.append(
             ("grid", frame, list(rows), timeout_s)
@@ -1406,31 +1407,31 @@ def test_sale_asn_resume_after_manual_final_ok_skips_closed_popup(monkeypatch):
         assert selector == "#sectionOrderDetails"
         return page, main_frame
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "sync_playwright",
         lambda: FakePlaywrightStarter(),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_active_wfx_page",
         lambda _playwright, _log: (object(), page),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         fake_frame_with_selector,
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_ensure_order_grid_rows",
         lambda _context, frame, _rows, _log, _search_fields: frame,
     )
-    monkeypatch.setattr(sale_asn_create, "_fill_order_details", lambda *_args: None)
-    monkeypatch.setattr(sale_asn_create, "_fill_style_details", lambda *_args: None)
-    monkeypatch.setattr(sale_asn_create, "_fill_shipping", lambda *_args: None)
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(monkeypatch, sale_asn_create, "_fill_order_details", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_fill_style_details", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_fill_shipping", lambda *_args: None)
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_check_sale_asn_price_on_page",
         lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
     )
@@ -1468,38 +1469,38 @@ def test_sale_asn_resume_shipping_uses_visible_shipping_tab_only(monkeypatch):
         selectors.append((selector, timeout_s))
         return page, shipping_frame
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "sync_playwright",
         lambda: FakePlaywrightStarter(),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_active_wfx_page",
         lambda _playwright, _log: (object(), page),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         fake_frame_with_selector,
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_fill_order_details",
         lambda *_args: calls.append("order"),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_fill_style_details",
         lambda *_args: calls.append("style"),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_fill_shipping",
         lambda *_args: ["Factory: option-not-found"],
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_check_sale_asn_price_on_page",
         lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
     )
@@ -1536,46 +1537,46 @@ def test_sale_asn_can_skip_add_po_and_start_from_existing_order_grid(monkeypatch
         def start(self):
             return FakePlaywright()
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "sync_playwright",
         lambda: FakePlaywrightStarter(),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_active_wfx_page",
         lambda _playwright, _log: (object(), page),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         lambda selected_context, selector, timeout_s: (
             calls.append(("frame", selected_context, selector, timeout_s))
             or (page, order_frame)
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_wait_order_grid",
         lambda frame, selected_rows, **kwargs: (
             calls.append(("wait", frame, list(selected_rows), kwargs))
             or {sale_asn_create._fold("PO-1")}
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_ensure_order_grid_rows",
         lambda *_args: pytest.fail("Không được mở hoặc thêm lại PO"),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_fill_order_details",
         lambda frame, selected_rows, _log, _progress=None: calls.append(
             ("fill-order", frame, list(selected_rows))
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_check_sale_asn_price_on_page",
         lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
     )
@@ -1621,8 +1622,8 @@ def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
             return {"ok": False, "reason": "option-not-found"}
         return {"ok": True}
 
-    monkeypatch.setattr(sale_asn_create, "_set_control", fake_set_control)
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_set_control", fake_set_control)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     warnings = sale_asn_create._fill_shipping(
         FakeFrame(),
@@ -1731,8 +1732,8 @@ def test_shipping_keeps_default_final_destination_when_country_is_not_found(
             return {"ok": False, "reason": "option-not-found"}
         return {"ok": True}
 
-    monkeypatch.setattr(sale_asn_create, "_set_control", fake_set_control)
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_set_control", fake_set_control)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     sale_asn_create._fill_shipping(
         FakeFrame(),
@@ -1773,12 +1774,12 @@ def test_shipping_keeps_destination_defaults_when_file_destination_is_blank(monk
         def locator(self, _selector):
             return FakeTab()
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_set_control",
         lambda _frame, selector, value, mode, timeout_s: calls.append(selector) or {"ok": True},
     )
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
 
     sale_asn_create._fill_shipping(
         FakeFrame(),
@@ -1971,11 +1972,11 @@ def test_sale_asn_dates_use_english_wfx_format_independent_of_system_locale(monk
             assert (value, pattern) == ("2026-08-03", "%Y-%m-%d")
             return LocalizedDate()
 
-    monkeypatch.setattr(sale_asn_create, "datetime", LocalizedDatetime)
+    patch_automation(monkeypatch, sale_asn_create, "datetime", LocalizedDatetime)
 
     assert sale_asn_create._date_for_wfx("2026-08-03") == "03 Aug 2026"
 
-    monkeypatch.setattr(sale_asn_create, "datetime", real_datetime)
+    patch_automation(monkeypatch, sale_asn_create, "datetime", real_datetime)
 
 
 def test_sale_asn_dates_support_every_english_wfx_month():
@@ -2152,45 +2153,45 @@ def test_run_sale_asn_applies_app_selection_without_reopening_new_form(monkeypat
         def stop(self):
             return None
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "sync_playwright",
         lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_active_wfx_page",
         lambda _playwright, _log: (object(), page),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_refresh_existing_new_form",
         lambda *_args: pytest.fail("resume selection không được refresh form New"),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_open_new_form",
         lambda *_args: pytest.fail("resume selection không được mở form New"),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         lambda *_args, **_kwargs: (page, object()),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_add_selected_po_candidates",
         lambda _frame, row, candidates, _log, *, final: selected.append(
             (row["po_no"], [item["selection_value"] for item in candidates], final)
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_ensure_po_popup_for_next_row",
         lambda *_args, **_kwargs: object(),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_auto_add_po_with_frame_retry",
         lambda _context, frame, row, _log, *, final, search_fields: (
             searched.append((row["po_no"], final)) or True,
@@ -2199,8 +2200,8 @@ def test_run_sale_asn_applies_app_selection_without_reopening_new_form(monkeypat
             frame,
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_check_sale_asn_price_on_page",
         lambda *_args: {"message": "checked"},
     )
@@ -2436,18 +2437,18 @@ def test_order_and_style_stages_report_row_counters(monkeypatch):
         def locator(self, _selector):
             return FakeLocator()
 
-    monkeypatch.setattr(
-        sale_asn_create, "_set_order_grid_cell", lambda *a, **k: {"ok": True}
+    patch_automation(
+        monkeypatch, sale_asn_create, "_set_order_grid_cell", lambda *a, **k: {"ok": True}
     )
-    monkeypatch.setattr(
-        sale_asn_create, "_set_style_hts_cell", lambda *a, **k: {"ok": True}
+    patch_automation(
+        monkeypatch, sale_asn_create, "_set_style_hts_cell", lambda *a, **k: {"ok": True}
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_set_style_goods_description_cell",
         lambda *a, **k: {"ok": True},
     )
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *a, **k: None)
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *a, **k: None)
 
     frame = FakeFrame()
     sale_asn_create._fill_order_details(frame, rows, lambda _m: None, sink)
@@ -2478,9 +2479,9 @@ def test_blank_goods_description_clears_every_style_row(monkeypatch):
             assert selector == "#tabStyleDetails"
             return FakeLocator()
 
-    monkeypatch.setattr(sale_asn_create, "_wait", lambda *_args: None)
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_set_style_goods_description_cell",
         lambda _frame, style, value: calls.append((style, value)),
     )
@@ -2601,25 +2602,25 @@ def test_skipped_stage_never_waits_for_its_own_tab(monkeypatch):
         def stop(self):
             return None
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "sync_playwright",
         lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_active_wfx_page",
         lambda _playwright, _log: (object(), page),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         lambda *_args, **_kwargs: pytest.fail(
             "Không được resolve frame của bước đã bỏ qua"
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_check_sale_asn_price_on_page",
         lambda *_args: {"ok": True, "code": "SALE_ASN_PRICE_CHECKED", "message": "checked"},
     )
@@ -2655,30 +2656,30 @@ def test_recovering_missing_po_asks_the_user_instead_of_failing(monkeypatch):
         def stop(self):
             return None
 
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "sync_playwright",
         lambda: type("Starter", (), {"start": lambda _self: FakePlaywright()})(),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_active_wfx_page",
         lambda _playwright, _log: (object(), page),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_frame_with_selector",
         lambda _context, _selector, timeout_s=15: (page, object()),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_wait_order_grid",
         lambda _frame, _rows, timeout_s=10, **_kwargs: {
             sale_asn_create._fold("PO-1")
         },
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_auto_add_po",
         lambda _frame, _row, _log, *, final, search_fields: (
             False,
@@ -2686,8 +2687,8 @@ def test_recovering_missing_po_asks_the_user_instead_of_failing(monkeypatch):
             "ambiguous",
         ),
     )
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_fill_order_details",
         lambda *_args: pytest.fail("Chưa đủ PO thì không được điền"),
     )
@@ -2720,7 +2721,7 @@ def test_auto_add_po_stops_narrowing_once_wfx_returns_nothing(monkeypatch):
         searches.append(tuple(fields))
         return []
 
-    monkeypatch.setattr(sale_asn_create, "_search_po", fake_search)
+    patch_automation(monkeypatch, sale_asn_create, "_search_po", fake_search)
 
     added, candidates, reason = _auto_add_po(
         object(),
@@ -2756,13 +2757,13 @@ def test_po_search_clears_disabled_fields_before_each_row(monkeypatch):
             assert selector == sale_asn_create.PO_RESULTS_TABLE_SELECTOR
             return FakeTable()
 
-    monkeypatch.setattr(sale_asn_create, "_fill_popup_input", fake_fill)
-    monkeypatch.setattr(
-        sale_asn_create,
+    patch_automation(monkeypatch, sale_asn_create, "_fill_popup_input", fake_fill)
+    patch_automation(
+        monkeypatch, sale_asn_create,
         "_select_popup_destination",
         lambda _frame, value: destinations.append(value) or True,
     )
-    monkeypatch.setattr(sale_asn_create, "_click_search", lambda _frame: None)
+    patch_automation(monkeypatch, sale_asn_create, "_click_search", lambda _frame: None)
 
     sale_asn_create._search_po(
         FakeFrame(),

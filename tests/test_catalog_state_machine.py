@@ -13,11 +13,11 @@ State machine bắt buộc:
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from tests.fakes.module_reflection import module_trees
 from tests.fakes.wfx_dom import (
     BUYER_REFERENCE_FILTER,
     CODE_FILTER,
@@ -505,33 +505,29 @@ def test_every_flow_that_opens_master_waits_for_grid_data():
     Test hành vi phủ được một lời gọi; ràng buộc này nói về *mọi* call site nên
     phải quét AST, giống `test_cancellation_contract.py`.
     """
-    tree = ast.parse(
-        Path(catalog.__file__).read_text(encoding="utf-8"),
-        filename=catalog.__file__,
-    )
     offenders = []
     checked = 0
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        target = node.func
-        if not isinstance(target, ast.Name):
-            continue
-        if target.id != "_show_catalog_floating_filter":
-            continue
-        owner = _enclosing_function(tree, node)
-        if owner in _FAST_PATHS_WITHOUT_DATA_READY:
-            continue
-        checked += 1
-        waits = any(
-            keyword.arg == "require_data_ready"
-            and isinstance(keyword.value, ast.Constant)
-            and keyword.value.value is True
-            for keyword in node.keywords
-        )
-        if not waits:
-            offenders.append(f"{owner} (dòng {node.lineno})")
-
+    for _path, tree in module_trees(catalog):
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            target = node.func
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id != "_show_catalog_floating_filter":
+                continue
+            owner = _enclosing_function(tree, node)
+            if owner in _FAST_PATHS_WITHOUT_DATA_READY:
+                continue
+            checked += 1
+            waits = any(
+                keyword.arg == "require_data_ready"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True
+                for keyword in node.keywords
+            )
+            if not waits:
+                offenders.append(f"{owner} (dòng {node.lineno})")
     assert checked >= 5, "AST scan không còn thấy call site nào — test đã mục"
     assert not offenders, (
         "Các flow sau mở Master nhưng không chờ dữ liệu grid: "

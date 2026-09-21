@@ -17,8 +17,7 @@ import ast
 import re
 from pathlib import Path
 
-from wfx_panel import telemetry
-from wfx_panel.automation import catalog
+from wfx_panel import automation, telemetry
 from wfx_panel.panel_api import NON_REPORTABLE_FAILURES
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -102,7 +101,7 @@ def _literals_by_module() -> dict[str, set[str]]:
     module gom literal của mọi file con. Bảng ánh xạ vì thế nói "mã này thuộc
     module nào", không phải "nằm ở file nào".
     """
-    automation_dir = Path(catalog.__file__).parent
+    automation_dir = Path(automation.__file__).parent
     values: dict[str, set[str]] = {}
     for path in automation_dir.rglob("*.py"):
         relative = path.relative_to(automation_dir)

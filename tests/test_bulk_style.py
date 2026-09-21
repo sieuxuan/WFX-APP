@@ -8,9 +8,10 @@ import pytest
 from playwright.sync_api import Error as PlaywrightError
 
 from tests.fakes.automation_boundary import wire_automation
+from tests.fakes.module_reflection import module_source
 from tests.fakes.wfx_dom import install_fake_clock
 from tests.fakes.wfx_style import StyleWorld, build_style_fields
-from wfx_panel.automation import bulk_style, runtime
+from wfx_panel.automation import bulk_style, catalog, runtime
 
 
 def test_copy_search_rule_uses_article_code_or_name_only():
@@ -50,7 +51,7 @@ def test_style_automation_only_saves_when_auto_save_is_enabled():
 
 def test_group_class_detection_accepts_actual_lowercase_wfx_class():
     catalog_source = (
-        Path(bulk_style.__file__).with_name("catalog.py").read_text(encoding="utf-8")
+        module_source(catalog)
     )
     assert "[...li.classList, ...span.classList]" in catalog_source
     assert "name.toLocaleLowerCase('en') === 'groupnode'" in catalog_source
