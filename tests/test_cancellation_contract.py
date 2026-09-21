@@ -100,12 +100,13 @@ def test_panel_api_handles_cancellation_before_generic_exception():
     """Thứ tự handler quyết định mã trả về: nếu `except Exception` đứng trước,
     cancel sẽ thành PANEL_ERROR và bị gửi telemetry.
 
-    Việc bắt lỗi nằm ở `_normalised_result`, và `_run_unlocked` phải đi qua nó —
-    canh cả hai để tách hàm không làm mất ràng buộc.
+    Việc bắt lỗi nằm ở `_normalised_result` trong `run_engine`, và
+    `_run_unlocked` phải đi qua nó — canh cả hai để tách hàm hay tách file không
+    làm mất ràng buộc.
     """
-    from wfx_panel import panel_api
+    from wfx_panel import run_engine
 
-    tree = ast.parse(Path(panel_api.__file__).read_text(encoding="utf-8"))
+    tree = ast.parse(Path(run_engine.__file__).read_text(encoding="utf-8"))
     functions = {
         node.name: node
         for node in ast.walk(tree)

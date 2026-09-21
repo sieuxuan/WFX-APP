@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import hashlib
-import inspect
 import threading
-import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -17,21 +14,23 @@ from wfx_panel import (
     telemetry,
 )
 from wfx_panel import prefs as prefs_default
-from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.automation.runtime import RUNTIME as AUTOMATION_RUNTIME
-from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.coercion import boolean
 from wfx_panel.controllers import (
+    AccessController,
     CatalogController,
     DirectoryController,
     FinanceController,
     InventoryController,
     JobsController,
+    ModulesController,
     OCController,
     ReportsController,
     SaleASNController,
+    SessionController,
     SettingsController,
 )
+from wfx_panel.run_engine import AutomationRunEngine
 from wfx_panel.run_policy import (  # noqa: F401
     AUTO_RELOGIN_EXCLUDED_METHODS,
     CATALOG_CONTEXT_INVALIDATING_METHODS,
@@ -102,6 +101,11 @@ class PanelAPI:
         self._directory = DirectoryController(self)
         self._settings = SettingsController(self)
         self._jobs = JobsController(self)
+        self._modules = ModulesController(self)
+        self._access = AccessController(self)
+        self._session = SessionController(self)
+        # Engine chạy flow: khóa, hủy, lịch sử, telemetry.
+        self._engine = AutomationRunEngine(self)
 
     # -- logging -----------------------------------------------------------
     def set_log_sink(self, sink: Callable[[str], None]) -> None:
@@ -118,47 +122,11 @@ class PanelAPI:
     def set_progress_sink(self, sink: Callable[[dict], None]) -> None:
         self._progress_sink = sink
 
-    def _progress(
-        self,
-        method: str,
-        stage: str,
-        message: str,
-        step: int,
-        total: int,
-        *,
-        state: str = "active",
-    ) -> None:
-        if self._progress_sink is None:
-            return
-        try:
-            self._progress_sink(
-                {
-                    "method": str(method),
-                    "stage": str(stage),
-                    "message": str(message),
-                    "step": max(1, int(step)),
-                    "total": max(1, int(total)),
-                    "state": str(state),
-                    "run_id": self._current_run_id,
-                }
-            )
-        except Exception:
-            pass
+    def _progress(self, method: str, stage: str, message: str, step: int, total: int, *, state: str='active') -> None:
+        return self._engine._progress(method, stage, message, step, total, state=state)
 
     def _progress_for(self, method: str) -> Callable[..., None]:
-        """Callback progress đã gắn sẵn method của flow đang chạy."""
-
-        def emit(
-            stage: str,
-            message: str,
-            step: int,
-            total: int,
-            *,
-            state: str = "active",
-        ) -> None:
-            self._progress(method, stage, message, step, total, state=state)
-
-        return emit
+        return self._engine._progress_for(method)
 
     def set_hotkey_applier(
         self, applier: Callable[[str], str | None]
@@ -190,7 +158,7 @@ class PanelAPI:
                 pass
 
     def _account(self) -> dict:
-        return self._prefs.load_account(base_dir=self._base_dir)
+        return self._session._account()
 
     @property
     def _session_user_id(self) -> str | None:
@@ -212,115 +180,28 @@ class PanelAPI:
         self._session_user_id_value = str(value or "").strip() or None
 
     def _login_run(self, user_id: str, password: str) -> dict:
-        """Gọi login module kèm chủ phiên hiện tại nếu module hỗ trợ.
-
-        Các login module cũ/giả lập trong test không có tham số
-        ``session_owner``; kiểm tra chữ ký thay vì bắt TypeError để không
-        nuốt nhầm lỗi thật phát sinh bên trong flow đăng nhập.
-        """
-        kwargs: dict[str, Any] = {}
-        try:
-            parameters = inspect.signature(self._login.run).parameters
-        except (TypeError, ValueError):
-            parameters = {}
-        if "session_owner" in parameters:
-            kwargs["session_owner"] = self._session_user_id
-        return self._login.run(
-            user_id,
-            password,
-            self._login.COMPANY_ID,
-            self._log,
-            **kwargs,
-        )
+        return self._session._login_run(user_id, password)
 
     def _remember_session_user(self, user_id: str | None) -> None:
-        value = str(user_id or "").strip() or None
-        if value == self._session_user_id:
-            return
-        self._session_user_id = value
-        try:
-            self._prefs.save_prefs(
-                base_dir=self._base_dir,
-                session_user_id=value or "",
-            )
-        except TypeError:
-            # prefs module cũ chưa biết khóa này; trạng thái trong bộ nhớ vẫn
-            # đủ để bảo vệ trong phiên chạy hiện tại.
-            pass
-
-    @staticmethod
-    def _credential_fingerprint(user_id: str, password: str) -> str:
-        return hashlib.sha256(
-            f"{user_id.strip().casefold()}\x00{password}".encode()
-        ).hexdigest()
+        return self._session._remember_session_user(user_id)
 
     def _credential_state(self) -> str:
-        reader = getattr(self._prefs, "credential_status", None)
-        if not callable(reader):
-            return "ok" if self._account()["password"].strip() else "empty"
-        try:
-            return str(reader(base_dir=self._base_dir))
-        except OSError:
-            return "empty"
+        return self._session._credential_state()
 
     def _telemetry_account_context(self) -> dict:
-        account = self._account()
-        return {
-            "user_id": str(account.get("user_id") or "").strip(),
-            "company_id": str(
-                getattr(self._login, "COMPANY_ID", "") or ""
-            ).strip(),
-            "division_key": self._current_division or "",
-            "division_label": self._division_label or "",
-            "division_name": self._division_name or "",
-        }
+        return self._session._telemetry_account_context()
 
-    def _admin_state(self, preferences: Mapping | None = None) -> dict:
-        if preferences is None:
-            preferences = self._prefs.load_prefs(base_dir=self._base_dir)
-        allowed = self._admin_access is True and bool(self._admin_module_ids)
-        return {
-            "admin_access": allowed,
-            "admin_module_ids": sorted(self._admin_module_ids) if allowed else [],
-            "admin_mode": bool(preferences["admin_mode"] and allowed),
-        }
+    def _admin_state(self, preferences: Mapping | None=None) -> dict:
+        return self._access._admin_state(preferences)
 
     def _division_state(self) -> dict:
-        return {
-            "current_division": self._current_division,
-            "division_label": self._division_label,
-            "division_name": self._division_name,
-        }
+        return self._access._division_state()
 
     def _refresh_admin_access(self) -> dict:
-        if not hasattr(self._login, "check_module_access"):
-            self._admin_access = False
-            self._admin_module_ids = set()
-            return self._admin_state()
-        checked = self._login.check_module_access(
-            constants.ADMIN_MODULE_SPECS,
-            self._log,
-        )
-        ids = {
-            str(module_id)
-            for module_id in checked.get("accessible_module_ids", [])
-            if str(module_id) in constants.ADMIN_MODULE_IDS
-        }
-        self._admin_module_ids = ids
-        self._admin_access = bool(checked.get("ok") and ids)
-        if not self._admin_access:
-            self._prefs.save_prefs(
-                base_dir=self._base_dir,
-                admin_mode=False,
-            )
-        return self._admin_state()
+        return self._access._refresh_admin_access()
 
     def _with_admin_access(self, result: dict) -> dict:
-        if result.get("ok"):
-            return {**result, **self._refresh_admin_access()}
-        self._admin_access = False
-        self._admin_module_ids = set()
-        return {**result, **self._admin_state()}
+        return self._access._with_admin_access(result)
 
     # -- state -------------------------------------------------------------
     def get_initial_state(self) -> dict:
@@ -390,597 +271,118 @@ class PanelAPI:
         }
 
     def _session_status(self) -> dict:
-        """Trạng thái phiên đã quan sát, không thực hiện thêm I/O tới Chrome."""
-        return {
-            "session_active": self._session_active,
-            "last_login_at": self._last_login_at,
-        }
+        return self._session._session_status()
 
     def refresh_status(self) -> dict:
         return self.get_status()
 
-    def _observe(
-        self,
-        method_name: str,
-        result: dict,
-        elapsed: float,
-        *,
-        emit_result: bool = True,
-    ) -> None:
-        code = str(result.get("code") or "")
-        if code in SESSION_OK:
-            self._session_active = True
-            if code in LOGIN_CODES:
-                self._last_login_at = time.strftime("%H:%M:%S")
-        elif code in SESSION_LOST:
-            self._session_active = False
-            self._current_division = None
-            self._division_label = None
-            self._division_name = None
-            self._catalog.reset_context()
-
-        if code in {"LOGGED_IN", "LOGGED_IN_AFTER_DELAY"}:
-            self._remember_session_user(
-                result.get("session_user_id") or self._account()["user_id"]
-            )
-        elif (
-            code in {"SESSION_REUSED", "SESSION_ACTIVE"}
-            and self._session_user_id is None
-        ):
-            # Phiên có sẵn trong Chrome không chứng minh được là của ai. Giả
-            # định nó thuộc tài khoản đang lưu: đoán sai thì lần đổi tài khoản
-            # sau chỉ tốn thêm một lần đăng nhập, còn bỏ trống thì mất luôn
-            # lớp chặn "chạy nhầm bằng tài khoản người khác".
-            self._remember_session_user(
-                result.get("session_user_id") or self._account()["user_id"]
-            )
-        elif code in {"NOT_LOGGED_IN", "MISSING_CREDENTIALS"}:
-            # Phiên trong Chrome đã mất -> không còn tài khoản nào "đang sở
-            # hữu" nó. Giữ lại giá trị cũ sẽ ép một lần đổi tài khoản thừa.
-            self._remember_session_user(None)
-
-        if code in SESSION_LOST or code in {
-            "DIVISION_CHANGED",
-            "LOGGED_IN",
-            "LOGGED_IN_AFTER_DELAY",
-            "SESSION_RESTORED",
-        }:
-            reset_menu_cache = getattr(
-                self._login, "reset_menu_route_cache", None
-            )
-            if callable(reset_menu_cache):
-                reset_menu_cache()
-
-        if code in {"DIVISION_CHANGED", "LOGGED_IN", "LOGGED_IN_AFTER_DELAY"}:
-            self._catalog.reset_context()
-
-        if (
-            result.get("ok")
-            and method_name in CATALOG_CONTEXT_INVALIDATING_METHODS
-        ):
-            self._catalog.reset_context()
-
-        if result.get("current_division") is not None:
-            self._current_division = str(result["current_division"])
-            self._division_label = str(result.get("division_label") or "")
-            self._division_name = str(result.get("division_name") or "")
-
-        quiet_keepalive = (
-            method_name == "maintain_session"
-            and code in {"SESSION_ACTIVE", "SESSION_REUSED"}
+    def _observe(self, method_name: str, result: dict, elapsed: float, *, emit_result: bool=True) -> None:
+        return self._engine._observe(
+            method_name,
+            result,
+            elapsed,
+            emit_result=emit_result,
         )
-        if emit_result and not quiet_keepalive and self._result_sink is not None:
-            try:
-                self._result_sink(method_name, result, elapsed)
-            except Exception:
-                pass
 
     def _action_in_progress(self) -> dict:
-        return {
-            "ok": False,
-            "code": "ACTION_IN_PROGRESS",
-            "message": "WFX Smart đang xử lý tác vụ trước. Vui lòng chờ hoàn tất.",
-            **self._session_status(),
-            **self._division_state(),
-        }
+        return self._engine._action_in_progress()
 
     def _enter_run(self) -> None:
-        with self._run_depth_lock:
-            self._run_depth += 1
+        return self._engine._enter_run()
 
     def _exit_run(self) -> None:
-        with self._run_depth_lock:
-            self._run_depth = max(0, self._run_depth - 1)
+        return self._engine._exit_run()
 
     def run_composite(self, steps: Callable[[], dict]) -> dict:
-        """Chạy một chuỗi nhiều ``_run`` như MỘT tác vụ không thể chen ngang.
+        return self._engine.run_composite(steps)
 
-        Import/export Costing phải mở đúng Costing rồi mới scan/apply. Nếu run
-        lock được nhả giữa hai bước, một flow khác (mở module, đổi Division,
-        tìm Catalog) có thể chen vào và bước sau sẽ thao tác trên màn hình khác
-        hẳn — trong khi plan token 15 phút không hề biết điều đó.
-        """
-        if not self._run_lock.acquire(blocking=False):
-            return self._action_in_progress()
-        self._enter_run()
-        try:
-            return steps()
-        finally:
-            self._exit_run()
-            self._run_lock.release()
-
-    def _run(
-        self,
-        method_name: str,
-        action: Callable[[], dict],
-        request: dict | None = None,
-        *,
-        record_job: bool = True,
-        record_job_on_failure: bool = False,
-        announce: bool = True,
-        emit_result: bool = True,
-    ) -> dict:
-        if not self._run_lock.acquire(blocking=False):
-            return self._action_in_progress()
-        self._enter_run()
-        try:
-            return automation_runtime.run(
-                lambda: self._run_unlocked(
-                    method_name,
-                    action,
-                    request,
-                    record_job=record_job,
-                    record_job_on_failure=record_job_on_failure,
-                    announce=announce,
-                    emit_result=emit_result,
-                )
-            )
-        finally:
-            self._exit_run()
-            self._run_lock.release()
+    def _run(self, method_name: str, action: Callable[[], dict], request: dict | None=None, *, record_job: bool=True, record_job_on_failure: bool=False, announce: bool=True, emit_result: bool=True) -> dict:
+        return self._engine._run(
+            method_name,
+            action,
+            request,
+            record_job=record_job,
+            record_job_on_failure=record_job_on_failure,
+            announce=announce,
+            emit_result=emit_result,
+        )
 
     def _normalised_result(self, method_name: str, action: Callable[[], dict]) -> dict:
-        """Chạy action và quy mọi kết cục về đúng một dict kết quả."""
-        try:
-            result = self._run_action_with_auto_relogin(method_name, action)
-        except AutomationCancelled:
-            return {
-                "ok": False,
-                "code": "ACTION_CANCELLED",
-                "message": "Đã dừng tác vụ tại checkpoint an toàn.",
-            }
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "PANEL_ERROR",
-                "message": f"{type(error).__name__}: {error}",
-            }
-        if not isinstance(result, dict):
-            return {
-                "ok": False,
-                "code": "PANEL_ERROR",
-                "message": "Kết quả không hợp lệ.",
-            }
-        return result
+        return self._engine._normalised_result(method_name, action)
 
     def _wants_failure_screenshot(self, method_name: str, code: str) -> bool:
-        if method_name not in SCREENSHOT_METHODS:
-            return False
-        if code in NON_REPORTABLE_FAILURES and code not in DIAGNOSTIC_FAILURES:
-            return False
-        return hasattr(self._login, "capture_failure_screenshot")
+        return self._engine._wants_failure_screenshot(method_name, code)
 
     def _capture_failure_screenshot(self, run_id: str) -> str | None:
-        """Ảnh chẩn đoán cho một lượt hỏng; None nếu không chụp được."""
-        shot = job_history.screenshot_dir(self._base_dir) / f"{run_id}.png"
-        try:
-            if self._login.capture_failure_screenshot(shot, self._log):
-                return str(shot)
-        except Exception:
-            return None
-        return None
+        return self._engine._capture_failure_screenshot(run_id)
 
-    def _append_job_history(
-        self,
-        run_id: str,
-        method_name: str,
-        request: dict | None,
-        result: dict,
-        started_at: str,
-        elapsed: float,
-        screenshot: str | None,
-    ) -> None:
-        """Ghi một dòng lịch sử. Lỗi ghi KHÔNG được làm hỏng kết quả flow.
-
-        Ổ đĩa đầy, jobs.json bị khóa hoặc payload không serialize được mà ném
-        ra bridge pywebview là UI mất kết quả và các nút workflow đứng busy
-        vĩnh viễn.
-        """
-        try:
-            job_history.append(
-                self._base_dir,
-                {
-                    "run_id": run_id,
-                    "method": method_name,
-                    "request": dict(request or {}),
-                    "ok": bool(result.get("ok")),
-                    "code": str(result.get("code") or "UNKNOWN"),
-                    "message": str(result.get("message") or ""),
-                    "started_at": started_at,
-                    "elapsed_ms": int(elapsed * 1000),
-                    "screenshot": screenshot,
-                },
-            )
-        except Exception as error:
-            self._log(f"[RUN] Không ghi được lịch sử: {type(error).__name__}")
-
-    def _announce_finish(
-        self, method_name: str, result: dict, elapsed: float, announce: bool
-    ) -> None:
-        code = result.get("code", "UNKNOWN")
-        if announce:
-            self._log(
-                f"[RUN] Kết thúc {method_name}: {code} ({int(elapsed * 1000)} ms)"
-            )
-        elif not result.get("ok"):
-            self._log(f"[SESSION] Kiểm tra nền cần chú ý: {code}.")
-
-    def _run_unlocked(
-        self,
-        method_name: str,
-        action: Callable[[], dict],
-        request: dict | None = None,
-        *,
-        record_job: bool = True,
-        record_job_on_failure: bool = False,
-        announce: bool = True,
-        emit_result: bool = True,
-    ) -> dict:
-        run_id = job_history.new_run_id()
-        started = time.monotonic()
-        started_at = time.strftime("%Y-%m-%dT%H:%M:%S")
-        self._current_run_id = run_id
-        if announce:
-            self._log(f"[RUN] Bắt đầu {method_name}")
-
-        result = self._normalised_result(method_name, action)
-        elapsed = time.monotonic() - started
-        code = str(result.get("code") or "UNKNOWN")
-        failed = not result.get("ok")
-
-        # Kiểm tra nền thành công phải im lặng tuyệt đối, nhưng khi nó hỏng thì
-        # người dùng bị hỏi đăng nhập lại mà không có chỗ nào tra ra vì sao —
-        # nên một lần hỏng vẫn phải để lại đúng một dòng lịch sử.
-        if record_job_on_failure and failed:
-            record_job = True
-
-        screenshot = (
-            self._capture_failure_screenshot(run_id)
-            if record_job and failed and self._wants_failure_screenshot(method_name, code)
-            else None
+    def _append_job_history(self, run_id: str, method_name: str, request: dict | None, result: dict, started_at: str, elapsed: float, screenshot: str | None) -> None:
+        return self._engine._append_job_history(
+            run_id,
+            method_name,
+            request,
+            result,
+            started_at,
+            elapsed,
+            screenshot,
         )
-        result = {
-            **result,
-            "run_id": run_id,
-            "requires_attention": job_history.requires_attention(result),
-        }
-        self._announce_finish(method_name, result, elapsed, announce)
-        self._current_run_id = None
 
-        # Lịch sử và telemetry là phụ trợ: hỏng thì ghi log, không ném ra bridge.
-        if record_job:
-            self._append_job_history(
-                run_id, method_name, request, result, started_at, elapsed, screenshot
-            )
-        if failed and code not in NON_REPORTABLE_FAILURES:
-            try:
-                self._report_automation_error(
-                    method_name, result, request, code, run_id, elapsed
-                )
-            except Exception as error:
-                self._log(f"[RUN] Không xếp được báo lỗi: {type(error).__name__}")
+    def _announce_finish(self, method_name: str, result: dict, elapsed: float, announce: bool) -> None:
+        return self._engine._announce_finish(method_name, result, elapsed, announce)
 
-        self._observe(method_name, result, elapsed, emit_result=emit_result)
-        return {**result, **self._session_status(), **self._division_state()}
+    def _run_unlocked(self, method_name: str, action: Callable[[], dict], request: dict | None=None, *, record_job: bool=True, record_job_on_failure: bool=False, announce: bool=True, emit_result: bool=True) -> dict:
+        return self._engine._run_unlocked(
+            method_name,
+            action,
+            request,
+            record_job=record_job,
+            record_job_on_failure=record_job_on_failure,
+            announce=announce,
+            emit_result=emit_result,
+        )
 
     def _restore_expired_session(self) -> dict | None:
-        """Đăng nhập lại bằng credential đã lưu; ``None`` nếu chưa cấu hình."""
-        account = self._account()
-        user_id = str(account.get("user_id") or "").strip()
-        password = str(account.get("password") or "")
-        if not user_id or not password:
-            return None
-        # WFX khóa tài khoản sau vài lần sai liên tiếp. Một bộ credential đã
-        # bị từ chối thì mọi cú bấm tiếp theo của người dùng không được biến
-        # thành một lần nhập sai nữa — chờ tới khi họ lưu credential khác.
-        fingerprint = self._credential_fingerprint(user_id, password)
-        if self._rejected_credential == fingerprint:
-            self._log(
-                "[SESSION] Bỏ qua tự đăng nhập lại: WFX đã từ chối đúng tài "
-                "khoản/mật khẩu này. Hãy cập nhật lại trong Cài đặt."
-            )
-            return {
-                "ok": False,
-                "code": "LOGIN_FAILED",
-                "message": (
-                    "WFX đã từ chối tài khoản đang lưu. Mở Cài đặt và nhập "
-                    "lại mật khẩu WFX trước khi chạy tiếp."
-                ),
-            }
-        self._log("[SESSION] Phiên WFX đã hết hạn; đang tự đăng nhập lại...")
-        restored = self._login_run(user_id, password)
-        if not isinstance(restored, dict) or not restored.get("ok"):
-            if (
-                isinstance(restored, dict)
-                and str(restored.get("code") or "") == "LOGIN_FAILED"
-            ):
-                self._rejected_credential = fingerprint
-            return restored if isinstance(restored, dict) else {
-                "ok": False,
-                "code": "LOGIN_FAILED",
-                "message": "Kết quả tự đăng nhập lại không hợp lệ.",
-            }
+        return self._session._restore_expired_session()
 
-        self._rejected_credential = None
-        self._session_active = True
-        self._last_login_at = time.strftime("%H:%M:%S")
-        self._admin_access = None
-        self._admin_module_ids.clear()
-        self._remember_session_user(restored.get("session_user_id") or user_id)
-        self._catalog.reset_context()
-        if restored.get("current_division") is not None:
-            self._current_division = str(restored["current_division"])
-            self._division_label = str(restored.get("division_label") or "")
-            self._division_name = str(restored.get("division_name") or "")
-        self._log("[SESSION] Đã tự đăng nhập lại; tiếp tục tác vụ hiện tại.")
-        return {
-            **restored,
-            "code": "SESSION_RESTORED",
-            "message": "Đã tự đăng nhập lại WFX.",
-        }
+    def _run_action_with_auto_relogin(self, method_name: str, action: Callable[[], dict]) -> dict:
+        return self._session._run_action_with_auto_relogin(method_name, action)
 
-    def _run_action_with_auto_relogin(
-        self,
-        method_name: str,
-        action: Callable[[], dict],
-    ) -> dict:
-        """Khôi phục Chrome/phiên rồi retry toàn bộ action đúng một lần."""
-        result = action()
-        if (
-            method_name in AUTO_RELOGIN_EXCLUDED_METHODS
-            or not isinstance(result, dict)
-        ):
-            return result
-        code = str(result.get("code") or "")
-        if code == "CHROME_CLOSED":
-            self._log(
-                "[BROWSER] Trình duyệt làm việc đã đóng; đang tự mở lại..."
-            )
-            opened = self._login.start_chrome(self._log)
-            if not isinstance(opened, dict) or not opened.get("ok"):
-                return opened if isinstance(opened, dict) else {
-                    "ok": False,
-                    "code": "CHROME_OPEN_FAILED",
-                    "message": "Kết quả mở lại trình duyệt không hợp lệ.",
-                    "chrome_alive": False,
-                }
-            restored = self._restore_expired_session()
-            if restored is None:
-                return {
-                    "ok": False,
-                    "code": "MISSING_CREDENTIALS",
-                    "message": (
-                        "Đã mở lại trình duyệt. Hãy lưu tài khoản WFX để ứng dụng "
-                        "có thể tự đăng nhập và tiếp tục tác vụ."
-                    ),
-                    "chrome_alive": True,
-                    "browser_available": True,
-                    "browser_name": opened.get("browser_name"),
-                }
-            if not restored.get("ok"):
-                return {
-                    **restored,
-                    "chrome_alive": True,
-                    "browser_available": True,
-                    "browser_name": opened.get("browser_name"),
-                }
-            self._log(
-                "[BROWSER] Đã mở lại trình duyệt và khôi phục phiên; "
-                "tiếp tục tác vụ hiện tại."
-            )
-            return action()
-        if code != "NOT_LOGGED_IN":
-            return result
-        restored = self._restore_expired_session()
-        if restored is None:
-            return result
-        if not restored.get("ok"):
-            return restored
-        return action()
-
-    def _report_automation_error(
-        self,
-        method_name: str,
-        result: dict,
-        request: dict | None,
-        code: str,
-        run_id: str,
-        elapsed: float,
-    ) -> None:
-        error_context = telemetry.automation_error_context(
+    def _report_automation_error(self, method_name: str, result: dict, request: dict | None, code: str, run_id: str, elapsed: float) -> None:
+        return self._engine._report_automation_error(
             method_name,
             result,
             request,
+            code,
+            run_id,
+            elapsed,
         )
-        telemetry.enqueue(
-            self._base_dir,
-            {
-                "event_type": "automation_error",
-                "app_version": APP_VERSION,
-                "method": method_name,
-                "code": code,
-                "run_id": run_id,
-                "elapsed_ms": int(elapsed * 1000),
-                **error_context,
-                "account": self._telemetry_account_context(),
-                **telemetry.system_summary(),
-            },
-        )
-        # Chốt endpoint trước khi tạo thread. Nếu test/cấu hình hiện tại
-        # đã tắt webhook thì thread chạy trễ cũng không được tự resolve lại
-        # DEFAULT_WEBHOOK_URL và gửi payload sang production.
-        telemetry_endpoint = telemetry.webhook_url(self._base_dir)
-        threading.Thread(
-            target=telemetry.flush,
-            args=(self._base_dir, telemetry_endpoint),
-            daemon=True,
-        ).start()
 
     def cancel_current_action(self) -> dict:
-        if automation_runtime.request_cancel():
-            self._log("[STOP] Đã nhận yêu cầu dừng; đang chờ checkpoint an toàn.")
-            return {
-                "ok": True,
-                "code": "CANCEL_REQUESTED",
-                "message": "Đang dừng tại checkpoint an toàn…",
-                "run_id": self._current_run_id,
-            }
-        return {
-            "ok": False,
-            "code": "NO_ACTION_RUNNING",
-            "message": "Không có tác vụ automation đang chạy.",
-        }
+        return self._engine.cancel_current_action()
 
     def is_action_running(self) -> bool:
-        """Nguồn trạng thái native để panel tự thu không phụ thuộc WebView."""
-        with self._run_depth_lock:
-            return self._run_depth > 0
+        return self._engine.is_action_running()
 
-    def shutdown(self, close_browser: bool = False) -> None:
-        if close_browser:
-            closer = getattr(self._login, "close_chrome", None)
-            if callable(closer):
-                # Nếu user thoát giữa flow, dừng ở checkpoint rồi đóng Chrome
-                # trên chính automation worker để không tạo race CDP.
-                AUTOMATION_RUNTIME.request_cancel()
-                try:
-                    AUTOMATION_RUNTIME.execute(lambda: closer(self._log))
-                except Exception as exc:
-                    self._log(
-                        "Không đóng được trình duyệt làm việc khi thoát: "
-                        f"{type(exc).__name__}: {exc}"
-                    )
-        automation_runtime.shutdown()
+    def shutdown(self, close_browser: bool=False) -> None:
+        return self._session.shutdown(close_browser)
 
-    # -- automation --------------------------------------------------------
     def login(self) -> dict:
-        def action() -> dict:
-            account = self._account()
-            # Người dùng vừa chủ động bấm đăng nhập: cho phép thử lại đúng bộ
-            # credential mà lần trước WFX từ chối (họ có thể đã sửa mật khẩu).
-            self._rejected_credential = None
-            result = self._login_run(
-                account["user_id"],
-                account["password"],
-            )
-            return self._with_admin_access(result)
-
-        return self._run("login", action)
+        return self._session.login()
 
     def check_session(self) -> dict:
-        return self._run(
-            "check_session",
-            lambda: self._with_admin_access(
-                self._login.check_session(self._log)
-            ),
-        )
+        return self._session.check_session()
 
     def should_maintain_session(self) -> bool:
-        """Chỉ keepalive sau khi app đã xác nhận từng có phiên đăng nhập."""
-        if self._session_active is not True:
-            return False
-        account = self._account()
-        return bool(
-            str(account.get("user_id") or "").strip()
-            and str(account.get("password") or "")
-        )
+        return self._session.should_maintain_session()
 
     def maintain_session(self) -> dict:
-        """Kiểm tra nền; hết phiên thì tự login lại bằng credential đã lưu."""
-
-        def action() -> dict:
-            buffered_logs: list[str] = []
-            checked = self._login.check_session(buffered_logs.append)
-            if str(checked.get("code") or "") != "NOT_LOGGED_IN":
-                return checked
-            for line in buffered_logs:
-                self._log(line)
-            restored = self._restore_expired_session()
-            return restored or checked
-
-        # Heartbeat thành công không phải tác vụ người dùng: không ghi jobs.json,
-        # không thêm hai dòng RUN và không thay footer. Khi session thật sự lỗi,
-        # _run_unlocked vẫn ghi một dòng cô đọng và _observe vẫn cập nhật state.
-        return self._run(
-            "maintain_session",
-            action,
-            record_job=False,
-            record_job_on_failure=True,
-            announce=False,
-        )
+        return self._session.maintain_session()
 
     def open_chrome(self) -> dict:
-        def action() -> dict:
-            browser = self._login.start_chrome(self._log)
-            if not browser.get("ok"):
-                return browser
-            account = self._account()
-            self._rejected_credential = None
-            logged_in = self._login_run(
-                account["user_id"],
-                account["password"],
-            )
-            result = {
-                **logged_in,
-                "chrome_alive": True,
-                "browser_available": True,
-                "browser_name": browser.get("browser_name"),
-                "message": (
-                    "Đã mở trình duyệt và đăng nhập WFX."
-                    if logged_in.get("ok")
-                    else logged_in.get("message")
-                ),
-            }
-            return self._with_admin_access(result)
-
-        return self._run("open_chrome", action)
+        return self._session.open_chrome()
 
     def open_module(self, module_id: str) -> dict:
-        def action() -> dict:
-            controller = module_controllers.get(module_id)
-            if controller is None:
-                return {
-                    "ok": False,
-                    "code": "MODULE_UNKNOWN",
-                    "message": f"Module lạ: {module_id}",
-                }
-            if module_id in constants.ADMIN_MODULE_IDS:
-                self._refresh_admin_access()
-                if (
-                    self._admin_access is not True
-                    or module_id not in self._admin_module_ids
-                ):
-                    return {
-                        "ok": False,
-                        "code": "ADMIN_ACCESS_DENIED",
-                        "message": "Tài khoản WFX không có quyền mở module Admin này.",
-                        **self._admin_state(),
-                    }
-            return controller.open(self._login, self._log)
-
-        return self._run(
-            "open_module", action, {"module_id": module_id}
-        )
+        return self._modules.open_module(module_id)
 
     def report_catalog(self) -> dict:
         return self._reports.report_catalog()
@@ -1004,18 +406,7 @@ class PanelAPI:
         return self._reports.run_color_report_batch(selection, style_refs, output_dir)
 
     def _admin_module_access_error(self, module_id: str) -> dict | None:
-        self._refresh_admin_access()
-        if (
-            self._admin_access is True
-            and module_id in self._admin_module_ids
-        ):
-            return None
-        return {
-            "ok": False,
-            "code": "ADMIN_ACCESS_DENIED",
-            "message": "Tài khoản WFX không có quyền mở module Admin này.",
-            **self._admin_state(),
-        }
+        return self._access._admin_module_access_error(module_id)
 
     def open_sale_asn_new(self) -> dict:
         return self._sale_asn.open_sale_asn_new()
@@ -1054,62 +445,14 @@ class PanelAPI:
     def cancel_sale_asn_create(self, review_token: str) -> dict:
         return self._sale_asn.cancel_sale_asn_create(review_token)
 
-    def search_oc(
-        self,
-        filter_kind: str,
-        query: str,
-    ) -> dict:
-        oc = constants.MODULE_BY_ID["0004_0050_0020"]
-        return self._run(
-            "search_oc",
-            lambda: self._login.search_oc_list(
-                oc["xpath"],
-                str(filter_kind or ""),
-                str(query or "").strip(),
-                self._log,
-            ),
-            {
-                "filter_kind": str(filter_kind or ""),
-                "query": str(query or "").strip(),
-            },
-        )
+    def search_oc(self, filter_kind: str, query: str) -> dict:
+        return self._modules.search_oc(filter_kind, query)
 
-    def search_sample(
-        self,
-        sample_no: str = "",
-        style: str = "",
-        created_by: str = "",
-        buyer: str = "",
-    ) -> dict:
-        sample = constants.MODULE_BY_ID["0004_0056_4070"]
-        values = {
-            "sample_no": str(sample_no or "").strip(),
-            "style": str(style or "").strip(),
-            "created_by": str(created_by or "").strip(),
-            "buyer": str(buyer or "").strip(),
-        }
-        active_filters = [key for key, value in values.items() if value]
-        return self._run(
-            "search_sample",
-            lambda: self._login.search_sample_list_with_filters(
-                sample["xpath"],
-                values,
-                self._log,
-            ),
-            {
-                "filter_kind": "multiple",
-                "filter_kinds": active_filters,
-            },
-        )
+    def search_sample(self, sample_no: str='', style: str='', created_by: str='', buyer: str='') -> dict:
+        return self._modules.search_sample(sample_no, style, created_by, buyer)
 
     def open_sample_new(self) -> dict:
-        return self._run(
-            "open_sample_new",
-            lambda: self._login.open_sample_new(
-                constants.SAMPLE_NEW_XPATH,
-                self._log,
-            ),
-        )
+        return self._modules.open_sample_new()
 
     def search_sale_asn(self, filter_kind: str, query: str) -> dict:
         return self._sale_asn.search_sale_asn(filter_kind, query)
@@ -1147,41 +490,17 @@ class PanelAPI:
     def search_grn(self, filter_kind: str, query: str) -> dict:
         return self._inventory.search_grn(filter_kind, query)
 
-    def search_indent(
-        self,
-        module_id: str,
-        supplier: str,
-        article: str,
-        indent_no: str,
-        style: str,
-    ) -> dict:
-        if module_id not in {"0005_0080_0020", "user_indent_list"}:
-            return self._run(
-                "search_indent",
-                lambda: {
-                    "ok": False,
-                    "code": "MODULE_UNKNOWN",
-                    "message": f"Module Indent lạ: {module_id}",
-                },
-                {"module_id": module_id},
-            )
-        module = constants.MODULE_BY_ID[module_id]
-        return self._run(
-            "search_indent",
-            lambda: self._login.search_indent_list(
-                module["xpath"],
-                module["name"],
-                str(supplier or "").strip(),
-                str(article or "").strip(),
-                str(indent_no or "").strip(),
-                str(style or "").strip(),
-                self._log,
-            ),
-            {"module_id": module_id},
+    def search_indent(self, module_id: str, supplier: str, article: str, indent_no: str, style: str) -> dict:
+        return self._modules.search_indent(
+            module_id,
+            supplier,
+            article,
+            indent_no,
+            style,
         )
 
     def search_supplier_invoice(self, supplier: str='', invoice_no: str='', po_no: str='', asn_grn_no: str='') -> dict:
-        return self._finance.search_supplier_invoice(
+        return self._modules.search_supplier_invoice(
             supplier,
             invoice_no,
             po_no,
@@ -1192,7 +511,7 @@ class PanelAPI:
         return self._finance.search_advance_pr(buyer, supplier, invoice_no, order_no)
 
     def search_expense_invoice(self, supplier: str='', invoice_no: str='', created_by: str='', status: str='') -> dict:
-        return self._finance.search_expense_invoice(
+        return self._modules.search_expense_invoice(
             supplier,
             invoice_no,
             created_by,
@@ -1206,14 +525,7 @@ class PanelAPI:
         return self._finance.cancel_supplier_invoice_choice(choice_id)
 
     def open_module_new(self, module_id: str) -> dict:
-        return self._run(
-            "open_module_new",
-            lambda: self._login.open_module_new(
-                str(module_id or ""),
-                self._log,
-            ),
-            {"module_id": str(module_id or "")},
-        )
+        return self._modules.open_module_new(module_id)
 
     def toggle_company_foc(self) -> dict:
         return self._directory.toggle_company_foc()
@@ -1231,7 +543,7 @@ class PanelAPI:
         return self._directory.find_buyer(query)
 
     def switch_division(self, division_key: str) -> dict:
-        return self._directory.switch_division(division_key)
+        return self._access.switch_division(division_key)
 
     # -- catalog (uỷ quyền cho CatalogController) --------------------------
     def scan_catalog_folders(
@@ -1360,67 +672,11 @@ class PanelAPI:
     def open_oc_revision_report(self) -> dict:
         return self._oc.open_oc_revision_report()
 
-    def run_gdn_dispatch(
-        self,
-        invoice: str,
-        grn_wait_confirmed: bool = False,
-    ) -> dict:
-        invoice_value = " ".join(str(invoice or "").split())
-        if not boolean(grn_wait_confirmed):
-            return {
-                "ok": False,
-                "code": "GDN_GRN_WAIT_CONFIRMATION_REQUIRED",
-                "message": (
-                    "Chỉ Submit sau khi GRN nhập kho thành phẩm đã hoàn tất "
-                    "ít nhất 15 phút."
-                ),
-            }
-        if not invoice_value:
-            return {
-                "ok": False,
-                "code": "GDN_INVOICE_REQUIRED",
-                "message": "Hãy nhập Invoice GRN trước khi Submit.",
-            }
-
-        def action() -> dict:
-            runner = getattr(self._login, "run_gdn_dispatch", None)
-            if not callable(runner):
-                return {
-                    "ok": False,
-                    "code": "GDN_DISPATCH_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ (GDN) Dispatch.",
-                }
-            return runner(
-                invoice_value,
-                self._log,
-                self._progress_for("run_gdn_dispatch"),
-            )
-
-        # Không lưu Invoice vào request/job history/telemetry.
-        return self._run(
-            "run_gdn_dispatch",
-            action,
-            {"module_id": "gdn_dispatch"},
-        )
+    def run_gdn_dispatch(self, invoice: str, grn_wait_confirmed: bool=False) -> dict:
+        return self._modules.run_gdn_dispatch(invoice, grn_wait_confirmed)
 
     def open_gdn_status(self) -> dict:
-        """Mở EDI BuyerOrderDispatch để kiểm tra package, không submit lại."""
-
-        def action() -> dict:
-            opener = getattr(self._login, "open_gdn_status", None)
-            if not callable(opener):
-                return {
-                    "ok": False,
-                    "code": "GDN_DISPATCH_UNSUPPORTED",
-                    "message": "Phiên bản tự động hóa chưa hỗ trợ kiểm tra GDN.",
-                }
-            return opener(self._log)
-
-        return self._run(
-            "open_gdn_status",
-            action,
-            {"module_id": "gdn_dispatch"},
-        )
+        return self._modules.open_gdn_status()
 
     def _discard_oc_upload_review(self, review_token: str) -> bool:
         return self._oc._discard_oc_upload_review(review_token)
@@ -1508,83 +764,8 @@ class PanelAPI:
     ) -> dict:
         return self._catalog.costing.apply(plan_token, article_resolutions)
 
-    # -- settings ----------------------------------------------------------
     def save_account(self, user_id: str, password: str) -> dict:
-        # Password field trên UI không bao giờ được điền lại (get_initial_state
-        # chỉ trả user_id) nên luôn trống khi sheet mở lại. Nếu người dùng chỉ
-        # sửa User ID hoặc bấm CTA mà không gõ lại mật khẩu, KHÔNG được ghi đè
-        # mật khẩu đã lưu bằng chuỗi rỗng — giữ nguyên mật khẩu cũ.
-        user_id = str(user_id or "").strip()
-        previous_user_id = str(
-            self._account().get("user_id") or ""
-        ).strip()
-        password = password or ""
-        if not user_id:
-            return {
-                "ok": False,
-                "code": "USER_ID_REQUIRED",
-                "message": "Vui lòng nhập User ID trước khi kết nối.",
-            }
-        account_changed = previous_user_id.casefold() != user_id.casefold()
-        if not password.strip():
-            # Kế thừa mật khẩu cũ CHỈ đúng khi vẫn là tài khoản cũ. Ghép User
-            # ID mới với mật khẩu của người khác thì lần đăng nhập nào cũng
-            # sai, và mỗi lần sai là một bước tới khóa tài khoản trên WFX.
-            if account_changed and previous_user_id:
-                return {
-                    "ok": False,
-                    "code": "PASSWORD_REQUIRED",
-                    "message": (
-                        "Đổi sang User ID khác thì phải nhập mật khẩu của "
-                        "chính tài khoản đó."
-                    ),
-                }
-            existing_password = self._account().get("password", "")
-            if not existing_password.strip():
-                return {
-                    "ok": False,
-                    "code": "PASSWORD_REQUIRED",
-                    "message": "Vui lòng nhập mật khẩu trước khi lưu.",
-                }
-            password = existing_password
-        try:
-            self._prefs.save_account(user_id, password, base_dir=self._base_dir)
-        except getattr(
-            self._prefs,
-            "CredentialProtectionError",
-            RuntimeError,
-        ) as error:
-            return {
-                "ok": False,
-                "code": "CREDENTIAL_PROTECTION_FAILED",
-                "message": str(error),
-            }
-        self._rejected_credential = None
-        if account_changed:
-            # Chrome vẫn đang giữ phiên của tài khoản CŨ. Giữ nguyên cờ "đã
-            # đăng nhập" ở đây là nói dối: mọi automation chạy sau đó vẫn là
-            # người cũ. Hạ toàn bộ trạng thái dẫn xuất và để lần login kế
-            # tiếp tự đổi phiên (_session_user_id vẫn là chủ phiên cũ).
-            self._session_active = None
-            self._last_login_at = None
-            self._current_division = None
-            self._division_label = None
-            self._division_name = None
-            self._admin_access = None
-            self._admin_module_ids.clear()
-            self._catalog.reset_for_account_change()
-        self._log("[SETTINGS] Đã lưu tài khoản")
-        return {
-            "ok": True,
-            "code": "ACCOUNT_SAVED",
-            "message": "Đã lưu tài khoản.",
-            "user_id": user_id,
-            "has_credentials": True,
-            "credential_state": self._credential_state(),
-            **self._session_status(),
-            **self._division_state(),
-            **self._admin_state(),
-        }
+        return self._session.save_account(user_id, password)
 
     def set_theme(self, theme: str) -> dict:
         return self._settings.set_theme(theme)
@@ -1620,34 +801,7 @@ class PanelAPI:
         return self._settings.set_always_on_top(enabled)
 
     def set_admin_mode(self, enabled: bool) -> dict:
-        wanted = boolean(enabled)
-        if wanted:
-            self._refresh_admin_access()
-        if wanted and self._admin_access is not True:
-            self._prefs.save_prefs(
-                base_dir=self._base_dir,
-                admin_mode=False,
-            )
-            return {
-                "ok": False,
-                "code": "ADMIN_ACCESS_DENIED",
-                "message": "Tài khoản WFX này không có module Admin được cấp quyền.",
-                **self._admin_state(),
-            }
-        saved = self._prefs.save_prefs(
-            base_dir=self._base_dir,
-            admin_mode=wanted,
-        )
-        return {
-            "ok": True,
-            "code": "ADMIN_MODE_SAVED",
-            "message": (
-                "Đã hiện các module Admin được cấp quyền."
-                if saved["admin_mode"]
-                else "Đã ẩn nhóm module Admin."
-            ),
-            **self._admin_state(),
-        }
+        return self._access.set_admin_mode(enabled)
 
     def submit_feedback(self, kind: str, message: str, include_diagnostics: bool=True) -> dict:
         return self._jobs.submit_feedback(kind, message, include_diagnostics)
