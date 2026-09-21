@@ -822,76 +822,98 @@ def _select_first_transaction(page: Page, *, force: bool = False) -> None:
     )
 
 
+SUCCESS_BANNER_SELECTOR = (
+    "#lblSuccessMsg, .success, .clsSuccess, "
+    "[class*='success' i], [id*='success' i]"
+)
+_TRANSACTION_SUCCESS_RE = re.compile(r"success|created|complete", re.IGNORECASE)
+_NO_RECORD_SELECTED_RE = re.compile(r"no\s+record\s+selected", re.IGNORECASE)
+
+
+class _CreateTransactionDialogs:
+    """Gom alert WFX bắn ra trong lúc chờ xác nhận Create Transaction.
+
+    ``No Record Selected`` là bằng chứng KHÔNG có transaction nào được gửi, nên
+    chỉ khi thấy nó mới được phép chọn lại dòng và bấm lần hai.
+    """
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+        self.saw_no_record = False
+
+    def accept(self, dialog: Any) -> None:
+        message = " ".join(str(dialog.message or "").split())
+        self.messages.append(message)
+        if _NO_RECORD_SELECTED_RE.search(message):
+            self.saw_no_record = True
+        dialog.accept()
+
+    @property
+    def reports_success(self) -> bool:
+        return any(_TRANSACTION_SUCCESS_RE.search(m) for m in self.messages)
+
+
+def _success_banner_text(page: Page) -> str:
+    """Nội dung banner thành công đang hiển thị, rỗng nếu chưa có."""
+    for frame in page.frames:
+        try:
+            banners = frame.locator(SUCCESS_BANNER_SELECTOR)
+            for index in range(banners.count()):
+                text = " ".join((banners.nth(index).text_content() or "").split())
+                if text and _TRANSACTION_SUCCESS_RE.search(text):
+                    return text
+        except PlaywrightError:
+            continue
+    return ""
+
+
+def _wait_transaction_confirmed(
+    page: Page, dialogs: _CreateTransactionDialogs, timeout_s: float = 35
+) -> tuple[bool, list[str]]:
+    """Chờ WFX xác nhận, trả (đã thành công, các message đọc được).
+
+    Không cho Stop ngắt đoạn này: Create Transaction không idempotent nên mất
+    xác nhận phải được caller coi là unconfirmed chứ không phải thất bại.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        checkpoint()
+        if dialogs.saw_no_record:
+            return False, dialogs.messages
+        if dialogs.reports_success:
+            return True, dialogs.messages
+        banner = _success_banner_text(page)
+        if banner:
+            return True, dialogs.messages + [banner]
+        _wait(page, 300)
+    return False, dialogs.messages
+
+
 def _create_transaction(page: Page, log: Callable[[str], None]) -> tuple[bool, list[str]]:
-    def build_dialog_handler(
-        dialog_messages: list[str],
-        no_record_state: list[bool],
-    ) -> Callable[[Any], None]:
-        def accept_create_dialog(dialog: Any) -> None:
-            message = " ".join(str(dialog.message or "").split())
-            dialog_messages.append(message)
-            if re.search(r"no\s+record\s+selected", message, re.I):
-                no_record_state[0] = True
-            dialog.accept()
-
-        return accept_create_dialog
-
     for attempt in range(2):
-        # Selecting again is safe before the Create Transaction click and closes
-        # the race where WFX has rendered the toolbar before binding the row
-        # selection. A "No Record Selected" alert confirms no transaction was
-        # submitted, so one fresh selection + click is safe as well.
+        # Chọn lại trước khi bấm là an toàn và đóng được khe hở khi WFX đã render
+        # toolbar nhưng chưa bind selection.
         _select_first_transaction(page, force=attempt > 0)
         _frame, create_link = _toolbar_link(page, "Create Transaction", timeout_s=10)
-        dialog_messages: list[str] = []
-        no_record_state = [False]
-        accept_create_dialog = build_dialog_handler(dialog_messages, no_record_state)
-
-        page.on("dialog", accept_create_dialog)
+        dialogs = _CreateTransactionDialogs()
+        page.on("dialog", dialogs.accept)
         try:
             with cancellation_deferred():
                 _click(create_link)
                 _write_log(log, "[OC EDI] Đã gửi Create Transaction")
-                deadline = time.monotonic() + 35
-                while time.monotonic() < deadline:
-                    # Không cho Stop ngắt đoạn xác nhận sau thao tác không
-                    # idempotent. Nếu mất kết nối, caller phải coi transaction
-                    # là unconfirmed.
-                    checkpoint()
-                    if no_record_state[0]:
-                        break
-                    if any(
-                        re.search(r"success|created|complete", message, re.I)
-                        for message in dialog_messages
-                    ):
-                        return True, dialog_messages
-                    for frame in page.frames:
-                        try:
-                            messages = frame.locator(
-                                "#lblSuccessMsg, .success, .clsSuccess, "
-                                "[class*='success' i], [id*='success' i]"
-                            )
-                            for index in range(messages.count()):
-                                candidate = messages.nth(index)
-                                text = " ".join((candidate.text_content() or "").split())
-                                if text and re.search(
-                                    r"success|created|complete", text, re.I
-                                ):
-                                    return True, dialog_messages + [text]
-                        except PlaywrightError:
-                            continue
-                    _wait(page, 300)
-            if no_record_state[0] and attempt == 0:
-                _write_log(
-                    log,
-                    "[OC EDI] WFX chưa nhận dòng đã chọn; chọn lại và thử Create Transaction một lần.",
-                )
-                _wait(page, 500)
-                continue
-            return False, dialog_messages
+                confirmed, messages = _wait_transaction_confirmed(page, dialogs)
+            if confirmed:
+                return True, messages
+            if not dialogs.saw_no_record or attempt > 0:
+                return False, messages
+            _write_log(
+                log,
+                "[OC EDI] WFX chưa nhận dòng đã chọn; chọn lại và thử Create Transaction một lần.",
+            )
+            _wait(page, 500)
         finally:
             try:
-                page.remove_listener("dialog", accept_create_dialog)
+                page.remove_listener("dialog", dialogs.accept)
             except Exception:
                 pass
     return False, []
