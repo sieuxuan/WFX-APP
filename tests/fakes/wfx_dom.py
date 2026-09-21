@@ -83,6 +83,7 @@ class FakeNode:
         self.text = ""
         self.checked = False
         self.check_calls = 0
+        self.keys: list[str] = []
         self.parent: FakeNode | None = None
 
     def _guard(self) -> None:
@@ -132,6 +133,10 @@ class FakeNode:
 
     def dispatch_event(self, event: str) -> None:
         self._guard()
+
+    def press(self, key: str, timeout: float | None = None) -> None:
+        self._guard()
+        self.keys.append(key)
 
     def evaluate(self, script: str, arg: Any = None) -> Any:
         self._guard()
@@ -194,6 +199,9 @@ class FakeLocator:
 
     def dispatch_event(self, event: str) -> None:
         self._node.dispatch_event(event)
+
+    def press(self, key: str, timeout: float | None = None) -> None:
+        self._node.press(key, timeout)
 
     def evaluate(self, script: str, arg: Any = None) -> Any:
         return self._node.evaluate(script, arg)

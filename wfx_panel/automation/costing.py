@@ -66,6 +66,9 @@ FORBIDDEN_ACTION_SELECTORS = frozenset(
         "#imgCopySection",
     }
 )
+# Đọc bảng Dependency phải mở popup, nên một lượt hỏng vì popup chưa kịp hiện
+# là chuyện bình thường. Đây là thao tác chỉ đọc nên thử lại an toàn.
+DEPENDENCY_TABLE_ATTEMPTS = 2
 
 _KEY_CLEAN_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
 _COSTING_STATUS_RE = re.compile(
@@ -1217,17 +1220,24 @@ def _inventory_costing_frame(
     return document
 
 
+_VISIBLE_JS = """elements => elements
+    .map((element, index) => ({element, index}))
+    .filter(({element}) => {
+        if (!element.isConnected) return false;
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    })
+    .map(({index}) => index)"""
+
+
 def _visible_costing_grid(frame: Frame) -> Any | None:
     grids = frame.locator(COSTING_GRID_SELECTOR)
-    visible = []
-    for index in range(grids.count()):
-        candidate = grids.nth(index)
-        try:
-            if candidate.is_visible():
-                visible.append(candidate)
-        except PlaywrightError:
-            continue
-    return visible[0] if len(visible) == 1 else None
+    visible = _filtered_indexes(grids, _VISIBLE_JS)
+    return grids.nth(visible[0]) if len(visible) == 1 else None
 
 
 def _section_row_index(grid: Any, section_key: str) -> int:
@@ -1989,18 +1999,52 @@ def _split_article_row(
     raise RuntimeError("COSTING_SPLIT_NOT_CONFIRMED")
 
 
+def _evaluate_all(locator: Any, script: str, arg: Any = None) -> list[Any]:
+    """Lọc/đọc trong trình duyệt một lượt, thay vì hỏi từng phần tử.
+
+    Mỗi `count()`/`is_visible()`/`is_enabled()`/`get_attribute()` là một lượt
+    gọi CDP riêng, nên lọc kiểu `1 + 2N` làm một dòng Costing vài chục control
+    tốn hàng trăm lượt. Caller vẫn dựng lại handle Playwright bằng `nth()` theo
+    index trả về, nên click/fill không đổi.
+    """
+    checkpoint()
+    try:
+        return list(locator.evaluate_all(script, arg) or ())
+    except PlaywrightError:
+        return []
+
+
+def _filtered_indexes(
+    locator: Any,
+    script: str,
+    arg: Any = None,
+) -> list[int]:
+    return [int(index) for index in _evaluate_all(locator, script, arg)]
+
+
+# Tương đương `is_visible()` + `is_enabled()` của Playwright: bounding box khác
+# rỗng, không bị ẩn, và `:disabled` bắt cả control nằm trong fieldset disabled.
+_USABLE_CONTROL_JS = """elements => elements
+    .map((element, index) => ({element, index}))
+    .filter(({element}) => {
+        if (!element.isConnected) return false;
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        return !element.matches(':disabled');
+    })
+    .map(({index}) => index)"""
+
+
 def _visible_controls(frame: Frame, selector: str) -> list[Any]:
     locator = frame.locator(selector)
-    controls: list[Any] = []
-    for index in range(locator.count()):
-        checkpoint()
-        candidate = locator.nth(index)
-        try:
-            if candidate.is_visible() and candidate.is_enabled():
-                controls.append(candidate)
-        except PlaywrightError:
-            continue
-    return controls
+    return [
+        locator.nth(index)
+        for index in _filtered_indexes(locator, _USABLE_CONTROL_JS)
+    ]
 
 
 def _live_field_index(
@@ -2016,6 +2060,31 @@ def _live_field_index(
         for field in document.get("fields") or ()
         if isinstance(field, Mapping)
     }
+
+
+# WFX lặp cùng một id trên nhiều dòng, nên selector `[id="..."]` vẫn phải được
+# soát lại bằng chính `getAttribute('id')` trước khi coi là đúng control.
+_VISIBLE_WITH_ID_JS = """(elements, wantedId) => elements
+    .map((element, index) => ({element, index}))
+    .filter(({element}) => {
+        if (element.getAttribute('id') !== wantedId) return false;
+        if (!element.isConnected) return false;
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    })
+    .map(({index}) => index)"""
+
+
+def _unique_visible_by_id(scope: Any, dom_id: str) -> Any:
+    candidates = scope.locator(f'[id="{dom_id}"]')
+    matches = _filtered_indexes(candidates, _VISIBLE_WITH_ID_JS, dom_id)
+    if len(matches) != 1:
+        raise RuntimeError("COSTING_FIELD_DETACHED")
+    return candidates.nth(matches[0])
 
 
 def _resolve_live_field(frame: Frame, field: Mapping[str, Any]) -> Any:
@@ -2035,34 +2104,8 @@ def _resolve_live_field(frame: Frame, field: Mapping[str, Any]) -> Any:
         row_index = int(live.get("row_index") or 0)
         if row_index < 0 or row_index >= rows.count():
             raise RuntimeError("COSTING_FIELD_DETACHED")
-        row = rows.nth(row_index)
-        candidates = row.locator(f'[id="{click_dom_id}"]')
-        matches = []
-        for index in range(candidates.count()):
-            candidate = candidates.nth(index)
-            try:
-                if (
-                    candidate.get_attribute("id") == click_dom_id
-                    and candidate.is_visible()
-                ):
-                    matches.append(candidate)
-            except PlaywrightError:
-                continue
-        if len(matches) != 1:
-            raise RuntimeError("COSTING_FIELD_DETACHED")
-        return matches[0]
-    matches = []
-    candidates = frame.locator(f'[id="{click_dom_id}"]')
-    for index in range(candidates.count()):
-        candidate = candidates.nth(index)
-        try:
-            if candidate.get_attribute("id") == click_dom_id and candidate.is_visible():
-                matches.append(candidate)
-        except PlaywrightError:
-            continue
-    if len(matches) != 1:
-        raise RuntimeError("COSTING_FIELD_DETACHED")
-    return matches[0]
+        return _unique_visible_by_id(rows.nth(row_index), click_dom_id)
+    return _unique_visible_by_id(frame, click_dom_id)
 
 
 def _base_costing_field_key(field: Mapping[str, Any]) -> str:
@@ -2883,7 +2926,9 @@ def _scan_costing_dependency_tables(
             field["value"] = direct_value
             field["options"] = list(option_cache[kind])
             continue
-        for attempt in range(1):
+        # Popup Dependency mở chậm một nhịp là đủ để lượt đầu hỏng; thiếu lần
+        # thử lại thì `_dependency_scan_incomplete()` bật và đổ cả lượt Export.
+        for attempt in range(DEPENDENCY_TABLE_ATTEMPTS):
             try:
                 value, options = _scan_dependency_table(
                     frame,
@@ -2899,7 +2944,7 @@ def _scan_costing_dependency_tables(
                     frame.locator("body").press("Escape")
                 except PlaywrightError:
                     pass
-                if attempt == 0:
+                if attempt < DEPENDENCY_TABLE_ATTEMPTS - 1:
                     _sleep(0.2)
     for field in mapping_fields:
         kind = "Color" if "color" in _base_costing_field_key(field) else "Size"
@@ -2973,6 +3018,44 @@ def _apply_inline_select_option(editor: Any, option_value: str) -> None:
     editor.select_option(value=option_value)
 
 
+# Một lượt gọi thay cho `is_visible`+`is_enabled`+`type`+`id`+`name`+`tagName`
+# của từng control: một dòng Costing có vài chục input/select.
+_INLINE_EDITOR_JS = """(elements, suffix) => {
+    const blocked = new Set(
+        ['hidden', 'checkbox', 'radio', 'file', 'button', 'submit']
+    );
+    const usable = [];
+    elements.forEach((element, index) => {
+        if (!element.isConnected) return;
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') return;
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        if (element.matches(':disabled')) return;
+        const type = String(element.getAttribute('type') || '').toLowerCase();
+        if (blocked.has(type)) return;
+        const identity = [
+            element.getAttribute('id') || '',
+            element.getAttribute('name') || ''
+        ].join(' ').toLowerCase();
+        usable.push({
+            index,
+            tag: element.tagName.toLowerCase(),
+            matches_suffix: Boolean(suffix) && identity.includes(suffix)
+        });
+    });
+    return usable;
+}"""
+
+# Giống hệt cách `_select_special_cost_article` đã dùng: khớp exact theo nhãn
+# hoặc value ngay trong trình duyệt. Dropdown Article của WFX có thể vài trăm
+# option, mỗi option trước đây tốn 2 lượt gọi.
+_MATCHING_OPTION_VALUES_JS = """(options, wanted) => options
+    .filter(option => [option.textContent, option.value]
+        .some(value => String(value || '').trim().toLowerCase() === wanted))
+    .map(option => String(option.value || '').trim())"""
+
+
 def _edit_wfx_label(
     frame: Frame,
     control: Any,
@@ -3001,39 +3084,20 @@ def _edit_wfx_label(
             if row_index < 0 or row_index >= rows.count():
                 raise RuntimeError("COSTING_INLINE_EDITOR_NOT_FOUND")
             root = rows.nth(row_index)
-        editors = [
-            editor
-            for editor in _visible_controls(root, "input,select,textarea")
-            if str(editor.get_attribute("type") or "").casefold()
-            not in {"hidden", "checkbox", "radio", "file", "button", "submit"}
-        ]
-        preferred = [
-            editor
-            for editor in editors
-            if suffix
-            and suffix
-            in " ".join(
-                (
-                    str(editor.get_attribute("id") or ""),
-                    str(editor.get_attribute("name") or ""),
-                )
-            ).casefold()
-        ]
+        controls = root.locator("input,select,textarea")
+        editors = _evaluate_all(controls, _INLINE_EDITOR_JS, suffix)
+        preferred = [item for item in editors if item.get("matches_suffix")]
         if len(preferred) == 1:
             editors = preferred
         if len(editors) == 1:
-            editor = editors[0]
-            tag = editor.evaluate("element => element.tagName.toLowerCase()")
+            editor = controls.nth(int(editors[0]["index"]))
+            tag = str(editors[0]["tag"])
             if tag == "select":
-                options = editor.locator("option")
-                matched = []
-                wanted = str(value or "").strip().casefold()
-                for index in range(options.count()):
-                    option = options.nth(index)
-                    label = (option.inner_text() or "").strip()
-                    option_value = (option.get_attribute("value") or "").strip()
-                    if wanted in {label.casefold(), option_value.casefold()}:
-                        matched.append(option_value)
+                matched = _evaluate_all(
+                    editor.locator("option"),
+                    _MATCHING_OPTION_VALUES_JS,
+                    str(value or "").strip().casefold(),
+                )
                 if len(matched) != 1:
                     raise RuntimeError("COSTING_INLINE_OPTION_NOT_FOUND")
                 # WFX dùng select 1×1 làm backing control cho Select2.
@@ -4333,6 +4397,10 @@ def _costing_scan_error(
         ),
         "COSTING_CONTEXT_NOT_FOUND": (
             "Không tìm thấy màn Costing của style đang chọn."
+        ),
+        "COSTING_DEPENDENCY_SCAN_INCOMPLETE": (
+            "Chưa đọc được đầy đủ bảng Color/Size Dependency. Hãy đóng các "
+            "popup Dependency còn mở trên WFX rồi xuất lại."
         ),
     }
     if raw in messages:
