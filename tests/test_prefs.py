@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from wfx_panel import prefs
+from wfx_panel.stores import panel_cache
 
 
 def test_account_round_trip(tmp_path: Path):
@@ -307,7 +308,7 @@ def test_costing_article_cache_round_trip_is_scoped_and_expires(
             ],
         }
     ]
-    monkeypatch.setattr(prefs.time, "time", lambda: 1_000.0)
+    monkeypatch.setattr(panel_cache.time, "time", lambda: 1_000.0)
 
     saved = prefs.save_costing_article_cache(
         "alice",
@@ -324,7 +325,7 @@ def test_costing_article_cache_round_trip_is_scoped_and_expires(
         "bob",
         base_dir=tmp_path,
     ) is None
-    monkeypatch.setattr(prefs.time, "time", lambda: 1_000.0 + 8 * 24 * 60 * 60)
+    monkeypatch.setattr(panel_cache.time, "time", lambda: 1_000.0 + 8 * 24 * 60 * 60)
     assert prefs.load_costing_article_cache(
         "alice",
         base_dir=tmp_path,
@@ -365,7 +366,7 @@ def test_costing_special_options_cache_is_complete_scoped_and_weekly(
         },
         {"section_key": "indirectcosts", "options": []},
     ]
-    monkeypatch.setattr(prefs.time, "time", lambda: 2_000.0)
+    monkeypatch.setattr(panel_cache.time, "time", lambda: 2_000.0)
 
     saved = prefs.save_costing_special_options_cache(
         "alice",
@@ -390,7 +391,7 @@ def test_costing_special_options_cache_is_complete_scoped_and_weekly(
         "knit",
         base_dir=tmp_path,
     ) is None
-    monkeypatch.setattr(prefs.time, "time", lambda: 2_000.0 + 8 * 24 * 60 * 60)
+    monkeypatch.setattr(panel_cache.time, "time", lambda: 2_000.0 + 8 * 24 * 60 * 60)
     assert prefs.load_costing_special_options_cache(
         "alice",
         "woven",
