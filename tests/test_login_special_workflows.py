@@ -1,6 +1,10 @@
+import re
 from pathlib import Path
+from types import SimpleNamespace
 
-from wfx_panel.automation import modules
+import pytest
+
+from wfx_panel.automation import modules, search_specs
 
 # login.py giờ là shim; code automation nằm ở package wfx_panel/automation/.
 # Gộp source mọi module (thứ tự sorted: __init__, _common, browser, catalog,
@@ -310,6 +314,11 @@ def test_qa_advance_pr_and_expense_new_use_direct_menu_links():
     assert '"MODULE_LIST_NOT_OPEN"' not in new_block
     assert "_document_changed" in new_block
     assert '"MODULE_NEW_READY"' in new_block
+    # Frame đổi document chưa phải bằng chứng: menu WFX cũng tự reload.
+    assert "_menu_target_markers(page, selector)" in new_block
+    assert "_wait_module_new_page(" in new_block
+    assert "MODULE_NEW_CONFIRM_SECONDS" in new_block
+    assert "elif markers and opened_page is None:" in new_block
 
 
 def test_generic_module_open_requires_real_navigation_confirmation():
@@ -317,11 +326,27 @@ def test_generic_module_open_requires_real_navigation_confirmation():
         SOURCE.index("def open_module("):
         SOURCE.index("def _active_wfx_page")
     ]
-    assert "_mark_page_documents" in open_block
-    assert "_wait_for_module_navigation" in open_block
+    assert "_open_module_menu(page, module_name, xpath, log)" in open_block
     assert '"MODULE_OPEN_NOT_CONFIRMED"' in open_block
-    assert "_open_menu_href_in_target_frame" in open_block
-    assert "timeout_s=5" in open_block
+
+    # Mọi lối vào List/New dùng chung một hàm mở menu, nên xác nhận navigation,
+    # fallback href và route cache không còn là đặc quyền của nút List.
+    menu_block = SOURCE[
+        SOURCE.index("def _open_module_menu("):
+        SOURCE.index("def _click_module_menu_on_page(")
+    ]
+    assert "_mark_page_documents" in menu_block
+    assert "_wait_for_module_navigation" in menu_block
+    assert "_open_menu_href_in_target_frame" in menu_block
+    assert "timeout_s=5" in menu_block
+    assert "_MENU_ROUTE_CACHE[xpath]" in menu_block
+    # Menu bắt theo @title/@href có thể khớp nhiều node; strict locator sẽ ném
+    # lỗi thay vì mở được màn hình.
+    assert 'page.locator(f"xpath={xpath}").first' in menu_block
+    assert (
+        "_open_module_menu(page, module_name, xpath, log).confirmed"
+        in SOURCE
+    )
 
 
 def test_company_foc_auto_opens_company_setup_when_context_is_stale():
@@ -376,3 +401,343 @@ def test_buyer_search_auto_opens_list_and_resolves_first_edit_link():
     assert "target.evaluate(\"element => element.click()\")" in SOURCE
     assert '"BUYER_EDIT_OPENED"' in SOURCE
     assert '"BUYER_EDIT_NOT_CONFIRMED"' in SOURCE
+
+
+_AP_INVOICE_SHARED_IDS = (
+    "titlebarAPInvoiceList",
+    "gridAPInvoiceList_tblGridHeader",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier",
+    "txtSupplier",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo",
+    "txtInvoiceNo",
+)
+_SUPPLIER_INVOICE_IDS = _AP_INVOICE_SHARED_IDS + (
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColPONo",
+    "txtPONo",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColASNGRNNo",
+    "txtASNGRNNo",
+)
+_EXPENSE_INVOICE_IDS = _AP_INVOICE_SHARED_IDS + (
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColCreatedBy",
+    "txtCreatedBy",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColStatus",
+    "txtStatus",
+)
+
+
+class _APInvoiceFrame:
+    """Frame giả của WFX: hai màn AP Invoice chỉ khác nhau ở cột filter."""
+
+    def __init__(self, element_ids, marker):
+        self.element_ids = frozenset(element_ids)
+        self.marker = marker
+        self.url = "https://wfx.example/WFXAPInvoiceList.aspx"
+
+    def _token_matches(self, token):
+        wanted = re.findall(r"#([A-Za-z0-9_-]+)", token)
+        return bool(wanted) and all(name in self.element_ids for name in wanted)
+
+    def locator(self, selector):
+        present = any(
+            self._token_matches(token) for token in selector.split(",")
+        )
+        return SimpleNamespace(
+            count=lambda: 1 if present else 0,
+            first=SimpleNamespace(
+                is_visible=lambda: present,
+                is_enabled=lambda: present,
+            ),
+        )
+
+    def evaluate(self, _script):
+        return self.marker
+
+
+def _supplier_invoice_frame(marker="wfxapinvoicelist.aspx supplier invoice list"):
+    return _APInvoiceFrame(_SUPPLIER_INVOICE_IDS, marker)
+
+
+def _expense_invoice_frame(marker="wfxapinvoicelist.aspx expense invoice list"):
+    return _APInvoiceFrame(_EXPENSE_INVOICE_IDS, marker)
+
+
+def test_ap_invoice_lists_are_told_apart_by_their_own_filter_columns():
+    supplier = _supplier_invoice_frame()
+    expense = _expense_invoice_frame()
+
+    assert modules._frame_serves_search_spec(
+        supplier, search_specs.SUPPLIER_INVOICE_SEARCH_SPEC
+    )
+    assert modules._frame_serves_search_spec(
+        expense, search_specs.EXPENSE_INVOICE_SEARCH_SPEC
+    )
+    # Expense Inv List không có PO No./ASN-GRN No. nên không được nhận làm
+    # context của Supplier Inv List, kể cả khi marker không chứa "expense".
+    assert not modules._frame_serves_search_spec(
+        _expense_invoice_frame("wfxapinvoicelist.aspx ap invoice list"),
+        search_specs.SUPPLIER_INVOICE_SEARCH_SPEC,
+    )
+    # Supplier Inv List không có Created By/Status.
+    assert not modules._frame_serves_search_spec(
+        supplier, search_specs.EXPENSE_INVOICE_SEARCH_SPEC
+    )
+
+
+def test_supplier_invoice_context_rejects_a_frame_marked_as_expense():
+    assert search_specs.SUPPLIER_INVOICE_SEARCH_SPEC.foreign_markers == (
+        "expense",
+    )
+    # Ngay cả khi WFX render đủ cột, marker Expense vẫn phải loại frame đó ra
+    # vì Cancel Supplier Invoice là thao tác phá hủy.
+    assert not modules._frame_serves_search_spec(
+        _APInvoiceFrame(
+            _SUPPLIER_INVOICE_IDS,
+            "wfxapinvoicelist.aspx expense invoice list",
+        ),
+        search_specs.SUPPLIER_INVOICE_SEARCH_SPEC,
+    )
+
+
+def _ap_invoice_search_page(monkeypatch, frames):
+    page = SimpleNamespace(frames=list(frames))
+    monkeypatch.setattr(modules, "MODULE_CONTEXT_PROBE_SECONDS", 0.05)
+    monkeypatch.setattr(modules, "_wait", lambda *_args, **_kwargs: None)
+    return page
+
+
+def test_supplier_inv_search_opens_its_own_list_instead_of_the_expense_list(
+    monkeypatch,
+):
+    page = _ap_invoice_search_page(monkeypatch, [_expense_invoice_frame()])
+    supplier = _supplier_invoice_frame()
+    clicks = []
+
+    def click_menu(_page, module_name, xpath, _log):
+        clicks.append((module_name, xpath))
+        page.frames = [_expense_invoice_frame(), supplier]
+
+    monkeypatch.setattr(modules, "_click_module_menu_on_page", click_menu)
+
+    frame = modules._open_multi_field_search_context(
+        page,
+        search_specs.SUPPLIER_INVOICE_SEARCH_SPEC,
+        '//*[@id="0065_0880_0020_0020"]/a',
+        lambda _line: None,
+    )
+
+    assert frame is supplier
+    assert clicks == [
+        ("Supplier Inv List", '//*[@id="0065_0880_0020_0020"]/a')
+    ]
+
+
+def test_expense_inv_search_opens_its_own_list_instead_of_the_supplier_list(
+    monkeypatch,
+):
+    page = _ap_invoice_search_page(monkeypatch, [_supplier_invoice_frame()])
+    expense = _expense_invoice_frame()
+    clicks = []
+
+    def click_menu(_page, module_name, xpath, _log):
+        clicks.append((module_name, xpath))
+        page.frames = [_supplier_invoice_frame(), expense]
+
+    monkeypatch.setattr(modules, "_click_module_menu_on_page", click_menu)
+
+    frame = modules._open_multi_field_search_context(
+        page,
+        search_specs.EXPENSE_INVOICE_SEARCH_SPEC,
+        '//*[@id="0065_0880_0030_0020"]/a',
+        lambda _line: None,
+    )
+
+    assert frame is expense
+    assert clicks == [
+        ("Expense Inv List", '//*[@id="0065_0880_0030_0020"]/a')
+    ]
+
+
+def test_search_reuses_the_matching_list_without_clicking_the_menu_again(
+    monkeypatch,
+):
+    supplier = _supplier_invoice_frame()
+    page = _ap_invoice_search_page(monkeypatch, [supplier])
+    monkeypatch.setattr(
+        modules,
+        "_click_module_menu_on_page",
+        lambda *_args: pytest.fail("Đã mở đúng List thì không được click lại"),
+    )
+
+    frame = modules._open_multi_field_search_context(
+        page,
+        search_specs.SUPPLIER_INVOICE_SEARCH_SPEC,
+        '//*[@id="0065_0880_0020_0020"]/a',
+        lambda _line: None,
+    )
+
+    assert frame is supplier
+
+
+def test_cancel_supplier_invoice_resolves_the_frame_with_its_own_spec(
+    monkeypatch,
+):
+    seen = {}
+
+    def fake_context(page, selector, **kwargs):
+        seen.update(kwargs)
+        seen["selector"] = selector
+        return "frame"
+
+    monkeypatch.setattr(modules, "_frame_with_visible_context", fake_context)
+
+    assert modules._find_supplier_invoice_frame(object()) == "frame"
+    assert seen["search_spec"] is search_specs.SUPPLIER_INVOICE_SEARCH_SPEC
+    assert seen["module_name"] == "Supplier Inv List"
+
+
+class _MenuLinkLocator:
+    def __init__(self, href, on_click=None):
+        self.href = href
+        self.on_click = on_click
+
+    @property
+    def first(self):
+        return self
+
+    def wait_for(self, **_options):
+        return None
+
+    def evaluate(self, _script):
+        return self.href
+
+    def get_attribute(self, name):
+        return "body" if name == "target" else None
+
+    def click(self, **_options):
+        if self.on_click is not None:
+            self.on_click()
+
+
+_QA_NEW_HREF = (
+    "https://wfx.example/wfx_BaseSetting.aspx?"
+    "RedirURL=WFXQAInspectionRequest.aspx%3FQARequestType=QualityInspection"
+    "&MenuName=mnuQAInspectionRequestNew"
+)
+
+
+def test_menu_target_markers_read_the_real_destination_from_the_link():
+    page = SimpleNamespace(locator=lambda _s: _MenuLinkLocator(_QA_NEW_HREF))
+
+    assert modules._menu_target_markers(page, "//a") == (
+        "wfxqainspectionrequest.aspx",
+        "menuname=mnuqainspectionrequestnew",
+    )
+
+
+class _FakeFrame:
+    """Frame giả giữ được document marker như Playwright."""
+
+    def __init__(self, url="", name=""):
+        self.url = url
+        self.name = name
+        self.marker = ""
+        self.navigations = []
+
+    def evaluate(self, _script, marker=None):
+        if marker is None:
+            return self.marker
+        self.marker = marker
+        return None
+
+    def goto(self, target, **_options):
+        self.navigations.append(target)
+
+
+def _fake_new_page(frame_urls):
+    return SimpleNamespace(
+        frames=[_FakeFrame(url) for url in frame_urls],
+        wait_for_timeout=lambda _ms: None,
+    )
+
+
+def test_new_screen_is_confirmed_by_the_destination_page_not_any_frame():
+    markers = ("wfxqainspectionrequest.aspx", "menuname=mnuqainspectionrequestnew")
+    opened = _fake_new_page(
+        ["https://wfx.example/WFXQAInspectionRequest.aspx?Action=New"]
+    )
+    browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[opened])])
+    assert modules._wait_module_new_page(browser, opened, markers, 1) is opened
+
+    # Menu tự reload không được tính là đã mở màn New.
+    stale = _fake_new_page(["https://wfx.example/wfx_Home.aspx"])
+    browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[stale])])
+    assert modules._wait_module_new_page(browser, stale, markers, 0.3) is None
+
+
+def _run_qa_new(monkeypatch, frame_urls):
+    page = _fake_new_page(frame_urls)
+    page.locator = lambda _selector: _MenuLinkLocator(_QA_NEW_HREF)
+    browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[page])])
+
+    monkeypatch.setattr(modules, "MODULE_NEW_CONFIRM_SECONDS", 0.3)
+    monkeypatch.setattr(
+        modules,
+        "sync_playwright",
+        lambda: SimpleNamespace(start=lambda: SimpleNamespace(stop=lambda: None)),
+    )
+    monkeypatch.setattr(
+        modules, "_active_wfx_page", lambda *_args: (browser, page)
+    )
+    monkeypatch.setattr(
+        modules, "_click_module_menu_on_page", lambda *_args: True
+    )
+    monkeypatch.setattr(modules, "_document_changed", lambda *_args: True)
+    monkeypatch.setattr(modules, "_wait", lambda *_args, **_kwargs: None)
+    return modules.open_module_new("0063_0030_0020", lambda _line: None)
+
+
+def test_qa_new_only_succeeds_when_its_own_screen_is_open(monkeypatch):
+    opened = _run_qa_new(
+        monkeypatch,
+        ["https://wfx.example/WFXQAInspectionRequest.aspx?Action=New"],
+    )
+    assert opened["code"] == "MODULE_NEW_READY", opened
+
+
+def test_qa_new_reports_failure_when_only_the_menu_frame_reloaded(monkeypatch):
+    failed = _run_qa_new(monkeypatch, ["https://wfx.example/wfx_Home.aspx"])
+
+    assert failed["ok"] is False
+    assert failed["code"] == "MODULE_FAILED"
+    assert "wfxqainspectionrequest.aspx" in failed["message"]
+
+
+def test_every_menu_entry_point_gets_the_direct_route_fallback():
+    clicks = []
+    href = "https://wfx.example/wfx_BaseSetting.aspx?RedirURL=WFXList.aspx"
+    body = _FakeFrame(name="body")
+    page = SimpleNamespace(
+        url="https://wfx.example/wfx/default.aspx",
+        wait_for_timeout=lambda _ms: None,
+    )
+    page.frames = [body]
+    page.locator = lambda _selector: _MenuLinkLocator(
+        href, on_click=lambda: clicks.append(True)
+    )
+
+    modules.reset_menu_route_cache()
+    try:
+        # Search tự mở List đi qua đúng hàm này, nên click im lặng cũng được
+        # cứu bằng href thay vì chờ hết timeout của riêng flow.
+        confirmed = modules._click_module_menu_on_page(
+            page,
+            "Supplier Inv List",
+            '//*[@id="0065_0880_0020_0020"]/a',
+            lambda _line: None,
+        )
+        assert confirmed is True
+        assert clicks == [True]
+        assert body.navigations == [href]
+        assert '//*[@id="0065_0880_0020_0020"]/a' in modules._MENU_ROUTE_CACHE
+    finally:
+        modules.reset_menu_route_cache()

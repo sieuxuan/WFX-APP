@@ -34,6 +34,7 @@ from wfx_panel.automation.browser import (
     _start_persistent_chrome,
 )
 
+ACCOUNT_SWITCH_WAIT_SECONDS = 12
 DIVISION_CONFIRM_TIMEOUT_SECONDS = 8
 DIVISION_RETRY_AFTER_SECONDS = 2.5
 DIVISION_ROUTE_SETTLE_SECONDS = 0.75
@@ -488,13 +489,46 @@ def capture_failure_screenshot(
             playwright.stop()
 
 
+def _same_user(left: str | None, right: str | None) -> bool:
+    return str(left or "").strip().casefold() == str(right or "").strip().casefold()
+
+
+def _reopen_login_form(page: Page, log: Callable[[str], None]) -> bool:
+    """Đưa Chrome về màn đăng nhập WFX để đổi sang tài khoản khác.
+
+    Trả ``False`` khi WFX giữ nguyên phiên cũ (server bỏ qua điều hướng tới
+    trang đăng nhập). Khi đó app KHÔNG được âm thầm dùng tiếp phiên đó.
+    """
+    try:
+        page.goto(
+            URL,
+            wait_until="domcontentloaded",
+            timeout=LOGIN_PAGE_TIMEOUT_MS,
+        )
+    except PlaywrightError as error:
+        _write_log(
+            log,
+            f"[SESSION] Không mở lại được màn đăng nhập: {type(error).__name__}",
+        )
+        return False
+    return _wait_for_auth_surface(page, ACCOUNT_SWITCH_WAIT_SECONDS) == "login"
+
+
 def run(
     user_id: str | None = None,
     password: str | None = None,
     company_id: str = COMPANY_ID,
     log: Callable[[str], None] = print,
+    session_owner: str | None = None,
 ) -> dict[str, Any]:
-    """Chỉ đăng nhập WFX. Không tự mở module và không đóng Chrome."""
+    """Chỉ đăng nhập WFX. Không tự mở module và không đóng Chrome.
+
+    ``session_owner`` là User ID mà app tin rằng đang sở hữu phiên Chrome
+    hiện tại (``None`` = không biết). WFX không cho đọc chắc chắn User ID
+    đang đăng nhập, nên đây là nguồn duy nhất để biết một phiên còn sống có
+    đúng là của tài khoản người dùng vừa lưu hay không. Thiếu nó thì
+    "Đổi tài khoản" chỉ đổi mỗi cái tên hiển thị.
+    """
     user_id = (user_id or os.getenv("WFX_USER_ID", "")).strip()
     password = password or os.getenv("WFX_PASSWORD", "")
     playwright: Playwright | None = None
@@ -509,13 +543,41 @@ def run(
             page,
             AUTH_SURFACE_WAIT_SECONDS,
         )
-        if auth_surface == "session":
+        mismatched = (
+            auth_surface == "session"
+            and bool(user_id)
+            and bool(str(session_owner or "").strip())
+            and not _same_user(session_owner, user_id)
+        )
+        if mismatched:
+            _write_log(
+                log,
+                "[SESSION] Trình duyệt đang giữ phiên của tài khoản khác; "
+                "đang mở lại màn đăng nhập...",
+            )
+            if not password:
+                return _result(
+                    False,
+                    "MISSING_CREDENTIALS",
+                    "Chưa lưu User ID và Password trong Settings.",
+                )
+            if not _reopen_login_form(page, log):
+                return _result(
+                    False,
+                    "SESSION_USER_MISMATCH",
+                    "Trình duyệt làm việc vẫn đang đăng nhập tài khoản WFX "
+                    "khác. Hãy đăng xuất WFX trong trình duyệt rồi thử lại.",
+                    session_user_id=str(session_owner or "").strip(),
+                )
+            auth_surface = "login"
+        elif auth_surface == "session":
             _write_log(log, "[SESSION] Phiên WFX vẫn còn hiệu lực, không login lại.")
             return _result(
                 True,
                 "SESSION_REUSED",
                 "Đã dùng lại phiên WFX đang đăng nhập.",
                 url=page.url,
+                session_user_id=str(session_owner or "").strip() or None,
                 **_division_state_for_page(page),
             )
         if not user_id or not password:
@@ -536,6 +598,7 @@ def run(
             "LOGGED_IN",
             "Đăng nhập thành công. Chrome vẫn đang mở.",
             url=page.url,
+            session_user_id=user_id,
             **_division_state_for_page(page),
         )
     except PlaywrightTimeoutError as exc:
@@ -549,6 +612,7 @@ def run(
                 "LOGGED_IN_AFTER_DELAY",
                 "Đăng nhập thành công sau khi WFX tải chậm.",
                 url=page.url,
+                session_user_id=user_id or None,
                 **_division_state_for_page(page),
             )
         detail = str(exc).splitlines()[0][:160]

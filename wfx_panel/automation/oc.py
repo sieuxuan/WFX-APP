@@ -298,6 +298,42 @@ _MARK_CONFIRM_STYLE_JS = r"""targetKey => {
   return {ok: false, reason: 'style-changed'};
 }"""
 
+_ACTIVE_CONFIRM_TAB_JS = r"""() => {
+  const score = element => {
+    if (!element) return 0;
+    let value = 0;
+    let current = element;
+    for (let depth = 0; current && depth < 4; depth += 1) {
+      const classes = String(current.className || '').toLocaleLowerCase('en')
+        .split(/[^a-z0-9]+/).filter(Boolean);
+      if (classes.some(token => [
+        'active', 'selected', 'tabactive', 'tabselected', 'current',
+        'clstabtdselected'
+      ].includes(token))) value += 10 - depth;
+      if (current.getAttribute('aria-selected') === 'true') value += 20 - depth;
+      if (current.getAttribute('aria-current') === 'page') value += 20 - depth;
+      if (['active', 'selected'].includes(
+        String(current.dataset?.state || '').toLocaleLowerCase('en')
+      )) value += 20 - depth;
+      current = current.parentElement;
+    }
+    return value;
+  };
+  const tabs = [
+    {mode: 'new', element: document.querySelector('#tabNew')},
+    {mode: 'revision', element: document.querySelector('#tabRevision')},
+  ].filter(tab => tab.element);
+  if (tabs.length !== 2) return '';
+  const ranked = tabs.map(tab => ({...tab, score: score(tab.element)}))
+    .sort((left, right) => right.score - left.score);
+  if (ranked[0].score > 0 && ranked[0].score > ranked[1].score) {
+    return ranked[0].mode;
+  }
+  const focused = tabs.find(tab => tab.element === document.activeElement ||
+    tab.element.contains(document.activeElement));
+  return focused?.mode || '';
+}"""
+
 
 def _visible_in_frames(
     page: Page,
@@ -915,6 +951,45 @@ def _click_confirm_toolbar(page: Page) -> None:
     _click(confirm)
 
 
+def _click_reject_toolbar(page: Page) -> None:
+    selector = (
+        "#sectionEDIBuyerPO > tbody > tr > td:nth-child(2) "
+        "> span > div:nth-child(5) > a"
+    )
+    try:
+        _frame, reject = _visible_in_frames(page, selector, timeout_s=3)
+    except PlaywrightTimeoutError:
+        _frame, reject = _toolbar_link(page, "Reject", timeout_s=12)
+
+    def accept_reject_dialog(dialog: Any) -> None:
+        dialog.accept()
+
+    page.on("dialog", accept_reject_dialog)
+    try:
+        _click(reject)
+    finally:
+        try:
+            page.remove_listener("dialog", accept_reject_dialog)
+        except Exception:
+            pass
+
+
+def _active_confirm_mode(page: Page) -> str:
+    detected: set[str] = set()
+    for frame in page.frames:
+        try:
+            mode = str(frame.evaluate(_ACTIVE_CONFIRM_TAB_JS) or "")
+        except PlaywrightError:
+            continue
+        if mode in CONFIRM_TAB_SELECTORS:
+            detected.add(mode)
+    if len(detected) == 1:
+        return detected.pop()
+    raise PlaywrightTimeoutError(
+        "Hãy mở đúng tab New hoặc Revision trên EDI Buyer PO trước khi Reject All."
+    )
+
+
 def _confirm_frame(page: Page, *, timeout_s: float = 12) -> Frame:
     try:
         frame, _grid = _attached_in_frames(
@@ -972,6 +1047,60 @@ def _wait_style_processed(
     return False
 
 
+def _wait_confirm_grid_ready(
+    page: Page,
+    frame: Frame,
+    *,
+    timeout_s: float = 30,
+) -> Frame:
+    """Đợi grid hết lớp chặn sau postback đổi page size của WFX."""
+    deadline = time.monotonic() + timeout_s
+    empty_since: float | None = None
+    current_frame = frame
+    controls_selector = (
+        f"{CONFIRM_GRID_SELECTOR} #colSelector input[type='radio'], "
+        f"{CONFIRM_GRID_SELECTOR} #colSelector input[type='checkbox']"
+    )
+    while time.monotonic() < deadline:
+        checkpoint()
+        try:
+            loading = current_frame.locator(
+                "#gridEDIBuyerPO_divGridLoading, .loading, .clsLoading, "
+                "[class*='loading' i], [id*='progress' i]"
+            )
+            visible_loading = any(
+                loading.nth(index).is_visible()
+                for index in range(min(loading.count(), 20))
+            )
+            controls = current_frame.locator(controls_selector)
+            if not visible_loading and controls.count():
+                try:
+                    controls.first.check(timeout=500, trial=True)
+                except PlaywrightError:
+                    empty_since = None
+                else:
+                    return current_frame
+            elif not visible_loading and current_frame.locator(
+                CONFIRM_GRID_SELECTOR
+            ).count():
+                if empty_since is None:
+                    empty_since = time.monotonic()
+                elif time.monotonic() - empty_since >= 1:
+                    return current_frame
+            else:
+                empty_since = None
+        except PlaywrightError:
+            empty_since = None
+            try:
+                current_frame = _confirm_frame(page, timeout_s=2)
+            except PlaywrightTimeoutError:
+                pass
+        _wait(page, 200)
+    raise PlaywrightTimeoutError(
+        "Grid EDI Buyer PO vẫn đang tải sau khi đổi số dòng hiển thị."
+    )
+
+
 def _set_confirm_page_size(page: Page) -> Frame:
     frame, select = _visible_in_frames(
         page,
@@ -999,7 +1128,7 @@ def _set_confirm_page_size(page: Page) -> Frame:
         label = " ".join((option.first.inner_text() or "").split()) if option.count() else ""
         if label != "100":
             raise PlaywrightTimeoutError("Không đổi được số dòng hiển thị thành 100.")
-    return frame
+    return _wait_confirm_grid_ready(page, frame)
 
 
 def _open_confirm_grid(
@@ -1136,6 +1265,121 @@ def _confirm_all_pending(
             raise
         confirmed_styles += 1
         _write_log(log, f"[OC CONFIRM] Style {style_label} đã process xong")
+
+
+def _reject_all_pending(
+    page: Page,
+    frame: Frame,
+    mode: str,
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    rejected_rows = 0
+    while True:
+        checkpoint()
+        pending = _read_confirm_styles(frame)
+        if not pending:
+            return _result(
+                True,
+                "OC_REJECT_ALL_COMPLETED",
+                (
+                    f"Đã Reject xong {rejected_rows} PO."
+                    if rejected_rows
+                    else "Không còn PO chờ Reject trong tab đang mở."
+                ),
+                mode=mode,
+                rejected_rows=rejected_rows,
+                rejection_submitted=rejected_rows > 0,
+            )
+        row = pending[0]
+        row_key = str(row["key"])
+        row_label = str(row.get("label") or row_key)
+        _write_log(
+            log,
+            f"[OC REJECT] Đang Reject {row_label} ({rejected_rows + 1})",
+        )
+        rejection_submitted = False
+        try:
+            with cancellation_deferred():
+                _focus_confirm_grid(page, frame)
+                _select_confirm_style(frame, row_key)
+                rejection_submitted = True
+                _click_reject_toolbar(page)
+                _write_log(log, f"[OC REJECT] Đã bấm Reject cho {row_label}")
+                processed = _wait_style_processed(
+                    page,
+                    frame,
+                    row_key,
+                    timeout_s=CONFIRM_PROCESS_TIMEOUT_SECONDS,
+                )
+                if not processed:
+                    return _result(
+                        False,
+                        "OC_REJECT_ALL_PROCESS_TIMEOUT",
+                        f"PO {row_label} chưa rời khỏi tab sau khi Reject. "
+                        "App đã dừng trước PO tiếp theo.",
+                        mode=mode,
+                        rejected_rows=rejected_rows,
+                        stopped_row=row_label,
+                        rejection_submitted=True,
+                    )
+        except Exception as error:
+            if rejection_submitted:
+                return _result(
+                    False,
+                    "OC_REJECT_ALL_UNCONFIRMED",
+                    f"Đã bấm Reject cho {row_label} nhưng chưa đọc được kết quả. "
+                    "App không tự chạy lại để tránh Reject nhầm PO.",
+                    mode=mode,
+                    rejected_rows=rejected_rows,
+                    stopped_row=row_label,
+                    rejection_submitted=True,
+                    errors=[f"{type(error).__name__}: {_first_line(error)}"],
+                )
+            raise
+        rejected_rows += 1
+        _write_log(log, f"[OC REJECT] {row_label} đã được xử lý xong")
+
+
+def reject_all_oc_pending(
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Reject tuần tự toàn bộ PO trong tab New/Revision đang được chọn."""
+    playwright: Playwright | None = None
+    try:
+        playwright = sync_playwright().start()
+        _browser, page = _active_wfx_page(playwright, log)
+        mode = _active_confirm_mode(page)
+        frame = _set_confirm_page_size(page)
+        label = "Revision" if mode == "revision" else "New"
+        _write_log(log, f"[OC REJECT] Đang xử lý tab {label}; page size 100")
+        return _reject_all_pending(page, frame, mode, log)
+    except RuntimeError as error:
+        code = str(error)
+        if code in {"CHROME_CLOSED", "NOT_LOGGED_IN"}:
+            message = (
+                "Trình duyệt làm việc chưa được mở."
+                if code == "CHROME_CLOSED"
+                else "Phiên WFX chưa đăng nhập hoặc đã hết hạn."
+            )
+            return _result(False, code, message)
+        raise
+    except PlaywrightTimeoutError as error:
+        return _result(
+            False,
+            "OC_REJECT_ALL_NOT_READY",
+            f"Màn Reject OC chưa sẵn sàng: {_first_line(error)}",
+            rejection_submitted=False,
+        )
+    except Exception as error:
+        return _result(
+            False,
+            "OC_REJECT_ALL_FAILED",
+            f"{type(error).__name__}: {_first_line(error)}",
+            rejection_submitted=False,
+        )
+    finally:
+        if playwright is not None:
+            playwright.stop()
 
 
 def confirm_oc_pending(

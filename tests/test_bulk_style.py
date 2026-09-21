@@ -111,20 +111,7 @@ def test_open_style_choice_does_not_block_on_a_new_page_event():
     assert "_article_left_frame(context, timeout_s=timeout_s)" in source
 
 
-def test_option_scan_closes_only_the_popups_it_opened():
-    """Lượt quét chỉ đọc option; form New Style điền dở không được để lại."""
-    source = inspect.getsource(bulk_style.scan_catalog_style_options)
-    assert "known_pages = set(context.pages)" in source
-    assert "_close_pages_opened_since(context, known_pages)" in source
-    assert source.index("finally:") < source.index(
-        "_close_pages_opened_since(context, known_pages)"
-    )
-    cleanup = inspect.getsource(bulk_style._close_pages_opened_since)
-    assert "if page in known:" in cleanup
-    assert "continue" in cleanup
-
-
-def test_prepare_style_row_keeps_its_popup_for_the_user_to_review():
-    """Dòng đang chuẩn bị là kết quả người dùng cần xem và tự Save."""
-    source = inspect.getsource(bulk_style.prepare_catalog_style_row)
-    assert "_close_pages_opened_since" not in source
+# Hai test dọn popup trước đây assert chuỗi trong `inspect.getsource` đã chuyển
+# sang `tests/test_bulk_style_popup_cleanup.py`: ở đó `_close_pages_opened_since`
+# được chạy thật trên context giả, còn ràng buộc "dọn trong finally" và "prepare
+# không tự đóng popup" được kiểm bằng AST thay vì tìm chuỗi.

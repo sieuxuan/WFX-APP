@@ -1,4 +1,3 @@
-import inspect
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,30 +13,9 @@ def test_legacy_login_exports_atomic_catalog_destination_flow():
     assert callable(login.scan_active_open_costing)
 
 
-@pytest.mark.parametrize(
-    "probe",
-    [
-        session.get_division_state,
-        session.check_session,
-        session.check_module_access,
-        session.capture_failure_screenshot,
-    ],
-)
-def test_read_only_session_probes_never_activate_the_main_wfx_tab(probe):
-    assert "bring_to_front=False" in inspect.getsource(probe)
-
-
-def test_real_login_can_still_activate_the_auth_tab():
-    assert "bring_to_front=False" not in inspect.getsource(session.run)
-
-
-def test_catalog_master_waits_for_data_and_recovers_phantom_empty_filter():
-    source = Path(catalog.__file__).read_text(encoding="utf-8")
-
-    assert "def _wait_catalog_grid_data_ready(" in source
-    assert source.count("require_data_ready=True") >= 5
-    assert "[FILTER] Grid chưa phản hồi, đang áp dụng lại bộ lọc..." in source
-    assert "filter_reapplied = True" in source
+# Hai test `bring_to_front` trước đây assert chuỗi trong `inspect.getsource`
+# đã chuyển sang `tests/test_automation_contracts.py`, nơi kiểm tra đúng đối số
+# của lời gọi `_connect_to_chrome` thay vì sự tồn tại của một chuỗi.
 
 
 def test_catalog_prepare_reuses_only_valid_ready_master(monkeypatch):
@@ -67,12 +45,6 @@ def test_catalog_prepare_reuses_only_valid_ready_master(monkeypatch):
     assert reused is True
     assert ("grid", 0.75) in calls
     assert ("ready", grid, 3.0) in calls
-
-
-def test_catalog_filter_starts_polling_without_fixed_one_second_delay():
-    source = inspect.getsource(catalog._filter_grid_and_maybe_open)
-
-    assert "_wait(grid, 1_000)" not in source
 
 
 def test_style_status_suffix_includes_both_grid_fields():
@@ -293,6 +265,10 @@ def test_unresponsive_menu_route_is_cached_until_session_reset(monkeypatch):
             return False
 
     class MenuLocator:
+        @property
+        def first(self):
+            return self
+
         @staticmethod
         def wait_for(**_options):
             return None

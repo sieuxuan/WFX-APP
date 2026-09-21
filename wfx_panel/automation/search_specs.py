@@ -19,6 +19,10 @@ class ModuleSearchSpec:
     fields: Mapping[str, SearchFieldSpec]
     context_field: SearchFieldSpec
     requires_floating_filter: bool = False
+    # Từ khóa của MÀN KHÁC dùng chung toàn bộ id DOM. Nếu marker của frame
+    # (URL + title + heading) chứa một trong các từ này thì frame đó là màn
+    # khác, không được nhận làm context của module này.
+    foreign_markers: tuple[str, ...] = ()
     field_selectors: tuple[str, ...] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -247,6 +251,9 @@ SUPPLIER_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
             "#gridAPInvoiceList_tblGridHeader",
         ),
     ),
+    # Expense Inv List dùng đúng #titlebarAPInvoiceList và #gridAPInvoiceList;
+    # Cancel là thao tác phá hủy nên phải loại hẳn frame Expense.
+    foreign_markers=("expense",),
 )
 
 EXPENSE_INVOICE_SEARCH_SPEC = ModuleSearchSpec(

@@ -1635,6 +1635,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .oc-list-card .oc-upload-card-copy strong { font-size: 16px; letter-spacing: -.01em; }
     .oc-upload-card-actions { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 7px; }
     .oc-upload-card-actions-even { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .oc-reject-all-actions { grid-template-columns: 1fr; margin-top: 7px; }
     .oc-secondary-button,
     .oc-upload-card-actions > button:not(.special-primary-button) {
       height: 38px;
@@ -2000,29 +2001,6 @@ body.compact-mode .compact-launcher .compact-mark {
     .sample-file-results { margin-top: 1px; }
     .sample-file-results[hidden] { display: none !important; }
     .sample-file-results-list { display: flex; flex-direction: column; gap: 3px; }
-    .generic-module-workspace {
-      padding: 14px;
-      text-align: center;
-      border: 1px solid var(--border);
-      border-radius: 13px;
-      background: var(--surface);
-    }
-    .generic-module-workspace[hidden] { display: none !important; }
-    .generic-module-visual {
-      width: 54px;
-      height: 54px;
-      display: grid;
-      place-items: center;
-      margin: 2px auto 10px;
-      color: var(--accent);
-      border: 1px solid var(--accent-border);
-      border-radius: 16px;
-      background: var(--accent-soft);
-    }
-    .generic-module-icon svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
-    .generic-module-title { color: var(--text); font-size: 13px; }
-    .generic-module-workspace p { margin: 5px 0 12px; color: var(--text-3); font-size: 12px; }
-    .generic-module-workspace .primary-button { width: 100%; }
     .company-foc-state {
       display: flex;
       align-items: center;

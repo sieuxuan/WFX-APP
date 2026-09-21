@@ -16,8 +16,8 @@ Bạn cũng có thể mở Org Structure và System Coding trên WFX.
    tục; ứng dụng kiểm tra lại Status trước khi bấm nút trên WFX.
 7. Kiểm tra hộp xác nhận native của WFX trong Chrome trước khi xác nhận thao tác.
 
-Để mở Org Structure hoặc System Coding, bật Chế độ quản trị, mở thẻ module cần
-dùng rồi bấm `Mở module trên WFX`.
+Để mở Org Structure hoặc System Coding, bật Chế độ quản trị rồi bấm thẳng thẻ
+module trong danh sách; ứng dụng mở ngay trên WFX, không có màn trung gian.
 
 ## Mẹo
 
@@ -34,6 +34,6 @@ dùng rồi bấm `Mở module trên WFX`.
 |---|---|
 | Không thấy module Admin | Mở Cài đặt, thẻ Giao diện và bật Chế độ quản trị. |
 | WFX báo không có quyền | Nhờ quản trị WFX kiểm tra quyền của tài khoản hiện tại. |
-| Màn hình không đổi | Chờ WFX tải xong rồi bấm `Mở module trên WFX` lại. |
+| Màn hình không đổi | Chờ WFX tải xong rồi bấm lại thẻ module. |
 | Status không phải Save/Confirm | Ứng dụng dừng, không bấm nút thay đổi hóa đơn. Kiểm tra lại invoice và Status trên WFX. |
 | Có nhiều invoice | Chọn một dòng trong danh sách ứng dụng rồi Cancel; không thao tác trực tiếp từ kết quả mơ hồ. |

@@ -21,7 +21,7 @@ Bản đồ nhanh:
 - `wfx_panel/oc_workbook.py` — tạo form OC một-header, validate workbook New/
   Revise và sinh `Sheet1` EDI 51 cột chỉ chứa giá trị.
 - `wfx_panel/automation/oc.py` — mở report Revise OC, điều khiển EDI Buyer PO
-  tới Create Transaction và Confirm tuần tự theo Style.
+  tới Create Transaction, Confirm tuần tự theo Style và Reject All trên tab mở.
 - `wfx_panel/panel_app.py` — pywebview + tray + hotkey toàn cục + lớp win32.
 - `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
 
@@ -88,6 +88,29 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
 - Nếu một flow do user kích hoạt phát hiện `CHROME_CLOSED`, app phải tự mở lại
   trình duyệt làm việc, đăng nhập bằng credential đã lưu và retry toàn bộ flow
   đúng một lần. Heartbeat nền không tự mở lại Chrome khi user chủ động đóng.
+- App phải biết phiên Chrome hiện tại thuộc User ID nào. WFX không cho đọc
+  chắc chắn giá trị đó, nên app tự nhớ chủ phiên mỗi lần chính nó đăng nhập và
+  lưu xuống `prefs.session_user_id` để sống qua lần mở app sau. `session.run`
+  nhận `session_owner`: trùng User ID thì mới được trả `SESSION_REUSED`, khác
+  thì phải mở lại màn đăng nhập WFX và đăng nhập bằng tài khoản mới. Nếu WFX
+  không nhả phiên cũ, trả `SESSION_USER_MISMATCH` và dừng — tuyệt đối không
+  chạy tiếp automation bằng tài khoản người khác.
+- Lưu tài khoản với User ID khác User ID đang lưu thì bắt buộc nhập mật khẩu
+  của chính tài khoản đó; không được kế thừa mật khẩu cũ. Cùng một User ID mà
+  để trống mật khẩu thì vẫn giữ mật khẩu đã lưu. Khi User ID đổi, app phải hạ
+  ngay `session_active`, Division, quyền Admin và cache Catalog theo tài khoản.
+- Mật khẩu chỉ nằm trong `.env` đã mã hóa DPAPI. Tuyệt đối không ghi mật khẩu
+  vào `os.environ`: Chrome automation là tiến trình con nên kế thừa environment
+  của panel, và mọi tiến trình cùng tài khoản Windows đều đọc được nó.
+- Khi WFX đã từ chối đúng bộ User ID + mật khẩu đang lưu (`LOGIN_FAILED`), app
+  không được tự đăng nhập lại bằng đúng bộ đó nữa cho tới khi người dùng lưu
+  credential mới hoặc chủ động bấm đăng nhập. Mỗi lần thử lại là một lần nhập
+  sai trên WFX và đủ nhiều thì tài khoản bị khóa.
+- Kết quả gửi sang UI phải kèm `method` của flow sinh ra nó. Kiểm tra nền
+  (`maintain_session`) thất bại chỉ được đổi badge WFX, dòng trạng thái và ghi
+  đúng một dòng `jobs.json`; không được ép mở sheet Tài khoản đang bị khóa
+  giữa lúc người dùng làm việc khác. Heartbeat thành công vẫn im lặng tuyệt
+  đối. `SESSION_RESTORED` phải xóa prompt đăng nhập như các mã đăng nhập khác.
 - Form góp ý chỉ cho gửi từ 5 ký tự và hiển thị bộ đếm trên giới hạn 2.000 ký tự.
 - Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
@@ -164,26 +187,39 @@ Mỗi nút trong module là một flow riêng:
    Request và Expense Invoice phải click trực tiếp menu `New` tương ứng, không
    yêu cầu mở List trước. `Đổi FOC` tự mở Company Setup nếu context hiện tại đã
    đổi sang module khác, rồi mới mở Miscellaneous Settings.
+   `New` chỉ được báo thành công khi thấy đúng trang đích đọc từ chính link menu
+   (`.aspx` cuối cùng trong href hoặc `MenuName=`), hoặc khi đã đặt được dropdown
+   mặc định của màn New. Một frame đổi document không đủ vì menu WFX cũng tự
+   reload sau cú click.
 3. `Search` ưu tiên đúng List hiện tại. Nếu List chưa mở hoặc context chưa sẵn
    sàng, automation phải tự click đúng menu List, chờ grid/Floating Filter ổn
    định rồi mới điền điều kiện; người dùng không cần bấm List trước.
 4. Trước khi điền, automation phải xác nhận context riêng của module trong cùng
    frame. Không được dùng chỉ `#txtArticle` hoặc `#txtCompanyName`, vì OC/Sample/
-   Sale ASN và Buyer/Supplier có selector trùng nhau.
+   Sale ASN và Buyer/Supplier có selector trùng nhau. Supplier Inv List và
+   Expense Inv List còn dùng chung cả `#titlebarAPInvoiceList`,
+   `#gridAPInvoiceList` lẫn `#txtSupplier`/`#txtInvoiceNo`, nên context chỉ được
+   nhận khi frame có đủ bộ cột filter riêng của đúng module (Supplier cần PO No.
+   và ASN/GRN No.; Expense cần Created By và Status); thiếu thì phải tự mở lại
+   đúng List, tuyệt đối không Search hay Cancel trên màn của module kia.
    Với AG Grid có Floating Filter, automation phải quét toàn bộ scroll ngang để
    tìm cột dù user đã kéo đổi thứ tự; đồng thời xóa các filter cũ ở cả cột đang
    bị virtualize trước khi điền điều kiện mới. Sau cùng giữ cột đích trong
    viewport để user thấy điều kiện đang áp dụng.
-5. Search và Đổi FOC không được trả `*_LIST_NOT_OPEN` hay hướng dẫn bấm List.
+5. Mọi lối vào menu WFX — nút `List`, `New`, Search tự mở List, Buyer/Company —
+   dùng chung một hàm mở menu: click đúng node đầu tiên khớp selector, chờ xác
+   nhận navigation 5 giây, rồi mở thẳng `href` trong frame `target` nếu click im
+   lặng và cache route đó theo xpath cho tới khi login/Division đổi.
+6. Search và Đổi FOC không được trả `*_LIST_NOT_OPEN` hay hướng dẫn bấm List.
    Nếu đã tự mở
    nhưng List/search vẫn không sẵn sàng, trả lỗi kỹ thuật cụ thể kèm trạng thái
    tự mở thất bại. `*_LIST_NOT_OPEN` chỉ còn dùng cho các thao tác làm thay đổi
    dữ liệu như New khi người dùng chưa mở đúng List.
-6. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
+7. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
    lên foreground chạy song song và không nằm trên critical path. Poll trạng
    thái grid ở 150 ms, nhưng chỉ chấp nhận Floating Filter sau khi visible/enabled
    ổn định ít nhất 0,5 giây và đúng context để vừa nhanh vừa tránh grid cũ.
-7. Mọi flow từ `PanelAPI._run()` chạy trên automation worker duy nhất. Các lời
+8. Mọi flow từ `PanelAPI._run()` chạy trên automation worker duy nhất. Các lời
    gọi `sync_playwright().start()/stop()` trong workflow chỉ là lease; TRONG một
    flow runtime cache một Playwright process và một CDP Browser để các sub-op
    dùng chung. Nhưng NGAY khi flow kết thúc, runtime nhả driver/CDP (không giữ
@@ -194,7 +230,7 @@ Mỗi nút trong module là một flow riêng:
    treo Chrome khi đóng tab đó. Việc "dùng lại grid Master đang mở" vẫn chạy vì
    nó tái dùng DOM đang mở trong Chrome, không phụ thuộc Playwright có giữ kết
    nối. Không dùng object Playwright sync từ thread khác.
-8. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True`, rồi reset
+9. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True`, rồi reset
    `Browser.setDownloadBehavior` đúng một lần về `behavior=default` ngay sau
    mỗi attach/re-attach để xóa override artifact stale; tuyệt đối không dùng
    `allow`, `allowAndName`, `deny` hoặc truyền `downloadPath` cho download thông
@@ -206,9 +242,9 @@ Mỗi nút trong module là một flow riêng:
    chụp trạng thái bằng `snapshot_downloads()` trước click rồi gọi
    `save_native_download()` để sao chép file native tới đường dẫn nghiệp vụ; không
    dùng `download.save_as()` vì nó kéo download trở lại artifact tạm của Playwright.
-9. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
+10. Các wait dài dùng `_wait()`/`_sleep()` theo lát tối đa 100 ms để đọc cancel;
    không thêm cơ chế terminate/close page từ thread UI.
-10. Chỉ tác vụ thật sự chạm Playwright/Chrome mới được bọc `_run()`. Các lời gọi
+11. Chỉ tác vụ thật sự chạm Playwright/Chrome mới được bọc `_run()`. Các lời gọi
    HTTP thuần như `sync_reference_data`/`sync_article_library` phải chạy ngoài
    `_run()`: `_run()` giữ `_run_lock` và chiếm automation worker suốt cả timeout
    mạng, nên vòng lặp nền sẽ trả `ACTION_IN_PROGRESS` cho mọi cú bấm của người
@@ -457,6 +493,13 @@ Các workflow riêng hiện có:
   khi bấm lại. Sau Confirm phải chờ Style biến mất khỏi tab New/Revision và
   bảng ổn định tối đa 180 giây rồi mới chuyển Style tiếp theo. Nếu kết quả chưa
   rõ hoặc quá thời gian, dừng toàn bộ flow và không tự retry.
+- Nút `Reject All · tab đang mở` chỉ xử lý tab New hoặc Revision hiện đang được
+  chọn trên WFX, không tự chuyển tab. Sau xác nhận ở UI, flow đổi page size thành
+  100, chọn đúng dòng/nhóm đầu tiên, click Reject theo
+  `//*[@id="sectionEDIBuyerPO"]/tbody/tr/td[2]/span/div[5]/a` đúng một lần rồi
+  chờ dòng đó biến mất và bảng ổn định tối đa 180 giây trước khi tiếp tục. Lặp
+  tới khi tab hết dữ liệu. Nếu không xác định được tab, kết quả chưa rõ hoặc quá
+  thời gian thì dừng; sau khi đã dispatch Reject tuyệt đối không tự retry.
 - Sample List: List + Floating Filter, tìm theo Sample Order No./Style/
   Created By, và New Sample Order. Nút `Check File` chạy đúng flow Search trước;
   nếu chỉ có một dòng thì tự click Style Code, quét bốn mục file giống Catalog

@@ -188,6 +188,7 @@
   let hasCredentials = false;
   let accountEditing = false;
   let accountUserId = "";
+  let lastLoginTime = "";
   let feedbackSubmitting = false;
   let bootstrapReceived = false;
   let toastEnabled = true;
@@ -264,6 +265,7 @@
     "open_oc_revision_report", "upload_oc", "confirm_oc_upload",
     "choose_oc_upload_export_file", "save_oc_upload_file",
     "confirm_oc_pending",
+    "reject_all_oc_pending",
     "run_gdn_dispatch",
     "clear_catalog_costing_dependencies",
     "review_catalog_style_import", "prepare_catalog_style_row",
@@ -305,6 +307,7 @@
     confirm_oc_upload: "Đang upload OC đã xác nhận qua EDI…",
     save_oc_upload_file: "Đang lưu file EDI để có thể Upload lại…",
     confirm_oc_pending: "Đang Confirm từng Style và chờ WFX xử lý…",
+    reject_all_oc_pending: "Đang Reject lần lượt từng PO…",
     run_gdn_dispatch: "Đang tạo (GDN) Dispatch trên WFX…",
     download_oc_template: "Đang tạo form Upload OC…",
     search_sample: "Đang tìm Sample…",
@@ -378,6 +381,7 @@
     review_oc_upload: "Review Upload OC",
     confirm_oc_upload: "Xác nhận Upload OC",
     confirm_oc_pending: "Confirm nhanh OC",
+    reject_all_oc_pending: "Reject All OC",
     run_gdn_dispatch: "Tạo (GDN) Dispatch",
     cancel_oc_upload_review: "Hủy Upload OC",
     search_sample: "Tìm Sample",
@@ -638,7 +642,6 @@
         supplier: ".supplier-query",
         buyer: ".buyer-query",
         company_setup: '[data-module-action="company-list"]',
-        generic: ".generic-module-open",
       }[selectedModule?.kind] || ".module-back-button";
       $(focusTarget)?.focus();
       return;
@@ -703,10 +706,18 @@
     hint.hidden = !message;
   }
 
-  function setSessionStatus(active) {
+  function setSessionStatus(active, lastLoginAt) {
     sessionActive = active == null ? null : Boolean(active);
+    if (lastLoginAt !== undefined) {
+      lastLoginTime = String(lastLoginAt || "");
+    }
     const node = $(".health-session");
-    if (node) node.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
+    if (node) {
+      node.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
+      node.dataset.tooltip = active === true && lastLoginTime
+        ? `Phiên WFX · đăng nhập lúc ${lastLoginTime}`
+        : "Phiên WFX";
+    }
     $$(".division-button").forEach((button) => {
       button.disabled = active !== true;
     });
@@ -716,7 +727,9 @@
     if (accountLabel) {
       accountLabel.textContent = active == null
         ? "Chưa kiểm tra"
-        : (active ? "Đã đăng nhập" : "Chưa đăng nhập");
+        : (active
+          ? (lastLoginTime ? `Đã đăng nhập lúc ${lastLoginTime}` : "Đã đăng nhập")
+          : "Chưa đăng nhập");
     }
     syncAccountView();
     if (active !== true) setDivisionState(null, null, null);
@@ -991,12 +1004,14 @@
 
   function showCredentialPrompt(code, message) {
     const prompt = $(".auth-prompt");
-    const invalid = ["LOGIN_FAILED", "LOGIN_TIMEOUT"].includes(code);
+    const mismatch = code === "SESSION_USER_MISMATCH";
+    const invalid = mismatch
+      || ["LOGIN_FAILED", "LOGIN_TIMEOUT"].includes(code);
     prompt.hidden = false;
     prompt.dataset.tone = invalid ? "error" : "warning";
-    $(".auth-prompt-title").textContent = invalid
-      ? "Đăng nhập chưa thành công"
-      : "Cần thông tin đăng nhập";
+    $(".auth-prompt-title").textContent = mismatch
+      ? "Trình duyệt đang mở tài khoản khác"
+      : (invalid ? "Đăng nhập chưa thành công" : "Cần thông tin đăng nhập");
     $(".auth-prompt-message").textContent = message || (
       invalid
         ? "Kiểm tra User ID và nhập lại mật khẩu WFX."
@@ -1384,9 +1399,16 @@
     if (result.jobs) renderJobs(result.jobs);
     if (result.run_id) refreshJobs();
     if (["MISSING_CREDENTIALS", "PASSWORD_REQUIRED", "USER_ID_REQUIRED",
-         "LOGIN_FAILED", "LOGIN_TIMEOUT", "NOT_LOGGED_IN"].includes(result.code)) {
-      showCredentialPrompt(result.code, result.message);
-    } else if (["LOGGED_IN", "LOGGED_IN_AFTER_DELAY", "SESSION_REUSED", "SESSION_ACTIVE"].includes(result.code)) {
+         "LOGIN_FAILED", "LOGIN_TIMEOUT", "NOT_LOGGED_IN",
+         "SESSION_USER_MISMATCH"].includes(result.code)) {
+      // Kiểm tra nền không được kéo người dùng ra khỏi việc đang làm để mở
+      // một sheet bị khóa. Badge WFX ở footer và dòng trạng thái đã đủ; chỉ
+      // thao tác do chính người dùng bấm mới ép nhập lại tài khoản.
+      if (result.method !== "maintain_session") {
+        showCredentialPrompt(result.code, result.message);
+      }
+    } else if (["LOGGED_IN", "LOGGED_IN_AFTER_DELAY", "SESSION_REUSED",
+                "SESSION_ACTIVE", "SESSION_RESTORED"].includes(result.code)) {
       clearCredentialPrompt();
     }
   }
@@ -1469,12 +1491,27 @@
     if (result && result.jobs) renderJobs(result.jobs);
   }
 
+  // Hai module dùng chung một workspace (Indent List và User Indent) nên điều
+  // kiện lọc của module trước phải được xóa khi người dùng đổi sang module kia.
+  const SHARED_WORKSPACE_VALIDATION_GROUPS = { indent: "indent" };
+
+  function clearSharedWorkspaceInputs(kind) {
+    const group = SHARED_WORKSPACE_VALIDATION_GROUPS[kind];
+    if (!group) return;
+    (INPUT_VALIDATION_GROUPS[group] || []).forEach((selector) => {
+      const input = $(selector);
+      if (input) input.value = "";
+    });
+    syncInputValidation(group);
+  }
+
   function openModulePage(moduleId) {
     const module = allModules().find((item) => item.id === moduleId);
     if (!module) return;
     if ($(".module-page").hidden) {
       moduleReturnFocus = document.activeElement;
     }
+    const previousModule = selectedModule;
     selectedModule = module;
     $("#module-page-title").textContent = module.name;
     $(".module-modal-subtitle").textContent =
@@ -1482,7 +1519,6 @@
     $$('[data-module-view]').forEach((view) => {
       view.hidden = view.dataset.moduleView !== module.kind;
     });
-    $(".generic-module-icon").innerHTML = moduleIconSvg(module.icon);
     const page = $(".module-page");
     $(".panel-body").hidden = true;
     page.hidden = false;
@@ -1505,16 +1541,9 @@
       buyer: '[data-module-action="buyer-list"]',
       company_setup: '[data-module-action="company-list"]',
       reports: '[data-module-action="report-shipment-summary"]',
-      generic: ".generic-module-open",
-    }[module.kind] || ".generic-module-open";
+    }[module.kind] || ".module-back-button";
     if (module.kind === "list_new") {
-      const defaultLabel = {
-        "0065_0880_0010_0020": "Against RMPO",
-        "0065_0880_0030_0020": "General Expense",
-      }[module.id];
-      $(".list-new-module-label").textContent = defaultLabel
-        ? `Mở New từ ${module.name} · mặc định ${defaultLabel}`
-        : `Mở New từ ${module.name}`;
+      $(".list-new-module-label").textContent = `Mở New từ ${module.name}`;
     }
     setTimeout(() => $(focusTarget)?.focus(), 0);
     if (module.kind === "catalog") {
@@ -1542,6 +1571,20 @@
       resetGrnReceipt();
     } else if (module.kind === "reports") {
       showReportList();
+    } else if (module.kind === "sample") {
+      // Danh sách file của lượt trước trỏ vào Sample cũ; giữ lại sẽ mời người
+      // dùng tải nhầm file.
+      hideSampleFileResults();
+    } else if (module.kind === "supplier_invoice") {
+      // Cancel là thao tác phá hủy: không để lại danh sách chọn của lượt trước.
+      hideSupplierInvoiceCancelResults();
+    }
+    if (
+      previousModule
+      && previousModule.id !== module.id
+      && previousModule.kind === module.kind
+    ) {
+      clearSharedWorkspaceInputs(module.kind);
     }
   }
 
@@ -1569,11 +1612,6 @@
     replayMotion(panelBody, "view-enter");
     moduleReturnFocus?.focus?.();
     moduleReturnFocus = null;
-  }
-
-  async function openModule() {
-    if (!selectedModule) return null;
-    return call("open_module", selectedModule.id);
   }
 
   async function openModuleDirect(moduleId) {
@@ -1792,6 +1830,17 @@
 
   async function confirmOcPending(mode) {
     const result = await call("confirm_oc_pending", mode);
+    if (result) renderOcUploadResult(result);
+    return result;
+  }
+
+  async function rejectAllOcPending() {
+    const accepted = window.confirm(
+      "Reject toàn bộ PO trong tab New hoặc Revision đang mở? " +
+      "Ứng dụng sẽ xử lý lần lượt và không thể hoàn tác.",
+    );
+    if (!accepted) return null;
+    const result = await call("reject_all_oc_pending");
     if (result) renderOcUploadResult(result);
     return result;
   }
@@ -2668,6 +2717,7 @@
     },
     "oc-upload-revise": () => uploadOcFile("revise"),
     "oc-confirm-revision": () => confirmOcPending("revision"),
+    "oc-reject-all": rejectAllOcPending,
     "oc-search": () => runSelectedModuleAction(
       "search_oc",
       moduleFilterKinds.oc,
@@ -5142,7 +5192,6 @@
       window.setTimeout(() => api()?.request_panel_hide?.(), 130);
     });
     window.addEventListener("keydown", trapOverlayFocus, true);
-    $(".generic-module-open").addEventListener("click", openModule);
     $(".catalog-query").addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
       hideArticleSuggestions();
@@ -5257,9 +5306,16 @@
     $(".close-button").addEventListener("click", () => api()?.hide_panel?.());
     $(".stop-action-button").addEventListener("click", stopCurrentAction);
     $(".open-chrome-button").addEventListener("click", async (event) => {
-      event.currentTarget.disabled = true;
-      const result = await call("open_chrome");
-      event.currentTarget.disabled = false;
+      // event.currentTarget là null ngay sau await (dispatch đã kết thúc), nên
+      // phải giữ tham chiếu nút TRƯỚC khi gọi bridge; nếu không nút kẹt
+      // disabled vĩnh viễn và lần Chrome đóng sau không bấm lại được.
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await call("open_chrome");
+      } finally {
+        button.disabled = false;
+      }
     });
 
     $(".toggle-password").addEventListener("click", () => {
@@ -5626,7 +5682,9 @@
     if (!hasCredentials) {
       showCredentialPrompt(
         "MISSING_CREDENTIALS",
-        "Nhập User ID và mật khẩu WFX để bắt đầu."
+        state.credential_state === "unreadable"
+          ? "Mật khẩu đã lưu không mở được trên tài khoản Windows này. Nhập lại mật khẩu WFX."
+          : "Nhập User ID và mật khẩu WFX để bắt đầu."
       );
     }
   };

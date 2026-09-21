@@ -376,6 +376,9 @@
               <button type="button" data-module-action="oc-confirm-new">Confirm New</button>
               <button type="button" class="special-primary-button" data-module-action="oc-confirm-revision">Confirm Revision</button>
             </div>
+            <div class="oc-upload-card-actions oc-reject-all-actions">
+              <button type="button" class="module-danger-button" data-module-action="oc-reject-all">Reject All · tab đang mở</button>
+            </div>
           </section>
           <section class="oc-upload-review" aria-live="polite" hidden>
             <div class="oc-upload-review-heading">
@@ -693,7 +696,7 @@
         <div class="special-module-workspace" data-module-view="rmpo" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="rmpo-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>RMPO List</strong><small>Mở danh sách, bật ô lọc</small></span>
+            <span><strong>RMPO List</strong><small>Mở danh sách trên WFX</small></span>
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid module-multi-filter-grid-two">
@@ -736,7 +739,7 @@
         <div class="special-module-workspace" data-module-view="indent" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="indent-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>List</strong><small>Mở danh sách, bật ô lọc</small></span>
+            <span><strong>List</strong><small>Mở danh sách trên WFX</small></span>
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
@@ -754,7 +757,7 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="advance-pr-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>Advance PR</strong><small>Mở danh sách, bật ô lọc</small></span>
+              <span><strong>Advance PR</strong><small>Mở danh sách trên WFX</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="advance-pr-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -776,7 +779,7 @@
         <div class="special-module-workspace" data-module-view="supplier_invoice" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="supplier-invoice-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>Supplier Inv</strong><small>Mở danh sách, bật ô lọc</small></span>
+            <span><strong>Supplier Inv</strong><small>Mở danh sách trên WFX</small></span>
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
@@ -807,7 +810,7 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="expense-invoice-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>Expense Inv</strong><small>Mở danh sách, bật ô lọc</small></span>
+              <span><strong>Expense Inv</strong><small>Mở danh sách trên WFX</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="expense-invoice-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -904,7 +907,7 @@
           <div class="workflow-choice-grid">
             <button type="button" class="workflow-choice" data-module-action="list-new-list">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>List</strong><small>Mở danh sách, bật ô lọc</small></span>
+              <span><strong>List</strong><small>Mở danh sách trên WFX</small></span>
             </button>
             <button type="button" class="workflow-choice" data-module-action="list-new-new">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -916,7 +919,7 @@
         <div class="special-module-workspace" data-module-view="supplier" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="supplier-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-            <span><strong>Supplier List</strong><small>Mở danh sách, bật ô lọc</small></span>
+            <span><strong>Supplier List</strong><small>Mở danh sách trên WFX</small></span>
           </button>
           <div class="special-section">
             <label><span>Category</span>
@@ -941,7 +944,7 @@
         <div class="special-module-workspace" data-module-view="buyer" hidden>
           <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="buyer-list">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></svg>
-            <span><strong>Buyers List</strong><small>Mở danh sách, bật ô lọc</small></span>
+            <span><strong>Buyers List</strong><small>Mở danh sách trên WFX</small></span>
           </button>
           <div class="special-section special-search-section">
             <label><span>Find Buyer</span><input class="buyer-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
@@ -967,12 +970,6 @@
           </div>
         </div>
 
-        <div class="generic-module-workspace" data-module-view="generic" hidden>
-          <div class="generic-module-visual"><span class="generic-module-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 12h8M12 8v8"/></svg></span></div>
-          <strong class="generic-module-title">Sẵn sàng mở trên WFX</strong>
-          <p>Mở module trong trình duyệt làm việc.</p>
-          <button class="primary-button generic-module-open" type="button"><span>Mở module trên WFX</span></button>
-        </div>
       </section>
     </div>
 

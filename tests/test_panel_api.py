@@ -124,6 +124,15 @@ class FakeLogin:
             "confirmed_styles": 2,
         }
 
+    def reject_all_oc_pending(self, log=print):
+        self.calls.append(("reject_all_oc_pending",))
+        return {
+            "ok": True,
+            "code": "OC_REJECT_ALL_COMPLETED",
+            "message": "rejected",
+            "rejected_rows": 3,
+        }
+
     def search_sample_list(self, xpath, filter_kind, query, log=print):
         self.calls.append(("search_sample", xpath, filter_kind, query))
         return {"ok": True, "code": "MODULE_SEARCH_APPLIED", "message": "found"}
@@ -1679,6 +1688,16 @@ def test_fast_oc_confirm_delegates_without_upload_review(tmp_path):
     assert fake.calls == [("confirm_oc_pending", "revision")]
 
 
+def test_reject_all_oc_delegates_without_upload_review_or_mode(tmp_path):
+    api, fake = make_api(tmp_path)
+
+    result = api.reject_all_oc_pending()
+
+    assert result["code"] == "OC_REJECT_ALL_COMPLETED"
+    assert result["rejected_rows"] == 3
+    assert fake.calls == [("reject_all_oc_pending",)]
+
+
 def test_upload_oc_requires_review_then_confirm_before_calling_edi(tmp_path):
     source = oc_workbook.write_oc_input_template(tmp_path / "new-oc.xlsx")
     workbook = load_workbook(source)
@@ -1970,15 +1989,34 @@ def test_save_account_persists(tmp_path):
 
 def test_save_account_blank_password_keeps_existing(tmp_path):
     # Password input trên UI không bao giờ được điền lại khi mở Settings, nên
-    # nếu người dùng chỉ đổi User ID rồi lưu, password gửi lên sẽ luôn rỗng.
-    # Không được ghi đè mật khẩu đã lưu bằng chuỗi rỗng.
+    # nếu người dùng chỉ lưu lại đúng tài khoản cũ, password gửi lên sẽ luôn
+    # rỗng. Không được ghi đè mật khẩu đã lưu bằng chuỗi rỗng.
     api, _ = make_api(tmp_path)
     api.save_account("dave", "s3cret")
-    result = api.save_account("dave2", "")
+    result = api.save_account("  dave  ", "")
     assert result["ok"] is True
     assert result["code"] == "ACCOUNT_SAVED"
     loaded = prefs.load_account(base_dir=tmp_path)
-    assert loaded == {"user_id": "dave2", "password": "s3cret"}
+    assert loaded == {"user_id": "dave", "password": "s3cret"}
+
+
+def test_save_account_requires_password_for_a_different_user_id(tmp_path):
+    """Ghép User ID mới với mật khẩu của tài khoản cũ luôn là đăng nhập sai.
+
+    WFX khóa tài khoản sau vài lần sai, nên không được im lặng kế thừa mật
+    khẩu khi người dùng đổi hẳn sang tài khoản khác.
+    """
+    api, _ = make_api(tmp_path)
+    api.save_account("dave", "s3cret")
+
+    result = api.save_account("dave2", "")
+
+    assert result["ok"] is False
+    assert result["code"] == "PASSWORD_REQUIRED"
+    assert prefs.load_account(base_dir=tmp_path) == {
+        "user_id": "dave",
+        "password": "s3cret",
+    }
 
 
 def test_save_account_blank_password_and_no_stored_password_fails(tmp_path):
