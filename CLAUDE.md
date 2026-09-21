@@ -27,10 +27,13 @@ Bản đồ nhanh — bốn tầng, phụ thuộc chỉ đi một chiều từ t
 - `wfx_panel/panel_api.py` — bridge `PanelAPI`: hạ tầng dùng chung (`_run` kèm
   khóa + lịch sử, phiên, Division, telemetry) và delegator mỏng sang controller.
 - `wfx_panel/controllers/` — `catalog` (browse/prepare/find + cây folder),
-  `costing` (export/import/apply file Costing), `oc`, `sale_asn`, `inventory`
-  (RMPO + GRN), `reports`, `finance`, `directory`, `settings`, `jobs`. Mỗi
-  controller sở hữu state nghiệp vụ của nó và mượn hạ tầng qua tham chiếu
-  `panel`.
+  `catalog_style` (tạo Style hàng loạt), `catalog_files` (file đính kèm
+  Article/Sample), `costing` (export/import/apply file Costing), `oc`,
+  `sale_asn`, `inventory` (RMPO + GRN), `reports`, `finance`, `directory`,
+  `settings`, `jobs`. Mỗi controller sở hữu state nghiệp vụ của nó và mượn hạ
+  tầng qua tham chiếu `panel`.
+- `wfx_panel/run_policy.py` — luật phân loại kết quả một lượt chạy: mã nào là
+  mất phiên, mã nào không gửi telemetry, method nào được chụp ảnh chẩn đoán.
 - `wfx_panel/workbooks/` — `costing`, `oc`, `asn`, `sale_asn`, `style`,
   `costing_planner`. Python thuần, không chạm Playwright: đây là nơi test được
   toàn bộ luật file Excel mà không cần Chrome.
@@ -39,8 +42,9 @@ Bản đồ nhanh — bốn tầng, phụ thuộc chỉ đi một chiều từ t
 - `wfx_panel/automation/oc.py` — mở report Revise OC, điều khiển EDI Buyer PO
   tới Create Transaction, Confirm tuần tự theo Style và Reject All trên tab mở.
 - `wfx_panel/panel_app.py` — orchestrator: pywebview + tray + hotkey toàn cục +
-  vòng lặp nền. `wfx_panel/app/` giữ `dialogs`, `bubble`, `manual_window`,
-  `bridges`, `helpers`, `layout`; `win32_window.py` là lớp Win32.
+  vòng lặp nền. `wfx_panel/app/` giữ `dialogs`, `bubble`, `placement`,
+  `manual_window`, `bridges`, `helpers`, `layout`; `win32_window.py` là lớp
+  Win32.
 - `wfx_panel/prefs.py` + `wfx_panel/secret.py` — settings và mật khẩu (DPAPI).
   `prefs.py` PHẢI ở lại gốc `wfx_panel/`: `RESOURCE_DIR` neo theo
   `__file__.parent.parent` để bản PyInstaller tìm đúng `ui/` và `assets/`.
