@@ -461,7 +461,14 @@ def _wait_company_results(
             last = current.evaluate(_COMPANY_ROWS_JS, {"query": query})
             rows = last["rows"]
             matching = [row for row in rows if row["matches"]]
-            filtered = not rows or len(matching) == len(rows)
+            # Đọc sớm chỉ nguy hiểm ở nhánh 0 kết quả: lọc server-side của WFX
+            # chỉ BỎ BỚT dòng không khớp, nên một dòng đã khớp thì tập khớp
+            # không đổi dù grid lọc xong hay chưa. Ngược lại, đòi "mọi dòng
+            # đang render đều khớp" là sai với DOM thật: WFX giữ lại dòng phụ
+            # (tổng/phân trang) không chứa query, và đúng một dòng như vậy đủ
+            # để nuốt trọn deadline 18 giây rồi trả lỗi kỹ thuật cho một lượt
+            # tìm đã thành công.
+            filtered = bool(matching) or not rows
             state_key = _company_result_state_key(last)
             if not last.get("loading") and filtered and state_key == stable_key:
                 required = 2.5 if not rows else 0.8
@@ -635,11 +642,24 @@ def _supplier_search_result(
             category=first_category,
             categories=category_names,
             matches=first["matches"],
+            total_matches=total_matches,
             matches_by_category=state.found_by_category,
             checked_categories=state.checked,
             failed_categories=state.failed_categories,
         )
     if state.failed_categories:
+        # Không Category nào chạy được thì "không tìm thấy kết quả" là sai sự
+        # thật: app chưa kiểm tra được gì. Người dùng đọc câu đó sẽ kết luận
+        # nhà cung cấp chưa tồn tại rồi đi tạo trùng.
+        if len(state.failed_categories) >= len(state.checked):
+            return _result(
+                False,
+                "SUPPLIER_SEARCH_PARTIAL",
+                f"Chưa kiểm tra được Category nào trong {len(state.checked)} "
+                "Category. Hãy kiểm tra trình duyệt làm việc rồi tìm lại.",
+                checked_categories=state.checked,
+                failed_categories=state.failed_categories,
+            )
         return _result(
             False,
             "SUPPLIER_SEARCH_PARTIAL",
@@ -736,11 +756,15 @@ def find_supplier_in_category(
             log,
             "supplier",
         )
-        matches = [
-            row["company"]
-            for row in state["rows"]
-            if row["matches"]
-        ]
+        # Khử trùng giống nhánh quét tất cả Category: WFX render lại cùng một
+        # công ty ở cột ghim, đếm hai lần là báo sai số kết quả.
+        matches = list(
+            dict.fromkeys(
+                row["company"]
+                for row in state["rows"]
+                if row["matches"]
+            )
+        )
         if not matches:
             return _result(
                 False,
@@ -748,12 +772,16 @@ def find_supplier_in_category(
                 f"Không tìm thấy Supplier trong {category_name}: {query}.",
                 category=category_name,
             )
+        # Đếm tổng TRƯỚC khi cắt danh sách hiển thị, giống nhánh quét tất cả
+        # Category: cắt ở 10 mà không kèm tổng thì user tưởng chỉ có 10.
         return _result(
             True,
             "SUPPLIER_FOUND",
-            f"Đã tìm thấy Supplier trong Category {category_name}.",
+            f"Đã tìm thấy {len(matches)} Supplier trong Category "
+            f"{category_name}.",
             category=category_name,
             matches=matches[:10],
+            total_matches=len(matches),
             checked_categories=[category_name],
         )
     except PlaywrightTimeoutError as exc:

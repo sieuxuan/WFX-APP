@@ -664,12 +664,17 @@
         {
           "id": "danh-sach-supplier",
           "title": "Supplier List",
-          "summary": "Mở Supplier theo Category hoặc tìm trên mọi Category.",
+          "summary": "Mở Supplier theo Category, tìm trong một Category hoặc trên mọi Category.",
           "file": "06-danh-sach/supplier.md",
           "keywords": ["supplier", "category", "master"],
           "covers": {
             "modules": ["0005_0010_1290"],
-            "actions": ["supplier-list", "supplier-open", "supplier-find"],
+            "actions": [
+              "supplier-list",
+              "supplier-open",
+              "supplier-find",
+              "supplier-find-category"
+            ],
             "errors": [
               "SUPPLIER_MASTER_NOT_READY",
               "SUPPLIER_OPEN_FAILED",
