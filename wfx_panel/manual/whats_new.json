@@ -1,4 +1,36 @@
-[{
+[
+  {
+    "version": "1.0.37",
+    "date": "2026-09-21",
+    "highlights": [
+      {
+        "title": "Đổi tài khoản WFX giờ đổi thật",
+        "body": "Trước đây lưu User ID khác mà trình duyệt còn phiên cũ thì app vẫn chạy bằng tài khoản cũ. Nay app tự mở lại màn đăng nhập WFX và đăng nhập đúng tài khoản mới; đổi User ID cũng bắt buộc nhập mật khẩu của chính tài khoản đó.",
+        "entry": "bat-dau-dang-nhap"
+      },
+      {
+        "title": "Không bị kéo ra màn đăng nhập giữa chừng",
+        "body": "Khi WFX chậm hoặc mất mạng, lượt kiểm tra nền chỉ đổi đèn trạng thái và ghi một dòng lịch sử thay vì mở đè bảng nhập tài khoản lên việc bạn đang làm. Sau khi app tự đăng nhập lại, thông báo cũng tự tắt.",
+        "entry": "bat-dau-dang-nhap"
+      },
+      {
+        "title": "Dừng thử lại khi WFX đã từ chối mật khẩu",
+        "body": "Nếu WFX báo sai tài khoản, app ngừng tự đăng nhập lại cho tới khi bạn cập nhật mật khẩu, tránh việc mỗi lần bấm là một lần nhập sai dẫn tới bị khóa tài khoản.",
+        "entry": "bat-dau-dang-nhap"
+      },
+      {
+        "title": "Reject All cho OC đang mở",
+        "body": "Thẻ New hoặc Revision đang chọn có thể Reject lần lượt toàn bộ PO, chờ WFX xử lý xong từng dòng rồi mới sang dòng kế.",
+        "entry": "don-hang-oc-reject-all"
+      },
+      {
+        "title": "Sửa vài chỗ nhỏ trong bảng điều khiển",
+        "body": "Nút Mở trình duyệt dùng lại được sau lần bấm đầu, thẻ Tài khoản hiện giờ đăng nhập gần nhất, và app nói rõ khi mật khẩu đã lưu không mở được trên máy này.",
+        "entry": "bat-dau-dang-nhap"
+      }
+    ]
+  },
+  {
     "version": "1.0.36",
     "date": "2026-08-26",
     "highlights": [
