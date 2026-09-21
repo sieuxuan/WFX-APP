@@ -9,11 +9,6 @@ from urllib.parse import urljoin
 
 from openpyxl import load_workbook
 
-from wfx_panel.asn_workbook import (
-    ASNWorkbookError,
-    merge_sale_asn_reports,
-    sale_asn_sheet_names,
-)
 from wfx_panel.automation._common import (
     Callable,
     Frame,
@@ -38,6 +33,11 @@ from wfx_panel.automation.modules import (
 )
 from wfx_panel.automation.runtime import cancellation_deferred
 from wfx_panel.automation.search_specs import SALE_ASN_SEARCH_SPEC
+from wfx_panel.workbooks.asn import (
+    ASNWorkbookError,
+    merge_sale_asn_reports,
+    sale_asn_sheet_names,
+)
 
 PACKING_LIST_SELECTOR = "#lnkANFPackingList"
 BUYER_INVOICE_SELECTOR = "#lnkBuyerInvoice"

@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
-from wfx_panel import autostart, constants, reference_sync, updater
+from wfx_panel import autostart, constants, updater
 from wfx_panel import hotkey as hotkey_spec
 from wfx_panel.coercion import boolean
+from wfx_panel.stores import reference_sync
 
 THEME_CHOICES = frozenset({"light", "dark", "system"})
 

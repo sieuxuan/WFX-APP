@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from wfx_panel.costing_workbook import CLEAR_MARKER, normalize_document
+from wfx_panel.workbooks.costing import CLEAR_MARKER, normalize_document
 
 OPEN_STATUS = "open"
 

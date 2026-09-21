@@ -1,6 +1,6 @@
 from openpyxl import load_workbook
 
-from wfx_panel.style_workbook import (
+from wfx_panel.workbooks.style import (
     GUIDE_SHEET,
     LIST_SHEET,
     STYLE_COLUMNS,

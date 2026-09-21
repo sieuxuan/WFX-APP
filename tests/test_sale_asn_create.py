@@ -16,7 +16,7 @@ from wfx_panel.automation.sale_asn_create import (
     _set_style_hts_cell,
 )
 from wfx_panel.panel_api import PanelAPI
-from wfx_panel.sale_asn_workbook import (
+from wfx_panel.workbooks.sale_asn import (
     SALE_ASN_COLUMNS,
     SaleASNWorkbookError,
     read_sale_asn_workbook,

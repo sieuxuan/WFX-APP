@@ -1,7 +1,7 @@
 import json
 import time
 
-from wfx_panel import style_options
+from wfx_panel.stores import style_options
 
 
 def _snapshot(generated_at=None):

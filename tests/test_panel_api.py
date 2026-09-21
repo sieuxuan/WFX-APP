@@ -6,10 +6,7 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 from wfx_panel import (
-    article_library,
     constants,
-    costing_workbook,
-    oc_workbook,
     panel_api,
     prefs,
     telemetry,
@@ -18,6 +15,9 @@ from wfx_panel.atomic_io import write_json_atomic
 from wfx_panel.automation import runtime as automation_runtime
 from wfx_panel.controllers import sale_asn as sale_asn_controller
 from wfx_panel.panel_api import PanelAPI
+from wfx_panel.stores import article_library
+from wfx_panel.workbooks import costing as costing_workbook
+from wfx_panel.workbooks import oc as oc_workbook
 
 
 class FakeLogin:
@@ -3206,7 +3206,7 @@ def test_reference_sync_runs_without_taking_the_automation_lock(tmp_path, monkey
     người dùng suốt cả timeout mạng, còn lúc khởi động thì auto-login giữ lock
     nên chính lượt sync bị bỏ qua cả tiếng.
     """
-    from wfx_panel import reference_sync
+    from wfx_panel.stores import reference_sync
 
     api, _fake = make_api(tmp_path)
     monkeypatch.setattr(
@@ -3245,7 +3245,8 @@ def test_reference_sync_runs_without_taking_the_automation_lock(tmp_path, monkey
 
 def test_reference_sync_does_not_pollute_the_job_history(tmp_path, monkeypatch):
     """Trần lịch sử 200 dòng phải dành cho job thật, không cho ~24 lượt sync/ngày."""
-    from wfx_panel import job_history, reference_sync
+    from wfx_panel import job_history
+    from wfx_panel.stores import reference_sync
 
     api, _fake = make_api(tmp_path)
     monkeypatch.setattr(
@@ -3265,7 +3266,7 @@ def test_reference_sync_does_not_pollute_the_job_history(tmp_path, monkeypatch):
 
 def test_user_actions_stay_available_while_reference_sync_is_in_flight(tmp_path, monkeypatch):
     """Lượt sync nền chậm không được biến cú bấm của user thành ACTION_IN_PROGRESS."""
-    from wfx_panel import reference_sync
+    from wfx_panel.stores import reference_sync
 
     prefs.save_account("u", "p", base_dir=tmp_path)
     api, _fake = make_api(tmp_path)

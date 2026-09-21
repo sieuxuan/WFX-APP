@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
-from wfx_panel.report_parameters import ReportParameterStore
+from wfx_panel.stores.report_parameters import ReportParameterStore
 
 
 class ReportsController:

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from wfx_panel.oc_workbook import (
+from wfx_panel.workbooks.oc import (
     EDI_HEADERS,
     FORM_HEADERS,
     INPUT_HEADERS,

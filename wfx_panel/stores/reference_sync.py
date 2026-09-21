@@ -18,9 +18,10 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from wfx_panel import article_library, prefs, style_options
+from wfx_panel import prefs
 from wfx_panel.atomic_io import write_json_atomic
 from wfx_panel.coercion import nonnegative_float
+from wfx_panel.stores import article_library, style_options
 
 DEFAULT_READ_URL = "https://n8n.itx.io.vn/webhook/wfx-sync-latest"
 DEFAULT_PUBLISH_URL = "https://n8n.itx.io.vn/webhook/wfx-sync-publish"

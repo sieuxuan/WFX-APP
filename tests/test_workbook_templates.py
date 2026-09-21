@@ -4,9 +4,9 @@ from zipfile import ZipFile
 import pytest
 from openpyxl import load_workbook
 
-from wfx_panel.oc_workbook import write_oc_input_template
-from wfx_panel.sale_asn_workbook import write_sale_asn_template
-from wfx_panel.style_workbook import write_style_template
+from wfx_panel.workbooks.oc import write_oc_input_template
+from wfx_panel.workbooks.sale_asn import write_sale_asn_template
+from wfx_panel.workbooks.style import write_style_template
 
 
 @pytest.mark.parametrize(

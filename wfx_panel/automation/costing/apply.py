@@ -60,7 +60,7 @@ from wfx_panel.automation.costing.variants import (
 )
 from wfx_panel.automation.runtime import checkpoint
 from wfx_panel.automation.session import _session_is_active
-from wfx_panel.costing_planner import (
+from wfx_panel.workbooks.costing_planner import (
     CostingPlanError,
     build_costing_plan,
     live_signature,

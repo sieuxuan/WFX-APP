@@ -1,11 +1,11 @@
 import pytest
 
-from wfx_panel.costing_planner import (
+from wfx_panel.workbooks.costing import FORMAT_VERSION
+from wfx_panel.workbooks.costing_planner import (
     CostingPlanError,
     build_costing_plan,
     live_signature,
 )
-from wfx_panel.costing_workbook import FORMAT_VERSION
 
 
 def documents():
