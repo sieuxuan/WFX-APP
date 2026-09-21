@@ -25,6 +25,7 @@ from tests.fakes.automation_boundary import (
     WfxWorld,
     wire_automation,
 )
+from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import FakeClock, FakeNode, install_fake_clock
 from wfx_panel.automation import oc
 
@@ -59,13 +60,13 @@ def test_confirm_delegates_to_the_tested_core_for_valid_modes(
 ):
     wire_automation(monkeypatch, oc, world)
     seen = {}
-    monkeypatch.setattr(oc, "_open_confirm_grid", lambda page, m, log: ("frame", m))
+    patch_automation(monkeypatch, oc, "_open_confirm_grid", lambda page, m, log: ("frame", m))
 
     def record_confirm(_page, _frame, resolved_mode, _log):
         seen["mode"] = resolved_mode
         return {"ok": True, "code": "OC_FAST_CONFIRM_DONE"}
 
-    monkeypatch.setattr(oc, "_confirm_all_pending", record_confirm)
+    patch_automation(monkeypatch, oc, "_confirm_all_pending", record_confirm)
 
     result = oc.confirm_oc_pending(mode, log=_quiet())
 
@@ -121,7 +122,7 @@ def test_confirm_timeout_says_nothing_was_submitted(monkeypatch, world):
     def slow(*_args, **_kwargs):
         raise PlaywrightTimeoutError("grid Confirm chưa render")
 
-    monkeypatch.setattr(oc, "_open_confirm_grid", slow)
+    patch_automation(monkeypatch, oc, "_open_confirm_grid", slow)
 
     result = oc.confirm_oc_pending("new", log=_quiet())
 
@@ -138,7 +139,7 @@ def test_confirm_unexpected_error_keeps_the_mode_and_the_flag(monkeypatch, world
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi DOM")
 
-    monkeypatch.setattr(oc, "_open_confirm_grid", boom)
+    patch_automation(monkeypatch, oc, "_open_confirm_grid", boom)
 
     result = oc.confirm_oc_pending("revision", log=_quiet())
 
@@ -155,14 +156,14 @@ def test_reject_all_uses_the_tab_currently_open_on_wfx(monkeypatch, world):
     """Nút chỉ xử lý tab đang chọn, không được tự chuyển tab."""
     wire_automation(monkeypatch, oc, world)
     seen = {}
-    monkeypatch.setattr(oc, "_active_confirm_mode", lambda _page: "revision")
-    monkeypatch.setattr(oc, "_set_confirm_page_size", lambda _page: "frame")
+    patch_automation(monkeypatch, oc, "_active_confirm_mode", lambda _page: "revision")
+    patch_automation(monkeypatch, oc, "_set_confirm_page_size", lambda _page: "frame")
 
     def record_reject(_page, _frame, resolved_mode, _log):
         seen["mode"] = resolved_mode
         return {"ok": True, "code": "OC_REJECT_ALL_DONE"}
 
-    monkeypatch.setattr(oc, "_reject_all_pending", record_reject)
+    patch_automation(monkeypatch, oc, "_reject_all_pending", record_reject)
     lines, log = _logs()
 
     result = oc.reject_all_oc_pending(log=log)
@@ -176,12 +177,12 @@ def test_reject_all_uses_the_tab_currently_open_on_wfx(monkeypatch, world):
 
 def test_reject_all_timeout_says_nothing_was_rejected(monkeypatch, world):
     wire_automation(monkeypatch, oc, world)
-    monkeypatch.setattr(oc, "_active_confirm_mode", lambda _page: "new")
+    patch_automation(monkeypatch, oc, "_active_confirm_mode", lambda _page: "new")
 
     def slow(_page):
         raise PlaywrightTimeoutError("page size chưa đổi")
 
-    monkeypatch.setattr(oc, "_set_confirm_page_size", slow)
+    patch_automation(monkeypatch, oc, "_set_confirm_page_size", slow)
 
     result = oc.reject_all_oc_pending(log=_quiet())
 
@@ -250,7 +251,7 @@ def test_upload_that_fails_before_submit_is_safe_to_retry(
     def slow(*_args, **_kwargs):
         raise PlaywrightTimeoutError("EDI Buyer PO chưa mở")
 
-    monkeypatch.setattr(oc, "_open_edi_form", slow)
+    patch_automation(monkeypatch, oc, "_open_edi_form", slow)
 
     result = oc.upload_oc_edi(_workbook(tmp_path), "BUYER", "new", _quiet())
 
@@ -268,7 +269,7 @@ def test_upload_failure_before_submit_never_reports_unconfirmed(
     def boom(*_args, **_kwargs):
         raise ValueError("WFX đổi DOM")
 
-    monkeypatch.setattr(oc, "_open_edi_form", boom)
+    patch_automation(monkeypatch, oc, "_open_edi_form", boom)
 
     result = oc.upload_oc_edi(_workbook(tmp_path), "BUYER", "new", _quiet())
 
@@ -306,8 +307,8 @@ def _report_world(clock: FakeClock, *, node_ids, texts):
 def _wire_report_tree(monkeypatch, world):
     page = world.page
     tree_locator = _TreeLocator(page.report_nodes)  # type: ignore[attr-defined]
-    monkeypatch.setattr(
-        oc,
+    patch_automation(
+        monkeypatch, oc,
         "_visible_in_frames",
         lambda _page, _selector, **_kwargs: ("frame", tree_locator),
     )
@@ -405,7 +406,7 @@ def test_an_unrelated_runtime_error_is_not_disguised_as_a_browser_code(
     def boom(*_args, **_kwargs):
         raise RuntimeError("Đã kết nối Chrome nhưng không tìm thấy browser context.")
 
-    monkeypatch.setattr(oc, "_visible_in_frames", boom)
+    patch_automation(monkeypatch, oc, "_visible_in_frames", boom)
 
     result = oc.open_oc_revision_report(log=_quiet())
 
