@@ -423,9 +423,21 @@ class BubbleController:
             # Một số máy phát sự kiện loaded trước khi HWND tra được theo title.
             # Mỗi loaded/show/restore được quyền tạo một lượt retry riêng để
             # không mất tín hiệu đúng lúc thread cũ vừa hết hạn.
+            #
+            # Thread nền không có ai join, nên một lỗi ở đây (ví dụ
+            # `prefs.save_prefs` gặp đĩa đầy hoặc file bị khóa) sẽ giết thread
+            # im lặng và bubble giữ nguyên kích thước sai mà không ai biết.
+            # Nuốt lỗi rồi ghi crash log, giống thread flush telemetry.
             for _attempt in range(20):
                 time.sleep(0.1)
-                if self._enforce_bubble_native_bounds():
+                try:
+                    if self._enforce_bubble_native_bounds():
+                        return
+                except Exception as error:  # noqa: BLE001 - thread nền
+                    crash_log.record(
+                        "BUBBLE_NATIVE_SIZE_FAILED",
+                        exception=f"{type(error).__name__}: {error}",
+                    )
                     return
 
         app._bubble_size_thread = threading.Thread(

@@ -800,6 +800,11 @@ def test_activate_shows_panel_and_fronts_window(monkeypatch):
         "_bring_process_window_to_front",
         lambda **_kwargs: fronted.append(True) or True,
     )
+    # Không để lượt ép kích thước bubble spawn thread nền: nó chạy 2 giây và
+    # sẽ gọi các helper Win32 đang bị test SAU đó monkeypatch.
+    monkeypatch.setattr(
+        app._bubble, "_schedule_bubble_native_bounds", lambda: None
+    )
     app.activate()
     assert shown[0] is True
     assert any(
@@ -869,6 +874,11 @@ def test_direct_bubble_click_does_not_double_toggle_from_taskbar(monkeypatch):
     times = iter([100.0, 100.1, 101.0])
     monkeypatch.setattr(time, "monotonic", lambda: next(times))
     app._placement.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+    # Xem ghi chú ở test activate: thread ép kích thước bubble sống 2 giây và
+    # sẽ đụng monkeypatch của các test chạy sau.
+    monkeypatch.setattr(
+        app._bubble, "_schedule_bubble_native_bounds", lambda: None
+    )
 
     app.note_bubble_interaction()
     app._open_panel_from_taskbar()
