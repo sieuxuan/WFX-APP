@@ -626,3 +626,61 @@ def test_smooth_corners_are_false_for_an_unknown_window(monkeypatch):
     _desktop(monkeypatch, [])
 
     assert win32._set_smooth_corners_by_title("Không có") is False
+
+
+# --- Win32 từ chối: mọi helper phải trả giá trị an toàn ------------------
+
+
+class _Exploding:
+    """`ctypes.windll` mà mọi thư viện con đều ném — như khi Win32 từ chối."""
+
+    def __getattr__(self, name):
+        raise OSError(f"không nạp được {name}.dll")
+
+
+@pytest.fixture
+def broken_win32(monkeypatch):
+    """Desktop có cửa sổ thật, nhưng lời gọi Win32 nào cũng ném lỗi."""
+    _desktop(monkeypatch, windows=[_panel(), _bubble()])
+    monkeypatch.setattr(ctypes, "windll", _Exploding(), raising=False)
+    monkeypatch.setattr(
+        win32, "_find_window_hwnd_any_state", lambda _title: 10
+    )
+    monkeypatch.setattr(win32, "_find_window_hwnd", lambda _title: 10)
+
+
+def test_a_dpi_probe_that_fails_falls_back_to_the_default(broken_win32):
+    assert win32._window_dpi_by_title(win32.MAIN_WINDOW_TITLE) == win32.DEFAULT_DPI
+
+
+@pytest.mark.parametrize(
+    ("call", "expected"),
+    [
+        (lambda: win32._bring_process_window_to_front(4242), False),
+        (lambda: win32._work_area_for_process_window(4242), None),
+        (lambda: win32._work_area_for_hwnd(10), None),
+        (lambda: win32._set_process_window_bounds(4242, 0, 0, 48, 48), False),
+        (lambda: win32._native_popup_visibility("X", True), False),
+        (lambda: win32._foreground_process_id(), None),
+        (lambda: win32._foreground_window_hwnd(), None),
+        (lambda: win32._mouse_state_over_hwnd(10, (1,)), (False, False)),
+        (lambda: win32._find_window_hwnd_impl("X", visible_only=True), None),
+        (lambda: win32._native_window_visibility("X", True), False),
+        (lambda: win32._window_rect_for_hwnd(10), None),
+        (lambda: win32._set_bounds_by_title("X", 0, 0, 48, 48), False),
+        (lambda: win32._set_smooth_corners_by_title("X"), False),
+    ],
+)
+def test_no_win32_helper_ever_raises_when_windows_refuses(
+    broken_win32, call, expected
+):
+    assert call() == expected
+
+
+# --- DPI không đọc được -------------------------------------------------
+
+
+@pytest.mark.parametrize("dpi", [0, -96, None])
+def test_a_dpi_windows_could_not_report_is_treated_as_one_hundred_percent(dpi):
+    assert win32._scale_logical_size(48, 48, dpi) == (48, 48)
+    assert win32._unscale_physical_size(48, 48, dpi) == (48, 48)
