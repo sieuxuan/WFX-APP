@@ -65,24 +65,25 @@ def _shipment_order_po(value: object) -> str:
     return order_no.rsplit("/", 1)[-1].strip()
 
 
-def _price_check_rows(
-    source_rows: Sequence[dict],
-    shipment_rows: Sequence[dict],
-) -> tuple[list[dict[str, Any]], dict[str, str | bool]]:
-    """So sánh file với Shipment Details theo PO trong Order No + Article."""
+QTY_PRICE_TOLERANCE = Decimal("0.0001")
 
+
+def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple[str, str], dict[str, Any]]:
+    """Gộp dòng file theo cặp PO No. + Style No. đã chuẩn hoá."""
     groups: dict[tuple[str, str], dict[str, Any]] = {}
     for source in source_rows:
         po_no = str(source.get("po_no") or "").strip()
         style_no = str(source.get("style_no") or "").strip()
-        key = (_fold(po_no), _fold(style_no))
-        if not key[0] or not key[1]:
+        folded_po, folded_style = _fold(po_no), _fold(style_no)
+        if not folded_po or not folded_style:
             continue
         group = groups.setdefault(
-            key,
+            (folded_po, folded_style),
             {
                 "po_no": po_no,
                 "style_no": style_no,
+                "folded_po": folded_po,
+                "folded_style": folded_style,
                 "source_rows": [],
                 "qty_values": [],
                 "price_values": [],
@@ -91,107 +92,160 @@ def _price_check_rows(
         group["source_rows"].append(int(source.get("source_row") or 0))
         group["qty_values"].append(_decimal_or_none(source.get("qty")))
         group["price_values"].append(_decimal_or_none(source.get("price")))
+    return groups
+
+
+def _shipment_rows_by_po(shipment_rows: Sequence[dict]) -> dict[str, list[dict]]:
+    """Chỉ mục Shipment Details theo PO đã chuẩn hoá, dựng đúng một lần.
+
+    Trước đây mỗi group quét lại toàn bộ Shipment Details và chuẩn hoá chuỗi
+    theo từng cặp, tức O(số group × số dòng WFX). Một hoá đơn nhiều PO làm chi
+    phí đó tăng theo bình phương mà không thêm thông tin gì.
+    """
+    index: dict[str, list[dict]] = {}
+    for item in shipment_rows:
+        folded_po = _fold(_shipment_order_po(item.get("order_no") or item.get("po_no")))
+        if not folded_po:
+            continue
+        index.setdefault(folded_po, []).append(item)
+    return index
+
+
+def _matching_shipment_rows(
+    group: dict[str, Any], by_po: dict[str, list[dict]]
+) -> list[dict]:
+    """Dòng WFX cùng PO và khớp Style; giữ nguyên thứ tự Shipment Details."""
+    return [
+        item
+        for item in by_po.get(group["folded_po"], ())
+        if _order_style_matches(group["folded_style"], _fold(item.get("article")))
+    ]
+
+
+def _file_totals(group: dict[str, Any]) -> tuple[Decimal | None, Decimal | None]:
+    """Qty cộng dồn và Price của group; None khi file còn thiếu giá trị."""
+    qty_values = group["qty_values"]
+    file_qty = (
+        sum(qty_values, Decimal("0"))
+        if all(value is not None for value in qty_values)
+        else None
+    )
+    prices = {value for value in group["price_values"] if value is not None}
+    return file_qty, next(iter(prices)) if len(prices) == 1 else None
+
+
+def _compare_qty_and_price(
+    result: dict[str, Any],
+    file_qty: Decimal,
+    file_price: Decimal,
+    system_qty: Decimal,
+    system_price: Decimal,
+) -> None:
+    """Ghi kết luận khớp/lệch vào ``result``."""
+    qty_ok = abs(file_qty - system_qty) <= QTY_PRICE_TOLERANCE
+    price_ok = abs(file_price - system_price) <= QTY_PRICE_TOLERANCE
+    result["qty_ok"] = qty_ok
+    result["price_ok"] = price_ok
+    if qty_ok and price_ok:
+        return
+    differences = [
+        label
+        for label, ok in (("Qty", qty_ok), ("Price", price_ok))
+        if not ok
+    ]
+    result.update(
+        status="mismatch",
+        message=f"Không khớp {' và '.join(differences)}.",
+    )
+
+
+def _price_check_row(group: dict[str, Any], matched: list[dict]) -> dict[str, Any]:
+    """Một dòng kết quả đối chiếu cho đúng một cặp PO + Style."""
+    file_qty, file_price = _file_totals(group)
+    system_qty_values = [_decimal_or_none(item.get("qty")) for item in matched]
+    system_prices = {
+        value
+        for item in matched
+        if (value := _decimal_or_none(item.get("price"))) is not None
+    }
+    system_qty = (
+        sum(system_qty_values, Decimal("0"))
+        if matched and all(value is not None for value in system_qty_values)
+        else None
+    )
+    result: dict[str, Any] = {
+        "po_no": group["po_no"],
+        "style_no": group["style_no"],
+        "source_rows": group["source_rows"],
+        "system_order_nos": sorted(
+            {
+                str(item.get("order_no") or "").strip()
+                for item in matched
+                if str(item.get("order_no") or "").strip()
+            }
+        ),
+        "file_qty": _decimal_display(file_qty),
+        "file_price": _decimal_display(file_price),
+        "system_qty": _decimal_display(system_qty),
+        "system_prices": [_decimal_display(value) for value in sorted(system_prices)],
+        "status": "ok",
+        "message": "Khớp Qty và Price.",
+    }
+    if file_qty is None or file_price is None:
+        result.update(
+            status="file_value_missing",
+            message="File thiếu Qty hoặc Price, chưa thể đối chiếu dòng này.",
+        )
+        return result
+    if not matched:
+        result.update(
+            status="shipment_not_found",
+            message="Không tìm thấy PO trong Order No + Article tương ứng trên WFX.",
+        )
+        return result
+    if system_qty is None or not system_prices:
+        result.update(
+            status="system_value_missing",
+            message="Shipment Details thiếu Shipping Qty hoặc Price (USD).",
+        )
+        return result
+    if len(system_prices) != 1:
+        result.update(
+            status="system_price_ambiguous",
+            message="WFX có nhiều Price (USD) cho cùng PO + Style.",
+        )
+        return result
+    _compare_qty_and_price(
+        result, file_qty, file_price, system_qty, next(iter(system_prices))
+    )
+    return result
+
+
+def _price_check_rows(
+    source_rows: Sequence[dict],
+    shipment_rows: Sequence[dict],
+) -> tuple[list[dict[str, Any]], dict[str, str | bool]]:
+    """So sánh file với Shipment Details theo PO trong Order No + Article."""
+    groups = _group_file_rows(source_rows)
+    by_po = _shipment_rows_by_po(shipment_rows)
 
     results: list[dict[str, Any]] = []
     complete_file_rows: list[tuple[Decimal, Decimal]] = []
     for group in groups.values():
-        file_qty_values = group["qty_values"]
-        file_price_values = group["price_values"]
-        file_qty = (
-            sum(file_qty_values, Decimal("0"))
-            if all(value is not None for value in file_qty_values)
-            else None
-        )
-        prices = {value for value in file_price_values if value is not None}
-        file_price = next(iter(prices)) if len(prices) == 1 else None
-        matched = [
-            item
-            for item in shipment_rows
-            if _fold(_shipment_order_po(item.get("order_no") or item.get("po_no")))
-            == _fold(group["po_no"])
-            and _order_style_matches(
-                _fold(group["style_no"]),
-                _fold(item.get("article")),
-            )
-        ]
-        system_qty_values = [_decimal_or_none(item.get("qty")) for item in matched]
-        system_prices = {
-            value
-            for item in matched
-            if (value := _decimal_or_none(item.get("price"))) is not None
-        }
-        system_qty = (
-            sum(system_qty_values, Decimal("0"))
-            if matched and all(value is not None for value in system_qty_values)
-            else None
-        )
-        result: dict[str, Any] = {
-            "po_no": group["po_no"],
-            "style_no": group["style_no"],
-            "source_rows": group["source_rows"],
-            "system_order_nos": sorted(
-                {
-                    str(item.get("order_no") or "").strip()
-                    for item in matched
-                    if str(item.get("order_no") or "").strip()
-                }
-            ),
-            "file_qty": _decimal_display(file_qty),
-            "file_price": _decimal_display(file_price),
-            "system_qty": _decimal_display(system_qty),
-            "system_prices": [_decimal_display(value) for value in sorted(system_prices)],
-            "status": "ok",
-            "message": "Khớp Qty và Price.",
-        }
-        if file_qty is None or file_price is None:
-            result.update(
-                status="file_value_missing",
-                message="File thiếu Qty hoặc Price, chưa thể đối chiếu dòng này.",
-            )
-        elif not matched:
-            result.update(
-                status="shipment_not_found",
-                message="Không tìm thấy PO trong Order No + Article tương ứng trên WFX.",
-            )
-        elif system_qty is None or not system_prices:
-            result.update(
-                status="system_value_missing",
-                message="Shipment Details thiếu Shipping Qty hoặc Price (USD).",
-            )
-        elif len(system_prices) != 1:
-            result.update(
-                status="system_price_ambiguous",
-                message="WFX có nhiều Price (USD) cho cùng PO + Style.",
-            )
-        else:
-            system_price = next(iter(system_prices))
-            qty_ok = abs(file_qty - system_qty) <= Decimal("0.0001")
-            price_ok = abs(file_price - system_price) <= Decimal("0.0001")
-            result["qty_ok"] = qty_ok
-            result["price_ok"] = price_ok
-            if not qty_ok or not price_ok:
-                differences = []
-                if not qty_ok:
-                    differences.append("Qty")
-                if not price_ok:
-                    differences.append("Price")
-                result.update(
-                    status="mismatch",
-                    message=f"Không khớp {' và '.join(differences)}.",
-                )
+        results.append(_price_check_row(group, _matching_shipment_rows(group, by_po)))
+        file_qty, file_price = _file_totals(group)
         if file_qty is not None and file_price is not None:
             complete_file_rows.append((file_qty, file_price))
-        results.append(result)
 
-    total_qty = sum((item[0] for item in complete_file_rows), Decimal("0"))
-    total_value = sum(
-        (qty * price for qty, price in complete_file_rows), Decimal("0")
-    )
-    all_file_values_present = len(complete_file_rows) == len(groups)
+    every_file_row_complete = len(complete_file_rows) == len(groups)
+    total_qty = sum((qty for qty, _price in complete_file_rows), Decimal("0"))
+    total_value = sum((qty * price for qty, price in complete_file_rows), Decimal("0"))
     return results, {
-        "file_values_complete": all_file_values_present,
-        "file_total_qty": _decimal_display(total_qty) if all_file_values_present else "",
-        "file_total_value": _decimal_display(total_value) if all_file_values_present else "",
+        "file_values_complete": every_file_row_complete,
+        "file_total_qty": _decimal_display(total_qty) if every_file_row_complete else "",
+        "file_total_value": (
+            _decimal_display(total_value) if every_file_row_complete else ""
+        ),
     }
 
 

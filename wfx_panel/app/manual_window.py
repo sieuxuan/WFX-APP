@@ -34,27 +34,50 @@ class ManualWindowController:
         self._app = app
         self.window = None
         self._target = ""
+        # Nội dung Manual là asset chỉ-đọc đóng gói cùng app nên đọc đúng một
+        # lần cho cả phiên. load_book() đọc ~30 file markdown, render HTML và
+        # dựng chỉ mục tìm kiếm; trước đây mỗi lần bấm dấu hỏi của một module
+        # đều chạy lại toàn bộ việc đó.
+        self._book: dict | None = None
+        self._entry_by_module: dict[str, str] | None = None
+
+    def book(self) -> dict:
+        """Sách hướng dẫn đã dựng, đọc một lần rồi dùng lại."""
+        if self._book is None:
+            self._book = manual_book.load_book()
+        return self._book
 
     def manual_payload(self) -> dict:
-        """Nội dung sách hướng dẫn kèm theme và mục cần mở sẵn."""
-        book = manual_book.load_book()
-        book["theme"] = prefs.load_prefs().get("theme", "light")
-        book["target"] = self._target
-        book["manual_url"] = WFX_MANUAL_URL
-        return book
+        """Nội dung sách hướng dẫn kèm theme và mục cần mở sẵn.
+
+        Trả bản sao nông: theme và target đổi theo từng lần mở, không được ghi
+        đè lên sách đang cache dùng chung.
+        """
+        return {
+            **self.book(),
+            "theme": prefs.load_prefs().get("theme", "light"),
+            "target": self._target,
+            "manual_url": WFX_MANUAL_URL,
+        }
 
     def manual_entry_for_module(self, module_id: str) -> str:
-        """Mục hướng dẫn đầu tiên khai báo phủ module này."""
-        book = manual_book.load_book()
-        for entry_id in book["order"]:
-            if module_id in book["entries"][entry_id]["covers"]["modules"]:
-                return entry_id
-        return ""
+        """Mục hướng dẫn đầu tiên khai báo phủ module này.
+
+        Bảng tra dựng một lần: panel hỏi cho từng module nên quét tuyến tính cả
+        sách mỗi lần là O(số module × số mục) mà kết quả không bao giờ đổi.
+        """
+        if self._entry_by_module is None:
+            book = self.book()
+            first: dict[str, str] = {}
+            for entry_id in book["order"]:
+                for covered in book["entries"][entry_id]["covers"]["modules"]:
+                    first.setdefault(covered, entry_id)
+            self._entry_by_module = first
+        return self._entry_by_module.get(module_id, "")
 
     def manual_error_codes(self) -> list[str]:
         """Mã lỗi đã có mục hướng dẫn riêng, dùng cho nút trợ giúp ở footer."""
-        book = manual_book.load_book()
-        return [row["code"] for row in book["error_table"] if row["entry"]]
+        return [row["code"] for row in self.book()["error_table"] if row["entry"]]
 
     def manual_has_news(self) -> bool:
         """Có tin mới chưa đọc cho đúng phiên bản đang chạy hay không."""
