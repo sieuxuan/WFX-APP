@@ -3,6 +3,10 @@ import threading
 from pathlib import Path
 
 from wfx_panel import panel_app, prefs
+from wfx_panel.app import bridges as app_bridges
+from wfx_panel.app import dialogs as app_dialogs
+from wfx_panel.app import helpers as app_helpers
+from wfx_panel.app import manual_window as app_manual
 
 
 def test_icon_and_ui_paths_resolve_under_resource_dir():
@@ -268,7 +272,7 @@ def test_download_result_opens_explorer_and_shows_toast(monkeypatch):
         (result, context)
     )
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_reveal_downloaded_file",
         lambda path: opened.append(path) or True,
     )
@@ -294,7 +298,7 @@ def test_reveal_downloaded_excel_selects_exact_file_in_explorer(tmp_path, monkey
     target.write_bytes(b"xlsx")
     opened = []
     monkeypatch.setattr(
-        panel_app.subprocess,
+        app_helpers.subprocess,
         "Popen",
         lambda command: opened.append(command),
     )
@@ -310,7 +314,7 @@ def test_reveal_downloaded_excel_falls_back_to_parent_folder(tmp_path, monkeypat
     target.write_bytes(b"xlsx")
     opened = []
     monkeypatch.setattr(
-        panel_app.subprocess,
+        app_helpers.subprocess,
         "Popen",
         lambda _command: (_ for _ in ()).throw(OSError("Explorer unavailable")),
     )
@@ -343,12 +347,12 @@ def test_excel_export_always_opens_folder_and_optionally_opens_file(
         },
     )
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_open_downloaded_file",
         lambda path: opened_files.append(path) or True,
     )
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_reveal_downloaded_file",
         lambda path: opened_folders.append(path) or True,
     )
@@ -367,12 +371,12 @@ def test_sale_asn_export_result_opens_selected_folder(tmp_path, monkeypatch):
     opened_files = []
     opened_folders = []
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_open_downloaded_file",
         lambda path: opened_files.append(path) or True,
     )
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_reveal_downloaded_file",
         lambda path: opened_folders.append(path) or True,
     )
@@ -399,8 +403,8 @@ def test_excel_open_failure_is_logged_but_folder_is_still_revealed(
         "load_prefs",
         lambda _base_dir: {"open_excel_file_after_download": True},
     )
-    monkeypatch.setattr(panel_app, "_open_downloaded_file", lambda _path: False)
-    monkeypatch.setattr(panel_app, "_reveal_downloaded_file", lambda _path: True)
+    monkeypatch.setattr(app_dialogs, "_open_downloaded_file", lambda _path: False)
+    monkeypatch.setattr(app_dialogs, "_reveal_downloaded_file", lambda _path: True)
 
     assert app._handle_downloaded_excel(target) is True
     assert any("Windows không mở được" in line for line in logs)
@@ -414,12 +418,12 @@ def test_excel_download_option_applies_to_catalog_attachments(tmp_path, monkeypa
     opened_folders = []
     prefs.save_prefs(tmp_path, open_excel_file_after_download=False)
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_open_downloaded_file",
         lambda path: opened_files.append(path) or True,
     )
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_reveal_downloaded_file",
         lambda path: opened_folders.append(path) or True,
     )
@@ -440,7 +444,7 @@ def test_price_check_export_uses_excel_download_option(tmp_path, monkeypatch):
     }
     handled = []
     monkeypatch.setattr(
-        app,
+        app._dialogs,
         "_handle_downloaded_excel",
         lambda path: handled.append(path) or True,
     )
@@ -553,12 +557,12 @@ def test_oc_dialogs_choose_xlsx_and_generate_simple_template(tmp_path, monkeypat
     opened = []
     revealed = []
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_open_downloaded_file",
         lambda path: opened.append(Path(path)) or True,
     )
     monkeypatch.setattr(
-        panel_app,
+        app_dialogs,
         "_reveal_downloaded_file",
         lambda path: revealed.append(Path(path)) or True,
     )
@@ -596,8 +600,8 @@ def test_style_dialogs_choose_xlsx_and_generate_template(tmp_path, monkeypatch):
             self.calls.append((dialog_type, kwargs))
             return self.selection
 
-    monkeypatch.setattr(panel_app, "_open_downloaded_file", lambda _path: True)
-    monkeypatch.setattr(panel_app, "_reveal_downloaded_file", lambda _path: True)
+    monkeypatch.setattr(app_dialogs, "_open_downloaded_file", lambda _path: True)
+    monkeypatch.setattr(app_dialogs, "_reveal_downloaded_file", lambda _path: True)
     app = panel_app.PanelApp()
     app.window = Window()
     selected_file = tmp_path / "styles.xlsx"
@@ -634,8 +638,8 @@ def test_style_template_asks_where_to_save_before_fetching_dropdowns(
             order.append("dialog")
             return str(tmp_path / "WFX-Smart-Tao-Style")
 
-    monkeypatch.setattr(panel_app, "_open_downloaded_file", lambda _path: True)
-    monkeypatch.setattr(panel_app, "_reveal_downloaded_file", lambda _path: True)
+    monkeypatch.setattr(app_dialogs, "_open_downloaded_file", lambda _path: True)
+    monkeypatch.setattr(app_dialogs, "_reveal_downloaded_file", lambda _path: True)
     app = panel_app.PanelApp()
     app.window = Window()
 
@@ -2052,7 +2056,7 @@ def test_manual_bridge_mo_trang_web_wfx(monkeypatch):
     app = module.PanelApp()
     calls = []
     monkeypatch.setattr(
-        module.webbrowser,
+        app_bridges.webbrowser,
         "open",
         lambda url, *, new: calls.append((url, new)) or True,
     )
@@ -2064,7 +2068,6 @@ def test_manual_bridge_mo_trang_web_wfx(monkeypatch):
 
 
 def test_hop_thoai_in_manual_dung_webview2_native(monkeypatch):
-    import wfx_panel.panel_app as module
 
     shown = []
     ui_thread = {"active": False}
@@ -2092,12 +2095,12 @@ def test_hop_thoai_in_manual_dung_webview2_native(monkeypatch):
 
     window = type("Window", (), {"native": FakeNative()})()
     monkeypatch.setattr(
-        module,
+        app_helpers,
         "_webview2_print_bindings",
         lambda: (lambda callback: callback, "system"),
     )
 
-    assert module._show_webview2_print_dialog(window) is True
+    assert app_helpers._show_webview2_print_dialog(window) is True
     assert shown == ["system"]
 
 
@@ -2106,7 +2109,9 @@ def test_manual_bridge_mo_hop_thoai_in_native(monkeypatch):
 
     app = module.PanelApp()
     app.manual_window = object()
-    monkeypatch.setattr(module, "_show_webview2_print_dialog", lambda _window: True)
+    monkeypatch.setattr(
+        app_manual, "_show_webview2_print_dialog", lambda _window: True
+    )
 
     result = module._ManualBridge(app).print_manual()
 

@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import subprocess
 import sys
 import threading
 import time
-import webbrowser
 from pathlib import Path
 
 import keyboard
@@ -29,19 +26,49 @@ from wfx_panel import (
     autostart,
     crash_log,
     hotkey,
-    manual_book,
     prefs,
     status,
     updater,
 )
-from wfx_panel.assets.generate_icon import build_icon
-from wfx_panel.oc_workbook import write_oc_input_template
-from wfx_panel.panel_api import PanelAPI
-from wfx_panel.sale_asn_workbook import (
-    write_sale_asn_template,
+from wfx_panel.app.bridges import (  # noqa: F401
+    _BubbleBridge,
+    _BubbleMenuBridge,
+    _ManualBridge,
 )
+from wfx_panel.app.dialogs import FileDialogController
+from wfx_panel.app.helpers import (  # noqa: F401
+    _dialog_selected_path,
+    _is_excel_file,
+    _reveal_downloaded_file,
+    _safe_costing_file_stem,
+    _show_webview2_print_dialog,
+    _top_right_position,
+)
+from wfx_panel.app.layout import (  # noqa: F401
+    BUBBLE_CONTEXT_POLL_SECONDS,
+    BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS,
+    BUBBLE_MENU_GAP,
+    BUBBLE_MENU_HEIGHT,
+    BUBBLE_MENU_INDEX,
+    BUBBLE_MENU_WIDTH,
+    BUBBLE_PANEL_GAP,
+    BUBBLE_SIZE,
+    MANUAL_INDEX,
+    MANUAL_WINDOW_HEIGHT,
+    MANUAL_WINDOW_MIN,
+    MANUAL_WINDOW_TITLE,
+    MANUAL_WINDOW_WIDTH,
+    PANEL_BLUR_GRACE_SECONDS,
+    TASKBAR_ACTIVATION_POLL_SECONDS,
+    WFX_MANUAL_URL,
+    WINDOW_HEIGHT,
+    WINDOW_MARGIN,
+    WINDOW_WIDTH,
+)
+from wfx_panel.app.manual_window import ManualWindowController
+from wfx_panel.assets.generate_icon import build_icon
+from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
-from wfx_panel.style_workbook import write_style_template
 from wfx_panel.version import APP_VERSION
 from wfx_panel.win32_window import (
     BUBBLE_MENU_TITLE,
@@ -73,10 +100,6 @@ HOTKEY = hotkey.DEFAULT
 STATUS_POLL_SECONDS = 5
 SESSION_MAINTENANCE_INITIAL_DELAY_SECONDS = 60
 SESSION_MAINTENANCE_SECONDS = 4 * 60
-TASKBAR_ACTIVATION_POLL_SECONDS = 0.25
-PANEL_BLUR_GRACE_SECONDS = 0.35
-BUBBLE_CONTEXT_POLL_SECONDS = 0.04
-BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS = 0.75
 TRAY_RIGHT_BUTTON_UP = 0x0205  # WM_RBUTTONUP
 TRAY_LEFT_BUTTON_DOUBLE_CLICK = 0x0203  # WM_LBUTTONDBLCLK
 # WM_USER + 5. Windows gửi message này khi user bấm vào THÂN toast, không phải
@@ -86,28 +109,10 @@ UPDATE_INITIAL_DELAY_SECONDS = 1
 UPDATE_POLL_SECONDS = 4 * 60 * 60
 ARTICLE_LIBRARY_INITIAL_DELAY_SECONDS = 3
 ARTICLE_LIBRARY_POLL_SECONDS = 60 * 60
-WFX_MANUAL_URL = (
-    "https://wfx.pro-sports.com.vn/wfx-digital-dictionary/system-manual"
-)
 ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
-BUBBLE_MENU_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble_menu.html"
-MANUAL_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "manual.html"
-MANUAL_WINDOW_TITLE = "WFX Smart · Hướng dẫn sử dụng"
-MANUAL_WINDOW_WIDTH = 1000
-MANUAL_WINDOW_HEIGHT = 720
-MANUAL_WINDOW_MIN = (720, 520)
 
-WINDOW_WIDTH = 440
-WINDOW_HEIGHT = 620
-WINDOW_MARGIN = 24
-# Khôi phục đúng kích thước launcher cũ; bubble chỉ tách thành cửa sổ riêng.
-BUBBLE_SIZE = 48
-BUBBLE_PANEL_GAP = 10
-BUBBLE_MENU_WIDTH = 184
-BUBBLE_MENU_HEIGHT = 82
-BUBBLE_MENU_GAP = 8
 MODULE_NOTIFICATION_METHODS = frozenset(
     {
         "open_module",
@@ -191,94 +196,20 @@ NOTIFICATION_ACTION_LABELS = {
 }
 
 
-def _reveal_downloaded_file(value: object) -> bool:
-    """Mở Explorer và chọn chính xác file vừa tải."""
-    if os.name != "nt":
-        return False
-    try:
-        target = Path(str(value or "")).resolve()
-    except (OSError, ValueError):
-        return False
-    if not target.is_file():
-        return False
-    try:
-        subprocess.Popen(["explorer.exe", "/select,", str(target)])
-        return True
-    except (OSError, ValueError):
-        try:
-            os.startfile(target.parent)  # type: ignore[attr-defined]
-            return True
-        except (OSError, ValueError):
-            return False
 
 
-def _open_downloaded_file(value: object) -> bool:
-    """Mở file bằng ứng dụng mặc định của Windows."""
-    if os.name != "nt":
-        return False
-    try:
-        target = Path(str(value or "")).resolve()
-        if not target.is_file():
-            return False
-        os.startfile(target)  # type: ignore[attr-defined]
-        return True
-    except (OSError, ValueError):
-        return False
 
 
-_EXCEL_FILE_SUFFIXES = frozenset({".xlsx", ".xls", ".xlsm", ".xlsb"})
 
 
-def _is_excel_file(value: object) -> bool:
-    try:
-        return Path(str(value or "")).suffix.casefold() in _EXCEL_FILE_SUFFIXES
-    except (OSError, ValueError):
-        return False
 
 
-def _safe_costing_file_stem(value: object) -> str:
-    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', " ", str(value or "").strip())
-    stem = re.sub(r"\s+", " ", stem).strip(" .")
-    return stem[:120].rstrip(" .") or "Costing"
 
 
-def _dialog_selected_path(selected: object) -> Path:
-    """Chuẩn hóa kết quả pywebview: Windows có thể trả str hoặc list[str]."""
-    value = selected
-    if not isinstance(selected, (str, Path)):
-        try:
-            value = selected[0]  # type: ignore[index]
-        except (IndexError, KeyError, TypeError) as error:
-            raise ValueError("File dialog không trả về đường dẫn.") from error
-    return Path(str(value)).expanduser().resolve()
 
 
-def _webview2_print_bindings():
-    """Nạp kiểu .NET trễ, sau khi backend WebView2 đã khởi tạo."""
-    from Microsoft.Web.WebView2.Core import CoreWebView2PrintDialogKind
-    from System import Action
-
-    return Action, CoreWebView2PrintDialogKind.System
 
 
-def _show_webview2_print_dialog(window: object) -> bool:
-    """Mở hộp thoại in hệ thống trên đúng luồng giao diện của WebView2."""
-    try:
-        native = window.native
-        action_type, system_dialog = _webview2_print_bindings()
-        opened = [False]
-
-        def show_print_dialog() -> None:
-            core = native.browser.webview.CoreWebView2
-            if core is None:
-                return
-            core.ShowPrintUI(system_dialog)
-            opened[0] = True
-
-        native.Invoke(action_type(show_print_dialog))
-        return opened[0]
-    except Exception:
-        return False
 
 
 class _WfxTrayIcon(pystray.Icon):
@@ -308,102 +239,12 @@ class _WfxTrayIcon(pystray.Icon):
         return super()._on_notify(wparam, lparam)
 
 
-def _top_right_position() -> tuple[int, int]:
-    """Tọa độ mở panel gần góc trên-phải màn hình chính.
-
-    pywebview không nhận x/y sẽ tự canh giữa cửa sổ, sai với thiết kế (panel
-    phải neo góc trên-phải). webview.screens chỉ khả dụng SAU khi GUI backend
-    đã khởi tạo nên phải gọi hàm này bên trong run()/create_window(), không
-    phải ở module scope; bọc try/except vì backend hoặc thuộc tính có thể
-    thiếu tuỳ môi trường — không được để lỗi ở đây làm sập khởi động app.
-    """
-    try:
-        screen = webview.screens[0]
-        screen_width = int(screen.width)
-    except Exception:
-        screen_width = 1920
-    x = max(WINDOW_MARGIN, screen_width - WINDOW_WIDTH - WINDOW_MARGIN)
-    y = WINDOW_MARGIN
-    return x, y
 
 
-class _BubbleBridge:
-    """Cầu nối JS cho cửa sổ bubble (icon nổi thường trực)."""
-
-    def __init__(self, app: PanelApp):
-        self._app = app
-
-    def toggle_panel(self) -> dict:
-        return self._app.toggle_panel()
-
-    def save_bubble_position(self) -> dict:
-        return self._app.save_bubble_position()
-
-    def note_bubble_interaction(self) -> dict:
-        return self._app.note_bubble_interaction()
-
-    def begin_bubble_interaction(self) -> dict:
-        return self._app.begin_bubble_interaction()
-
-    def end_bubble_interaction(self) -> dict:
-        return self._app.end_bubble_interaction()
-
-    def bubble_context_menu(self) -> dict:
-        return self._app.bubble_context_menu()
 
 
-class _ManualBridge:
-    """Cầu nối JS cho cửa sổ Hướng dẫn sử dụng.
-
-    Cửa sổ này hoàn toàn offline: nó chỉ đọc nội dung tĩnh đã đóng gói, không
-    chạm tới Playwright, Chrome hay phiên WFX. Nhờ vậy người dùng tra cứu được
-    ngay cả khi chưa đăng nhập hoặc đang mất mạng.
-    """
-
-    def __init__(self, app: PanelApp):
-        self._app = app
-
-    def get_manual_book(self) -> dict:
-        return self._app.manual_payload()
-
-    def print_manual(self) -> dict:
-        return self._app.print_manual()
-
-    def open_manual_external(self) -> dict:
-        try:
-            opened = bool(webbrowser.open(WFX_MANUAL_URL, new=2))
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "MANUAL_OPEN_FAILED",
-                "message": f"Không mở được trang WFX: {error}",
-            }
-        return {
-            "ok": opened,
-            "code": "MANUAL_OPENED" if opened else "MANUAL_OPEN_FAILED",
-            "message": (
-                "Đã mở System Manual của WFX."
-                if opened
-                else "Không tìm thấy trình duyệt."
-            ),
-        }
-
-    def close_manual(self) -> dict:
-        self._app.close_manual_window()
-        return {"ok": True, "code": "MANUAL_CLOSED", "message": ""}
 
 
-class _BubbleMenuBridge:
-    """Cầu nối cho popup menu tách riêng khỏi cửa sổ bubble."""
-
-    def __init__(self, app: PanelApp):
-        self._app = app
-
-    def choose(self, action: str) -> dict:
-        return self._app.choose_bubble_menu(action)
-
-    def dismiss(self) -> dict:
-        return self._app.dismiss_bubble_menu()
 
 
 class PanelApp:
@@ -430,9 +271,11 @@ class PanelApp:
         self._always_on_top = preferences["always_on_top"]
         self._start_hidden = preferences["start_hidden"]
         self.bubble_window = None
-        self.manual_window = None
-        self._manual_target = ""
         self.bubble_menu_window = None
+        # Hộp thoại file và cửa sổ Manual sống trong controller riêng để
+        # PanelApp chỉ còn là orchestrator của cửa sổ, tray và vòng lặp nền.
+        self._dialogs = FileDialogController(self)
+        self._manual = ManualWindowController(self)
         # Bubble là trạng thái nghỉ sau khi thu panel. Khi user chạy app bình
         # thường, UI đầy đủ phải xuất hiện ngay lần đầu (trừ khi họ chủ động
         # bật "Mở ẩn trong tray").
@@ -484,6 +327,15 @@ class PanelApp:
         # Khóa một-instance; main() gán vào để quit() trả cổng lại cho lần mở sau.
         self.lock: SingleInstance | None = None
 
+    @property
+    def manual_window(self):
+        """Cửa sổ Manual đang mở — state thật nằm ở ManualWindowController."""
+        return self._manual.window
+
+    @manual_window.setter
+    def manual_window(self, window) -> None:
+        self._manual.window = window
+
     # -- window bridge -----------------------------------------------------
     def _push_log(self, line: str) -> None:
         if self.window is None:
@@ -508,7 +360,6 @@ class PanelApp:
     def _push_update_state(self, state: dict) -> None:
         if self.window is None:
             return
-        import json
 
         try:
             self.window.evaluate_js(
@@ -519,28 +370,11 @@ class PanelApp:
             pass
 
     def _handle_downloaded_excel(self, value: object) -> bool:
-        """Áp dụng tùy chọn mở file chung rồi luôn hiện file trong Explorer."""
-        preferences = prefs.load_prefs(self._base_dir)
-        should_open = preferences.get(
-            "open_excel_file_after_download",
-            preferences.get("open_costing_file_after_export", True),
-        )
-        if should_open and not _open_downloaded_file(value):
-            self.api._log(
-                "[DOWNLOAD] File đã tải nhưng Windows không mở được bằng "
-                "ứng dụng mặc định."
-            )
-        revealed = _reveal_downloaded_file(value)
-        if not revealed:
-            self.api._log(
-                "[DOWNLOAD] File đã tải nhưng Explorer không hiện được vị trí file."
-            )
-        return revealed
+        return self._dialogs._handle_downloaded_excel(value)
 
     def _on_progress(self, progress: dict) -> None:
         if self.window is None:
             return
-        import json
 
         try:
             self.window.evaluate_js(
@@ -551,730 +385,52 @@ class PanelApp:
             pass
 
     def choose_costing_import_file(self) -> dict:
-        """Mở native dialog; chỉ trả file do chính người dùng chọn."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ chọn file chưa sẵn sàng.",
-            }
-        try:
-            selected = self.window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                allow_multiple=False,
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ chọn file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy chọn file Costing.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != ".xlsx":
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_TYPE_UNSUPPORTED",
-                "message": "Costing chỉ hỗ trợ file .xlsx.",
-            }
-        return {
-            "ok": True,
-            "code": "COSTING_FILE_SELECTED",
-            "message": f"Đã chọn {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.choose_costing_import_file()
 
-    def choose_costing_export_file(
-        self,
-        style_name: str,
-        file_format: str = "xlsx",
-    ) -> dict:
-        """Chọn đích lưu XLSX; dùng đúng toàn bộ đường dẫn từ native dialog."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        if str(file_format or "xlsx").casefold() != "xlsx":
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_TYPE_UNSUPPORTED",
-                "message": "Costing chỉ hỗ trợ file .xlsx.",
-            }
-        extension = ".xlsx"
-        stem = _safe_costing_file_stem(style_name)
-        saved_directory = str(
-            prefs.load_prefs(self._base_dir).get("costing_export_dir") or ""
-        ).strip()
-        if not saved_directory or not Path(saved_directory).is_dir():
-            saved_directory = ""
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                directory=saved_directory,
-                allow_multiple=False,
-                save_filename=f"{stem}-Costing{extension}",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy tải Costing.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "COSTING_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != extension:
-            target = target.with_suffix(extension)
-        try:
-            prefs.save_prefs(
-                self._base_dir,
-                costing_export_dir=str(target.parent),
-            )
-        except OSError:
-            pass
-        return {
-            "ok": True,
-            "code": "COSTING_EXPORT_PATH_SELECTED",
-            "message": f"Sẽ lưu thành {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-            "file_format": extension.lstrip("."),
-        }
+    def choose_costing_export_file(self, style_name: str, file_format: str='xlsx') -> dict:
+        return self._dialogs.choose_costing_export_file(style_name, file_format)
 
     def choose_report_export_dir(self) -> dict:
-        """Chọn thư mục lưu báo cáo hàng loạt và nhớ cho lần sau."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "REPORT_DIR_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ chọn thư mục chưa sẵn sàng.",
-            }
-        saved_directory = str(
-            prefs.load_prefs(self._base_dir).get("report_export_dir") or ""
-        ).strip()
-        if not saved_directory or not Path(saved_directory).is_dir():
-            saved_directory = ""
-        try:
-            selected = self.window.create_file_dialog(
-                webview.FOLDER_DIALOG,
-                directory=saved_directory,
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "REPORT_DIR_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ chọn thư mục: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "REPORT_DIR_DIALOG_CANCELLED",
-                "message": "Đã hủy chọn thư mục lưu báo cáo.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "REPORT_DIR_DIALOG_FAILED",
-                "message": str(error),
-            }
-        try:
-            prefs.save_prefs(self._base_dir, report_export_dir=str(target))
-        except OSError:
-            pass
-        return {
-            "ok": True,
-            "code": "REPORT_DIR_SELECTED",
-            "message": f"Sẽ lưu báo cáo vào {target.name}.",
-            "output_dir": str(target),
-        }
+        return self._dialogs.choose_report_export_dir()
 
-    def open_report_export_dir(self, path: str = "") -> dict:
-        """Mở thư mục chứa các file báo cáo vừa tải."""
-        directory = Path(str(path or "")).expanduser()
-        if not directory.is_dir() or os.name != "nt":
-            return {
-                "ok": False,
-                "code": "REPORT_DIR_MISSING",
-                "message": "Thư mục lưu báo cáo không còn tồn tại.",
-            }
-        try:
-            os.startfile(directory)  # type: ignore[attr-defined]
-        except (OSError, ValueError) as error:
-            return {
-                "ok": False,
-                "code": "REPORT_DIR_MISSING",
-                "message": f"Không mở được thư mục: {type(error).__name__}",
-            }
-        return {
-            "ok": True,
-            "code": "REPORT_DIR_OPENED",
-            "message": f"Đã mở {directory.name}.",
-        }
+    def open_report_export_dir(self, path: str='') -> dict:
+        return self._dialogs.open_report_export_dir(path)
 
     def choose_oc_upload_file(self, mode: str) -> dict:
-        """Chọn file OC New/Revise mà người dùng chủ động cung cấp."""
-        selected_mode = str(mode or "").strip().casefold()
-        if selected_mode not in {"new", "revise"}:
-            return {
-                "ok": False,
-                "code": "OC_MODE_INVALID",
-                "message": "Chế độ Upload OC phải là New hoặc Revise.",
-            }
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ chọn file chưa sẵn sàng.",
-            }
-        try:
-            selected = self.window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                allow_multiple=False,
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ chọn file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy chọn file Upload OC.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != ".xlsx":
-            return {
-                "ok": False,
-                "code": "OC_FILE_TYPE_UNSUPPORTED",
-                "message": "Upload OC chỉ hỗ trợ file .xlsx.",
-            }
-        return {
-            "ok": True,
-            "code": "OC_FILE_SELECTED",
-            "message": f"Đã chọn {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-            "mode": selected_mode,
-        }
+        return self._dialogs.choose_oc_upload_file(mode)
 
-    def choose_oc_upload_export_file(self, source_file: str = "") -> dict:
-        """Choose where to save the generated EDI workbook before upload."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        stem = _safe_costing_file_stem(source_file or "OC-EDI-Upload")
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename=f"WFX-Smart-{stem}.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy tải file EDI Upload OC.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != ".xlsx":
-            target = target.with_suffix(".xlsx")
-        return {
-            "ok": True,
-            "code": "OC_UPLOAD_EXPORT_PATH_SELECTED",
-            "message": f"Sẽ lưu file EDI thành {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+    def choose_oc_upload_export_file(self, source_file: str='') -> dict:
+        return self._dialogs.choose_oc_upload_export_file(source_file)
 
     def choose_sale_asn_export_file(self, invoice_no: str) -> dict:
-        """Chọn đích lưu sau khi đã đọc được Invoice No. thực tế."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        stem = _safe_costing_file_stem(invoice_no or "Invoice")
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename=f"{stem}.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy lưu Documents Sale ASN.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != ".xlsx":
-            target = target.with_suffix(".xlsx")
-        return {
-            "ok": True,
-            "code": "SALE_ASN_EXPORT_PATH_SELECTED",
-            "message": f"Sẽ lưu thành {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.choose_sale_asn_export_file(invoice_no)
 
     def choose_sale_asn_price_check_export_file(self, invoice_no: str) -> dict:
-        """Chọn nơi lưu workbook đối chiếu tự động của Sale ASN."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        stem = _safe_costing_file_stem(invoice_no or "Invoice")
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename=f"WFX-Smart-Sale-ASN-Check-{stem}.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy xuất kết quả Check giá Sale ASN.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != ".xlsx":
-            target = target.with_suffix(".xlsx")
-        return {
-            "ok": True,
-            "code": "SALE_ASN_PRICE_EXPORT_PATH_SELECTED",
-            "message": f"Sẽ lưu thành {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.choose_sale_asn_price_check_export_file(invoice_no)
 
-    def export_sale_asn_price_check(
-        self,
-        price_check: dict,
-        file_path: str,
-    ) -> dict:
-        """Lưu kết quả đối chiếu và áp dụng tùy chọn mở Excel chung."""
-        result = self._export_sale_asn_price_check(price_check, file_path)
-        if result.get("ok") and _is_excel_file(result.get("export_path")):
-            self._handle_downloaded_excel(result.get("export_path"))
-        return result
+    def export_sale_asn_price_check(self, price_check: dict, file_path: str) -> dict:
+        return self._dialogs.export_sale_asn_price_check(price_check, file_path)
 
     def choose_sale_asn_import_file(self) -> dict:
-        """Chọn workbook tạo Sale ASN do người dùng chủ động cung cấp."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ chọn file chưa sẵn sàng.",
-            }
-        saved_directory = str(
-            prefs.load_prefs(self._base_dir).get("sale_asn_import_dir") or ""
-        ).strip()
-        if not saved_directory or not Path(saved_directory).is_dir():
-            saved_directory = ""
-        try:
-            selected = self.window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                directory=saved_directory,
-                allow_multiple=False,
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ chọn file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy chọn file Sale ASN.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != ".xlsx":
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_TYPE_UNSUPPORTED",
-                "message": "Tạo Sale ASN chỉ hỗ trợ file .xlsx.",
-            }
-        try:
-            prefs.save_prefs(
-                self._base_dir,
-                sale_asn_import_dir=str(target.parent),
-            )
-        except OSError:
-            pass
-        return {
-            "ok": True,
-            "code": "SALE_ASN_FILE_SELECTED",
-            "message": f"Đã chọn {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.choose_sale_asn_import_file()
 
     def choose_style_import_file(self) -> dict:
-        """Chọn workbook Tạo Style do người dùng chủ động cung cấp."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ chọn file chưa sẵn sàng.",
-            }
-        try:
-            selected = self.window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                allow_multiple=False,
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ chọn file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy chọn file Tạo Style.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-        except ValueError as error:
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_DIALOG_FAILED",
-                "message": str(error),
-            }
-        if target.suffix.casefold() != ".xlsx":
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_TYPE_UNSUPPORTED",
-                "message": "Tạo Style chỉ hỗ trợ file .xlsx.",
-            }
-        return {
-            "ok": True,
-            "code": "STYLE_FILE_SELECTED",
-            "message": f"Đã chọn {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.choose_style_import_file()
 
-    def download_style_template(self, group_id: str = "") -> dict:
-        """Lấy dropdown tháng rồi sinh form Tạo Style tại nơi user chọn."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        # Hỏi nơi lưu TRƯỚC. ensure_catalog_style_options có thể gọi GitHub
-        # (timeout 20 s) hoặc chạy nguyên một lượt quét WFX; đặt nó trước hộp
-        # thoại làm người dùng bấm nút xong phải chờ rất lâu mà chưa thấy gì.
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename="WFX-Smart-Tao-Style.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "STYLE_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy tải form Tạo Style.",
-            }
-        option_result = {"ok": True, "options": {}}
-        if str(group_id or "").strip():
-            option_result = self.api.ensure_catalog_style_options(
-                str(group_id or ""),
-                False,
-            )
-            if not option_result.get("ok"):
-                return option_result
-        try:
-            target = _dialog_selected_path(selected)
-            template_options = dict(option_result.get("options") or {})
-            fields = dict(template_options.get("fields") or {})
-            fields["style_copy"] = self._style_copy_article_names()
-            template_options["fields"] = fields
-            target = write_style_template(
-                target,
-                options=template_options,
-            )
-            self._handle_downloaded_excel(target)
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "STYLE_TEMPLATE_EXPORT_FAILED",
-                "message": f"Không tạo được form Tạo Style: {error}",
-            }
-        return {
-            "ok": True,
-            "code": "STYLE_TEMPLATE_EXPORTED",
-            "message": (
-                f"Đã tạo form {target.name} với dropdown cập nhật theo tháng."
-            ),
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+    def download_style_template(self, group_id: str='') -> dict:
+        return self._dialogs.download_style_template(group_id)
 
     def _style_copy_article_names(self) -> list[str]:
-        """Trả Article Name duy nhất của đúng Category Apparel cho Style copy."""
-        cached = article_library.load_cached(self._base_dir)
-        if not cached:
-            return []
-        names: list[str] = []
-        seen: set[str] = set()
-        for section in cached.get("sections") or ():
-            for option in section.get("options") or ():
-                if str(option.get("article_category") or "").strip().casefold() != "apparel":
-                    continue
-                name = str(option.get("article_name") or "").strip()
-                identity = name.casefold()
-                if name and identity not in seen:
-                    seen.add(identity)
-                    names.append(name)
-        return names
+        return self._dialogs._style_copy_article_names()
 
     def download_oc_template(self) -> dict:
-        """Sinh form OC INPUT một header và lưu vào nơi người dùng chọn."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename="WFX-Smart-Upload-OC.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "OC_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy tải form Upload OC.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-            if target.suffix.casefold() != ".xlsx":
-                target = target.with_suffix(".xlsx")
-            write_oc_input_template(target)
-            self._handle_downloaded_excel(target)
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "OC_TEMPLATE_EXPORT_FAILED",
-                "message": f"Không tạo được form Upload OC: {error}",
-            }
-        return {
-            "ok": True,
-            "code": "OC_TEMPLATE_EXPORTED",
-            "message": f"Đã tạo form {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.download_oc_template()
 
     def download_sale_asn_template(self) -> dict:
-        """Tạo form 19 cột cho luồng New Sale ASN."""
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename="WFX-Smart-Sale-ASN.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy tải form Sale ASN.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-            target = write_sale_asn_template(target)
-            self._handle_downloaded_excel(target)
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_TEMPLATE_EXPORT_FAILED",
-                "message": f"Không tạo được form Sale ASN: {error}",
-            }
-        return {
-            "ok": True,
-            "code": "SALE_ASN_TEMPLATE_EXPORTED",
-            "message": f"Đã tạo form {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.download_sale_asn_template()
 
     def save_sale_asn_continue_template(self, rows: list[dict]) -> dict:
-        """Xuất form 22 cột có sẵn PO/Order Details của Sale ASN đang mở."""
-
-        if self.window is None:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_UNAVAILABLE",
-                "message": "Cửa sổ lưu file chưa sẵn sàng.",
-            }
-        try:
-            selected = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                allow_multiple=False,
-                save_filename="WFX-Smart-Sale-ASN-Continue.xlsx",
-                file_types=("Excel workbook (*.xlsx)",),
-            )
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_FAILED",
-                "message": f"Không mở được cửa sổ lưu file: {error}",
-            }
-        if not selected:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_FILE_DIALOG_CANCELLED",
-                "message": "Đã hủy xuất form tiếp tục Sale ASN.",
-            }
-        try:
-            target = _dialog_selected_path(selected)
-            target = write_sale_asn_template(target, rows or [])
-            self._handle_downloaded_excel(target)
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "SALE_ASN_TEMPLATE_EXPORT_FAILED",
-                "message": f"Không tạo được form tiếp tục Sale ASN: {error}",
-            }
-        return {
-            "ok": True,
-            "code": "SALE_ASN_TEMPLATE_EXPORTED",
-            "message": f"Đã xuất {len(rows or [])} PO vào form {target.name}.",
-            "file_path": str(target),
-            "file_name": target.name,
-        }
+        return self._dialogs.save_sale_asn_continue_template(rows)
 
     def hide_panel(self):
         if (
@@ -1801,161 +957,31 @@ class PanelApp:
         return self.show_panel()
 
     def manual_payload(self) -> dict:
-        """Nội dung sách hướng dẫn kèm theme và mục cần mở sẵn."""
-        book = manual_book.load_book()
-        book["theme"] = prefs.load_prefs().get("theme", "light")
-        book["target"] = self._manual_target
-        book["manual_url"] = WFX_MANUAL_URL
-        return book
+        return self._manual.manual_payload()
 
     def manual_entry_for_module(self, module_id: str) -> str:
-        """Mục hướng dẫn đầu tiên khai báo phủ module này."""
-        book = manual_book.load_book()
-        for entry_id in book["order"]:
-            if module_id in book["entries"][entry_id]["covers"]["modules"]:
-                return entry_id
-        return ""
+        return self._manual.manual_entry_for_module(module_id)
 
     def manual_error_codes(self) -> list[str]:
-        """Mã lỗi đã có mục hướng dẫn riêng, dùng cho nút trợ giúp ở footer."""
-        book = manual_book.load_book()
-        return [row["code"] for row in book["error_table"] if row["entry"]]
+        return self._manual.manual_error_codes()
 
     def manual_has_news(self) -> bool:
-        """Có tin mới chưa đọc cho đúng phiên bản đang chạy hay không."""
-        seen = prefs.load_prefs().get("manual_seen_version", "")
-        if seen == APP_VERSION:
-            return False
-        try:
-            versions = {item["version"] for item in manual_book.load_whats_new()}
-        except manual_book.ManualContentError:
-            return False
-        return APP_VERSION in versions
+        return self._manual.manual_has_news()
 
     def get_manual_entry_for_module(self, module_id: str) -> dict:
-        return {
-            "ok": True,
-            "code": "MANUAL_ENTRY",
-            "message": "",
-            "entry": self.manual_entry_for_module(str(module_id or "")),
-        }
+        return self._manual.get_manual_entry_for_module(module_id)
 
     def close_manual_window(self) -> None:
-        window, self.manual_window = self.manual_window, None
-        if window is not None:
-            try:
-                window.destroy()
-            except Exception:
-                pass
+        return self._manual.close_manual_window()
 
     def print_manual(self) -> dict:
-        """Mở hộp thoại in hệ thống; người dùng có thể chọn lưu thành PDF."""
-        if self.manual_window is None:
-            return {
-                "ok": False,
-                "code": "MANUAL_PRINT_FAILED",
-                "message": "Cửa sổ hướng dẫn chưa mở.",
-            }
-        if not _show_webview2_print_dialog(self.manual_window):
-            return {
-                "ok": False,
-                "code": "MANUAL_PRINT_FAILED",
-                "message": "Không mở được hộp thoại in.",
-            }
-        return {
-            "ok": True,
-            "code": "MANUAL_PRINT_OPENED",
-            "message": "Đã mở hộp thoại in hoặc lưu PDF.",
-        }
+        return self._manual.print_manual()
 
-    def open_wfx_manual(self, target: str = "") -> dict:
-        """Mở Hướng dẫn; bấm lần hai thì đưa cửa sổ đó lên trước.
-
-        `target` là id mục manual hoặc mã lỗi. Rỗng thì mở trang chủ hướng dẫn.
-        """
-        self._manual_target = str(target or "")
-        if self.manual_has_news() and not self._manual_target:
-            self._manual_target = "co-gi-moi"
-        prefs.save_prefs(manual_seen_version=APP_VERSION)
-        windows = getattr(webview, "windows", None)
-        if (
-            self.manual_window is not None
-            and windows
-            and self.manual_window not in windows
-        ):
-            self.manual_window = None
-        if self.manual_window is not None:
-            try:
-                self.manual_window.show()
-                if self._manual_target:
-                    self.manual_window.evaluate_js(
-                        f"window.wfxManualGoTo({json.dumps(self._manual_target)})"
-                    )
-                self.hide_panel()
-                return {
-                    "ok": True,
-                    "code": "MANUAL_FOCUSED",
-                    "message": "Cửa sổ hướng dẫn đang mở.",
-                }
-            except Exception:
-                self.manual_window = None
-        created: list[object] = []
-        errors: list[Exception] = []
-        ready = threading.Event()
-
-        def create_manual_window() -> None:
-            try:
-                window = webview.create_window(
-                    MANUAL_WINDOW_TITLE,
-                    url=str(MANUAL_INDEX),
-                    js_api=_ManualBridge(self),
-                    width=MANUAL_WINDOW_WIDTH,
-                    height=MANUAL_WINDOW_HEIGHT,
-                    min_size=MANUAL_WINDOW_MIN,
-                    resizable=True,
-                    on_top=self._always_on_top,
-                )
-                created.append(window)
-            except Exception as error:
-                errors.append(error)
-            finally:
-                ready.set()
-
-        threading.Thread(
-            target=create_manual_window,
-            name="WFXManualWindow",
-            daemon=True,
-        ).start()
-        if not ready.wait(5) or not created:
-            error = errors[0] if errors else "quá thời gian tạo cửa sổ"
-            return {
-                "ok": False,
-                "code": "MANUAL_OPEN_FAILED",
-                "message": f"Không mở được hướng dẫn: {error}",
-            }
-        window = created[0]
-        try:
-            window.show()
-        except Exception as error:
-            return {
-                "ok": False,
-                "code": "MANUAL_OPEN_FAILED",
-                "message": f"Không mở được hướng dẫn: {error}",
-            }
-        self.manual_window = window
-        try:
-            window.events.closed += self._on_manual_closed
-        except Exception:
-            pass
-        self.hide_panel()
-        return {
-            "ok": True,
-            "code": "MANUAL_OPENED",
-            "message": "Đã mở hướng dẫn sử dụng.",
-        }
+    def open_wfx_manual(self, target: str='') -> dict:
+        return self._manual.open_wfx_manual(target)
 
     def _on_manual_closed(self, *_args) -> None:
-        self.manual_window = None
+        return self._manual._on_manual_closed(*_args)
 
     def _focus_module_search(self) -> None:
         if self.window is None:
@@ -2120,7 +1146,7 @@ class PanelApp:
             if excel_path and _is_excel_file(excel_path):
                 revealed_excel = self._handle_downloaded_excel(excel_path)
             elif method == "download_catalog_file":
-                _reveal_downloaded_file(download_path)
+                self._dialogs.reveal_download(download_path)
         if method == "save_sale_asn_documents" and result.get("ok") and not revealed_excel:
             self.api._log(
                 "[SALE ASN] Đã lưu file nhưng không mở được thư mục chứa file."
