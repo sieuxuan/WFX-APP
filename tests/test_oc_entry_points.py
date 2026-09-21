@@ -389,20 +389,16 @@ def test_revision_report_reports_browser_boundary_codes(monkeypatch, clock):
     assert result["code"] == "CHROME_CLOSED"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG: `open_oc_revision_report` map MỌI RuntimeError thành "
-        "CHROME_CLOSED/NOT_LOGGED_IN và trả `code=str(error)`, nên một lỗi khác "
-        "biến thành mã lỗi là cả một câu tiếng Việt. Mã đó không có trong "
-        "ERROR_CODE_INFO lẫn NON_REPORTABLE_FAILURES. Các entry point OC khác "
-        "đều guard bằng `if code in {...}: ... else: raise`."
-    ),
-)
 def test_an_unrelated_runtime_error_is_not_disguised_as_a_browser_code(
     monkeypatch,
     clock,
 ):
+    """Chỉ CHROME_CLOSED/NOT_LOGGED_IN mới được map sang mã ranh giới.
+
+    Trước đây handler gán thẳng `code = str(error)` nên một RuntimeError khác
+    biến thành "mã lỗi" là cả một câu tiếng Việt: không có trong
+    ERROR_CODE_INFO lẫn NON_REPORTABLE_FAILURES.
+    """
     world = _report_world(clock, node_ids=["258"], texts=["Upload OC from OC_Sale"])
     wire_automation(monkeypatch, oc, world)
 
@@ -414,3 +410,4 @@ def test_an_unrelated_runtime_error_is_not_disguised_as_a_browser_code(
     result = oc.open_oc_revision_report(log=_quiet())
 
     assert result["code"] == "OC_REVISION_REPORT_FAILED"
+    assert "browser context" in result["message"]

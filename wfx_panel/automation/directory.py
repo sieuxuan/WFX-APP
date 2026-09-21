@@ -18,6 +18,7 @@ from wfx_panel.automation._common import (
     Playwright,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _browser_boundary_result,
     _document_changed,
     _first_line,
     _mark_document,
@@ -367,14 +368,13 @@ def open_supplier_category(
             f"Đã mở Supplier > {category_name} > Master.",
             category=category_name,
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = "Trình duyệt làm việc chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         message = f"Supplier chưa sẵn sàng: {_first_line(exc)}"
         return _result(False, "SUPPLIER_MASTER_NOT_READY", message)
     except Exception as exc:
+        boundary = _browser_boundary_result(exc)
+        if boundary is not None:
+            return boundary
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         return _result(False, "SUPPLIER_OPEN_FAILED", message)
     finally:
@@ -681,14 +681,6 @@ def find_supplier_across_categories(
         state = _scan_supplier_categories(request)
         _restore_first_supplier_result(request, state)
         return _supplier_search_result(query, state)
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         return _result(
             False,
@@ -697,6 +689,9 @@ def find_supplier_across_categories(
             checked_categories=state.checked,
         )
     except Exception as exc:
+        boundary = _browser_boundary_result(exc)
+        if boundary is not None:
+            return boundary
         return _result(
             False,
             "SUPPLIER_SEARCH_FAILED",
@@ -761,14 +756,6 @@ def find_supplier_in_category(
             matches=matches[:10],
             checked_categories=[category_name],
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = (
-            "Trình duyệt làm việc chưa được mở."
-            if code == "CHROME_CLOSED"
-            else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        )
-        return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         return _result(
             False,
@@ -777,6 +764,9 @@ def find_supplier_in_category(
             category=category_name,
         )
     except Exception as exc:
+        boundary = _browser_boundary_result(exc)
+        if boundary is not None:
+            return boundary
         return _result(
             False,
             "SUPPLIER_SEARCH_FAILED",
@@ -950,13 +940,12 @@ def find_and_open_buyer(
                 log=log,
             )
         )
-    except RuntimeError as exc:
-        code = str(exc)
-        message = "Trình duyệt làm việc chưa được mở." if code == "CHROME_CLOSED" else "Phiên chưa đăng nhập hoặc đã hết hạn."
-        return _result(False, code, message)
     except PlaywrightTimeoutError as exc:
         return _result(False, "BUYER_SEARCH_NOT_READY", _first_line(exc))
     except Exception as exc:
+        boundary = _browser_boundary_result(exc)
+        if boundary is not None:
+            return boundary
         return _result(False, "BUYER_SEARCH_FAILED", f"{type(exc).__name__}: {_first_line(exc)}")
     finally:
         if playwright is not None:

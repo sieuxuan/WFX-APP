@@ -266,20 +266,11 @@ def test_search_never_tells_the_user_to_open_the_list_first(
     assert "mở list trước" not in lowered
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG (cùng dạng với open_oc_revision_report): `except RuntimeError` map "
-        "MỌI RuntimeError thành thông điệp CHROME_CLOSED/NOT_LOGGED_IN rồi trả "
-        "`code=str(exc)`. Một lỗi khác biến thành mã lỗi là cả một câu tiếng "
-        "Việt — không có trong ERROR_CODE_INFO lẫn NON_REPORTABLE_FAILURES, nên "
-        "telemetry nhận một mã rác và người dùng đọc sai nguyên nhân."
-    ),
-)
 def test_an_unrelated_runtime_error_is_not_disguised_as_a_browser_code(
     monkeypatch,
     world,
 ):
+    """Chỉ CHROME_CLOSED/NOT_LOGGED_IN mới được map sang mã ranh giới."""
     wire_automation(monkeypatch, modules, world)
     _stub_context(monkeypatch)
 
@@ -289,5 +280,32 @@ def test_an_unrelated_runtime_error_is_not_disguised_as_a_browser_code(
     monkeypatch.setattr(modules, "_search_input_in_frame", boom)
 
     result = _search()
+
+    assert result["code"] == "MODULE_SEARCH_FAILED"
+    assert result["module"] == "OC List"
+
+
+def test_multi_field_search_also_keeps_unrelated_runtime_errors_distinct(
+    monkeypatch,
+    world,
+):
+    wire_automation(monkeypatch, modules, world)
+    monkeypatch.setattr(
+        modules,
+        "_open_multi_field_search_context",
+        lambda *_a, **_k: "frame",
+    )
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("Đã kết nối Chrome nhưng không tìm thấy browser context.")
+
+    monkeypatch.setattr(modules, "_resolve_multi_search_fields", boom)
+
+    result = modules._search_module_fields(
+        RMPO_SEARCH_SPEC,
+        LIST_XPATH,
+        {"order_no": "2345"},
+        _logs()[1],
+    )
 
     assert result["code"] == "MODULE_SEARCH_FAILED"

@@ -17,6 +17,7 @@ from wfx_panel.automation._common import (
     Playwright,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _browser_boundary_result,
     _click,
     _first_line,
     _result,
@@ -975,20 +976,12 @@ def open_gdn_status(log: Callable[[str], None] = print) -> dict[str, Any]:
             package_count=len(rows),
             latest_status=detail,
         )
-    except RuntimeError as error:
-        code = str(error)
-        return _result(
-            False,
-            code,
-            (
-                "Trình duyệt làm việc chưa được mở."
-                if code == "CHROME_CLOSED"
-                else "Phiên WFX chưa đăng nhập hoặc đã hết hạn."
-            ),
-        )
     except DispatchFlowError as error:
         return _result(False, error.code, error.message, errors=error.errors)
     except Exception as error:
+        boundary = _browser_boundary_result(error)
+        if boundary is not None:
+            return boundary
         return _result(
             False,
             "GDN_EDI_NOT_READY",
