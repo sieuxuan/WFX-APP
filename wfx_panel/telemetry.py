@@ -310,6 +310,10 @@ ERROR_CODE_INFO.update(
             "Costing Open chưa tải xong dữ liệu",
             "Chờ lưới Costing hiển thị đầy đủ rồi thử export/import lại.",
         ),
+        "COSTING_DEPENDENCY_SCAN_INCOMPLETE": (
+            "Chưa đọc đủ bảng Color/Size Dependency",
+            "Đóng các popup Dependency còn mở trên WFX rồi xuất lại.",
+        ),
         "COSTING_SCAN_FAILED": (
             "Không thể đọc cấu trúc Costing",
             "Mở Log kỹ thuật và kiểm tra Costing của style vẫn đang hiển thị.",

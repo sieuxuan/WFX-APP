@@ -377,6 +377,7 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `COSTING_CLEAR_FAILED` | Không thể Clear toàn bộ Dependency | Giữ đúng CostSheet Open đang chọn, kiểm tra Log rồi thử lại. |
 | `COSTING_CLEAR_UNSUPPORTED` | Bản này chưa hỗ trợ Clear All Dependency | Cập nhật WFX Smart lên bản mới nhất rồi thử lại. |
 | `COSTING_CONTEXT_NOT_FOUND` | Không tìm thấy màn Costing | Mở lại đúng style trong Catalog rồi thử lại. |
+| `COSTING_DEPENDENCY_SCAN_INCOMPLETE` | Chưa đọc đủ bảng Color/Size Dependency | Đóng các popup Dependency còn mở trên WFX rồi xuất lại. |
 | `COSTING_FIELD_APPLY_FAILED` | WFX không nhận một field Costing | Xem field/Article được báo trong Log kỹ thuật rồi kiểm tra lại file. |
 | `COSTING_NEW_DIALOG_NOT_FOUND` | Không tìm thấy cửa sổ New Costing | Mở lại Costing của style chưa có Cost Sheet rồi thử lại. |
 | `COSTING_NEW_FAILED` | Không thể tạo Costing mới | Kiểm tra quyền tạo Internal Cost Sheet và template FOB. |
