@@ -808,3 +808,249 @@ def test_a_missing_tab_is_reached_through_the_edi_menu(clock, monkeypatch):
 
     assert menu.clicks == 1
     assert tab.clicks == 1
+
+
+# --- nhánh WFX không hợp tác ---------------------------------------------
+
+
+class _Exploding:
+    """Frame/page mà mọi lời gọi locator đều ném, như khi frame vừa detach."""
+
+    def __init__(self, clock=None):
+        self.clock = clock
+
+    def locator(self, _selector):
+        raise PlaywrightError("frame was detached")
+
+    def wait_for_timeout(self, milliseconds):
+        if self.clock is not None:
+            self.clock.advance(float(milliseconds) / 1_000.0)
+
+
+def test_focusing_the_grid_moves_on_when_a_frame_has_gone_away(clock):
+    frame = _confirm_frame(clock)
+    page = _Page(clock, [frame])
+
+    confirm._focus_confirm_grid(page, _Exploding(clock))
+
+    assert frame.locator("#gridEDIBuyerPO_divFocus").node.clicks == 1
+
+
+def test_a_checkbox_that_refuses_check_is_clicked_instead(clock, monkeypatch):
+    frame = _confirm_frame(clock)
+    monkeypatch.setattr(confirm, "_MARK_CONFIRM_STYLE_JS", "mark")
+    control = frame.locator("#sel").node
+
+    def refuse(self):
+        raise PlaywrightError("element is not stable")
+
+    monkeypatch.setattr(type(control), "is_checked", refuse)
+
+    confirm._select_confirm_style(frame, "S1")
+
+    assert control.clicks == 1
+
+
+def test_reject_falls_back_to_the_toolbar_label(clock, monkeypatch):
+    frame = _confirm_frame(clock)
+    page = _Page(clock, [frame])
+    link = element("a", id="reject")
+    monkeypatch.setattr(
+        confirm,
+        "_visible_in_frames",
+        lambda *a, **kw: (_ for _ in ()).throw(PlaywrightTimeoutError("chưa có")),
+    )
+    monkeypatch.setattr(
+        confirm, "_toolbar_link", lambda _page, label, timeout_s=0: (frame, link)
+    )
+
+    confirm._click_reject_toolbar(page)
+
+    assert link.clicks == 1
+
+
+def test_a_page_that_cannot_drop_the_dialog_listener_is_not_an_error(
+    clock, monkeypatch
+):
+    frame = _confirm_frame(clock)
+    page = _Page(clock, [frame])
+    link = element("a", id="reject")
+    monkeypatch.setattr(
+        confirm, "_visible_in_frames", lambda *a, **kw: (frame, link)
+    )
+
+    def refuse(_event, _handler):
+        raise RuntimeError("page đã đóng")
+
+    page.remove_listener = refuse
+
+    confirm._click_reject_toolbar(page)
+
+    assert link.clicks == 1
+
+
+def test_a_frame_that_cannot_report_its_tab_is_skipped(clock, monkeypatch):
+    frame = _confirm_frame(clock)
+    monkeypatch.setattr(confirm, "_ACTIVE_CONFIRM_TAB_JS", "activeTab")
+
+    class NoTab(MiniFrame):
+        def evaluate(self, script, arg=None):
+            raise PlaywrightError("execution context was destroyed")
+
+    page = _Page(clock, [NoTab(Element("body"), clock=clock), frame])
+
+    assert confirm._active_confirm_mode(page) == "new"
+
+
+def test_the_page_size_is_read_as_unknown_when_the_select_refuses(
+    clock, monkeypatch
+):
+    frame = _confirm_frame(clock)
+    page = _Page(clock, [frame])
+    select = _FlakyPageSize(read_error=PlaywrightError("detached"))
+    monkeypatch.setattr(
+        confirm, "_visible_in_frames", lambda *a, **kw: (frame, select)
+    )
+    monkeypatch.setattr(
+        confirm, "_wait_confirm_grid_ready", lambda _page, current: current
+    )
+
+    assert confirm._set_confirm_page_size(page) is frame
+    assert select.selected == [("label", "100")]
+
+
+def test_a_select_without_a_hundred_label_is_set_by_its_value(clock, monkeypatch):
+    frame = _confirm_frame(clock)
+    page = _Page(clock, [frame])
+    select = _FlakyPageSize(label_error=PlaywrightError("option không có label"))
+    monkeypatch.setattr(
+        confirm, "_visible_in_frames", lambda *a, **kw: (frame, select)
+    )
+    monkeypatch.setattr(
+        confirm, "_wait_confirm_grid_ready", lambda _page, current: current
+    )
+
+    confirm._set_confirm_page_size(page)
+
+    assert select.selected == [("value", "100")]
+
+
+class _FlakyPageSize:
+    """`#ddlPageSize` của WFX: đọc/ghi được, có thể từ chối từng cách một."""
+
+    def __init__(self, *, read_error=None, label_error=None, value="10"):
+        self.value = value
+        self.read_error = read_error
+        self.label_error = label_error
+        self.selected: list[tuple[str, str]] = []
+
+    def input_value(self, timeout=None):
+        if self.read_error is not None and not self.selected:
+            raise self.read_error
+        return self.value
+
+    def select_option(self, label=None, value=None, timeout=None):
+        if label is not None:
+            if self.label_error is not None:
+                raise self.label_error
+            self.selected.append(("label", str(label)))
+        else:
+            self.selected.append(("value", str(value)))
+        self.value = "100"
+
+    def locator(self, _selector):
+        raise AssertionError("không cần đọc option khi input_value đã là 100")
+
+
+def test_the_edi_menu_is_opened_even_when_it_is_only_attached(clock, monkeypatch):
+    frame = _confirm_frame(clock)
+    page = _Page(clock, [frame])
+    menu = element("a", id="edi-menu")
+    tab = element("a", id="tab-new")
+    visible_calls = {"n": 0}
+
+    def visible(_page, selector, timeout_s=0):
+        visible_calls["n"] += 1
+        if visible_calls["n"] <= 2:
+            raise PlaywrightTimeoutError("chưa hiện")
+        return frame, tab
+
+    monkeypatch.setattr(confirm, "_visible_in_frames", visible)
+    monkeypatch.setattr(
+        confirm, "_attached_in_frames", lambda *a, **kw: (frame, menu)
+    )
+    monkeypatch.setattr(
+        confirm, "_set_confirm_page_size", lambda _page: frame
+    )
+    lines: list[str] = []
+
+    assert confirm._open_confirm_grid(page, "new", lines.append) is frame
+    assert menu.clicks == 1
+    assert tab.clicks == 1
+
+
+def test_a_frame_that_never_comes_back_stops_the_wait_at_its_deadline(
+    clock, monkeypatch
+):
+    frame = _confirm_frame(clock)
+    page = _Page(clock, [frame])
+
+    def gone(_frame):
+        raise PlaywrightError("frame was detached")
+
+    def never(*_args, **_kwargs):
+        raise PlaywrightTimeoutError("EDI Buyer PO chưa mở lại")
+
+    monkeypatch.setattr(confirm, "_read_confirm_styles", gone)
+    monkeypatch.setattr(confirm, "_confirm_frame", never)
+
+    assert confirm._wait_style_processed(page, frame, "S1", timeout_s=2) is False
+
+
+def test_a_control_that_is_not_clickable_yet_does_not_count_as_ready(
+    clock, monkeypatch
+):
+    monkeypatch.setattr(
+        confirm, "CONFIRM_GRID_SELECTOR", "#gridEDIBuyerPO_tblGridContent"
+    )
+    frame = _ready_frame(clock)
+    page = _Page(clock, [frame])
+    # `trial=True` là phép thử actionability: WFX còn lớp chặn thì nó ném, và
+    # đó không được coi là grid đã sẵn sàng.
+    monkeypatch.setattr(Element, "check", _refuse_check)
+
+    with pytest.raises(PlaywrightTimeoutError, match="vẫn đang tải"):
+        confirm._wait_confirm_grid_ready(page, frame, timeout_s=2)
+
+
+def _refuse_check(self, timeout=None, **_kwargs):
+    raise PlaywrightError("element is covered by the loading layer")
+
+
+def test_a_grid_frame_that_dies_while_waiting_is_resolved_again(
+    clock, monkeypatch
+):
+    monkeypatch.setattr(
+        confirm, "CONFIRM_GRID_SELECTOR", "#gridEDIBuyerPO_tblGridContent"
+    )
+    good = _ready_frame(clock)
+    page = _Page(clock, [good])
+
+    assert confirm._wait_confirm_grid_ready(
+        page, _Exploding(clock), timeout_s=10
+    ) is good
+
+
+def test_a_grid_frame_that_never_comes_back_times_out(clock, monkeypatch):
+    monkeypatch.setattr(
+        confirm, "CONFIRM_GRID_SELECTOR", "#gridEDIBuyerPO_tblGridContent"
+    )
+    page = _Page(clock, [_ready_frame(clock)])
+
+    def never(*_args, **_kwargs):
+        raise PlaywrightTimeoutError("EDI Buyer PO chưa mở lại")
+
+    monkeypatch.setattr(confirm, "_confirm_frame", never)
+
+    with pytest.raises(PlaywrightTimeoutError, match="vẫn đang tải"):
+        confirm._wait_confirm_grid_ready(page, _Exploding(clock), timeout_s=2)
