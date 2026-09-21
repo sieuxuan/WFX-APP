@@ -1,6 +1,10 @@
 import os
 import threading
+import time
 from pathlib import Path
+
+import pystray
+from PIL import Image
 
 import wfx_panel.app
 from tests.fakes.module_reflection import _binding_sites
@@ -9,6 +13,7 @@ from wfx_panel.app import bridges as app_bridges
 from wfx_panel.app import dialogs as app_dialogs
 from wfx_panel.app import helpers as app_helpers
 from wfx_panel.app import manual_window as app_manual
+from wfx_panel.app import tray as app_tray
 
 
 def patch_shell(monkeypatch, name, value):
@@ -817,7 +822,7 @@ def test_taskbar_activation_opens_full_ui_without_winforms_restore(monkeypatch):
 
     app._placement.show_panel = show_panel
     app._bubble._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
-    monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
     patch_shell(monkeypatch,
         "_native_window_visibility",
         lambda *_args, **_kwargs: True,
@@ -862,7 +867,7 @@ def test_direct_bubble_click_does_not_double_toggle_from_taskbar(monkeypatch):
     app = module.PanelApp()
     calls = []
     times = iter([100.0, 100.1, 101.0])
-    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(time, "monotonic", lambda: next(times))
     app._placement.show_panel = lambda: calls.append("panel-show") or {"ok": True}
 
     app.note_bubble_interaction()
@@ -879,7 +884,7 @@ def test_bubble_pointer_interaction_blocks_taskbar_until_mouseup(monkeypatch):
     app = module.PanelApp()
     calls = []
     times = iter([100.0, 100.1, 100.2, 100.3])
-    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(time, "monotonic", lambda: next(times))
     app._placement.show_panel = lambda: calls.append("panel-show") or {"ok": True}
 
     app.begin_bubble_interaction()
@@ -1105,7 +1110,7 @@ def test_native_foreground_fallback_hides_panel_after_grace(monkeypatch):
     hidden = []
     app._placement.hide_panel = lambda: hidden.append(True)
     times = iter([10.0, 10.5])
-    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(time, "monotonic", lambda: next(times))
 
     app._track_panel_foreground(os.getpid() + 1)
     assert hidden == []
@@ -1123,7 +1128,7 @@ def test_native_foreground_fallback_hides_during_running_action(monkeypatch):
     hidden = []
     app._placement.hide_panel = lambda: hidden.append(True)
     times = iter([20.0, 20.5])
-    monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(time, "monotonic", lambda: next(times))
 
     app._track_panel_foreground(os.getpid() + 1)
     assert hidden == []
@@ -1794,10 +1799,10 @@ def test_tray_menu_has_commands_without_a_default_open_action(monkeypatch):
             if setup is not None:
                 setup(self)
 
-    monkeypatch.setattr(module.Image, "open", lambda _path: object())
-    monkeypatch.setattr(module.pystray, "MenuItem", menu_item)
-    monkeypatch.setattr(module.pystray, "Menu", lambda *values: values)
-    monkeypatch.setattr(module, "_WfxTrayIcon", FakeIcon)
+    monkeypatch.setattr(Image, "open", lambda _path: object())
+    monkeypatch.setattr(pystray, "MenuItem", menu_item)
+    monkeypatch.setattr(pystray, "Menu", lambda *values: values)
+    patch_shell(monkeypatch, "_WfxTrayIcon", FakeIcon)
 
     app._build_tray()
 
@@ -1815,7 +1820,7 @@ def test_tray_right_click_suppresses_taskbar_activation(monkeypatch):
 
     app = module.PanelApp()
     app._taskbar_focus_armed = True
-    monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
 
     app._note_tray_context_menu()
 
@@ -1826,45 +1831,43 @@ def test_tray_right_click_suppresses_taskbar_activation(monkeypatch):
 
 
 def test_native_tray_icon_reports_right_click_before_backend(monkeypatch):
-    import wfx_panel.panel_app as module
 
     calls = []
     monkeypatch.setattr(
-        module.pystray.Icon,
+        pystray.Icon,
         "_on_notify",
         lambda _self, wparam, lparam: calls.append(("backend", wparam, lparam)),
         raising=False,
     )
-    icon = object.__new__(module._WfxTrayIcon)
+    icon = object.__new__(app_tray._WfxTrayIcon)
     icon._running = False
     icon._icon_handle = None
     icon._on_context_menu = lambda: calls.append(("context",))
 
-    icon._on_notify(12, module.TRAY_RIGHT_BUTTON_UP)
+    icon._on_notify(12, app_tray.TRAY_RIGHT_BUTTON_UP)
 
     assert calls == [
         ("context",),
-        ("backend", 12, module.TRAY_RIGHT_BUTTON_UP),
+        ("backend", 12, app_tray.TRAY_RIGHT_BUTTON_UP),
     ]
 
 
 def test_native_tray_icon_double_click_restores_app_without_backend(monkeypatch):
-    import wfx_panel.panel_app as module
 
     calls = []
     monkeypatch.setattr(
-        module.pystray.Icon,
+        pystray.Icon,
         "_on_notify",
         lambda _self, wparam, lparam: calls.append(("backend", wparam, lparam)),
         raising=False,
     )
-    icon = object.__new__(module._WfxTrayIcon)
+    icon = object.__new__(app_tray._WfxTrayIcon)
     icon._running = False
     icon._icon_handle = None
     icon._on_context_menu = None
     icon._on_activate = lambda: calls.append(("activate",))
 
-    icon._on_notify(12, module.TRAY_LEFT_BUTTON_DOUBLE_CLICK)
+    icon._on_notify(12, app_tray.TRAY_LEFT_BUTTON_DOUBLE_CLICK)
 
     assert calls == [("activate",)]
 
@@ -1876,22 +1879,21 @@ def test_native_tray_balloon_click_opens_the_panel(monkeypatch):
     toast. pystray không xử lý message này, nên nếu override không bắt thì cú
     bấm rơi vào backend và không làm gì — user buộc phải bấm bubble.
     """
-    import wfx_panel.panel_app as module
 
     calls = []
     monkeypatch.setattr(
-        module.pystray.Icon,
+        pystray.Icon,
         "_on_notify",
         lambda _self, wparam, lparam: calls.append(("backend", wparam, lparam)),
         raising=False,
     )
-    icon = object.__new__(module._WfxTrayIcon)
+    icon = object.__new__(app_tray._WfxTrayIcon)
     icon._running = False
     icon._icon_handle = None
     icon._on_context_menu = None
     icon._on_activate = lambda: calls.append(("activate",))
 
-    icon._on_notify(12, module.TRAY_BALLOON_USER_CLICK)
+    icon._on_notify(12, app_tray.TRAY_BALLOON_USER_CLICK)
 
     assert calls == [("activate",)]
 

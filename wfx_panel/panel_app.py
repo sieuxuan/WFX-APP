@@ -4,13 +4,9 @@ import json
 import os
 import sys
 import threading
-import time
-from pathlib import Path
 
 import keyboard
-import pystray
 import webview
-from PIL import Image
 
 # Giới hạn WebView2 của panel/bubble/menu/notification trên máy 8 GB RAM. WebView2
 # chỉ đọc giá trị này lúc tạo environment, không phải khi import pywebview.
@@ -26,9 +22,9 @@ from wfx_panel import (
     crash_log,
     hotkey,
     prefs,
-    status,
     updater,
 )
+from wfx_panel.app.background import BackgroundLoopController
 from wfx_panel.app.bridges import (  # noqa: F401
     _BubbleBridge,
     _BubbleMenuBridge,
@@ -53,11 +49,13 @@ from wfx_panel.app.layout import (  # noqa: F401
     BUBBLE_MENU_WIDTH,
     BUBBLE_PANEL_GAP,
     BUBBLE_SIZE,
+    ICON_PATH,
     MANUAL_INDEX,
     MANUAL_WINDOW_HEIGHT,
     MANUAL_WINDOW_MIN,
     MANUAL_WINDOW_TITLE,
     MANUAL_WINDOW_WIDTH,
+    MODULE_NOTIFICATION_METHODS,
     PANEL_BLUR_GRACE_SECONDS,
     TASKBAR_ACTIVATION_POLL_SECONDS,
     WFX_MANUAL_URL,
@@ -66,7 +64,9 @@ from wfx_panel.app.layout import (  # noqa: F401
     WINDOW_WIDTH,
 )
 from wfx_panel.app.manual_window import ManualWindowController
+from wfx_panel.app.notifications import NotificationController
 from wfx_panel.app.placement import PanelPlacementController
+from wfx_panel.app.tray import TrayController
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
@@ -79,103 +79,9 @@ from wfx_panel.win32_window import (
 )
 
 HOTKEY = hotkey.DEFAULT
-STATUS_POLL_SECONDS = 5
-SESSION_MAINTENANCE_INITIAL_DELAY_SECONDS = 60
-SESSION_MAINTENANCE_SECONDS = 4 * 60
-TRAY_RIGHT_BUTTON_UP = 0x0205  # WM_RBUTTONUP
-TRAY_LEFT_BUTTON_DOUBLE_CLICK = 0x0203  # WM_LBUTTONDBLCLK
-# WM_USER + 5. Windows gửi message này khi user bấm vào THÂN toast, không phải
-# WM_LBUTTONUP như bấm vào icon tray; pystray không xử lý nên phải tự bắt.
-TRAY_BALLOON_USER_CLICK = 0x0405  # NIN_BALLOONUSERCLICK
-UPDATE_INITIAL_DELAY_SECONDS = 1
-UPDATE_POLL_SECONDS = 4 * 60 * 60
-ARTICLE_LIBRARY_INITIAL_DELAY_SECONDS = 3
-ARTICLE_LIBRARY_POLL_SECONDS = 60 * 60
-ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
 
-MODULE_NOTIFICATION_METHODS = frozenset(
-    {
-        "open_module",
-        "prepare_catalog",
-        "browse_catalog",
-        "catalog_action",
-        "find_code",
-        "find_buyer_reference",
-        "open_catalog_destination",
-        "download_catalog_file",
-        "export_catalog_costing",
-        "prepare_catalog_costing_import",
-        "apply_catalog_costing",
-        "open_sale_asn_new",
-        "scan_sale_asn_buyers",
-        "scan_sale_asn_order_details",
-        "start_sale_asn_create",
-        "continue_sale_asn_create",
-        "skip_sale_asn_create_step",
-        "open_sample_new",
-        "search_oc",
-        "open_oc_revision_report",
-        "upload_oc",
-        "confirm_oc_upload",
-        "confirm_oc_pending",
-        "reject_all_oc_pending",
-        "run_gdn_dispatch",
-        "open_gdn_status",
-        "search_sample",
-        "check_sample_files",
-        "open_sample_file_choice",
-        "search_sale_asn",
-        "prepare_sale_asn_documents",
-        "save_sale_asn_documents",
-        "open_supplier_category",
-        "find_supplier",
-        "find_supplier_in_category",
-        "find_buyer",
-        "toggle_company_foc",
-    }
-)
-NOTIFICATION_ACTION_LABELS = {
-    "open_module": "Mở module",
-    "prepare_catalog": "Catalog",
-    "browse_catalog": "Catalog",
-    "catalog_action": "Catalog",
-    "find_code": "Tìm Article Code",
-    "find_buyer_reference": "Tìm Buyer Reference",
-    "open_catalog_destination": "Catalog",
-    "download_catalog_file": "Tải file",
-    "export_catalog_costing": "Tải Costing",
-    "prepare_catalog_costing_import": "Kiểm tra file Costing",
-    "apply_catalog_costing": "Áp dụng Costing",
-    "open_sale_asn_new": "Sale ASN",
-    "scan_sale_asn_buyers": "Quét Buyer Sale ASN",
-    "scan_sale_asn_order_details": "Xuất PO đang mở",
-    "start_sale_asn_create": "Tạo Sale ASN",
-    "continue_sale_asn_create": "Tiếp tục Sale ASN",
-    "skip_sale_asn_create_step": "Bỏ qua bước Sale ASN",
-    "open_sample_new": "Sample",
-    "search_oc": "Tìm OC",
-    "open_oc_revision_report": "Mở report Revise OC",
-    "upload_oc": "Upload OC",
-    "confirm_oc_upload": "Upload OC",
-    "confirm_oc_pending": "Confirm nhanh OC",
-    "reject_all_oc_pending": "Reject All OC",
-    "run_gdn_dispatch": "(GDN) Dispatch",
-    "open_gdn_status": "Kiểm tra GDN",
-    "test_notification": "Thông báo thử",
-    "search_sample": "Tìm Sample",
-    "check_sample_files": "Check File Sample",
-    "open_sample_file_choice": "File Sample",
-    "search_sale_asn": "Tìm Sale ASN",
-    "prepare_sale_asn_documents": "Tải Documents Sale ASN",
-    "save_sale_asn_documents": "Lưu Documents Sale ASN",
-    "open_supplier_category": "Supplier",
-    "find_supplier": "Tìm Supplier",
-    "find_supplier_in_category": "Tìm Supplier",
-    "find_buyer": "Tìm Buyer",
-    "toggle_company_foc": "Company Setup · FOC",
-}
 
 
 
@@ -194,31 +100,6 @@ NOTIFICATION_ACTION_LABELS = {
 
 
 
-class _WfxTrayIcon(pystray.Icon):
-    """Bắt activation/right-click của tray theo đúng hành vi Windows."""
-
-    def __init__(
-        self,
-        *args,
-        on_context_menu=None,
-        on_activate=None,
-        **kwargs,
-    ):
-        self._on_context_menu = on_context_menu
-        self._on_activate = on_activate
-        super().__init__(*args, **kwargs)
-
-    def _on_notify(self, wparam, lparam):
-        if (
-            int(lparam)
-            in (TRAY_LEFT_BUTTON_DOUBLE_CLICK, TRAY_BALLOON_USER_CLICK)
-            and self._on_activate
-        ):
-            self._on_activate()
-            return None
-        if int(lparam) == TRAY_RIGHT_BUTTON_UP and self._on_context_menu:
-            self._on_context_menu()
-        return super()._on_notify(wparam, lparam)
 
 
 
@@ -259,6 +140,9 @@ class PanelApp:
         self._dialogs = FileDialogController(self)
         self._bubble = BubbleController(self)
         self._placement = PanelPlacementController(self)
+        self._notifications = NotificationController(self)
+        self._background = BackgroundLoopController(self)
+        self._tray = TrayController(self)
         self._manual = ManualWindowController(self)
         # Bubble là trạng thái nghỉ sau khi thu panel. Khi user chạy app bình
         # thường, UI đầy đủ phải xuất hiện ngay lần đầu (trừ khi họ chủ động
@@ -530,9 +414,7 @@ class PanelApp:
         return None
 
     def set_toast_enabled_state(self, enabled: bool) -> None:
-        self._toast_enabled = bool(enabled)
-        if not self._toast_enabled:
-            self._hide_notification()
+        return self._notifications.set_toast_enabled_state(enabled)
 
     def set_focus_chrome_on_module_state(self, enabled: bool) -> None:
         self._focus_chrome_on_module = bool(enabled)
@@ -541,64 +423,23 @@ class PanelApp:
         return self._placement.focus_automation_browser()
 
     def _hide_notification(self) -> None:
-        self._pending_native_notification = None
-        if self.tray is not None:
-            try:
-                self.tray.remove_notification()
-            except Exception:
-                pass
+        return self._notifications._hide_notification()
 
     def _notify_native(self, message: str, title: str) -> bool:
-        if self.tray is None or not self._tray_ready.is_set():
-            self._pending_native_notification = (message, title)
-            return True
-        try:
-            self.tray.notify(message, title)
-            return True
-        except Exception as error:
-            self.api._log(
-                "[NOTIFICATION] Windows toast lỗi: "
-                f"{type(error).__name__}: {error}"
-            )
-            return False
+        return self._notifications._notify_native(message, title)
 
-    def _show_notification(
-        self,
-        result: dict,
-        *,
-        method: str = "",
-        elapsed: float | None = None,
-    ) -> bool:
-        if not self._toast_enabled:
-            return False
-        action_label = NOTIFICATION_ACTION_LABELS.get(method, "WFX Smart")
-        status_label = "Hoàn thành" if result.get("ok") else "Cần kiểm tra"
-        return self._notify_native(
-            str(result.get("message") or "Đã xong."),
-            f"{action_label} · {status_label}",
+    def _show_notification(self, result: dict, *, method: str='', elapsed: float | None=None) -> bool:
+        return self._notifications._show_notification(
+            result,
+            method=method,
+            elapsed=elapsed,
         )
 
     def _apply_always_on_top(self, enabled: bool) -> None:
         return self._placement._apply_always_on_top(enabled)
 
     def _apply_update(self, state: dict) -> str | None:
-        try:
-            if not getattr(sys, "frozen", False):
-                return (
-                    "Bản development không tự cài cập nhật. "
-                    "Hãy build WFX-Panel.exe hoặc cài bản phát hành đã ký."
-                )
-            executable = Path(sys.executable)
-
-            updater.schedule_update(
-                state,
-                current_pid=os.getpid(),
-                executable=executable,
-            )
-            threading.Timer(1.0, self.quit).start()
-            return None
-        except Exception as error:
-            return f"Không lên lịch được cập nhật: {error}"
+        return self._background._apply_update(state)
 
     def _on_result(self, method: str, result: dict, elapsed: float) -> None:
         state = {
@@ -651,127 +492,19 @@ class PanelApp:
             )
 
     def show_test_notification(self) -> dict:
-        if not self._toast_enabled:
-            return {
-                "ok": False,
-                "code": "TOAST_DISABLED",
-                "message": "Hãy bật Thông báo khi xong việc trước.",
-            }
-        shown = self._show_notification(
-            {
-                "ok": True,
-                "message": "Toast đang hoạt động và sẽ hiện khi bạn làm việc ở WFX.",
-            },
-            method="test_notification",
-            elapsed=0.0,
-        )
-        if not shown:
-            return {
-                "ok": False,
-                "code": "TOAST_DISPLAY_FAILED",
-                "message": (
-                    "Toast chưa hiển thị được. Đã ghi chẩn đoán vào Log kỹ thuật."
-                ),
-            }
-        return {
-            "ok": True,
-            "code": "TOAST_TESTED",
-            "message": "Đã gửi một toast thử nghiệm.",
-        }
+        return self._notifications.show_test_notification()
 
     def _status_loop(self) -> None:
-        next_session_maintenance = (
-            time.monotonic() + SESSION_MAINTENANCE_INITIAL_DELAY_SECONDS
-        )
-        while not self._stop_status.wait(STATUS_POLL_SECONDS):
-            # Một lỗi native/evaluate_js tạm thời không được giết luôn thread,
-            # nếu không trạng thái Chrome sẽ đứng im cả phiên.
-            try:
-                alive = status.chrome_alive()
-                if alive != self._chrome_alive:
-                    self._chrome_alive = alive
-                    if self.window is not None:
-                        self.window.evaluate_js(
-                            "window.wfxSetChromeStatus("
-                            f"{'true' if alive else 'false'})"
-                        )
-
-                now = time.monotonic()
-                if now < next_session_maintenance:
-                    continue
-                next_session_maintenance = now + SESSION_MAINTENANCE_SECONDS
-                if (
-                    alive
-                    and self.api.should_maintain_session()
-                    and not self.api.is_action_running()
-                ):
-                    self.api.maintain_session()
-            except Exception:
-                continue
+        return self._background._status_loop()
 
     def _check_update_once(self) -> None:
-        state = self.api.check_for_updates()
-        self._push_update_state(state)
-        notice_id = str(
-            state.get("notice_id") or state.get("tag") or state.get("version") or ""
-        )
-        if (
-            state.get("can_update")
-            and notice_id
-            and notice_id != self._last_update_notice
-        ):
-            self._last_update_notice = notice_id
-            prefs.save_prefs(last_update_notice=notice_id)
-            if self.tray is not None and self._toast_enabled:
-                try:
-                    self.tray.notify(
-                        "Có phiên bản WFX Smart mới. Mở ứng dụng và bấm “Cập nhật ngay”.",
-                        "WFX Smart",
-                    )
-                except Exception:
-                    pass
+        return self._background._check_update_once()
 
     def _update_loop(self) -> None:
-        if self._stop_status.wait(UPDATE_INITIAL_DELAY_SECONDS):
-            return
-        while not self._stop_status.is_set():
-            try:
-                self._check_update_once()
-            except Exception as error:
-                self._push_log(
-                    f"[UPDATE] Không kiểm tra tự động được: {type(error).__name__}"
-                )
-            if self._stop_status.wait(UPDATE_POLL_SECONDS):
-                return
+        return self._background._update_loop()
 
     def _article_library_loop(self) -> None:
-        if self._stop_status.wait(ARTICLE_LIBRARY_INITIAL_DELAY_SECONDS):
-            return
-        while not self._stop_status.is_set():
-            try:
-                result = self.api.sync_reference_data(False)
-                if not result.get("ok"):
-                    # Tương thích offline/cấu hình cũ: GitHub vẫn là fallback,
-                    # không bao giờ xóa cache PostgreSQL cuối cùng.
-                    fallback = self.api.sync_article_library()
-                    if fallback.get("ok"):
-                        result = {**result, **fallback}
-                if self.window is not None:
-                    import json
-
-                    self.window.evaluate_js(
-                        "window.wfxSetReferenceSyncStatus("
-                        f"{json.dumps(result, ensure_ascii=False)});"
-                        "window.wfxSetArticleLibraryStatus("
-                        f"{json.dumps(result, ensure_ascii=False)})"
-                    )
-            except Exception as error:
-                self._push_log(
-                    "[ARTICLE LIBRARY] Không kiểm tra tự động được: "
-                    f"{type(error).__name__}"
-                )
-            if self._stop_status.wait(ARTICLE_LIBRARY_POLL_SECONDS):
-                return
+        return self._background._article_library_loop()
 
     def activate(self):
         """Mở lại khi người dùng bấm mở app lần hai (SingleInstance báo sang)."""
@@ -866,40 +599,13 @@ class PanelApp:
         # Sau khi user thu panel, bubble tiếp tục là trạng thái nghỉ.
 
     def _build_tray(self):
-        image = Image.open(ICON_PATH)
-        menu = pystray.Menu(
-            pystray.MenuItem("Hiện WFX Smart", lambda: self.show_from_tray()),
-            pystray.MenuItem(
-                "Thoát và đóng trình duyệt",
-                lambda: self.quit(close_browser=True),
-            ),
-            pystray.MenuItem("Thoát, giữ trình duyệt", lambda: self.quit()),
-        )
-        self.tray = _WfxTrayIcon(
-            "wfx-panel",
-            image,
-            "WFX Smart Panel",
-            menu,
-            on_context_menu=self._note_tray_context_menu,
-            on_activate=self.show_from_tray,
-        )
-        self.tray.run(setup=self._on_tray_ready)  # blocking → thread riêng
+        return self._tray._build_tray()
 
     def _on_tray_ready(self, icon) -> None:
-        """Hiện tray rồi phát thông báo sớm nhất đã xếp hàng lúc startup."""
-        icon.visible = True
-        self._tray_ready.set()
-        pending = self._pending_native_notification
-        self._pending_native_notification = None
-        if pending is not None and self._toast_enabled:
-            self._notify_native(*pending)
+        return self._tray._on_tray_ready(icon)
 
     def _note_tray_context_menu(self) -> None:
-        """Chặn tray right-click bị taskbar monitor hiểu nhầm là bubble."""
-        self._taskbar_focus_armed = False
-        self._bubble_direct_action_until = (
-            time.monotonic() + BUBBLE_DIRECT_ACTION_SUPPRESS_SECONDS
-        )
+        return self._tray._note_tray_context_menu()
 
     def quit(self, close_browser: bool = False):
         self._quitting = True
