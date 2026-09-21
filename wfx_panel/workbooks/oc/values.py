@@ -130,9 +130,15 @@ def _ensure_input_values_only(path: Path, mode: str) -> None:
 
 
 def _decimal(value: Any, label: str, row_number: int) -> Decimal:
-    if isinstance(value, bool):
-        raise InvalidOperation
     try:
+        # Excel trả TRUE/FALSE thành bool Python. `Decimal(True)` ra 1 nên phải
+        # chặn riêng — nhưng phải chặn TRONG try, để nó thành lỗi file của
+        # người dùng chứ không thoát ra ngoài dưới dạng InvalidOperation thô.
+        # Thoát ra ngoài thì `_run` quy về PANEL_ERROR, mà mã đó nằm ngoài
+        # NON_REPORTABLE_FAILURES nên telemetry gửi một lỗi hệ thống không có
+        # thật ra webhook production.
+        if isinstance(value, bool):
+            raise InvalidOperation
         number = Decimal(str(value).replace(",", "").strip())
     except (InvalidOperation, AttributeError, ValueError) as error:
         raise OCWorkbookError(
