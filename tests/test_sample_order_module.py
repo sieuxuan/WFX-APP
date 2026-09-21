@@ -25,6 +25,7 @@ import pytest
 
 from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
 from tests.fakes.module_reflection import patch_automation
+from tests.fakes.ui_source import panel_js
 from tests.fakes.wfx_dom import install_fake_clock
 from tests.fakes.wfx_sample_grid import (
     SampleGridFrame,
@@ -568,16 +569,10 @@ def test_loi_khac_khong_xoa_token_de_con_thu_lai():
 
 
 def test_giao_dien_an_danh_sach_khi_lua_chon_het_hieu_luc():
-    from pathlib import Path
 
-    panel_js = (
-        Path(__file__).resolve().parent.parent
-        / "wfx_panel"
-        / "ui"
-        / "panel.js"
-    ).read_text(encoding="utf-8")
-    start = panel_js.index('} else if (result.code === "SAMPLE_MULTIPLE_RESULTS")')
-    block = panel_js[start : start + 600]
+    source = panel_js()
+    start = source.index('} else if (result.code === "SAMPLE_MULTIPLE_RESULTS")')
+    block = source[start : start + 600]
 
     assert 'result.code === "SAMPLE_RESULT_EXPIRED"' in block
     assert "hideSampleFileResults()" in block

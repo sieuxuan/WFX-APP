@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.fakes.ui_source import panel_js
 from wfx_panel import constants, panel_api, prefs, secret
 from wfx_panel.automation import session
 from wfx_panel.controllers import settings as settings_controller
@@ -607,7 +608,7 @@ def test_switch_division_requires_a_session(monkeypatch, playwright_stub):
 
 
 UI = Path(panel_api.__file__).resolve().parent / "ui"
-PANEL_JS = (UI / "panel.js").read_text(encoding="utf-8")
+PANEL_JS = panel_js()
 
 
 @pytest.fixture(autouse=True)

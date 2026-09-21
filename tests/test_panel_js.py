@@ -1,8 +1,10 @@
 import re
 from pathlib import Path
 
+from tests.fakes.ui_source import panel_js
+
 _UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
-JS = (_UI / "panel.js").read_text(encoding="utf-8")
+JS = panel_js()
 BUBBLE_JS = (_UI / "bubble.js").read_text(encoding="utf-8")
 
 
@@ -13,7 +15,7 @@ def test_exposes_python_callable_globals():
 
 def test_color_report_progress_is_guarded_by_an_active_flag():
     start = JS.index("function updateColorReportProgress")
-    body = JS[start : JS.index("\n  function ", start + 10)]
+    body = JS[start : JS.index("\nfunction ", start + 10)]
 
     assert "colorReportRunActive" in body
     assert "/(\\d+\\/\\d+)\\s*$/" in body
@@ -21,14 +23,14 @@ def test_color_report_progress_is_guarded_by_an_active_flag():
 
 def test_color_report_result_card_is_cleared_when_the_module_reopens():
     start = JS.index("function resetColorReportProgress")
-    body = JS[start : JS.index("\n  function ", start + 10)]
+    body = JS[start : JS.index("\nfunction ", start + 10)]
 
     assert '$(".color-report-result-card").hidden = true' in body
 
 
 def test_color_report_result_does_not_cuon_man_hinh_tu_dong():
     start = JS.index("function renderColorReportResult")
-    body = JS[start : JS.index("\n  async function ", start + 10)]
+    body = JS[start : JS.index("\nasync function ", start + 10)]
 
     assert "scrollIntoView" not in body
     assert "failedRefs" in body
@@ -36,21 +38,21 @@ def test_color_report_result_does_not_cuon_man_hinh_tu_dong():
 
 def test_color_report_select_all_only_touches_visible_rows():
     start = JS.index("function setColorReportSelection")
-    body = JS[start : JS.index("\n  function ", start + 10)]
+    body = JS[start : JS.index("\nfunction ", start + 10)]
 
     assert "row.hidden" in body
 
 
 def test_color_report_renders_cascade_levels_even_when_style_list_is_empty():
     start = JS.index("async function loadColorReportOptions")
-    body = JS[start : JS.index("\n  async function ", start + 10)]
+    body = JS[start : JS.index("\nasync function ", start + 10)]
 
     assert "if (result?.levels) renderColorReportLevels(result)" in body
 
 
 def test_color_report_ignores_a_late_response_from_an_older_request():
     start = JS.index("async function loadColorReportOptions")
-    body = JS[start : JS.index("\n  async function ", start + 10)]
+    body = JS[start : JS.index("\nasync function ", start + 10)]
 
     assert "colorReportOptionsRevision" in body
     assert "revision !== colorReportOptionsRevision" in body
@@ -58,7 +60,7 @@ def test_color_report_ignores_a_late_response_from_an_older_request():
 
 def _push_log_body():
     start = JS.index("function pushLog(line) {")
-    return JS[start : JS.index("\n  window.wfxPushLog", start)]
+    return JS[start : JS.index("\nwindow.wfxPushLog", start)]
 
 
 def test_push_log_is_capped_and_never_reads_the_whole_log_back():
@@ -267,7 +269,7 @@ def test_sale_asn_create_flow_is_reviewed_and_resumable():
     assert "SALE_ASN_PO_SELECTION_REQUIRED" in JS
     assert "result.resumable" in JS
     assert 'manual ? "Thêm dòng đã chọn" : "Thử lại bước này"' in JS
-    assert '"continue_sale_asn_create",\n      saleAsnReviewToken,\n      selectedCandidates' in JS
+    assert '"continue_sale_asn_create",\n    saleAsnReviewToken,\n    selectedCandidates' in JS
     assert "saleAsnExactBuyer" in JS
     assert "saleAsnReviewToken" in JS
     assert 'showSaleAsnView("lookup", { focus: false })' in JS
@@ -328,22 +330,22 @@ def test_sale_asn_progress_is_ignored_outside_an_active_run():
         "skip_sale_asn_create_step",
     ):
         if method == "continue_sale_asn_create":
-            assert 'const result = await call(\n      "continue_sale_asn_create"' in JS
-            assert "      selectedCandidates," in JS
+            assert 'const result = await call(\n    "continue_sale_asn_create"' in JS
+            assert "    selectedCandidates," in JS
         else:
             guarded = (
-                "    saleAsnRunActive = true;\n"
-                f'    const result = await call("{method}", saleAsnReviewToken);\n'
-                "    saleAsnRunActive = false;"
+                "  saleAsnRunActive = true;\n"
+                f'  const result = await call("{method}", saleAsnReviewToken);\n'
+                "  saleAsnRunActive = false;"
             )
             assert guarded in JS, method
-    assert "saleAsnRunActive = false;\n    resetSaleAsnReview" in JS
+    assert "saleAsnRunActive = false;\n  resetSaleAsnReview" in JS
 
 
 def test_sale_asn_leaves_no_stale_result_card_between_runs():
     """Mở lại module sau một lượt xong không được còn thẻ kết quả cũ, vì nút
     handoff trong đó trỏ vào Invoice của lượt trước."""
-    assert 'const done = $(".sale-asn-done");\n    if (done) done.hidden = true;' in JS
+    assert 'const done = $(".sale-asn-done");\n  if (done) done.hidden = true;' in JS
     assert "function resetSaleAsnProgress(" in JS
 
 
@@ -436,7 +438,7 @@ def test_sale_asn_existing_po_flow_passes_only_selected_stages():
     assert "selectedSaleAsnStages()" in JS
     assert 'stages.includes("po")' in JS
     assert '"prepare_sale_asn_create"' in JS
-    assert "selected.file_path,\n      buyer,\n      stages," in JS
+    assert "selected.file_path,\n    buyer,\n    stages," in JS
 
 
 def test_completed_actions_preserve_current_module():
@@ -707,9 +709,9 @@ def test_finance_workspaces_use_combined_filters():
 
 def test_catalog_actions_are_one_click_and_folder_browse_is_separate():
     assert 'runCatalogAction(catalogKind, $(".catalog-query").value)' in JS
-    assert 'runCatalogAction(\n        catalogKind, $(".catalog-query").value, "costsheet"' in JS
-    assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "bom"' in JS
-    assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "files"' in JS
+    assert 'runCatalogAction(\n      catalogKind, $(".catalog-query").value, "costsheet"' in JS
+    assert 'runCatalogAction(\n    catalogKind, $(".catalog-query").value, "bom"' in JS
+    assert 'runCatalogAction(\n    catalogKind, $(".catalog-query").value, "files"' in JS
     assert '"catalog_action"' in JS
     assert '"browse_catalog"' in JS
     assert "scanCatalogFolders(false)" in JS
@@ -761,11 +763,11 @@ def test_catalog_costing_export_can_scan_current_tab_without_query():
     assert "costingQuery()" not in export_block
     assert "inspected.style_name" in export_block
     assert '"Current Style"' in export_block
-    assert 'catalogKind,\n      "",' in export_block
+    assert 'catalogKind,\n    "",' in export_block
     assert "catalog-costing-article-scan-input" not in export_block
     assert "suggest_articles" in JS
     assert '"article_name"' in JS
-    assert '"suggest_articles",\n        $(".catalog-category")' in JS
+    assert '"suggest_articles",\n      $(".catalog-category")' in JS
     assert "wfxSetArticleLibraryStatus" in JS
     assert "Có thể Export/Import tab Costing hiện tại" not in JS
     import_block = JS[
@@ -773,7 +775,7 @@ def test_catalog_costing_export_can_scan_current_tab_without_query():
         : JS.index("async function applyCatalogCosting()")
     ]
     assert "costingQuery()" not in import_block
-    assert 'catalogKind,\n      "",' in import_block
+    assert 'catalogKind,\n    "",' in import_block
 
 
 def test_multiple_results_are_selectable_in_panel():
@@ -923,7 +925,7 @@ def test_catalog_folder_picker_groups_and_searches_large_trees():
     assert "data-folder-retry" in JS
     assert 'button.matches("[data-folder-retry]")' in JS
     assert "const hasRetry = Boolean(" in JS
-    assert '"scan_catalog_folders",\n      category,\n      Boolean(force)' in JS
+    assert '"scan_catalog_folders",\n    category,\n    Boolean(force)' in JS
 
 
 def test_module_modal_header_uses_module_description_as_subtitle():
@@ -1060,7 +1062,7 @@ def test_missing_credentials_open_a_mandatory_account_form_immediately():
 def test_division_switcher_is_wired_and_highlighted_from_backend_state():
     assert 'call("switch_division", key)' in JS
     assert "window.wfxSetDivisionState" in JS
-    assert 'button.setAttribute(\n        "aria-pressed"' in JS
+    assert 'button.setAttribute(\n      "aria-pressed"' in JS
 
 
 def test_admin_modules_are_permission_gated_in_ui():
@@ -1100,7 +1102,7 @@ def test_badge_phien_ban_lay_tu_state():
 
 def _sale_asn_run_result_body():
     start = JS.index("function renderSaleAsnRunResult(result) {")
-    return JS[start : JS.index("\n  function renderSaleAsnDone", start)]
+    return JS[start : JS.index("\nfunction renderSaleAsnDone", start)]
 
 
 def test_halted_sale_asn_run_gives_the_start_button_back():
@@ -1113,9 +1115,9 @@ def test_halted_sale_asn_run_gives_the_start_button_back():
     body = _sale_asn_run_result_body()
 
     # Mọi nhánh nhận diện được đều phải return, phần còn lại rơi vào haltSaleAsnRun.
-    assert body.rstrip().endswith("haltSaleAsnRun(result);\n  }")
+    assert body.rstrip().endswith("haltSaleAsnRun(result);\n}")
     # Kết quả null (watchdog thắng race trong call()) cũng phải hồi phục UI.
-    assert "if (!result) {\n      haltSaleAsnRun(null);" in body
+    assert "if (!result) {\n    haltSaleAsnRun(null);" in body
 
     halt = JS[JS.index("function haltSaleAsnRun(result) {") : body and JS.index(
         "function renderSaleAsnRunResult(result) {"
@@ -1152,7 +1154,7 @@ def test_po_checkpoint_renders_selectable_backend_candidates():
 
 def test_completed_sale_asn_scrolls_the_result_into_view():
     start = JS.index("function renderSaleAsnDone(result) {")
-    body = JS[start : JS.index("\n  function handoffSaleAsnDocuments", start)]
+    body = JS[start : JS.index("\nfunction handoffSaleAsnDocuments", start)]
 
     assert "done.hidden = false;" in body
     assert 'done.scrollIntoView({ behavior: "smooth", block: "nearest" });' in body
@@ -1161,7 +1163,7 @@ def test_completed_sale_asn_scrolls_the_result_into_view():
 
 def _open_module_page_body():
     start = JS.index("function openModulePage(moduleId)")
-    return JS[start : JS.index("\n  async function stopCurrentAction", start)]
+    return JS[start : JS.index("\nasync function stopCurrentAction", start)]
 
 
 def test_reopening_a_module_drops_the_previous_run_result_cards():
@@ -1234,7 +1236,7 @@ def test_no_click_handler_touches_event_currenttarget_after_await():
 
 def test_session_badge_and_account_card_show_the_last_login_time():
     start = JS.index("function setSessionStatus(")
-    body = JS[start : JS.index("\n  window.wfxSetSessionStatus", start)]
+    body = JS[start : JS.index("\nwindow.wfxSetSessionStatus", start)]
 
     assert "function setSessionStatus(active, lastLoginAt)" in body
     assert "lastLoginTime" in body
@@ -1244,7 +1246,7 @@ def test_session_badge_and_account_card_show_the_last_login_time():
 def test_background_session_check_never_forces_the_locked_account_sheet():
     """Heartbeat chạy mỗi bốn phút; không được cướp màn hình của người dùng."""
     start = JS.index('"MISSING_CREDENTIALS", "PASSWORD_REQUIRED"')
-    body = JS[start : JS.index("\n  }", start)]
+    body = JS[start : JS.index("\n}", start)]
 
     assert 'result.method !== "maintain_session"' in body
     assert "SESSION_USER_MISMATCH" in body

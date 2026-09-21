@@ -10,10 +10,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests.fakes.ui_source import panel_js
 from wfx_panel import manual_book
 
 _UI = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
-_JS = (_UI / "panel.js").read_text(encoding="utf-8")
+_JS = panel_js()
 _HTML = (_UI / "index.html").read_text(encoding="utf-8")
 
 _MODULE_ID = re.compile(r'\{ name: "[^"]+", id: "([^"]+)"')

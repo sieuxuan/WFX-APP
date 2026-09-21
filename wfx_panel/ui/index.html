@@ -1138,6 +1138,25 @@
     </div>
   </aside>
   <div class="app-tooltip" id="app-tooltip" role="tooltip" hidden></div>
-  <script src="panel.js?v=20260805-1"></script>
+  <!-- Các script dưới đây chia chung một global scope và chạy tuần tự.
+       Thứ tự phải giữ nguyên: core khai báo state dùng chung, bootstrap
+       gắn sự kiện và khởi động sau cùng. -->
+  <script src="panel/core.js?v=20260921-3"></script>
+  <script src="panel/modules.js?v=20260921-3"></script>
+  <script src="panel/status.js?v=20260921-3"></script>
+  <script src="panel/shell.js?v=20260921-3"></script>
+  <script src="panel/bridge.js?v=20260921-3"></script>
+  <script src="panel/workspace.js?v=20260921-3"></script>
+  <script src="panel/oc.js?v=20260921-3"></script>
+  <script src="panel/sale_asn.js?v=20260921-3"></script>
+  <script src="panel/forms.js?v=20260921-3"></script>
+  <script src="panel/gdn.js?v=20260921-3"></script>
+  <script src="panel/catalog.js?v=20260921-3"></script>
+  <script src="panel/reports.js?v=20260921-3"></script>
+  <script src="panel/inventory.js?v=20260921-3"></script>
+  <script src="panel/lists.js?v=20260921-3"></script>
+  <script src="panel/costing.js?v=20260921-3"></script>
+  <script src="panel/module_actions.js?v=20260921-3"></script>
+  <script src="panel/bootstrap.js?v=20260921-3"></script>
 </body>
 </html>
