@@ -106,7 +106,7 @@ def test_normal_startup_opens_full_panel(monkeypatch):
 
     app.window = FakeWindow()
     app.api = FakeApi()
-    app.show_panel = lambda: calls.append(("show-panel",)) or {"ok": True}
+    app._placement.show_panel = lambda: calls.append(("show-panel",)) or {"ok": True}
     monkeypatch.setattr(
         panel_app.prefs,
         "load_account",
@@ -141,7 +141,7 @@ def test_start_hidden_preference_keeps_full_panel_hidden(monkeypatch):
 
     app.window = FakeWindow()
     app.api = FakeApi()
-    app.show_panel = lambda: calls.append("show") or {"ok": True}
+    app._placement.show_panel = lambda: calls.append("show") or {"ok": True}
     monkeypatch.setattr(
         panel_app.prefs,
         "load_account",
@@ -219,7 +219,7 @@ def test_module_result_shows_toast_when_wfx_has_foreground(monkeypatch):
     app._panel_visible = True
     sent = []
     app._show_notification = lambda result, **context: sent.append((result, context))
-    monkeypatch.setattr(module, "_foreground_process_id", lambda: 987654)
+    patch_shell(monkeypatch, "_foreground_process_id", lambda: 987654)
 
     result = {"ok": True, "message": "xong"}
     app._on_result("find_code", result, 0.4)
@@ -782,17 +782,16 @@ def test_activate_shows_panel_and_fronts_window(monkeypatch):
             shown.append(script)
 
     app.window = FakeWindow()
-    monkeypatch.setattr(
-        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
+    patch_shell(monkeypatch,
+        "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
     patch_shell(monkeypatch, "_window_rect_by_title", lambda _title: None)
-    monkeypatch.setattr(module, "_set_process_window_bounds", lambda *_a: True)
+    patch_shell(monkeypatch, "_set_process_window_bounds", lambda *_a: True)
     patch_shell(monkeypatch,
         "_native_window_visibility",
         lambda *_args, **_kwargs: False,
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_bring_process_window_to_front",
         lambda **_kwargs: fronted.append(True) or True,
     )
@@ -816,7 +815,7 @@ def test_taskbar_activation_opens_full_ui_without_winforms_restore(monkeypatch):
         app._panel_visible = True
         return {"ok": True}
 
-    app.show_panel = show_panel
+    app._placement.show_panel = show_panel
     app._bubble._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
     monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
     patch_shell(monkeypatch,
@@ -845,7 +844,7 @@ def test_show_from_tray_repairs_hidden_bubble_before_opening_panel(monkeypatch):
     app.bubble_window = FakeBubble()
     app._bubble_hidden = True
     app._bubble._schedule_bubble_native_bounds = lambda: calls.append("bubble-size")
-    app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+    app._placement.show_panel = lambda: calls.append("panel-show") or {"ok": True}
     patch_shell(monkeypatch,
         "_native_window_visibility",
         lambda *_args, **_kwargs: False,
@@ -864,7 +863,7 @@ def test_direct_bubble_click_does_not_double_toggle_from_taskbar(monkeypatch):
     calls = []
     times = iter([100.0, 100.1, 101.0])
     monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
-    app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+    app._placement.show_panel = lambda: calls.append("panel-show") or {"ok": True}
 
     app.note_bubble_interaction()
     app._open_panel_from_taskbar()
@@ -881,7 +880,7 @@ def test_bubble_pointer_interaction_blocks_taskbar_until_mouseup(monkeypatch):
     calls = []
     times = iter([100.0, 100.1, 100.2, 100.3])
     monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
-    app.show_panel = lambda: calls.append("panel-show") or {"ok": True}
+    app._placement.show_panel = lambda: calls.append("panel-show") or {"ok": True}
 
     app.begin_bubble_interaction()
     app._open_panel_from_taskbar()
@@ -906,7 +905,7 @@ def test_taskbar_minimize_and_restore_events_open_panel(monkeypatch):
             self.target()
 
     monkeypatch.setattr(module.threading, "Thread", ImmediateThread)
-    app._open_panel_from_taskbar = lambda: calls.append("open")
+    app._placement._open_panel_from_taskbar = lambda: calls.append("open")
     app._bubble_direct_action_until = 999999.0
 
     app._on_bubble_minimized()
@@ -926,12 +925,12 @@ def test_taskbar_foreground_transition_opens_only_for_bubble(monkeypatch):
     calls = []
 
     monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
-    monkeypatch.setattr(module, "_foreground_process_id", lambda: next(process_ids))
-    monkeypatch.setattr(
-        module, "_foreground_window_hwnd", lambda: next(foreground_windows)
+    patch_shell(monkeypatch, "_foreground_process_id", lambda: next(process_ids))
+    patch_shell(monkeypatch,
+        "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
     patch_shell(monkeypatch, "_find_window_hwnd", lambda _title: 4242)
-    app._open_panel_from_taskbar = lambda: calls.append("open")
+    app._placement._open_panel_from_taskbar = lambda: calls.append("open")
 
     app._taskbar_activation_loop()
 
@@ -948,15 +947,15 @@ def test_taskbar_foreground_transition_accepts_main_panel_hwnd(monkeypatch):
     calls = []
 
     monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
-    monkeypatch.setattr(module, "_foreground_process_id", lambda: next(process_ids))
-    monkeypatch.setattr(
-        module, "_foreground_window_hwnd", lambda: next(foreground_windows)
+    patch_shell(monkeypatch, "_foreground_process_id", lambda: next(process_ids))
+    patch_shell(monkeypatch,
+        "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
     patch_shell(monkeypatch,
         "_find_window_hwnd",
         lambda title: 4242 if title == module.BUBBLE_WINDOW_TITLE else 5151,
     )
-    app._open_panel_from_taskbar = lambda: calls.append("open")
+    app._placement._open_panel_from_taskbar = lambda: calls.append("open")
 
     app._taskbar_activation_loop()
 
@@ -973,12 +972,12 @@ def test_tray_foreground_window_cancels_taskbar_activation(monkeypatch):
     calls = []
 
     monkeypatch.setattr(app._stop_status, "wait", lambda _seconds: next(waits))
-    monkeypatch.setattr(module, "_foreground_process_id", lambda: next(process_ids))
-    monkeypatch.setattr(
-        module, "_foreground_window_hwnd", lambda: next(foreground_windows)
+    patch_shell(monkeypatch, "_foreground_process_id", lambda: next(process_ids))
+    patch_shell(monkeypatch,
+        "_foreground_window_hwnd", lambda: next(foreground_windows)
     )
     patch_shell(monkeypatch, "_find_window_hwnd", lambda _title: 4242)
-    app._open_panel_from_taskbar = lambda: calls.append("open")
+    app._placement._open_panel_from_taskbar = lambda: calls.append("open")
 
     app._taskbar_activation_loop()
 
@@ -1078,13 +1077,13 @@ def test_show_panel_shows_window_and_hide_panel_hides_it(monkeypatch):
             calls.append(("hide",))
 
     app.window = FakeWindow()
-    monkeypatch.setattr(
-        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
+    patch_shell(monkeypatch,
+        "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
     patch_shell(monkeypatch, "_window_rect_by_title", lambda _title: None)
-    monkeypatch.setattr(module, "_set_process_window_bounds", lambda *_a: True)
-    monkeypatch.setattr(
-        module, "_bring_process_window_to_front", lambda **_kwargs: True
+    patch_shell(monkeypatch, "_set_process_window_bounds", lambda *_a: True)
+    patch_shell(monkeypatch,
+        "_bring_process_window_to_front", lambda **_kwargs: True
     )
 
     opened = app.show_panel()
@@ -1104,7 +1103,7 @@ def test_native_foreground_fallback_hides_panel_after_grace(monkeypatch):
     app._panel_visible = True
     app.api.is_action_running = lambda: False
     hidden = []
-    app.hide_panel = lambda: hidden.append(True)
+    app._placement.hide_panel = lambda: hidden.append(True)
     times = iter([10.0, 10.5])
     monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
 
@@ -1122,7 +1121,7 @@ def test_native_foreground_fallback_hides_during_running_action(monkeypatch):
     app._panel_visible = True
     app.api.is_action_running = lambda: True
     hidden = []
-    app.hide_panel = lambda: hidden.append(True)
+    app._placement.hide_panel = lambda: hidden.append(True)
     times = iter([20.0, 20.5])
     monkeypatch.setattr(module.time, "monotonic", lambda: next(times))
 
@@ -1139,9 +1138,8 @@ def test_blur_request_hides_panel_during_running_action(monkeypatch):
     app._panel_pointer_inside = False
     app.api.is_action_running = lambda: True
     hidden = []
-    app.hide_panel = lambda: hidden.append(True)
-    monkeypatch.setattr(
-        panel_app,
+    app._placement.hide_panel = lambda: hidden.append(True)
+    patch_shell(monkeypatch,
         "_foreground_process_id",
         lambda: os.getpid() + 1,
     )
@@ -1158,7 +1156,7 @@ def test_native_foreground_keeps_panel_while_pointer_is_inside(monkeypatch):
     app._panel_hide_pending = True
     app._panel_focus_lost_since = 10.0
     hidden = []
-    app.hide_panel = lambda: hidden.append(True)
+    app._placement.hide_panel = lambda: hidden.append(True)
 
     result = app.set_panel_pointer_inside(True)
     app._track_panel_foreground(os.getpid() + 1)
@@ -1174,9 +1172,8 @@ def test_blur_request_keeps_panel_while_pointer_is_inside(monkeypatch):
     app._panel_visible = True
     app._panel_pointer_inside = True
     hidden = []
-    app.hide_panel = lambda: hidden.append(True)
-    monkeypatch.setattr(
-        panel_app,
+    app._placement.hide_panel = lambda: hidden.append(True)
+    patch_shell(monkeypatch,
         "_foreground_process_id",
         lambda: os.getpid() + 1,
     )
@@ -1214,17 +1211,17 @@ def test_show_panel_positions_beside_bubble_and_clamps(monkeypatch):
     patch_shell(monkeypatch,
         "_window_rect_by_title", lambda _title: (1880, 1040, 1934, 1094)
     )
-    monkeypatch.setattr(
-        module, "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
+    patch_shell(monkeypatch,
+        "_work_area_for_process_window", lambda _pid: (0, 0, 1920, 1080)
     )
 
     def set_bounds(_pid, x, y, width, height):
         bounds_calls.append((x, y, width, height))
         return True
 
-    monkeypatch.setattr(module, "_set_process_window_bounds", set_bounds)
-    monkeypatch.setattr(
-        module, "_bring_process_window_to_front", lambda **_kwargs: True
+    patch_shell(monkeypatch, "_set_process_window_bounds", set_bounds)
+    patch_shell(monkeypatch,
+        "_bring_process_window_to_front", lambda **_kwargs: True
     )
 
     app.show_panel()
@@ -1259,8 +1256,7 @@ def test_panel_keeps_two_column_logical_width_at_125_percent_scale(
         "_work_area_for_window_title",
         lambda _title: (0, 0, 1920, 1080),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_set_process_window_bounds",
         lambda _pid, x, y, width, height: (
             calls.append((x, y, width, height)) or True
@@ -1269,7 +1265,7 @@ def test_panel_keeps_two_column_logical_width_at_125_percent_scale(
 
     app._position_panel_beside_bubble()
 
-    physical_width, physical_height = module._scale_logical_size(
+    physical_width, physical_height = win32_window._scale_logical_size(
         module.WINDOW_WIDTH,
         module.WINDOW_HEIGHT,
         120,
@@ -1302,8 +1298,7 @@ def test_panel_pywebview_fallback_uses_logical_size_at_high_dpi(monkeypatch):
         "_work_area_for_window_title",
         lambda _title: (0, 0, 1920, 1200),
     )
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_set_process_window_bounds",
         lambda *_args: False,
     )
@@ -1342,8 +1337,7 @@ def test_panel_stays_inside_bubble_monitor_at_all_four_corners(monkeypatch):
         patch_shell(monkeypatch,
             "_window_rect_by_title", lambda _title, rect=bubble: rect
         )
-        monkeypatch.setattr(
-            module,
+        patch_shell(monkeypatch,
             "_set_process_window_bounds",
             lambda _pid, x, y, width, height, output=calls: (
                 output.append((x, y, width, height)) or True
@@ -1379,8 +1373,7 @@ def test_panel_shrinks_to_fit_a_small_work_area(monkeypatch):
         "_window_rect_by_title", lambda _title: (372, 302, 420, 350)
     )
     patch_shell(monkeypatch, "_work_area_for_window_title", lambda _title: area)
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_set_process_window_bounds",
         lambda _pid, x, y, width, height: calls.append((x, y, width, height)) or True,
     )
@@ -1996,7 +1989,7 @@ def test_mo_manual_thu_panel_sau_khi_cua_so_san_sang(monkeypatch):
 
     app = module.PanelApp()
     hidden = []
-    monkeypatch.setattr(app, "hide_panel", lambda: hidden.append(True))
+    monkeypatch.setattr(app._placement, "hide_panel", lambda: hidden.append(True))
     _patch_manual_window(monkeypatch, module)
 
     result = app.open_wfx_manual()
@@ -2186,8 +2179,7 @@ def test_focus_automation_browser_respects_default_on_setting(monkeypatch):
             return 922200
 
     app.api._login = FakeLogin()
-    monkeypatch.setattr(
-        module,
+    patch_shell(monkeypatch,
         "_bring_process_window_to_front",
         lambda pid, *, on_top: focused.append((pid, on_top)) or True,
     )
