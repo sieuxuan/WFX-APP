@@ -15,6 +15,7 @@ from wfx_panel.automation._common import (
     PlaywrightError,
     PlaywrightTimeoutError,
     _browser_boundary_result,
+    _document_marker,
     _first_line,
     _first_visible,
     _result,
@@ -41,7 +42,7 @@ def _mark_grid_roots(page: Page) -> list[tuple[Frame, str]]:
         try:
             roots = frame.locator(".ag-root-wrapper")
             for index in range(roots.count()):
-                marker = f"module-grid-{time.monotonic_ns()}-{index}"
+                marker = _document_marker(f"module-grid-{index}")
                 roots.nth(index).evaluate(
                     "(root, marker) => { root.__wfxPanelGridMarker = marker; }",
                     marker,

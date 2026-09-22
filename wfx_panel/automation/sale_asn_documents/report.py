@@ -20,6 +20,7 @@ from wfx_panel.automation._common import (
     Page,
     PlaywrightError,
     PlaywrightTimeoutError,
+    _document_marker,
     _wait,
     _write_log,
     time,
@@ -83,7 +84,7 @@ def _mark_report_frames(context: Any) -> list[tuple[Frame, str]]:
             try:
                 if not frame.locator(REPORT_EXPORT_SELECTOR).count():
                     continue
-                marker = f"asn-report-{time.monotonic_ns()}"
+                marker = _document_marker("asn-report")
                 frame.evaluate(
                     "marker => { window.__wfxAsnReportMarker = marker; }",
                     marker,

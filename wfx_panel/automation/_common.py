@@ -6,6 +6,7 @@ giữ một nguồn import duy nhất.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -339,8 +340,25 @@ def _ensure_select_value(
     )
 
 
+_MARKER_SEQUENCE = itertools.count()
+
+
+def _document_marker(prefix: str) -> str:
+    """Marker duy nhất cho một lần đánh dấu document, không phụ thuộc đồng hồ.
+
+    `time.monotonic_ns()` một mình là KHÔNG đủ: trên Windows + Python 3.12 —
+    đúng runtime của bản đóng gói — `monotonic` có độ phân giải 15,6 ms, nên
+    mọi lần đánh dấu trong cùng một tick trả về y hệt nhau. Marker trùng làm
+    `_document_changed` kết luận "document chưa đổi" cho một frame WFX vừa
+    reload xong, tức đúng cái bẫy "đã click là thành công" mà CLAUDE.md cấm.
+    Số thứ tự trong tiến trình bảo đảm tính duy nhất; timestamp giữ lại để đọc
+    log cho dễ.
+    """
+    return f"{prefix}-{time.monotonic_ns()}-{next(_MARKER_SEQUENCE)}"
+
+
 def _mark_document(frame: Frame | None, prefix: str) -> tuple[Frame | None, str]:
-    marker = f"{prefix}-{time.monotonic_ns()}"
+    marker = _document_marker(prefix)
     if frame is not None:
         try:
             frame.evaluate(
@@ -426,6 +444,7 @@ __all__ = [
     '_first_visible',
     '_horizontal_grid_positions',
     '_horizontal_grid_state',
+    '_document_marker',
     '_mark_document',
     '_result',
     '_scroll_horizontal_grid',

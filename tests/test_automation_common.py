@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.fakes.module_reflection import module_source
 from tests.fakes.wfx_dom import install_fake_clock
 from wfx_panel.automation import _common
 from wfx_panel.automation._common import PlaywrightError, PlaywrightTimeoutError
@@ -283,6 +284,34 @@ def test_two_marks_never_collide():
     _frame, second = _common._mark_document(None, "test")
 
     assert first != second
+
+
+def test_marks_stay_unique_on_a_clock_too_coarse_to_tell_them_apart(monkeypatch):
+    """Windows + Python 3.12 — đúng runtime của bản đóng gói — cho
+    `time.monotonic_ns()` độ phân giải 15,6 ms, nên mọi lần đánh dấu trong cùng
+    một tick trả về y hệt nhau. Marker trùng làm `_document_changed` kết luận
+    "document chưa đổi" cho một frame WFX vừa reload xong."""
+    monkeypatch.setattr(_common.time, "monotonic_ns", lambda: 1_700_000_000)
+
+    markers = {_common._document_marker("test") for _ in range(500)}
+
+    assert len(markers) == 500
+
+
+def test_every_marker_kind_goes_through_the_same_unique_source():
+    """Bốn chỗ đánh dấu document phải dùng chung một nguồn duy nhất.
+
+    Trước đây mỗi chỗ tự ghép `time.monotonic_ns()`, nên sửa được một chỗ vẫn
+    còn ba chỗ trùng marker.
+    """
+    from wfx_panel.automation.catalog import files
+    from wfx_panel.automation.modules import grid
+    from wfx_panel.automation.sale_asn_documents import report
+
+    for module in (files, grid, report):
+        source = module_source(module)
+        assert "monotonic_ns" not in source, module.__name__
+        assert "_document_marker(" in source, module.__name__
 
 
 def test_a_frame_that_refuses_the_marker_does_not_break_the_snapshot():

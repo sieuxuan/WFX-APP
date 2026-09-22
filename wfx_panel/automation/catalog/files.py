@@ -15,6 +15,7 @@ from wfx_panel.automation._common import (
     PlaywrightError,
     PlaywrightTimeoutError,
     _click,
+    _document_marker,
     _first_line,
     _result,
     _wait,
@@ -145,7 +146,7 @@ def _mark_article_documents(page: Page) -> list[tuple[Frame, str]]:
     """Đánh dấu document hiện tại để xác nhận click tab thật sự điều hướng."""
     snapshots: list[tuple[Frame, str]] = []
     for index, frame in enumerate(page.frames):
-        marker = f"article-file-{time.monotonic_ns()}-{index}"
+        marker = _document_marker(f"article-file-{index}")
         try:
             frame.evaluate(
                 "marker => { window.__wfxArticleFileMarker = marker; }",
