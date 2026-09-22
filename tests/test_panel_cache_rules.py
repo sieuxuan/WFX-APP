@@ -233,12 +233,21 @@ def test_the_article_dropdown_of_another_account_is_never_served(tmp_path):
     ) is None
 
 
-def test_an_article_dropdown_older_than_the_window_is_rescanned(tmp_path):
-    panel_cache.save_costing_article_cache("tester", [_section()], base_dir=tmp_path)
+def test_an_article_dropdown_older_than_seven_days_is_rescanned(tmp_path):
+    # Ghi thẳng mốc thời gian đã cũ thay vì ép `max_age_seconds=0`: trên
+    # Windows + Python <= 3.12, `time.time()` có độ phân giải 15,6 ms nên lưu
+    # rồi đọc ngay trong cùng một tick cho ra hiệu số đúng bằng 0, và test sẽ
+    # đỏ vì đồng hồ chứ không vì luật hết hạn.
+    _write(
+        _costing_article_cache_path(tmp_path),
+        {
+            "user_id": "tester",
+            "saved_at": time.time() - 8 * 24 * 60 * 60,
+            "sections": [_section()],
+        },
+    )
 
-    assert panel_cache.load_costing_article_cache(
-        "tester", base_dir=tmp_path, max_age_seconds=0
-    ) is None
+    assert panel_cache.load_costing_article_cache("tester", base_dir=tmp_path) is None
 
 
 def test_an_article_dropdown_without_a_timestamp_is_rescanned(tmp_path):
@@ -349,12 +358,18 @@ def test_switching_account_forces_a_fresh_scan(tmp_path):
 
 
 def test_cost_dropdowns_older_than_seven_days_are_rescanned(tmp_path):
-    panel_cache.save_costing_special_options_cache(
-        "tester", "APPAREL", _special_sections(), base_dir=tmp_path
+    _write(
+        _costing_special_options_cache_path(tmp_path),
+        {
+            "user_id": "tester",
+            "division_key": "APPAREL",
+            "saved_at": time.time() - 8 * 24 * 60 * 60,
+            "sections": _special_sections(),
+        },
     )
 
     assert panel_cache.load_costing_special_options_cache(
-        "tester", "APPAREL", base_dir=tmp_path, max_age_seconds=0
+        "tester", "APPAREL", base_dir=tmp_path
     ) is None
 
 
