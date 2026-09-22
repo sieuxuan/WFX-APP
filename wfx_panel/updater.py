@@ -508,19 +508,62 @@ function Safe-Remove([string]$path) {{
   }}
 }}
 
-function Download-WithUi([string]$url, [string]$path) {{
-  $webClient = New-Object System.Net.WebClient
-  $webClient.Headers.Add("User-Agent", "WFX-Smart-Updater")
+function Download-WithUi(
+  [string]$url,
+  [string]$path,
+  [string]$label,
+  [int]$fromPercent,
+  [int]$toPercent
+) {{
+  # Đọc theo từng khối rồi tự vẽ tiến trình, thay vì DownloadFileTaskAsync +
+  # marquee. Gói cập nhật là phần chờ lâu nhất của cả lượt; thanh chạy qua lại
+  # không cho người dùng biết còn bao lâu, còn event DownloadProgressChanged
+  # của WebClient lại bắn trên thread khác nên không đụng được control WinForms.
+  $request = [System.Net.HttpWebRequest]::Create([Uri]$url)
+  $request.UserAgent = 'WFX-Smart-Updater'
+  $request.Timeout = 30000
+  $request.ReadWriteTimeout = 120000
+  $response = $request.GetResponse()
   try {{
-    $task = $webClient.DownloadFileTaskAsync([Uri]$url, $path)
-    while (-not $task.IsCompleted) {{
-      [System.Windows.Forms.Application]::DoEvents()
-      Start-Sleep -Milliseconds 80
+    $total = [int64]$response.ContentLength
+    $source = $response.GetResponseStream()
+    $target = [System.IO.File]::Create($path)
+    $copied = [int64]0
+    try {{
+      $buffer = New-Object byte[] 262144
+      $lastPaint = 0
+      while ($true) {{
+        $read = $source.Read($buffer, 0, $buffer.Length)
+        if ($read -le 0) {{ break }}
+        $target.Write($buffer, 0, $read)
+        $copied += $read
+        # Vẽ tối đa ~8 lần/giây: đủ mượt mắt mà không ăn CPU vào việc repaint.
+        if ([Environment]::TickCount - $lastPaint -ge 120) {{
+          $lastPaint = [Environment]::TickCount
+          if ($total -gt 0) {{
+            $ratio = [double]$copied / [double]$total
+            $percent = $fromPercent + [int](($toPercent - $fromPercent) * $ratio)
+            $doneMb = [math]::Round($copied / 1MB, 1)
+            $totalMb = [math]::Round($total / 1MB, 1)
+            Update-UI "$label $doneMb/$totalMb MB" $percent
+          }} else {{
+            Update-UI $label
+          }}
+        }}
+      }}
+      $target.Flush()
+    }} finally {{
+      $target.Dispose()
+      $source.Dispose()
     }}
-    # GetResult ném lại lỗi HTTP/network thật thay vì để task fault im lặng.
-    $task.GetAwaiter().GetResult()
+    if ($total -gt 0 -and $copied -ne $total) {{
+      throw "Tải thiếu dữ liệu: $copied/$total byte."
+    }}
+    if ($total -gt 0) {{
+      Update-UI "$label $([math]::Round($total / 1MB, 1)) MB" $toPercent
+    }}
   }} finally {{
-    $webClient.Dispose()
+    $response.Close()
   }}
 }}
 
@@ -610,10 +653,10 @@ function Perform-Update {{
     ) {{
       throw 'Thư mục tạm updater không an toàn.'
     }}
-    Update-UI "Đang tải gói cập nhật WFX Smart v$version..."
-    Download-WithUi $packageUrl $packagePath
-    Download-WithUi $checksumUrl $checksumPath
-    Download-WithUi $signatureUrl $signaturePath
+    Update-UI "Đang tải gói cập nhật WFX Smart v$version..." 10
+    Download-WithUi $packageUrl $packagePath "Đang tải gói cập nhật v${{version}}:" 10 40
+    Download-WithUi $checksumUrl $checksumPath "Đang tải mã kiểm tra:" 40 42
+    Download-WithUi $signatureUrl $signaturePath "Đang tải chữ ký nhà phát hành:" 42 44
 
     Update-UI "Đang xác minh chữ ký nhà phát hành..." 45
     Import-CmsAssembly
