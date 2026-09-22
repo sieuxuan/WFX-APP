@@ -30,9 +30,55 @@ def _timestamp() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
+def _windows_pid_is_running(pid: int) -> bool:
+    """Tiến trình `pid` còn sống hay không, hỏi thẳng kernel Windows.
+
+    Không dùng được `os.kill(pid, 0)` ở đây: trên Windows `signal.CTRL_C_EVENT`
+    CHÍNH LÀ 0, nên lời gọi đó không hỏi gì cả mà GỬI Ctrl+C cho cả console
+    process group chứa `pid` — tức là cho chính mình. Trong lúc chạy test nó
+    ném KeyboardInterrupt vào main thread ở một chỗ ngẫu nhiên và giết cả phiên;
+    câu trả lời "còn sống" thu được cũng sai, vì nó chỉ phản ánh việc gửi tín
+    hiệu thành công hay không chứ không phải pid có tồn tại.
+
+    `WaitForSingleObject(handle, 0)` trả WAIT_TIMEOUT khi tiến trình còn chạy và
+    WAIT_OBJECT_0 khi nó đã thoát. Tiến trình của tài khoản khác sẽ mở handle
+    thất bại và bị coi là đã thoát — chấp nhận được, vì ta chỉ hỏi về chính
+    phiên chạy trước của app, cùng tài khoản Windows.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    synchronize = 0x0010_0000
+    wait_timeout = 0x0000_0102
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.DWORD,
+    )
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenProcess(synchronize, False, pid)
+    if not handle:
+        return False
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == wait_timeout
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _pid_is_running(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        try:
+            return _windows_pid_is_running(pid)
+        except OSError:
+            return False
     try:
         os.kill(pid, 0)
     except OSError:

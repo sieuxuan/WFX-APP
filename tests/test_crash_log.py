@@ -3,6 +3,8 @@ import os
 import sys
 import threading
 
+import pytest
+
 from wfx_panel import crash_log
 
 
@@ -117,6 +119,54 @@ def test_pid_is_running_rejects_non_positive_and_dead_pids():
     assert crash_log._pid_is_running(0) is False
     assert crash_log._pid_is_running(-5) is False
     assert crash_log._pid_is_running(os.getpid()) is True
+
+
+def test_a_process_that_has_exited_is_reported_as_gone():
+    import subprocess
+    import sys
+    import time
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        time.sleep(0.5)
+        assert crash_log._pid_is_running(child.pid) is True
+    finally:
+        child.kill()
+        child.wait(timeout=10)
+    time.sleep(0.3)
+
+    assert crash_log._pid_is_running(child.pid) is False
+
+
+def test_a_pid_that_never_existed_is_reported_as_gone():
+    assert crash_log._pid_is_running(4_000_000) is False
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Chỉ Windows mới có cái bẫy này")
+def test_checking_a_pid_never_sends_a_console_signal(monkeypatch):
+    """`os.kill(pid, 0)` là thành ngữ POSIX và là cái bẫy trên Windows.
+
+    `signal.CTRL_C_EVENT` CHÍNH LÀ 0, nên lời gọi đó không hỏi gì mà GỬI Ctrl+C
+    cho cả console process group chứa pid — tức là cho chính tiến trình đang
+    hỏi. Nó đã ném KeyboardInterrupt vào giữa phiên pytest trên CI và giết cả
+    lượt chạy ở một chỗ ngẫu nhiên, đồng thời câu trả lời thu được cũng sai.
+    """
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError(
+            "crash_log gửi tín hiệu console thay vì hỏi trạng thái tiến trình"
+        )
+
+    monkeypatch.setattr(crash_log.os, "kill", forbidden)
+
+    assert crash_log._pid_is_running(os.getpid()) is True
+    assert crash_log._pid_is_running(4_000_000) is False
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Chỉ Windows mới có cái bẫy này")
+def test_checking_a_pid_many_times_never_interrupts_the_caller():
+    for _ in range(200):
+        crash_log._pid_is_running(os.getpid())
 
 
 def test_install_tolerates_a_corrupt_marker(tmp_path, monkeypatch):
