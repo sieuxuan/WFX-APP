@@ -1,5 +1,36 @@
 [
   {
+    "version": "1.1.0",
+    "date": "2026-09-22",
+    "highlights": [
+      {
+        "title": "File OC ghi TRUE/FALSE nhầm ô số giờ báo đúng dòng",
+        "body": "Trước đây một ô Units hoặc Selling Price bị Excel đổi thành TRUE/FALSE làm app báo lỗi hệ thống chung chung. Nay app nói rõ dòng nào sai kiểu để bạn sửa ngay trong file, và lỗi file của bạn không còn bị gửi đi như sự cố kỹ thuật.",
+        "entry": "don-hang-oc-new"
+      },
+      {
+        "title": "Bong bóng nổi không còn kẹt sai kích thước",
+        "body": "Trên vài máy, tiến trình nền chỉnh kích thước bong bóng có thể chết lặng lẽ và để lại icon sai cỡ cho tới khi mở lại app. Nay lỗi đó được ghi vào log sự cố thay vì biến mất, và bong bóng giữ đúng kích thước theo độ phân giải màn hình.",
+        "entry": "bat-dau-mo-panel"
+      },
+      {
+        "title": "Mở app nhanh hơn khi file Article List có vấn đề",
+        "body": "Một file Article List đi kèm bản cài bị sai mã ký tự từng làm app không khởi động được. Nay app bỏ qua file đó, chỉ mất gợi ý Article cho tới lần đồng bộ kế tiếp, còn cửa sổ vẫn mở bình thường.",
+        "entry": "catalog-thu-vien-article"
+      },
+      {
+        "title": "Cửa sổ cập nhật hiện phần trăm tải thật",
+        "body": "Trước đây thanh tiến trình chạy qua lại không cho biết còn bao lâu. Nay bạn thấy đúng phần trăm đã tải và dung lượng gói, nên biết rõ khi nào bản mới sẵn sàng.",
+        "entry": "su-co-cap-nhat"
+      },
+      {
+        "title": "Bên trong: dọn lại toàn bộ mã nguồn và tăng độ phủ kiểm thử",
+        "body": "Các file lớn được tách thành module nhỏ theo từng màn nghiệp vụ, và bộ kiểm thử tự động tăng lên gần 5.000 phép thử phủ 97,8% mã. Bạn không thấy thay đổi nào trên màn hình, nhưng các bản sau sẽ ít lỗi hồi quy hơn.",
+        "entry": "su-co-cap-nhat"
+      }
+    ]
+  },
+  {
     "version": "1.0.37",
     "date": "2026-09-21",
     "highlights": [

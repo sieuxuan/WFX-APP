@@ -5,9 +5,24 @@ import sys
 import pytest
 
 from wfx_panel import updater
+from wfx_panel.version import APP_VERSION
 
 
-def release_payload(version: str = "1.1.0") -> dict:
+def _next_version() -> str:
+    """Một phiên bản chắc chắn mới hơn bản đang chạy.
+
+    Trước đây các test ghi cứng "1.1.0" làm bản mới. Tới đúng lần phát hành
+    1.1.0 thì `schedule_update` từ chối vì không mới hơn bản đang chạy, và
+    mười test đỏ vì lý do không liên quan gì tới thứ chúng kiểm.
+    """
+    major, minor, patch = (int(part) for part in APP_VERSION.split("."))
+    return f"{major}.{minor}.{patch + 1}"
+
+
+NEXT_VERSION = _next_version()
+
+
+def release_payload(version: str = NEXT_VERSION) -> dict:
     package = f"WFX-Smart-v{version}-win64.zip"
     setup = f"WFX-Smart-Setup-v{version}.exe"
     base = f"https://github.com/sieuxuan/WFX-APP/releases/download/v{version}"
@@ -45,7 +60,7 @@ def release_payload(version: str = "1.1.0") -> dict:
 
 
 def update_state(
-    version: str = "1.1.0",
+    version: str = NEXT_VERSION,
     update_mode: str = updater.UPDATE_MODE_PORTABLE,
 ) -> dict:
     package = updater._asset_name(version, update_mode)
@@ -66,18 +81,20 @@ def test_check_for_updates_reports_release_in_plain_language(monkeypatch):
     monkeypatch.setattr(
         updater,
         "_load_latest_release",
-        lambda: release_payload("1.1.0"),
+        lambda: release_payload(NEXT_VERSION),
     )
 
     result = updater.check_for_updates()
 
     assert result["code"] == "UPDATE_AVAILABLE"
     assert result["can_update"] is True
-    assert result["version"] == "1.1.0"
+    assert result["version"] == NEXT_VERSION
     assert result["notice_id"] == "110"
-    assert "Phiên bản 1.1.0" in result["message"]
+    assert f"Phiên bản {NEXT_VERSION}" in result["message"]
     assert "commit" not in result["message"].lower()
-    assert result["package_url"].endswith("WFX-Smart-v1.1.0-win64.zip")
+    assert result["package_url"].endswith(
+        f"WFX-Smart-v{NEXT_VERSION}-win64.zip"
+    )
     assert result["checksum_url"].endswith(".zip.sha256")
     assert result["signature_url"].endswith(".zip.sha256.p7s")
     assert result["update_mode"] == updater.UPDATE_MODE_PORTABLE
@@ -92,14 +109,16 @@ def test_setup_install_checks_the_installer_assets(monkeypatch):
     monkeypatch.setattr(
         updater,
         "_load_latest_release",
-        lambda: release_payload("1.1.0"),
+        lambda: release_payload(NEXT_VERSION),
     )
 
     result = updater.check_for_updates()
 
     assert result["can_update"] is True
     assert result["update_mode"] == updater.UPDATE_MODE_INSTALLER
-    assert result["package_url"].endswith("WFX-Smart-Setup-v1.1.0.exe")
+    assert result["package_url"].endswith(
+        f"WFX-Smart-Setup-v{NEXT_VERSION}.exe"
+    )
     assert result["checksum_url"].endswith(".exe.sha256")
     assert result["signature_url"].endswith(".exe.sha256.p7s")
 
@@ -142,7 +161,7 @@ def test_current_release_is_up_to_date(monkeypatch):
 
 
 def test_release_without_checksum_is_not_offered(monkeypatch):
-    payload = release_payload("1.1.0")
+    payload = release_payload(NEXT_VERSION)
     payload["assets"] = [
         asset for asset in payload["assets"] if not asset["name"].endswith(".sha256")
     ]
@@ -158,7 +177,7 @@ def test_release_without_checksum_is_not_offered(monkeypatch):
 def test_legacy_package_name_does_not_trigger_the_unsafe_old_update_path(
     monkeypatch,
 ):
-    payload = release_payload("1.1.0")
+    payload = release_payload(NEXT_VERSION)
     for asset in payload["assets"]:
         asset["name"] = asset["name"].replace("WFX-Smart-", "WFX-Panel-")
         asset["browser_download_url"] = asset["browser_download_url"].replace(
@@ -440,7 +459,7 @@ def test_setup_install_schedules_inno_installer_instead_of_zip_replacement(
     content = helper.read_text(encoding="utf-8-sig")
 
     assert "$updateMode = 'installer'" in content
-    assert "WFX-Smart-Setup-v1.1.0.exe" in content
+    assert f"WFX-Smart-Setup-v{NEXT_VERSION}.exe" in content
     assert "if ($updateMode -eq 'installer')" in content
     assert "'/VERYSILENT'" in content
     assert "'/SUPPRESSMSGBOXES'" in content
@@ -479,7 +498,8 @@ def test_schedule_update_rejects_mismatched_asset_names(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "EXPECTED_SIGNER_THUMBPRINT", "A" * 40)
     state = update_state()
     state["checksum_url"] = (
-        "https://github.com/sieuxuan/WFX-APP/releases/download/v1.1.0/other.zip.sha256"
+        "https://github.com/sieuxuan/WFX-APP/releases/download/"
+        f"v{NEXT_VERSION}/other.zip.sha256"
     )
 
     with pytest.raises(ValueError, match="không khớp"):

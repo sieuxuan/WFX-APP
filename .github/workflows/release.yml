@@ -299,6 +299,14 @@ jobs:
               -ErrorAction SilentlyContinue
           }
 
+      - name: Build release notes from whats_new.json
+        shell: pwsh
+        run: |
+          python scripts/release_notes.py release-notes.md
+          if (-not (Test-Path -LiteralPath "release-notes.md" -PathType Leaf)) {
+            throw "Không sinh được ghi chú phát hành."
+          }
+
       - name: Publish GitHub Release
         # softprops/action-gh-release v3.0.0 (Node 24) — pin full SHA vì action
         # nhận contents:write.
@@ -313,36 +321,7 @@ jobs:
             ${{ env.ZIP_NAME }}.sha256.p7s
           tag_name: ${{ env.TAG }}
           name: WFX Smart ${{ env.VERSION }}
-          body: |
-            WFX Smart ${{ env.VERSION }} bổ sung kiểm tra ngày cho form OC,
-            mapping Republic of Slovenia và giới hạn quy tắc gộp Packing List
-            đúng theo Buyer.
-
-            Cách dùng được khuyên dùng:
-            1. Tải **${{ env.SETUP_NAME }}** và mở file.
-            2. Bộ cài tự đóng đúng WFX Smart đang chạy, nâng cấp tại chỗ và
-               tạo shortcut ngoài Desktop.
-            3. Tài khoản, Settings và dữ liệu làm việc được giữ nguyên.
-
-            Bản portable vẫn có sẵn: tải **${{ env.ZIP_NAME }}**, giải nén vào
-            một thư mục riêng rồi mở **WFX-Panel.exe**.
-
-            **Lưu ý khi nâng cấp từ 1.0.8 trở xuống:** hãy cài thủ công một lần
-            theo ba bước trên. Gói mới cố ý không kích hoạt updater cũ để tránh
-            nguy cơ updater đó xóa nhầm thư mục chứa ứng dụng.
-
-            **Nếu bản 1.0.9–1.0.11 báo lỗi CMS hoặc hash:** hãy cài thủ công
-            1.0.12 một lần. Từ 1.0.12 trở đi, updater tương thích cả Windows
-            PowerShell 5.1 và PowerShell 7, đồng thời vẫn xác minh chữ ký, giới
-            hạn file được thay và có rollback.
-
-            Điểm chính:
-            - Form OC mới cảnh báo ngay trong Excel khi ba ngày không theo thứ tự Buyer Order Date < Raw Material ETA < Buyer Delivery Date.
-            - Republic of Slovenia được ánh xạ sang Market Europe khi tạo file EDI OC.
-            - Chỉ J.LINDEBERG và CORPORATE OFFICE - TRUEWERK dùng quy tắc gộp Packing List đặc biệt.
-            - BIRDDOGS và Buyer khác giữ nguyên từng dòng dù report có bộ header tương tự TRUEWERK.
-
-            File `.sha256` và chữ ký `.p7s` xác minh gói tải về đúng từ nhà phát hành.
+          body_path: release-notes.md
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
