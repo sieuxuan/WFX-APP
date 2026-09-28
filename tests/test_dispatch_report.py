@@ -228,8 +228,13 @@ class _Download:
     suggested_filename = "BuyerDispatchOrder_Invoice.xlsx"
 
 
-def _wire_download(monkeypatch, tmp_path, *, saves=True):
+def _wire_download(monkeypatch, tmp_path, *, saves=True, native=None):
     monkeypatch.setattr(dispatch_report, "snapshot_downloads", lambda: {"before"})
+    monkeypatch.setattr(
+        dispatch_report,
+        "native_download_candidate",
+        lambda before, **_kw: native,
+    )
     saved: list[tuple] = []
 
     def save(download, target, before):
@@ -291,6 +296,29 @@ def test_a_download_that_never_starts_is_reported(clock, monkeypatch, tmp_path):
         dispatch_report._download_report(page, tmp_path / "x.xlsx", _quiet())
 
     assert error.value.code == "GDN_REPORT_DOWNLOAD_FAILED"
+
+
+def test_a_native_download_without_a_cdp_event_is_still_picked_up(
+    clock, monkeypatch, tmp_path
+):
+    # Runtime reset Browser.setDownloadBehavior về `default` sau mỗi attach, nên
+    # Chrome lưu file vào Downloads nhưng CDP không phát event `download`. Log
+    # 1.1.0 lúc 09:57: file (4).xlsx có sau ~20 giây, flow vẫn chờ đủ 90 giây
+    # rồi báo GDN_REPORT_DOWNLOAD_FAILED.
+    native = tmp_path / "Downloads" / "BuyerDispatchOrder_Invoice (4).xlsx"
+    native.parent.mkdir()
+    native.write_bytes(b"xlsx-native")
+    saved = _wire_download(
+        monkeypatch, tmp_path, native=(native, (11, 1))
+    )
+    page = _report_page(clock)
+    target = tmp_path / "out" / "report.xlsx"
+
+    dispatch_report._download_report(page, target, _quiet())
+
+    assert target.read_bytes() == b"xlsx-native"
+    assert saved == []
+    assert page.listeners == []
 
 
 def test_an_empty_downloaded_file_is_reported(clock, monkeypatch, tmp_path):

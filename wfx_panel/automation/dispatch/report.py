@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -34,6 +35,7 @@ from wfx_panel.automation.dispatch.status import DispatchFlowError
 from wfx_panel.automation.runtime import (
     cancellation_deferred,
     checkpoint,
+    native_download_candidate,
     save_native_download,
     snapshot_downloads,
 )
@@ -142,20 +144,36 @@ def _download_report(
         downloads_before_click = snapshot_downloads()
         _click(excel.first)
         deadline = time.monotonic() + 90
+        native_file: Path | None = None
+        stable_file: tuple[Path, tuple[int, int]] | None = None
         while time.monotonic() < deadline and not downloads:
+            # Runtime reset Browser.setDownloadBehavior về `default`, nên Chrome
+            # lưu file native mà CDP có thể không phát event `download`. Đối
+            # chiếu snapshot Downloads để không chờ hết 90 giây rồi báo lỗi giả.
+            candidate = native_download_candidate(
+                downloads_before_click,
+                suffixes={".xls", ".xlsx"},
+            )
+            if candidate is not None and stable_file == candidate:
+                native_file = candidate[0]
+                break
+            stable_file = candidate
             _wait(report_page, 100)
-        if not downloads:
+        if not downloads and native_file is None:
             raise DispatchFlowError(
                 "GDN_REPORT_DOWNLOAD_FAILED",
                 "WFX không bắt đầu tải file Excel của report.",
             )
         with cancellation_deferred():
             target.parent.mkdir(parents=True, exist_ok=True)
-            save_native_download(
-                downloads[0],
-                target,
-                downloads_before_click,
-            )
+            if downloads:
+                save_native_download(
+                    downloads[0],
+                    target,
+                    downloads_before_click,
+                )
+            else:
+                shutil.copy2(native_file, target)
         if not target.is_file() or target.stat().st_size <= 0:
             raise DispatchFlowError(
                 "GDN_REPORT_DOWNLOAD_FAILED",
