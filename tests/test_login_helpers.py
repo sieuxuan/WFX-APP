@@ -625,7 +625,7 @@ def test_automation_browser_pid_reads_cdp_listener(monkeypatch):
     assert login.automation_browser_pid() == 4567
 
 
-def test_automation_profile_disables_password_manager(tmp_path):
+def test_automation_profile_preserves_native_password_manager(tmp_path):
     profile = tmp_path / "ChromeProfile"
     preferences = profile / "Default" / "Preferences"
     preferences.parent.mkdir(parents=True)
@@ -640,9 +640,9 @@ def test_automation_profile_disables_password_manager(tmp_path):
     loaded = json.loads(preferences.read_text(encoding="utf-8"))
     assert loaded["homepage"] == "https://example.test"
     assert loaded["profile"]["name"] == "WFX"
-    assert loaded["profile"]["password_manager_enabled"] is False
-    assert loaded["credentials_enable_service"] is False
-    assert loaded["password_manager_leak_detection"] is False
+    assert "password_manager_enabled" not in loaded["profile"]
+    assert "credentials_enable_service" not in loaded
+    assert "password_manager_leak_detection" not in loaded
     assert loaded["download"] == {
         "default_directory": str(downloads),
         "directory_upgrade": True,
@@ -683,7 +683,7 @@ def test_automation_profile_replaces_stale_download_directory(
     }
 
 
-def test_chrome_launch_uses_password_prompt_suppression_flags(
+def test_chrome_launch_preserves_password_prompts_and_native_shell(
     tmp_path, monkeypatch
 ):
     executable = tmp_path / "chrome.exe"
@@ -709,8 +709,8 @@ def test_chrome_launch_uses_password_prompt_suppression_flags(
         lambda args, **kwargs: (command.extend(args), launch_options.update(kwargs)),
     )
     browser._start_persistent_chrome(lambda _message: None)
-    assert "--disable-save-password-bubble" in command
-    assert any(
+    assert "--disable-save-password-bubble" not in command
+    assert not any(
         arg.startswith("--disable-features=")
         and "PasswordManagerOnboarding" in arg
         for arg in command

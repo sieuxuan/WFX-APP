@@ -5,8 +5,8 @@ nằm trong phần chưa chạy:
 
 * "`Thoát và đóng trình duyệt` gửi CDP `Browser.close` tới đúng Chrome
   automation để giải phóng RAM… Không kill process theo tên."
-* "Chrome automation chạy `--process-per-site`, tối đa 3 renderer, không nạp
-  extension"; "Chrome/Chromium 150+ trên Windows phải khởi động với
+* "Chrome automation cũng là trình duyệt làm việc hằng ngày";
+  "Chrome/Chromium 150+ trên Windows phải khởi động với
   `--disable-features=LaunchShellExecuteViaExplorer`".
 * "Chrome phải tự quản lý file theo profile và lưu thẳng vào Windows Known
   Folder Downloads."
@@ -235,7 +235,7 @@ def test_waiting_gives_up_after_the_grace_period(clock, monkeypatch):
 # --- preferences của profile automation ----------------------------------
 
 
-def test_the_automation_profile_turns_the_password_manager_off(
+def test_the_working_profile_keeps_chrome_password_defaults(
     tmp_path, monkeypatch
 ):
     downloads = tmp_path / "Downloads"
@@ -248,9 +248,9 @@ def test_the_automation_profile_turns_the_password_manager_off(
             encoding="utf-8"
         )
     )
-    assert written["profile"]["password_manager_enabled"] is False
-    assert written["credentials_enable_service"] is False
-    assert written["password_manager_leak_detection"] is False
+    assert "password_manager_enabled" not in written["profile"]
+    assert "credentials_enable_service" not in written
+    assert "password_manager_leak_detection" not in written
 
 
 def test_the_automation_profile_points_downloads_at_the_known_folder(
@@ -287,7 +287,7 @@ def test_an_existing_preferences_file_keeps_its_other_settings(
 
     written = json.loads(path.read_text(encoding="utf-8"))
     assert written["intl"]["accept_languages"] == "vi"
-    assert written["credentials_enable_service"] is False
+    assert "credentials_enable_service" not in written
 
 
 @pytest.mark.parametrize("content", ["{ hỏng", '"chuỗi"', "[1, 2]"])
@@ -301,9 +301,9 @@ def test_a_corrupt_preferences_file_is_rebuilt(tmp_path, monkeypatch, content):
 
     browser_module._disable_password_manager(tmp_path / "profile")
 
-    assert json.loads(path.read_text(encoding="utf-8"))[
-        "credentials_enable_service"
-    ] is False
+    assert "credentials_enable_service" not in json.loads(
+        path.read_text(encoding="utf-8")
+    )
 
 
 def test_a_non_dict_profile_section_is_replaced(tmp_path, monkeypatch):
@@ -319,11 +319,54 @@ def test_a_non_dict_profile_section_is_replaced(tmp_path, monkeypatch):
     browser_module._disable_password_manager(tmp_path / "profile")
 
     written = json.loads(path.read_text(encoding="utf-8"))
-    assert written["profile"]["password_manager_enabled"] is False
+    assert "password_manager_enabled" not in written["profile"]
     assert written["download"]["directory_upgrade"] is True
 
 
 # --- mở Chrome ------------------------------------------------------------
+
+
+def test_working_profile_allows_wfx_popups_and_multiple_downloads_only(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(browser_module, "_user_downloads_dir", lambda: tmp_path / "Downloads")
+    path = tmp_path / "profile" / "Default" / "Preferences"
+    path.parent.mkdir(parents=True)
+    other = {"https://other.test:443,*": {"setting": 2}}
+    path.write_text(json.dumps({"profile": {"content_settings": {"exceptions": {
+        "popups": other, "automatic_downloads": other,
+    }}}}), encoding="utf-8")
+
+    browser_module._configure_working_profile(tmp_path / "profile")
+
+    rules = json.loads(path.read_text(encoding="utf-8"))["profile"]["content_settings"]["exceptions"]
+    for name in ("popups", "automatic_downloads"):
+        assert rules[name] == {
+            **other,
+            "https://prosports.worldfashionexchange.com:443,*": {"setting": 1},
+        }
+
+
+def test_password_migration_runs_once_then_respects_user_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(browser_module, "_user_downloads_dir", lambda: tmp_path / "Downloads")
+    path = tmp_path / "profile" / "Default" / "Preferences"
+    path.parent.mkdir(parents=True)
+    disabled = {"profile": {"password_manager_enabled": False},
+                "credentials_enable_service": False, "password_manager_leak_detection": False}
+    path.write_text(json.dumps(disabled), encoding="utf-8")
+    browser_module._configure_working_profile(tmp_path / "profile")
+    migrated = json.loads(path.read_text(encoding="utf-8"))
+    assert "password_manager_enabled" not in migrated["profile"]
+    assert "credentials_enable_service" not in migrated
+    assert "password_manager_leak_detection" not in migrated
+
+    # Người dùng chủ động tắt lại trong Chrome: không được reset ở lần mở sau.
+    path.write_text(json.dumps(disabled), encoding="utf-8")
+    browser_module._configure_working_profile(tmp_path / "profile")
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["profile"]["password_manager_enabled"] is False
+    assert saved["credentials_enable_service"] is False
+    assert saved["password_manager_leak_detection"] is False
 
 
 def _wire_launch(monkeypatch, tmp_path, *, ready_after=True):
@@ -334,7 +377,7 @@ def _wire_launch(monkeypatch, tmp_path, *, ready_after=True):
         lambda command, **_kwargs: launched.append(list(command)),
     )
     monkeypatch.setattr(
-        browser_module, "_disable_password_manager", lambda _dir: None
+        browser_module, "_configure_working_profile", lambda _dir: None
     )
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     states = [False, ready_after]
@@ -347,7 +390,7 @@ def _wire_launch(monkeypatch, tmp_path, *, ready_after=True):
     return launched
 
 
-def test_chrome_is_launched_with_the_memory_and_shell_flags(
+def test_chrome_is_launched_with_normal_features_and_native_shell(
     tmp_path, monkeypatch
 ):
     _clear_env(monkeypatch)
@@ -357,9 +400,9 @@ def test_chrome_is_launched_with_the_memory_and_shell_flags(
     browser_module._start_persistent_chrome(_quiet())
 
     command = launched[0]
-    assert "--process-per-site" in command
-    assert "--renderer-process-limit=3" in command
-    assert "--disable-extensions" in command
+    assert "--process-per-site" not in command
+    assert "--renderer-process-limit=3" not in command
+    assert "--disable-extensions" not in command
     assert any(
         "LaunchShellExecuteViaExplorer" in argument for argument in command
     )

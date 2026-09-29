@@ -92,11 +92,11 @@ def test_chrome_launch_does_not_force_a_window_size():
     assert '"--window-size' not in SOURCE
 
 
-def test_chrome_launch_caps_renderer_count_for_8gb_machines():
-    assert '"--renderer-process-limit=3"' in SOURCE
-    assert '"--process-per-site"' in SOURCE
-    assert '"--disable-background-networking"' in SOURCE
-    assert '"--disable-extensions"' in SOURCE
+def test_working_chrome_keeps_normal_browser_features():
+    assert '"--renderer-process-limit=3"' not in SOURCE
+    assert '"--process-per-site"' not in SOURCE
+    assert '"--disable-background-networking"' not in SOURCE
+    assert '"--disable-extensions"' not in SOURCE
 
 
 def test_sale_asn_new_keeps_or_selects_required_values():

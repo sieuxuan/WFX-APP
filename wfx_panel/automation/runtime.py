@@ -469,6 +469,7 @@ class AutomationRuntime:
                 no_defaults=True,
             )
             self._restore_native_download_behavior(browser)
+            self._preserve_native_dialogs(browser)
             return browser
         self.checkpoint()
         if self._browser is not None:
@@ -484,9 +485,22 @@ class AutomationRuntime:
             no_defaults=True,
         )
         self._restore_native_download_behavior(browser)
+        self._preserve_native_dialogs(browser)
         self._browser = browser
         self._track_downloads(self._browser)
         return self._browser
+
+    @staticmethod
+    def _preserve_native_dialogs(browser: Browser) -> None:
+        """Giữ alert/confirm/prompt ở mọi tab, kể cả flow chỉ đọc và popup mới.
+
+        Playwright tự dismiss nếu không có listener. Gắn ở context ngay khi
+        attach để không phụ thuộc từng flow có gọi _attach_dialog_handler hay
+        không. Không lấy focus từ tác vụ nền; handler riêng của flow vẫn có thể
+        log hoặc xử lý xác nhận thuộc chính thao tác automation đó.
+        """
+        for context in browser.contexts:
+            context.on("dialog", lambda _dialog: None)
 
     def _restore_native_download_behavior(self, browser: Browser) -> None:
         """Xóa override artifact cũ để Chrome dùng Download Manager native."""

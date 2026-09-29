@@ -291,10 +291,16 @@ Mỗi nút trong module là một flow riêng:
 
 ### Giới hạn bộ nhớ
 
-- Chrome automation chạy `--process-per-site`, tối đa 3 renderer, không nạp
-  extension và tắt các dịch vụ nền không cần cho WFX; không giới hạn V8 heap
-  cứng vì grid lớn có thể cần bộ nhớ đột biến. Trước khi nhả CDP sau mỗi flow,
-  runtime yêu cầu GC cho từng page nhưng không reload/đóng tab.
+- Chrome automation cũng là trình duyệt làm việc hằng ngày: không ép giới hạn
+  renderer, không tắt extension, sync, dịch vụ nền hoặc popup lưu mật khẩu.
+  Profile riêng cho phép popup và tải nhiều file từ origin WFX; website khác
+  giữ quyền Chrome thông thường. Gỡ cấu hình tắt Password Manager của bản cũ
+  đúng một lần, sau đó giữ lựa chọn của người dùng. Trước khi nhả CDP sau mỗi
+  flow, runtime yêu cầu GC cho từng page nhưng không reload/đóng tab.
+- Ngay khi kết nối CDP, runtime gắn listener dialog ở context để giữ nguyên
+  alert/confirm/prompt cho mọi tab và popup mới, kể cả flow chỉ đọc chưa gắn
+  handler riêng. Listener chung không tự accept/dismiss hoặc lấy focus. Chỉ
+  handler của một thao tác automation cụ thể mới được xử lý xác nhận của nó.
 - Chrome/Chromium 150+ trên Windows phải khởi động với
   `--disable-features=LaunchShellExecuteViaExplorer` để tránh hồi quy Chromium
   làm `Mở file` và `Hiện trong thư mục` im lặng không chạy dù download history

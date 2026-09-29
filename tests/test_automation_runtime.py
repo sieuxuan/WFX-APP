@@ -71,6 +71,29 @@ class FakeDownload:
         return self.artifact_path
 
 
+@pytest.mark.parametrize("in_worker", [False, True])
+def test_every_cdp_connection_preserves_dialogs_without_a_flow_handler(in_worker):
+    worker = runtime.AutomationRuntime()
+    if in_worker:
+        worker._thread_id = threading.get_ident()
+    browser = FakeBrowser()
+    context = browser.contexts[0]
+
+    class Chromium:
+        def connect_over_cdp(self, *_args, **_kwargs):
+            return browser
+
+    class Driver:
+        chromium = Chromium()
+
+    worker.connect_browser(Driver(), "http://localhost:9222")
+    if in_worker:
+        worker.connect_browser(Driver(), "http://localhost:9222")
+    assert len(context.handlers["dialog"]) == 1
+    # Bất kỳ dialog/tab nào đều được giữ, không gọi accept/dismiss/lấy focus.
+    context.emit("dialog", object())
+
+
 class FakeBrowser:
     def __init__(self):
         self.contexts = [FakeContext()]

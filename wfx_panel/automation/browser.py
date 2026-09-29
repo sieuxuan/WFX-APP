@@ -1,9 +1,8 @@
-"""Phát hiện/khởi chạy/kết nối trình duyệt automation cho WFX.
-
-Tách nguyên văn từ login.py — không đổi logic.
-"""
+"""Phát hiện, mở và kết nối trình duyệt dùng chung cho làm việc và automation."""
 
 from __future__ import annotations
+
+from urllib.parse import urlsplit
 
 from wfx_panel.atomic_io import write_json_atomic
 from wfx_panel.automation._common import (
@@ -163,14 +162,8 @@ def _wait_for_chrome_ready(timeout_s: float) -> bool:
         _sleep(0.25)
 
 
-def _disable_password_manager(profile_dir: Path) -> None:
-    """Cấu hình Password Manager và Downloads cho profile automation WFX.
-
-    Không thay đổi profile Chrome/Edge cá nhân. Chromium đọc các preference
-    này trước khi tạo cửa sổ đầu tiên, vì vậy popup Save/Remember password
-    không xuất hiện sau thao tác login tự động và Downloads history luôn có
-    một thư mục thật để mở file hoặc hiện trong Explorer.
-    """
+def _configure_working_profile(profile_dir: Path) -> None:
+    """Chuẩn bị profile làm việc trước khi Chrome mở, giữ các tính năng native."""
     preferences_path = profile_dir / "Default" / "Preferences"
     preferences_path.parent.mkdir(parents=True, exist_ok=True)
     preferences: dict[str, Any] = {}
@@ -186,9 +179,34 @@ def _disable_password_manager(profile_dir: Path) -> None:
     if not isinstance(profile, dict):
         profile = {}
         preferences["profile"] = profile
-    profile["password_manager_enabled"] = False
-    preferences["credentials_enable_service"] = False
-    preferences["password_manager_leak_detection"] = False
+    # Bản cũ ép tắt Password Manager. Gỡ đúng một lần để trả lại mặc định;
+    # những lần mở sau phải tôn trọng lựa chọn người dùng trong Chrome.
+    migration_path = profile_dir / "wfx-working-browser.json"
+    if not migration_path.exists():
+        profile.pop("password_manager_enabled", None)
+        preferences.pop("credentials_enable_service", None)
+        preferences.pop("password_manager_leak_detection", None)
+
+    # WFX mở Article/report bằng window.open sau các request bất đồng bộ và
+    # có thể tải nhiều file trong một thao tác. Chỉ cấp quyền cho origin WFX,
+    # giữ nguyên cơ chế hỏi/chặn thông thường trên các website khác.
+    origin = urlsplit(URL)
+    port = origin.port or (443 if origin.scheme == "https" else 80)
+    pattern = f"{origin.scheme}://{origin.hostname}:{port},*"
+    content_settings = profile.setdefault("content_settings", {})
+    if not isinstance(content_settings, dict):
+        content_settings = {}
+        profile["content_settings"] = content_settings
+    exceptions = content_settings.setdefault("exceptions", {})
+    if not isinstance(exceptions, dict):
+        exceptions = {}
+        content_settings["exceptions"] = exceptions
+    for name in ("popups", "automatic_downloads"):
+        rules = exceptions.setdefault(name, {})
+        if not isinstance(rules, dict):
+            rules = {}
+            exceptions[name] = rules
+        rules[pattern] = {"setting": 1}
     downloads_dir = _user_downloads_dir()
     try:
         downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -203,6 +221,12 @@ def _disable_password_manager(profile_dir: Path) -> None:
     download["prompt_for_download"] = False
 
     write_json_atomic(preferences_path, preferences, separators=(",", ":"))
+    if not migration_path.exists():
+        write_json_atomic(migration_path, {"version": 1})
+
+
+# Giữ hợp đồng import của login.py và các caller cũ.
+_disable_password_manager = _configure_working_profile
 
 
 def _start_persistent_chrome(
@@ -228,7 +252,7 @@ def _start_persistent_chrome(
     local_app_data = Path(os.getenv("LOCALAPPDATA", str(Path.home())))
     profile_dir = local_app_data / "WFX-Automation" / "ChromeProfile"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    _disable_password_manager(profile_dir)
+    _configure_working_profile(profile_dir)
 
     creation_flags = 0
     if os.name == "nt":
@@ -244,22 +268,12 @@ def _start_persistent_chrome(
             f"--user-data-dir={profile_dir}",
             "--no-first-run",
             "--no-default-browser-check",
-            "--disable-save-password-bubble",
-            "--disable-background-networking",
-            "--disable-component-update",
-            "--disable-default-apps",
-            "--disable-extensions",
-            "--disable-sync",
-            "--metrics-recording-only",
-            "--no-service-autorun",
-            "--process-per-site",
-            "--renderer-process-limit=3",
             # Chromium 150+ chuyển ShellExecute qua Explorer. Trên một số phiên
             # Windows (đặc biệt app/RemoteApp) đường này im lặng không mở được
             # cả file lẫn "Hiện trong thư mục", dù file và History đều đúng.
             # Dùng lại đường ShellExecute trực tiếp chỉ ảnh hưởng thao tác mở
             # download; không đổi sandbox, profile hay lifecycle automation.
-            "--disable-features=PasswordManagerOnboarding,PasswordManagerEnableAccountStorage,PasswordLeakDetection,MediaRouter,OptimizationHints,LaunchShellExecuteViaExplorer",
+            "--disable-features=LaunchShellExecuteViaExplorer",
             URL,
         ],
         stdin=subprocess.DEVNULL,
