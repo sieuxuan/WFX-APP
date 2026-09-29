@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.1.1",
+    "date": "2026-09-29",
+    "highlights": [
+      {
+        "title": "Dùng Chrome làm việc trực tiếp trên WFX",
+        "body": "Trình duyệt làm việc giữ các tính năng Chrome thông thường, gồm tiện ích, đồng bộ và lưu mật khẩu. Cửa sổ Article, báo cáo và tải nhiều file từ WFX được cho phép; file tải xuống vẫn dùng được Mở file và Hiện trong thư mục. Sau khi cập nhật, hãy lưu công việc rồi đóng và mở lại trình duyệt làm việc để áp dụng.",
+        "entry": "bat-dau-trinh-duyet"
+      },
+      {
+        "title": "Giữ thông báo WFX khi automation kết nối",
+        "body": "Hộp thông báo, xác nhận và nhập liệu của WFX được giữ để bạn xử lý trên cả tab đang mở và cửa sổ mới. Các thao tác tự động có bước xác nhận riêng tiếp tục xử lý theo chức năng đã chọn.",
+        "entry": "bat-dau-trinh-duyet"
+      },
+      {
+        "title": "GDN nhận đúng file Excel đã tải xong",
+        "body": "Bước xuất báo cáo GDN nhận được file Excel Chrome lưu vào Downloads ngay cả khi trình duyệt không gửi thông báo tải xuống. App tiếp tục xử lý thay vì chờ hết thời gian rồi báo lỗi dù file đã có trên máy.",
+        "entry": "don-hang-gdn-dispatch"
+      }
+    ]
+  },
+  {
     "version": "1.1.0",
     "date": "2026-09-22",
     "highlights": [

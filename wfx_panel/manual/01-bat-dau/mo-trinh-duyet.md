@@ -1,6 +1,8 @@
 ## Dùng để làm gì
 
-Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công việc trên WFX.
+Mở cửa sổ trình duyệt để vừa làm việc trực tiếp trên WFX, vừa dùng các thao tác
+tự động của WFX Smart. Bạn có thể mở tab, tải file, dùng tiện ích và làm việc
+trong cửa sổ này như Chrome thông thường.
 
 ## Các bước
 
@@ -23,6 +25,18 @@ Mở cửa sổ trình duyệt mà WFX Smart dùng để thực hiện công vi�
 > File bạn tự tải trên WFX và các download thông thường luôn được Chrome lưu
 > vào thư mục `Downloads` chuẩn của Windows. Riêng module có hộp thoại chọn nơi
 > lưu sẽ giữ đúng thư mục và tên file bạn đã chọn.
+>
+> Bạn có thể bấm `Mở file` hoặc `Hiện trong thư mục` trong danh sách tải xuống
+> của Chrome (`Ctrl+J`), kể cả sau khi tác vụ tự động kết thúc. File sẽ mở bằng
+> ứng dụng Windows đã chọn cho loại file đó, chẳng hạn Excel hoặc trình đọc PDF.
+>
+> Cửa sổ Article, báo cáo và tải nhiều file của WFX được cho phép. Hộp thông báo,
+> xác nhận và nhập liệu của WFX vẫn hiện để bạn xử lý khi làm việc trực tiếp.
+> Với thao tác tự động có bước xác nhận riêng, WFX Smart xử lý bước đó theo
+> chức năng bạn đã chọn. Chờ tác vụ tự động xong trước khi sửa cùng màn hình.
+>
+> Sau khi cập nhật, hãy lưu công việc rồi đóng và mở lại trình duyệt làm việc
+> để áp dụng cấu hình Chrome mới.
 
 ## Gặp lỗi thì sao
 
