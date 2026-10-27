@@ -315,9 +315,19 @@ Mỗi nút trong module là một flow riêng:
   đang mở và bảng tham số còn sẵn sàng thì phải tái sử dụng DOM hiện tại; khi
   đổi report, điều hướng tab report đó thay vì tạo thêm tab. Probe stale/lỗi
   phải fallback về reload đầy đủ, không được trả thành công từ context cũ.
-- WebView2 của panel/bubble dùng tối đa 3 renderer qua
-  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. Dùng `setdefault` để cấu hình quản trị
-  viên vẫn có quyền override.
+- WebView2 của panel/bubble dùng tối đa 3 renderer. pywebview 5.x luôn gán
+  `CoreWebView2CreationProperties.AdditionalBrowserArguments` nên WebView2 bỏ
+  qua biến môi trường `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`; sửa props sau
+  `EdgeChrome.__init__` cũng quá muộn vì chính `__init__` đã gọi
+  `EnsureCoreWebView2Async`. Vì vậy `wfx_panel/app/webview2_args.py` thay class
+  options trong `webview.platforms.edgechromium` bằng subclass .NET chặn từng
+  lần pywebview gán tham số và ghép thêm cờ của app, giữ nguyên cờ pywebview tự
+  thêm (`--allow-file-access-from-files`, `--remote-debugging-port`) và gộp danh
+  sách `--enable/--disable-features`. `PanelApp.run()` cài patch ngay trước
+  `webview.start`; lỗi patch chỉ ghi crash log, không chặn app. App không ghi
+  biến môi trường đó nữa (Chrome automation là tiến trình con sẽ kế thừa); nếu
+  quản trị viên đã đặt nó từ ngoài thì giá trị đó thay toàn bộ cờ mặc định của
+  app. Kiểm chứng bằng command line `msedgewebview2.exe` của bản build.
 - Bubble phải có fallback Win32 bắt chuột phải, không chỉ dựa vào sự kiện
   `contextmenu` của WebView. Menu chuột phải là tool-window pywebview riêng
   nhưng chỉ được tạo khi người dùng mở lần đầu, không tạo sẵn lúc startup;
