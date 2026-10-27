@@ -5,8 +5,11 @@ Flow gồm hai API:
 - `POST /webhook/wfx-sync-publish`: máy Admin thay toàn bộ snapshot.
 - `GET /webhook/wfx-sync-latest`: app người dùng lấy snapshot mới nhất.
 
-Article có đúng ba cột nghiệp vụ: `article_code`, `article_name` và
-`buyer_reference`. Dữ liệu Style dùng danh sách option chung và một danh sách
+Article có bốn cột nghiệp vụ: `article_code`, `article_name`,
+`buyer_reference` và `article_category`. Category là bắt buộc để Costing lọc
+đúng `Textiles/Fabric`/`Trims`; database tạo từ bản schema cũ chỉ cần chạy lại
+`n8n/wfx-sync-schema.sql` (có `ADD COLUMN IF NOT EXISTS`) và import lại
+workflow. Dữ liệu Style dùng danh sách option chung và một danh sách
 riêng cho quan hệ Product Group → Sub-category.
 
 ## 1. Tạo database/schema
@@ -76,7 +79,8 @@ Sau đó Save và **Activate** workflow. Dùng Production URL, không dùng Test
     {
       "article_code": "SWN000123",
       "article_name": "Men Training Tee",
-      "buyer_reference": "BUYER-TEE-01"
+      "buyer_reference": "BUYER-TEE-01",
+      "article_category": "Apparel"
     }
   ],
   "style_options": [

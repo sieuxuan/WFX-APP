@@ -348,3 +348,81 @@ def test_https_url_validator_matches_the_sibling_sync_modules():
         except ValueError:
             continue
         raise AssertionError(f"phải từ chối {rejected!r}")
+
+
+def test_published_category_survives_the_round_trip_for_a_new_article(
+    tmp_path,
+    monkeypatch,
+):
+    admin_dir = tmp_path / "admin"
+    user_dir = tmp_path / "user"
+    admin_dir.mkdir()
+    user_dir.mkdir()
+    _configure(admin_dir, monkeypatch)
+    _seed_caches(admin_dir)
+    article_library.save_server_articles(
+        admin_dir,
+        [
+            {
+                "article_code": "F9999",
+                "article_name": "Brand New Fleece",
+                "buyer_reference": "",
+                "article_category": "Textiles/Fabric",
+            }
+        ],
+        version="admin",
+    )
+    monkeypatch.setenv("WFX_SYNC_ADMIN_KEY", "admin-test-key")
+    captured = {}
+
+    def publish(request, timeout):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return _Response({"ok": True, "version": "v3"})
+
+    monkeypatch.setattr(reference_sync, "urlopen", publish)
+    assert reference_sync.publish_current(admin_dir, lambda _line: None)["ok"]
+    assert captured["body"]["articles"] == [
+        {
+            "article_code": "F9999",
+            "article_name": "Brand New Fleece",
+            "buyer_reference": "",
+            "article_category": "Textiles/Fabric",
+        }
+    ]
+
+    # Máy user chưa từng thấy F9999 nên không có cache nào để ghép Category.
+    _configure(user_dir, monkeypatch)
+    _seed_caches(user_dir)
+
+    def read_latest(request, timeout):
+        return _Response(
+            {
+                "ok": True,
+                "version": "v3",
+                "not_modified": False,
+                "articles": captured["body"]["articles"],
+                "style_options": captured["body"]["style_options"],
+                "style_subcategories": captured["body"]["style_subcategories"],
+            }
+        )
+
+    monkeypatch.setattr(reference_sync, "urlopen", read_latest)
+    assert reference_sync.sync_latest(user_dir, lambda _line: None, force=True)["ok"]
+    options = article_library.load_cached(user_dir)["sections"][0]["options"]
+    assert options[0]["article_category"] == "Textiles/Fabric"
+
+
+def test_server_schema_and_validator_carry_article_category():
+    root = Path(__file__).resolve().parents[1] / "n8n"
+    schema = (root / "wfx-sync-schema.sql").read_text(encoding="utf-8")
+    workflow = json.loads((root / "wfx-sync-api.json").read_text(encoding="utf-8"))
+    validator = next(
+        node["parameters"]["jsCode"]
+        for node in workflow["nodes"]
+        if node["name"] == "Validate Publish Payload"
+    )
+
+    assert "ADD COLUMN IF NOT EXISTS article_category" in schema
+    assert "article_category text" in schema
+    assert "'article_category', article_category" in schema
+    assert "article_category: text(row?.article_category" in validator

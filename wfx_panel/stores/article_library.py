@@ -483,10 +483,11 @@ def save_server_articles(
     version: str,
     generated_at: str = "",
 ) -> dict[str, Any]:
-    """Lưu list 3 cột từ PostgreSQL và giữ Category từ cache đóng gói.
+    """Lưu list Article từ PostgreSQL, Category trống thì lấy từ cache cũ.
 
-    API chia sẻ cố ý chỉ có Code/Name/Buyer Reference. Category vẫn cần cho
-    bộ lọc Catalog, nên app ghép lại từ CSV đóng gói/cache cũ theo mã Article.
+    Server đã publish Category từ khi schema có cột `article_category`; snapshot
+    publish trước đó (hoặc server chưa chạy lại schema) vẫn chỉ có ba cột, nên
+    app ghép Category từ CSV đóng gói/cache cũ theo mã Article.
     """
     existing = load_cached(base_dir)
     category_by_code: dict[str, str] = {}
