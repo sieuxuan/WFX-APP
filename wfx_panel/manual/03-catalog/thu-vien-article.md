@@ -24,16 +24,5 @@ hoặc điền file Costing.
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Chưa có gợi ý | Bạn vẫn có thể nhập Article Code hoặc tên Article bằng tay. |
-| Gợi ý chưa có Article mới | Bấm `Đồng bộ ngay`; nếu server chưa có, báo Admin publish snapshot mới. |
+| Gợi ý chưa có Article mới | Bấm `Đồng bộ ngay`; nếu vẫn chưa có, báo nhóm hỗ trợ. |
 
-## Dành cho Admin
-
-1. Đăng nhập tài khoản WFX có quyền quản trị.
-2. Mở `Cài đặt > Tài khoản`.
-3. Nhập Admin key một lần và bấm `Lưu key`. Key được mã hóa bằng Windows DPAPI,
-   chỉ dùng được bởi đúng tài khoản Windows trên máy đó.
-4. Sau khi cache Article và dropdown Style đã đúng, bấm
-   `Đẩy lên server` và xác nhận.
-
-User khác sẽ nhận snapshot mới ở lần tự đồng bộ tháng kế tiếp hoặc ngay khi họ
-bấm `Đồng bộ ngay`.

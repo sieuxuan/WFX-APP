@@ -27,8 +27,7 @@ Chọn cách WFX Smart hiển thị và quyết định những thông báo bạ
 
 > [!luuy]
 > `Chế độ quản trị` chỉ hiện khi tài khoản được cấp quyền. Bật mục này để xem
-> các module Admin dành cho bạn. Phần `Dữ liệu Article & Style` cũng chỉ hiện
-> với tài khoản có quyền quản trị.
+> các module Admin dành cho bạn.
 
 ## Gặp lỗi thì sao
 

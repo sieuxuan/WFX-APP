@@ -783,14 +783,6 @@
           "covers": { "settings": ["check-update-button"] }
         },
         {
-          "id": "su-co-do-nguon-catalog",
-          "title": "Dò nguồn dữ liệu Catalog",
-          "summary": "Admin ghi lại cách WFX nạp danh sách Article để chẩn đoán.",
-          "file": "07-su-co/do-nguon-du-lieu-catalog.md",
-          "keywords": ["chẩn đoán", "quản trị", "catalog", "article"],
-          "covers": { "settings": ["catalog-probe-button"] }
-        },
-        {
           "id": "su-co-tra-ma-loi",
           "title": "Tra mã lỗi",
           "summary": "Tìm ý nghĩa và cách xử lý cho mã kỹ thuật.",
