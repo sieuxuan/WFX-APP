@@ -79,7 +79,9 @@ from wfx_panel.automation.modules.context import (  # noqa: F401
     _frame_serves_search_spec,
     _frame_with_visible_context,
     _grid_reports_no_rows,
+    _grid_signature,
     _module_search_is_loading,
+    _wait_grid_reflects_search,
     _wait_module_search_settled,
 )
 from wfx_panel.automation.modules.creation import (  # noqa: F401

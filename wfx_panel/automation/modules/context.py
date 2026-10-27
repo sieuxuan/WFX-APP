@@ -14,7 +14,10 @@ from wfx_panel.automation._common import (
     _wait,
     time,
 )
-from wfx_panel.automation.modules.constants import _MODULE_LOADING_SELECTOR
+from wfx_panel.automation.modules.constants import (
+    _MODULE_LOADING_SELECTOR,
+    MODULE_GRID_POLL_MS,
+)
 from wfx_panel.automation.modules.text import _normalise_search_text
 from wfx_panel.automation.search_specs import ModuleSearchSpec
 
@@ -172,8 +175,89 @@ def _wait_module_search_settled(
     )
 
 
+# Chữ ký kết quả đang hiển thị của mọi AG Grid trong frame: overlay no-rows,
+# số dòng và nội dung dòng đầu. Đủ để biết bảng đã đổi so với trước lúc gõ.
+# Đo trên WFX: overlay no-rows bật trước, dòng cũ còn nằm trên DOM thêm gần một
+# giây (hiệu ứng xóa dòng). AG Grid chỉ bật overlay khi không còn dòng dữ liệu,
+# nên overlay là căn cứ; dòng đang mờ dần không được tính.
+_GRID_SIGNATURE_JS = """roots => roots.map(root => {
+    const shown = element => {
+        if (!element || !element.isConnected) return false;
+        if (getComputedStyle(element).visibility === 'hidden') return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    };
+    if (!shown(root)) return '';
+    const noRows = [...root.querySelectorAll(
+        '.ag-overlay-no-rows-wrapper'
+    )].some(shown);
+    if (noRows) return 'empty';
+    const rows = [...root.querySelectorAll(
+        '.ag-center-cols-container .ag-row'
+    )].filter(shown);
+    const first = (rows[0]?.innerText || '').replace(/\\s+/g, ' ').slice(0, 120);
+    return `rows:${rows.length}:${first}`;
+}).join('|')"""
+
+
+def _grid_signature(frame: Frame) -> str:
+    """Chuỗi rỗng khi frame không có AG Grid hiển thị hoặc đã detach."""
+    try:
+        return str(
+            frame.locator(".ag-root-wrapper").evaluate_all(_GRID_SIGNATURE_JS)
+            or ""
+        ).strip("|")
+    except PlaywrightError:
+        return ""
+
+
+def _wait_grid_reflects_search(
+    page: Page,
+    frame: Frame,
+    before: str,
+    *,
+    change_timeout_s: float = 4.0,
+    stable_s: float = 0.6,
+    timeout_s: float = 8.0,
+) -> None:
+    """Chờ AG Grid vẽ kết quả của lượt lọc vừa gõ.
+
+    Đo trên WFX thật (Sale ASN): Floating Filter lọc phía server mất 1,9–2,9
+    giây và KHÔNG hiện lớp loading nào, nên chờ "hết loading" kết thúc trước khi
+    bảng đổi. Sau khi đổi, chữ ký phải đứng yên thêm `stable_s`. Bảng không đổi
+    sau `change_timeout_s` thì coi như kết quả trùng hệt lượt trước; riêng khi
+    bảng đang rỗng từ lượt trước thì chờ lâu hơn, vì đọc nhầm overlay cũ sẽ báo
+    "không có dòng" sai. Hết giờ không báo lỗi: đây chỉ là bước chờ, kết luận
+    vẫn do bước đọc kết quả.
+    """
+    if not before:
+        return
+    if before == "empty" and change_timeout_s > 0:
+        change_timeout_s = max(change_timeout_s, 4.5)
+    started = time.monotonic()
+    last = before
+    last_change = started
+    changed = False
+    while time.monotonic() - started < timeout_s:
+        current = _grid_signature(frame)
+        if not current:
+            return
+        now = time.monotonic()
+        if current != last:
+            last = current
+            last_change = now
+        if current != before:
+            changed = True
+        if changed and now - last_change >= stable_s:
+            return
+        if not changed and now - started >= change_timeout_s:
+            return
+        _wait(page, MODULE_GRID_POLL_MS)
+
+
 # AG Grid chỉ hiện overlay no-rows khi datasource thật sự rỗng; header và ô lọc
-# vẫn còn nên chỉ nhìn số dòng DOM là không đủ để kết luận.
+# vẫn còn nên chỉ nhìn số dòng DOM là không đủ để kết luận. Không đòi DOM hết
+# dòng: dòng cũ còn mờ dần gần một giây sau khi overlay đã bật.
 _GRID_REPORTS_NO_ROWS_JS = """roots => roots.some(root => {
     const shown = element => {
         if (!element || !element.isConnected) return false;
@@ -182,13 +266,9 @@ _GRID_REPORTS_NO_ROWS_JS = """roots => roots.some(root => {
         return rect.width > 0 && rect.height > 0;
     };
     if (!shown(root)) return false;
-    const noRows = [...root.querySelectorAll(
+    return [...root.querySelectorAll(
         '.ag-overlay-no-rows-wrapper, .ag-overlay-no-rows-center'
     )].some(shown);
-    const rows = [...root.querySelectorAll(
-        '.ag-center-cols-container .ag-row'
-    )].some(shown);
-    return noRows && !rows;
 })"""
 
 

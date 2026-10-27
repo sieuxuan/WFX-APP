@@ -457,3 +457,97 @@ def test_a_frame_that_detaches_never_claims_the_grid_is_empty(clock):
     page = ContextPage(clock=clock)
 
     assert module_context._grid_reports_no_rows(page, frame) is False
+
+
+# --- chờ AG Grid vẽ kết quả của lượt gõ ---------------------------------
+
+
+def _signatures(monkeypatch, clock, timeline):
+    """`timeline`: danh sách (giây, chữ ký) — chữ ký đổi tại mốc thời gian đó."""
+    started = clock.monotonic()
+
+    def read(_frame):
+        elapsed = clock.monotonic() - started
+        current = timeline[0][1]
+        for at, signature in timeline:
+            if elapsed >= at:
+                current = signature
+        return current
+
+    monkeypatch.setattr(module_context, "_grid_signature", read)
+    return started
+
+
+def test_the_wait_ends_once_the_new_result_has_stayed_put(monkeypatch, clock):
+    """Đo trên WFX: kết quả về sau ~2,5 giây mà không có loading."""
+    started = _signatures(
+        monkeypatch, clock, [(0, "rows:27:A"), (2.5, "rows:3:B")]
+    )
+
+    module_context._wait_grid_reflects_search(
+        ContextPage(clock=clock), object(), "rows:27:A"
+    )
+
+    elapsed = clock.monotonic() - started
+    assert 3.1 <= elapsed < 3.6
+
+
+def test_an_intermediate_state_restarts_the_stability_window(monkeypatch, clock):
+    started = _signatures(
+        monkeypatch,
+        clock,
+        [(0, "rows:27:A"), (1.0, "rows:40:C"), (1.4, "empty")],
+    )
+
+    module_context._wait_grid_reflects_search(
+        ContextPage(clock=clock), object(), "rows:27:A"
+    )
+
+    assert clock.monotonic() - started >= 2.0
+
+
+def test_an_unchanged_grid_is_accepted_after_the_change_timeout(
+    monkeypatch, clock
+):
+    started = _signatures(monkeypatch, clock, [(0, "rows:27:A")])
+
+    module_context._wait_grid_reflects_search(
+        ContextPage(clock=clock), object(), "rows:27:A"
+    )
+
+    assert 4.0 <= clock.monotonic() - started < 4.5
+
+
+def test_a_grid_already_empty_waits_longer_before_trusting_the_overlay(
+    monkeypatch, clock
+):
+    """Overlay rỗng của lượt trước đọc nhầm là báo "không có dòng" sai."""
+    started = _signatures(monkeypatch, clock, [(0, "empty")])
+
+    module_context._wait_grid_reflects_search(
+        ContextPage(clock=clock), object(), "empty"
+    )
+
+    assert clock.monotonic() - started >= 4.5
+
+
+def test_no_change_timeout_means_the_current_grid_is_the_result(
+    monkeypatch, clock
+):
+    started = _signatures(monkeypatch, clock, [(0, "empty")])
+
+    module_context._wait_grid_reflects_search(
+        ContextPage(clock=clock), object(), "empty", change_timeout_s=0.0
+    )
+
+    assert clock.monotonic() - started < 0.2
+
+
+def test_a_screen_without_ag_grid_is_not_waited_on(monkeypatch, clock):
+    started = _signatures(monkeypatch, clock, [(0, "rows:1:A")])
+
+    module_context._wait_grid_reflects_search(
+        ContextPage(clock=clock), object(), ""
+    )
+
+    assert clock.monotonic() - started == 0
