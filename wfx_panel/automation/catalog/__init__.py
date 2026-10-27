@@ -67,6 +67,9 @@ from wfx_panel.automation.catalog.downloads import (  # noqa: F401
     _safe_attachment_name,
     download_catalog_file,
 )
+from wfx_panel.automation.catalog.endpoint_probe import (  # noqa: F401
+    probe_catalog_data_source,
+)
 from wfx_panel.automation.catalog.files import (  # noqa: F401
     _ATTACHMENT_ROWS_JS,
     _ATTACHMENT_TABLE_SELECTOR,
@@ -149,6 +152,7 @@ __all__ = [
     "open_catalog_folder",
     "open_catalog_master",
     "prepare_catalog_master",
+    "probe_catalog_data_source",
     "quick_find_catalog",
     "scan_catalog_files",
     "scan_catalog_folders",

@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from heapq import nsmallest
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wfx_panel import constants
@@ -24,6 +25,7 @@ from wfx_panel.controllers.catalog_folders import CatalogFolderController
 from wfx_panel.controllers.catalog_style import StyleImportController
 from wfx_panel.controllers.costing import CostingController
 from wfx_panel.stores import article_library
+from wfx_panel.version import APP_VERSION
 
 
 @dataclass(frozen=True)
@@ -745,4 +747,49 @@ class CatalogController:
                 str(result["article_code"]).strip().casefold(),
                 str(destination).casefold(),
             )
+        return result
+
+    def probe_data_source(self, category_name: str = "Apparel") -> dict:
+        """Chẩn đoán quản trị: ghi request nạp dữ liệu của Catalog Grid.
+
+        Chỉ đọc, kết quả là file JSON cục bộ trong ``diagnostics/``; không gửi
+        telemetry nội dung. Flow mở lại Master nên kết quả tìm cũ hết hiệu lực
+        giống ``prepare``.
+        """
+        panel = self._panel
+        category_name = str(category_name or "Apparel").strip() or "Apparel"
+        if panel._admin_access is not True:
+            return {
+                "ok": False,
+                "code": "ADMIN_ACCESS_DENIED",
+                "message": "Tài khoản WFX chưa có quyền quản trị.",
+            }
+
+        def action() -> dict:
+            self.result = None
+            self.active_article_destination = None
+            self.prepared_category = None
+            self.files_view.tokens.clear()
+            value = constants.CATEGORIES.get(category_name)
+            if value is None:
+                return {
+                    "ok": False,
+                    "code": "CATEGORY_UNKNOWN",
+                    "message": f"Category lạ: {category_name}",
+                }
+            return panel._login.probe_catalog_data_source(
+                category_name,
+                value,
+                Path(panel._base_dir) / "diagnostics",
+                panel._log,
+                app_version=APP_VERSION,
+            )
+
+        result = panel._run(
+            "probe_catalog_data_source",
+            action,
+            {"category_name": category_name},
+        )
+        if result.get("code") == "CATALOG_DATA_SOURCE_PROBED":
+            self.prepared_category = category_name
         return result

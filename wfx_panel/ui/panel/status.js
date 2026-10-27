@@ -101,6 +101,7 @@ function setAdminAccess(access, moduleIds, enabled) {
   if (syncCard) syncCard.hidden = !adminAccess;
   const syncAdmin = $(".reference-sync-admin");
   if (syncAdmin) syncAdmin.hidden = !adminAccess;
+  $$(".catalog-probe-row").forEach((row) => { row.hidden = !adminMode; });
   buildModules();
 }
 window.wfxSetAdminAccess = setAdminAccess;

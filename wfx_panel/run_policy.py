@@ -32,6 +32,7 @@ SESSION_OK = frozenset(
         "CATALOG_FOLDER_FALLBACK",
         "CATALOG_FOLDERS_SCANNED",
         "CATALOG_FOLDERS_CACHED",
+        "CATALOG_DATA_SOURCE_PROBED",
         "COSTING_CONTEXT_INSPECTED",
         "COSTING_FILE_VALID",
         "COSTING_EXPORTED",
@@ -144,6 +145,11 @@ NON_REPORTABLE_FAILURES = frozenset(
         "CATALOG_FOLDER_INVALID",
         "CATALOG_FOLDER_SCAN_IN_PROGRESS",
         "CATALOG_SCAN_ACCOUNT_CHANGED",
+        # Chẩn đoán quản trị: kết quả chỉ nằm trong file cục bộ, không báo lỗi
+        # tự động ra webhook.
+        "CATALOG_PROBE_NOT_READY",
+        "CATALOG_PROBE_FAILED",
+        "CATALOG_PROBE_WRITE_FAILED",
         "QUERY_REQUIRED",
         "INVALID_FILTER",
         "APPAREL_ONLY",
