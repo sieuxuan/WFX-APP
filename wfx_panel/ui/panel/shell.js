@@ -277,7 +277,8 @@ function showCatalogSpace(space, { focus = true } = {}) {
     if (catalogSpace === "costing") {
       $('[data-costing-action="import"]')?.focus();
     } else if (catalogSpace === "styles") {
-      $(".catalog-style-group")?.focus();
+      // `.catalog-style-group` là input hidden, không nhận focus.
+      $(".catalog-style-group-summary")?.focus();
     } else {
       $(".catalog-query")?.focus();
     }

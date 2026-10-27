@@ -28,13 +28,17 @@ WFX.
 > Ứng dụng tự tìm cột theo layout Catalog riêng của tài khoản và xóa filter cũ.
 
 > [!luuy]
-> Nếu chỉ có một kết quả, ứng dụng tự mở Style. Nếu có nhiều kết quả, bạn bấm
-> đúng dòng cần dùng trên màn hình WFX.
+> Nếu chỉ có một kết quả, ứng dụng tự mở Style. Nếu có nhiều kết quả, bảng
+> điều khiển hiện danh sách Article Code ngay dưới ô tìm; bấm đúng dòng cần
+> dùng. Nếu bạn vừa bấm `Costing`, `BOM` hoặc `File`, dòng bạn chọn sẽ mở
+> thẳng phần đó.
 
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Không tìm thấy kết quả | Kiểm tra lại Category, kiểu tìm và nội dung đã nhập rồi bấm `Tìm` lần nữa. |
-| Có nhiều Style gần giống nhau | Đọc Article Code trên WFX và bấm đúng dòng bạn cần. |
+| Có nhiều Style gần giống nhau | Bấm đúng Article Code trong danh sách hiện dưới ô tìm. |
 | Catalog chưa sẵn sàng | Bấm `Mở Catalog`, chờ danh sách hiện đủ rồi tìm lại. |
+| Không mở được Master | WFX chưa hiện danh sách sau vài lần bấm Master. Chờ WFX tải xong rồi bấm `Tìm` lại. |
+| Không chọn được Category | Kiểm tra tài khoản có quyền xem Category đó, rồi mở lại module. |

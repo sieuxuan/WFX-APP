@@ -360,9 +360,13 @@ class CatalogController:
     ) -> None:
         self.active_article_destination = None
         article_code = str(search_result.get("article_code") or "").strip()
+        # Popup Article không lên (CATALOG_DESTINATION_FAILED) vẫn là Style đã
+        # tìm đúng: giữ lại để lần bấm Costing/BOM sau probe popup trước, thay vì
+        # mở lại Catalog và lọc lần hai.
         if search_result.get("code") not in {
             "RESULT_OPENED",
             "CATALOG_DESTINATION_OPENED",
+            "CATALOG_DESTINATION_FAILED",
         } or not article_code:
             self.result = None
             return
