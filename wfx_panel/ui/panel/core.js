@@ -367,6 +367,7 @@ const BUSY_MESSAGES = {
   sync_reference_data: "Đang đồng bộ Article và Style từ server…",
   publish_reference_data: "Đang publish Article và Style lên server…",
   probe_catalog_data_source: "Đang dò nguồn dữ liệu Catalog…",
+  extract_catalog_articles: "Đang lấy toàn bộ Article từ WFX (khoảng 15–20 phút)…",
   login: "Đang đăng nhập WFX…",
 };
 // Nhãn tiếng Việt cho lịch sử tác vụ; tránh phơi tên hàm kỹ thuật ra người dùng.
@@ -395,6 +396,7 @@ const JOB_METHOD_LABELS = {
   sync_reference_data: "Đồng bộ Article và Style",
   publish_reference_data: "Publish Article và Style",
   probe_catalog_data_source: "Dò nguồn dữ liệu Catalog",
+  extract_catalog_articles: "Lấy Article từ WFX",
   open_sale_asn_new: "Sale ASN mới",
   scan_sale_asn_buyers: "Quét Buyer Sale ASN",
   scan_sale_asn_order_details: "Xuất PO đang mở",

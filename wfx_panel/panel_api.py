@@ -654,6 +654,11 @@ class PanelAPI:
     def probe_catalog_data_source(self, category_name: str = "Apparel") -> dict:
         return self._catalog.probe_data_source(category_name)
 
+    def extract_catalog_articles(
+        self, categories: list[str] | None = None, publish: bool = True
+    ) -> dict:
+        return self._catalog.extract_articles(categories, publish)
+
     def download_catalog_file(self, file_id: str) -> dict:
         return self._catalog.files_view.download_file(file_id)
 

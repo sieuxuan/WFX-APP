@@ -59,6 +59,9 @@ from wfx_panel.automation.catalog.article import (  # noqa: F401
     _refresh_article_context,
     open_catalog_destination,
 )
+from wfx_panel.automation.catalog.article_extract import (  # noqa: F401
+    extract_catalog_articles,
+)
 from wfx_panel.automation.catalog.downloads import (  # noqa: F401
     _CONTENT_RANGE_RE,
     _DOWNLOAD_CHUNK_SIZE,
@@ -145,6 +148,7 @@ from wfx_panel.automation.session import _session_is_active, login  # noqa: F401
 __all__ = [
     "ARTICLE_FILE_TAB_INDEXES",
     "download_catalog_file",
+    "extract_catalog_articles",
     "filter_and_open_catalog_code",
     "find_and_open_catalog_destination",
     "find_in_open_catalog",

@@ -134,6 +134,13 @@ DELEGATIONS = [
         ("Apparel",),
         {},
     ),
+    (
+        "_catalog",
+        "extract_articles",
+        "extract_catalog_articles",
+        (["Apparel"], False),
+        {},
+    ),
 ]
 
 
