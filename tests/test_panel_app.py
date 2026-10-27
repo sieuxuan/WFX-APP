@@ -1525,37 +1525,12 @@ def test_bubble_context_menu_can_hide_to_tray(monkeypatch):
     app.window = FakeWindow()
     app.bubble_window = FakeBubble()
     app._panel_visible = True
-    result = app.choose_bubble_menu("tray")
+    result = app.choose_bubble_menu("exit")
 
     assert result["code"] == "HIDDEN_TO_TRAY"
     assert ("bubble-hide",) in calls
     assert app._bubble_hidden is True
     assert app._panel_visible is False
-
-
-def test_bubble_context_menu_can_minimize_to_taskbar(monkeypatch):
-    import wfx_panel.panel_app as module
-
-    app = module.PanelApp()
-    calls = []
-
-    class FakeWindow:
-        def hide(self):
-            calls.append("panel-hide")
-
-    class FakeBubble:
-        def minimize(self):
-            calls.append("bubble-minimize")
-
-    app.window = FakeWindow()
-    app.bubble_window = FakeBubble()
-    app._panel_visible = True
-    result = app.choose_bubble_menu("taskbar")
-
-    assert result["code"] == "HIDDEN_TO_TASKBAR"
-    assert calls == ["panel-hide", "bubble-minimize"]
-    assert app._taskbar_minimize_requested is True
-    assert app._bubble_hidden is False
 
 
 def test_bubble_context_menu_shows_dedicated_dpi_aware_popup(monkeypatch):

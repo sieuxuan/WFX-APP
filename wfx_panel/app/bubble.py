@@ -304,9 +304,8 @@ class BubbleController:
         app = self._app
         self.dismiss_bubble_menu()
         crash_log.record("BUBBLE_CONTEXT_MENU_CHOICE", choice=action)
-        if action == "taskbar":
-            return app.minimize_to_taskbar()
-        if action == "tray":
+        # Menu chỉ còn `Thoát`: giấu bubble vào khay hệ thống, app vẫn chạy.
+        if action == "exit":
             app.hide_to_tray()
             return {
                 "ok": True,

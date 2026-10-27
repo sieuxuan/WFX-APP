@@ -396,6 +396,23 @@ def test_dismissing_a_menu_that_was_never_created_is_still_clean(
 # --- lựa chọn trong menu ------------------------------------------------
 
 
+def test_the_exit_choice_hides_the_bubble_to_the_tray(app, monkeypatch):
+    monkeypatch.setattr(app._bubble, "dismiss_bubble_menu", lambda: None)
+    hidden = []
+    monkeypatch.setattr(app, "hide_to_tray", lambda: hidden.append(True))
+
+    result = app.choose_bubble_menu("exit")
+
+    assert result["code"] == "HIDDEN_TO_TRAY"
+    assert hidden == [True]
+
+
+def test_the_old_taskbar_choice_is_no_longer_offered(app, monkeypatch):
+    monkeypatch.setattr(app._bubble, "dismiss_bubble_menu", lambda: None)
+
+    assert app.choose_bubble_menu("taskbar")["code"] == "MENU_ACTION_INVALID"
+
+
 def test_an_unknown_menu_choice_is_refused(app, monkeypatch):
     monkeypatch.setattr(app._bubble, "dismiss_bubble_menu", lambda: None)
 

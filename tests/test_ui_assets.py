@@ -481,13 +481,12 @@ def test_bubble_page_advertises_interactions():
     assert "kéo" in button
 
 
-def test_bubble_menu_has_two_real_actions_in_a_separate_window():
+def test_bubble_menu_has_only_the_exit_action_in_a_separate_window():
     html = (UI / "bubble_menu.html").read_text(encoding="utf-8")
     js = (UI / "bubble_menu.js").read_text(encoding="utf-8")
-    assert 'data-action="taskbar"' in html
-    assert 'data-action="tray"' in html
-    assert "Ẩn xuống taskbar" in html
-    assert "Thu vào system tray" in html
+    assert html.count('role="menuitem"') == 1
+    assert 'data-action="exit"' in html
+    assert "<span>Thoát</span>" in html
     assert "api()?.choose?.(action)" in js
     assert "api()?.dismiss?.()" in js
 
