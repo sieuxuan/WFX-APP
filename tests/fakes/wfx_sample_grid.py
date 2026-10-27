@@ -19,6 +19,9 @@ from wfx_panel.automation.search_specs import SAMPLE_SEARCH_SPEC
 
 ROOT_SELECTOR = ".ag-root-wrapper"
 ROW_SELECTOR = ".ag-row[row-index], [role='row'][row-index]"
+# Dấu tạm `_mark_search_target` gắn lên ô sắp điền.
+TARGET_SELECTOR = "[data-wfx-search-target]"
+NOT_TARGET = f":not({TARGET_SELECTOR})"
 LOADING_SELECTOR = (
     ".ag-overlay-loading-wrapper, .ag-loading, .blockUI, .blockOverlay, "
     ".ui-widget-overlay, .loading, .loader, [aria-busy='true'], "
@@ -68,6 +71,7 @@ class SampleFilter:
     frame: Any = None
     fills: list[str] = field(default_factory=list)
     presses: list[str] = field(default_factory=list)
+    marked: bool = False
 
     def is_visible(self) -> bool:
         frame = self.frame
@@ -99,6 +103,11 @@ class SampleFilter:
     def evaluate(self, script: str, arg: Any = None) -> Any:
         if "element.closest(" in script:
             return self.label
+        if "setAttribute(name" in script:
+            for node in self.frame.inputs:
+                node.marked = False
+            self.marked = True
+            return self.value
         raise AssertionError(f"Filter chưa hỗ trợ script: {script[:120]}")
 
 
@@ -170,6 +179,10 @@ class _Locator:
             except PlaywrightError:
                 return False
 
+        if "roots.map(" in script:
+            return "|".join(node.frame.grid_signature() for node in self._nodes)
+        if "roots.some(" in script:
+            return any(node.frame.reports_no_rows() for node in self._nodes)
         if "elements.some(" in script:
             return any(shown(node) for node in self._nodes)
         if "elements.map(" in script and "closest(" in script:
@@ -298,6 +311,18 @@ class SampleGridFrame:
             "totalRows": len(self.rows),
         }
 
+    def grid_signature(self) -> str:
+        """Ngữ nghĩa `_GRID_SIGNATURE_JS`: overlay rỗng, hoặc số dòng + dòng đầu."""
+        if not self.root_visible:
+            return ""
+        if self.reports_no_rows():
+            return "empty"
+        first = self.rows[0].style_code if self.rows else ""
+        return f"rows:{len(self.rows)}:{first}"
+
+    def reports_no_rows(self) -> bool:
+        return bool(self.root_visible and self.no_rows and not self.rows)
+
     # --- bề mặt Frame ---------------------------------------------------
 
     def is_detached(self) -> bool:
@@ -311,16 +336,22 @@ class SampleGridFrame:
             return _Locator([self.root], selector)
         if selector == LOADING_SELECTOR:
             return _Locator([], selector)
+        if selector == TARGET_SELECTOR:
+            return _Locator(
+                [node for node in self.inputs if node.marked], selector
+            )
         parts = [part.strip() for part in selector.split(",") if part.strip()]
+        skip_marked = [part.endswith(NOT_TARGET) for part in parts]
+        parts = [part.removesuffix(NOT_TARGET) for part in parts]
         unknown = [part for part in parts if part not in KNOWN_INPUT_SELECTORS]
         if unknown:
             raise AssertionError(
                 f"Sample frame chưa hỗ trợ selector: {', '.join(unknown)}"
             )
         nodes: list[SampleFilter] = []
-        for part in parts:
+        for part, skip in zip(parts, skip_marked, strict=True):
             for node in self.inputs:
-                if node in nodes:
+                if node in nodes or (skip and node.marked):
                     continue
                 if part == "input" or part in node.selectors:
                     nodes.append(node)

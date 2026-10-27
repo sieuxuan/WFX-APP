@@ -232,6 +232,79 @@ def test_search_nhieu_dieu_kien_tra_ve_dung_cac_filter_da_dung(clock, monkeypatc
     assert world.driver_starts == world.driver_stops == 1
 
 
+def test_search_khong_co_dong_nao_thi_bao_ro_khong_bao_da_loc(clock, monkeypatch):
+    """Đo trên WFX: tìm mã không tồn tại từng báo "Đã lọc Sample List"."""
+    frame = _grid(clock, rows=[], no_rows=True)
+    world = _world(clock, frame)
+    wire_automation(monkeypatch, modules, world)
+
+    result = modules.search_sample_list_with_filters(
+        SAMPLE_XPATH,
+        {"sample_no": "ZZQKHONGCO999"},
+        _logs()[1],
+    )
+
+    assert result["ok"] is False
+    assert result["code"] == "MODULE_SEARCH_NO_RESULTS"
+    assert "Không có dòng nào trong Sample List" in result["message"]
+
+
+class _SlowServerGrid(SampleGridFrame):
+    """Floating Filter lọc phía server: bảng chỉ đổi ~2,5 giây sau lượt gõ."""
+
+    def __init__(self, clock, *, rows, after_fill, delay_s=2.5):
+        super().__init__(clock, rows=rows)
+        self.after_fill = list(after_fill)
+        self.delay_s = delay_s
+        self.due: float | None = None
+
+    def schedule(self) -> None:
+        self.due = self.clock.monotonic() + self.delay_s
+
+    def _apply_due(self) -> None:
+        if self.due is not None and self.clock.monotonic() >= self.due:
+            self.rows = self.after_fill
+            self.due = None
+
+    def grid_signature(self) -> str:
+        self._apply_due()
+        return super().grid_signature()
+
+    def read_rows(self):
+        self._apply_due()
+        return super().read_rows()
+
+
+def test_check_file_khong_mo_style_cua_luot_tim_truoc(clock, monkeypatch):
+    """Dòng cũ đứng yên tới khi server trả lời; đọc sớm là mở nhầm Style."""
+    frame = _SlowServerGrid(
+        clock,
+        rows=[SampleRow("1", style_code="CU-001")],
+        after_fill=[SampleRow("7", style_code="MOI-002")],
+    )
+    for node in frame.inputs:
+        original = node.fill
+
+        def fill(value, timeout=None, _original=original):
+            _original(value, timeout)
+            if value:
+                frame.schedule()
+
+        node.fill = fill
+    world = _world(clock, frame)
+    wire_automation(monkeypatch, modules, world)
+
+    result = modules.find_sample_file_results_with_filters(
+        SAMPLE_XPATH,
+        {"sample_no": "SMP-002"},
+        _logs()[1],
+    )
+
+    assert result["code"] == "SAMPLE_STYLE_OPENED"
+    assert result["article_code"] == "MOI-002"
+    assert frame.clicked == [("7", "MOI-002")]
+
+
 def test_search_khong_bao_gio_bao_nguoi_dung_bam_list(clock, monkeypatch):
     """CLAUDE.md: Search tự mở List, cấm trả `*_LIST_NOT_OPEN`."""
     frame = _grid(clock, rows=[], no_rows=True, filter_row_visible=False)

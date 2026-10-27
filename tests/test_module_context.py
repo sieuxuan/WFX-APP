@@ -551,3 +551,134 @@ def test_a_screen_without_ag_grid_is_not_waited_on(monkeypatch, clock):
     )
 
     assert clock.monotonic() - started == 0
+
+
+# --- theo dõi request GetData của grid ----------------------------------
+
+
+class _Request:
+    def __init__(self, frame, *, url="https://x.test/WFXERPAPI/api/WFXCommon/GetData",
+                 resource_type="fetch"):
+        self.frame = frame
+        self.url = url
+        self.resource_type = resource_type
+
+
+class NetworkPage(ContextPage):
+    """Page phát sự kiện request theo mốc thời gian, như Playwright sync."""
+
+    def __init__(self, *, clock, timeline):
+        super().__init__(clock=clock)
+        self.handlers: dict[str, list] = {}
+        self.timeline = sorted(timeline, key=lambda item: item[0])
+        self.started = clock.monotonic()
+
+    def on(self, event, handler):
+        self.handlers.setdefault(event, []).append(handler)
+
+    def remove_listener(self, event, handler):
+        self.handlers[event].remove(handler)
+
+    def wait_for_timeout(self, milliseconds):
+        super().wait_for_timeout(milliseconds)
+        elapsed = self.clock.monotonic() - self.started
+        while self.timeline and self.timeline[0][0] <= elapsed:
+            _at, event, request = self.timeline.pop(0)
+            for handler in list(self.handlers.get(event, ())):
+                handler(request)
+
+
+def _tracked_wait(clock, monkeypatch, *, signatures, timeline, frame, **kwargs):
+    started = _signatures(monkeypatch, clock, signatures)
+    page = NetworkPage(clock=clock, timeline=timeline)
+    requests = module_context._GridRequests(page, frame)
+    try:
+        settled = module_context._wait_grid_reflects_search(
+            page, frame, signatures[0][1], requests=requests, **kwargs
+        )
+    finally:
+        requests.close()
+    assert page.handlers == {
+        "request": [], "requestfinished": [], "requestfailed": []
+    }
+    return settled, clock.monotonic() - started
+
+
+def test_the_loading_overlay_is_not_taken_for_an_empty_result(monkeypatch, clock):
+    """Đo trên WFX (Sample, "2"): overlay rỗng bật lúc gửi request ở 1,05 giây,
+    dòng thật chỉ về ở 5,8 giây. Dừng chờ trước đó là báo "không có dòng" sai."""
+    frame = object()
+    request = _Request(frame)
+    settled, elapsed = _tracked_wait(
+        clock, monkeypatch,
+        signatures=[(0, "rows:30:A"), (1.1, "empty"), (5.8, "rows:30:A")],
+        timeline=[(1.05, "request", request), (5.7, "requestfinished", request)],
+        frame=frame,
+    )
+
+    assert settled is True
+    assert elapsed >= 5.8 + 0.6
+
+
+def test_an_answered_empty_result_ends_the_wait_soon_after(monkeypatch, clock):
+    frame = object()
+    request = _Request(frame)
+    settled, elapsed = _tracked_wait(
+        clock, monkeypatch,
+        signatures=[(0, "rows:30:A"), (1.1, "empty")],
+        timeline=[(1.05, "request", request), (2.1, "requestfinished", request)],
+        frame=frame,
+    )
+
+    assert settled is True
+    assert 2.7 <= elapsed < 3.2
+
+
+def test_a_request_still_running_at_the_deadline_is_not_trusted(
+    monkeypatch, clock
+):
+    frame = object()
+    request = _Request(frame)
+    settled, elapsed = _tracked_wait(
+        clock, monkeypatch,
+        signatures=[(0, "rows:30:A"), (1.1, "empty")],
+        timeline=[(1.05, "request", request)],
+        frame=frame,
+    )
+
+    assert settled is False
+    assert elapsed >= 30
+
+
+def test_no_request_means_wfx_did_not_filter_again(monkeypatch, clock):
+    frame = object()
+    settled, elapsed = _tracked_wait(
+        clock, monkeypatch,
+        signatures=[(0, "empty")],
+        timeline=[],
+        frame=frame,
+    )
+
+    assert settled is True
+    assert 4.0 <= elapsed < 4.5
+
+
+def test_requests_of_another_frame_or_another_api_are_ignored(monkeypatch, clock):
+    frame = object()
+    other = _Request(object())
+    asset = _Request(frame, url="https://x.test/Scripts/app.js", resource_type="script")
+    settled, elapsed = _tracked_wait(
+        clock, monkeypatch,
+        signatures=[(0, "empty")],
+        timeline=[(1.0, "request", other), (1.0, "request", asset)],
+        frame=frame,
+    )
+
+    assert settled is True
+    assert elapsed < 4.5
+
+
+def test_a_page_without_events_falls_back_to_the_signature_rule(clock):
+    tracker = module_context._GridRequests(ContextPage(clock=clock), object())
+
+    assert tracker.active is False

@@ -259,14 +259,22 @@ Mỗi nút trong module là một flow riêng:
    AG Grid của chính frame List hiện overlay no-rows ở hai lần đọc cách nhau
    400 ms thì trả `MODULE_SEARCH_NO_RESULTS` (không gửi telemetry); bảng ASP.NET
    cổ điển không có overlay đó nên không được đoán số dòng.
-   Đo trên WFX thật (Sale ASN, 27/10/2026): Floating Filter lọc phía server mất
-   1,9–2,9 giây và KHÔNG hiện lớp loading nào, nên "hết loading" không phải là
-   có kết quả. Phải chờ chữ ký grid đổi so với trước lúc gõ rồi đứng yên
-   (`_wait_grid_reflects_search`). Overlay no-rows bật trước, dòng cũ còn trên
-   DOM gần một giây nữa, nên overlay là căn cứ, không đòi DOM hết dòng. Ô đích
+   Đo trên WFX thật (Sale ASN + Sample, 27/10/2026): Floating Filter gửi
+   `WFXCommon/GetData` ~1 giây sau lượt gõ và KHÔNG hiện lớp loading nào; ngay
+   lúc gửi, AG Grid đã xóa dòng và bật overlay no-rows, còn kết quả thật về sau
+   thêm 1–4,7 giây (có lúc hơn 15 giây). Vì vậy cả "hết loading" lẫn "overlay
+   rỗng" đều không phải là có kết quả. `_wait_grid_reflects_search` nhận
+   `_GridRequests` theo dõi đúng request `GetData` của frame grid: chỉ xong khi
+   request đã gửi, đã về hết và bảng đứng yên sau đó; không có request trong
+   4 giây nghĩa là WFX không lọc lại. Request còn treo sau 30 giây thì trả
+   False và caller KHÔNG được báo `MODULE_SEARCH_NO_RESULTS` (Sample Check File
+   dừng ở lỗi chưa xác nhận thay vì đọc bảng). Sample đi đúng luật này — đọc dòng
+   cũ là mở nhầm Style. Ô đích
    không bị xóa riêng (gắn `data-wfx-search-target`, `fill` ghi đè), vì mỗi lần
    xóa là một lượt lọc server về xen giữa; khi có ô của CỘT KHÁC vừa bị xóa thì
-   chờ lượt tải lại đó vẽ xong rồi mới gõ.
+   chờ lượt tải lại đó vẽ xong rồi mới gõ. Không có kết quả là kết quả bình
+   thường: `MODULE_SEARCH_NO_RESULTS` nằm trong `_NON_ACTIONABLE_CODES` của
+   `job_history` nên không hiện nút `Báo lỗi`.
 7. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
    lên foreground chạy song song và không nằm trên critical path. Poll trạng
    thái grid ở 150 ms, nhưng chỉ chấp nhận Floating Filter sau khi visible/enabled

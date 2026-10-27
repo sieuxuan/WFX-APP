@@ -30,6 +30,7 @@ from wfx_panel.automation.modules.context import (
     _frame_with_visible_context,
     _grid_reports_no_rows,
     _grid_signature,
+    _GridRequests,
     _wait_grid_reflects_search,
     _wait_module_search_settled,
 )
@@ -301,7 +302,7 @@ def _search_module_fields(
                 False,
                 "MODULE_SEARCH_NO_RESULTS",
                 f"Không có dòng nào trong {search_spec.module_name} khớp "
-                f"{active_text}.",
+                f"{active_text.rstrip('.')}.",
                 module=search_spec.module_name,
                 filter_kinds=active,
             )
@@ -309,7 +310,7 @@ def _search_module_fields(
             True,
             "MODULE_SEARCH_APPLIED",
             f"Đã lọc {search_spec.module_name} theo "
-            f"{', '.join(active_labels)}.",
+            f"{', '.join(active_labels).rstrip('.')}.",
             module=search_spec.module_name,
             filter_kinds=active,
         )
@@ -558,21 +559,28 @@ def _search_module_list(
         )
         target, current_value = _mark_search_target(field)
         before_clear = _grid_signature(frame)
-        cleared = _clear_list_search_fields(
-            frame,
-            search_spec.field_selectors,
-            scan_horizontal=search_spec.requires_floating_filter,
-            keep_visible=(target,) if target else selected_field.selectors,
-            skip=target,
-        )
+        clear_requests = _GridRequests(page, frame)
+        try:
+            cleared = _clear_list_search_fields(
+                frame,
+                search_spec.field_selectors,
+                scan_horizontal=search_spec.requires_floating_filter,
+                keep_visible=(target,) if target else selected_field.selectors,
+                skip=target,
+            )
+            if cleared:
+                # Đo trên WFX: lượt lọc server của ô vừa xóa về sau vài giây
+                # mà không có loading. Gõ ngay thì kết quả đó về xen giữa và
+                # bị nhận nhầm là kết quả tìm, nên chờ nó vẽ xong trước.
+                if target:
+                    _wait_grid_reflects_search(
+                        page, frame, before_clear, requests=clear_requests
+                    )
+                else:
+                    _wait(page, 250)
+        finally:
+            clear_requests.close()
         if cleared:
-            # Đo trên WFX: lượt lọc server của ô vừa xóa về sau ~2,5 giây mà
-            # không có loading. Gõ ngay thì kết quả đó về xen giữa và bị nhận
-            # nhầm là kết quả tìm, nên chờ nó vẽ xong trước.
-            if target:
-                _wait_grid_reflects_search(page, frame, before_clear)
-            else:
-                _wait(page, 250)
             field = _search_input_in_frame(
                 page,
                 frame,
@@ -583,22 +591,29 @@ def _search_module_list(
             )
         stage = "settle"
         before = _grid_signature(frame)
-        _apply_module_search(
-            page,
-            field,
-            query,
-            selected_field.label,
-            log,
-        )
-        # Ô đã giữ đúng giá trị này thì WFX không lọc lại: bảng đang hiện
-        # chính là kết quả, không cần chờ nó đổi.
-        _wait_grid_reflects_search(
-            page,
-            frame,
-            before,
-            change_timeout_s=0.0 if current_value == query else 4.0,
-        )
-        if _grid_reports_no_rows(page, frame):
+        requests = _GridRequests(page, frame)
+        try:
+            _apply_module_search(
+                page,
+                field,
+                query,
+                selected_field.label,
+                log,
+            )
+            # Ô đã giữ đúng giá trị này thì WFX không lọc lại: bảng đang hiện
+            # chính là kết quả, không cần chờ nó đổi.
+            settled = _wait_grid_reflects_search(
+                page,
+                frame,
+                before,
+                requests=requests,
+                change_timeout_s=0.0 if current_value == query else 4.0,
+            )
+        finally:
+            requests.close()
+        # Server chưa trả lời thì overlay rỗng là của lúc đang tải, không
+        # phải kết quả: không được báo "không có dòng".
+        if settled and _grid_reports_no_rows(page, frame):
             return _result(
                 False,
                 "MODULE_SEARCH_NO_RESULTS",
