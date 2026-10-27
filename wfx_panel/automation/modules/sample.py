@@ -21,6 +21,12 @@ from wfx_panel.automation._common import (
     time,
 )
 from wfx_panel.automation.modules.constants import MODULE_GRID_POLL_MS
+from wfx_panel.automation.modules.context import (
+    _grid_reports_no_rows,
+    _grid_signature,
+    _GridRequests,
+    _wait_grid_reflects_search,
+)
 from wfx_panel.automation.modules.inputs import (
     _apply_module_search,
     _search_input_in_frame,
@@ -29,6 +35,7 @@ from wfx_panel.automation.modules.inputs import (
 from wfx_panel.automation.modules.menu import _active_wfx_page
 from wfx_panel.automation.modules.search import (
     _clear_list_search_fields,
+    _mark_search_target,
     _open_list_search_context,
 )
 from wfx_panel.automation.search_specs import SAMPLE_SEARCH_SPEC
@@ -390,34 +397,73 @@ def _apply_sample_filters(
     cleaned_values: Mapping[str, str],
     active_fields: list[str],
     log: Callable[[str], None],
-) -> list[str]:
-    """Áp dụng filter Sample lần lượt để hỗ trợ các cột bị cuộn ngang."""
-    _clear_list_search_fields(
+) -> tuple[list[str], bool]:
+    """Áp dụng filter Sample lần lượt để hỗ trợ các cột bị cuộn ngang.
+
+    Cùng luật chờ với `_search_module_list`: Floating Filter Sample lọc phía
+    server và không hiện loading, nên mỗi lượt gõ phải chờ chính bảng đổi. Nếu
+    không, "Xem file đính kèm" đọc dòng của lượt tìm trước và mở nhầm Style.
+    """
+    scan = SAMPLE_SEARCH_SPEC.requires_floating_filter
+    first_spec = SAMPLE_SEARCH_SPEC.fields[active_fields[0]]
+    first_field = _search_input_in_frame(
+        page,
         frame,
-        SAMPLE_SEARCH_SPEC.field_selectors,
-        scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
+        first_spec.selectors,
+        first_spec.aliases,
+        timeout_s=8,
+        scan_horizontal=scan,
     )
-    _wait(page, 250)
+    target, current_value = _mark_search_target(first_field)
+    before_clear = _grid_signature(frame)
+    requests = _GridRequests(page, frame)
+    try:
+        cleared = _clear_list_search_fields(
+            frame,
+            SAMPLE_SEARCH_SPEC.field_selectors,
+            scan_horizontal=scan,
+            keep_visible=(target,) if target else first_spec.selectors,
+            skip=target,
+        )
+        if cleared:
+            if target:
+                _wait_grid_reflects_search(
+                    page, frame, before_clear, requests=requests
+                )
+            else:
+                _wait(page, 250)
+    finally:
+        requests.close()
     labels: list[str] = []
-    for field_name in active_fields:
+    settled = True
+    for index, field_name in enumerate(active_fields):
         field_spec = SAMPLE_SEARCH_SPEC.fields[field_name]
+        value = cleaned_values[field_name]
         field = _search_input_in_frame(
             page,
             frame,
             field_spec.selectors,
             field_spec.aliases,
             timeout_s=8,
-            scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
+            scan_horizontal=scan,
         )
-        _apply_module_search(
-            page,
-            field,
-            cleaned_values[field_name],
-            field_spec.label,
-            log,
-        )
+        before = _grid_signature(frame)
+        requests = _GridRequests(page, frame)
+        try:
+            _apply_module_search(page, field, value, field_spec.label, log)
+            # Ô đích không bị xóa và đã giữ đúng giá trị thì WFX không lọc lại.
+            unchanged = index == 0 and bool(target) and current_value == value
+            settled = _wait_grid_reflects_search(
+                page,
+                frame,
+                before,
+                requests=requests,
+                change_timeout_s=0.0 if unchanged else 4.0,
+            )
+        finally:
+            requests.close()
         labels.append(field_spec.label)
-    return labels
+    return labels, settled
 
 
 def search_sample_list_with_filters(
@@ -443,17 +489,27 @@ def search_sample_list_with_filters(
         _browser, page = _active_wfx_page(playwright, log)
         frame = _open_list_search_context(page, SAMPLE_SEARCH_SPEC, xpath, log)
         search_started = True
-        labels = _apply_sample_filters(
+        labels, settled = _apply_sample_filters(
             page,
             frame,
             cleaned_values,
             active_fields,
             log,
         )
+        # Server chưa trả lời thì overlay rỗng là của lúc đang tải.
+        if settled and _grid_reports_no_rows(page, frame):
+            return _result(
+                False,
+                "MODULE_SEARCH_NO_RESULTS",
+                "Không có dòng nào trong Sample List khớp "
+                f"{', '.join(labels).rstrip('.')}.",
+                module="Sample List",
+                filter_kinds=active_fields,
+            )
         return _result(
             True,
             "MODULE_SEARCH_APPLIED",
-            f"Đã lọc Sample List theo {', '.join(labels)}.",
+            f"Đã lọc Sample List theo {', '.join(labels).rstrip('.')}.",
             module="Sample List",
             filter_kinds=active_fields,
         )
@@ -502,13 +558,19 @@ def find_sample_file_results_with_filters(
         _browser, page = _active_wfx_page(playwright, log)
         frame = _open_list_search_context(page, SAMPLE_SEARCH_SPEC, xpath, log)
         search_started = True
-        _apply_sample_filters(
+        _labels, settled = _apply_sample_filters(
             page,
             frame,
             cleaned_values,
             active_fields,
             log,
         )
+        if not settled:
+            # Bảng lúc đang tải chỉ có overlay rỗng hoặc dòng cũ; đọc lúc này
+            # là báo sai "không có Sample" hoặc mở nhầm Style.
+            raise PlaywrightTimeoutError(
+                "WFX chưa trả kết quả lọc Sample sau 30 giây."
+            )
         return _sample_file_result(frame, log)
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)

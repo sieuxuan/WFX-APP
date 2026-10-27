@@ -86,7 +86,7 @@ def _stub_context(monkeypatch, *, frame: object = "frame") -> None:
     patch_automation(
         monkeypatch, modules,
         "_wait_grid_reflects_search",
-        lambda *_args, **_kwargs: None,
+        lambda *_args, **_kwargs: True,
     )
 
 
@@ -436,7 +436,7 @@ def _record_list_search(monkeypatch, *, cleared: int, current_value: str):
     patch_automation(
         monkeypatch, modules,
         "_wait_grid_reflects_search",
-        lambda _page, _frame, before, **kwargs: calls.append(
+        lambda _page, _frame, before, **kwargs: not calls.append(
             ("wait", before, kwargs.get("change_timeout_s"))
         ),
     )

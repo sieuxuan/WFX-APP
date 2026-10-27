@@ -89,7 +89,15 @@ def test_action_center_classifies_and_acknowledges_gdn_pending(tmp_path):
 
 
 def test_input_and_cancel_outcomes_do_not_enter_action_center(tmp_path):
-    for index, code in enumerate(("QUERY_REQUIRED", "NO_RESULTS", "ACTION_CANCELLED")):
+    codes = (
+        "QUERY_REQUIRED",
+        "NO_RESULTS",
+        "MODULE_SEARCH_NO_RESULTS",
+        "RMPO_NO_RESULTS",
+        "GRN_SEARCH_NO_RESULTS",
+        "ACTION_CANCELLED",
+    )
+    for index, code in enumerate(codes):
         job_history.append(tmp_path, _job(run_id=f"run-{index}", code=code))
 
     assert not any(

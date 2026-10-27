@@ -7,6 +7,7 @@ filter riêng của đúng module — nếu không, automation sẽ Search nhầ
 from __future__ import annotations
 
 from wfx_panel.automation._common import (
+    Any,
     Frame,
     Page,
     PlaywrightError,
@@ -211,28 +212,99 @@ def _grid_signature(frame: Frame) -> str:
         return ""
 
 
+class _GridRequests:
+    """Theo dõi request `GetData` mà AG Grid của đúng frame gửi đi.
+
+    Đo trên WFX thật (Sample, Sale ASN): Floating Filter gửi `GetData` ~1 giây
+    sau lượt gõ, và NGAY lúc gửi AG Grid đã xóa dòng, bật overlay no-rows. Kết
+    quả thật về sau thêm 1–4,7 giây. Nhìn bảng thì "đang tải" và "rỗng thật"
+    giống hệt nhau; chỉ request mới cho biết server đã trả lời chưa.
+
+    Sự kiện chỉ được Playwright sync phát trong lúc đang chờ một lệnh (như
+    `_wait`), nên không có tranh chấp thread. Page không có `on` (fake trong
+    test, hoặc driver lỗi) thì `active` là False và caller dùng luật cũ.
+    """
+
+    def __init__(self, page: Page, frame: Frame) -> None:
+        self._page = page
+        self._frame = frame
+        self.started = 0
+        self.finished_at = 0.0
+        self._pending: set[int] = set()
+        self.active = False
+        try:
+            page.on("request", self._on_request)
+            page.on("requestfinished", self._on_done)
+            page.on("requestfailed", self._on_done)
+            self.active = True
+        except (AttributeError, PlaywrightError):
+            self.close()
+
+    def _owned(self, request: Any) -> bool:
+        try:
+            return (
+                request.resource_type in {"xhr", "fetch"}
+                and "getdata" in str(request.url or "").casefold()
+                and request.frame == self._frame
+            )
+        except PlaywrightError:
+            return False
+
+    def _on_request(self, request: Any) -> None:
+        if self._owned(request):
+            self.started += 1
+            self._pending.add(id(request))
+
+    def _on_done(self, request: Any) -> None:
+        if id(request) in self._pending:
+            self._pending.discard(id(request))
+            self.finished_at = time.monotonic()
+
+    @property
+    def pending(self) -> bool:
+        return bool(self._pending)
+
+    def close(self) -> None:
+        for event, handler in (
+            ("request", self._on_request),
+            ("requestfinished", self._on_done),
+            ("requestfailed", self._on_done),
+        ):
+            try:
+                self._page.remove_listener(event, handler)
+            except (AttributeError, PlaywrightError, ValueError, KeyError):
+                pass
+        self.active = False
+
+
 def _wait_grid_reflects_search(
     page: Page,
     frame: Frame,
     before: str,
     *,
+    requests: _GridRequests | None = None,
     change_timeout_s: float = 4.0,
     stable_s: float = 0.6,
     timeout_s: float = 8.0,
-) -> None:
-    """Chờ AG Grid vẽ kết quả của lượt lọc vừa gõ.
+) -> bool:
+    """Chờ AG Grid vẽ kết quả của lượt lọc vừa gõ; False nếu hết giờ khi chưa chắc.
 
-    Đo trên WFX thật (Sale ASN): Floating Filter lọc phía server mất 1,9–2,9
-    giây và KHÔNG hiện lớp loading nào, nên chờ "hết loading" kết thúc trước khi
-    bảng đổi. Sau khi đổi, chữ ký phải đứng yên thêm `stable_s`. Bảng không đổi
-    sau `change_timeout_s` thì coi như kết quả trùng hệt lượt trước; riêng khi
-    bảng đang rỗng từ lượt trước thì chờ lâu hơn, vì đọc nhầm overlay cũ sẽ báo
-    "không có dòng" sai. Hết giờ không báo lỗi: đây chỉ là bước chờ, kết luận
-    vẫn do bước đọc kết quả.
+    Có `requests` đang theo dõi thì căn cứ là request `GetData`: đã gửi và đã
+    về hết, rồi bảng đứng yên `stable_s`. Không có request nào trong
+    `change_timeout_s` nghĩa là WFX không lọc lại (giá trị không đổi), bảng hiện
+    tại là kết quả. Request còn treo tới `timeout_s` thì trả False để caller
+    không kết luận "không có dòng" từ overlay của lúc đang tải.
+
+    Không theo dõi được request thì dùng luật chữ ký cũ: bảng đổi rồi đứng yên
+    `stable_s`, hoặc không đổi sau `change_timeout_s` (chờ lâu hơn khi bảng đang
+    rỗng từ lượt trước).
     """
     if not before:
-        return
-    if before == "empty" and change_timeout_s > 0:
+        return True
+    tracked = requests is not None and requests.active
+    if tracked:
+        timeout_s = max(timeout_s, 30.0)
+    elif before == "empty" and change_timeout_s > 0:
         change_timeout_s = max(change_timeout_s, 4.5)
     started = time.monotonic()
     last = before
@@ -241,18 +313,32 @@ def _wait_grid_reflects_search(
     while time.monotonic() - started < timeout_s:
         current = _grid_signature(frame)
         if not current:
-            return
+            return True
         now = time.monotonic()
         if current != last:
             last = current
             last_change = now
         if current != before:
             changed = True
-        if changed and now - last_change >= stable_s:
-            return
-        if not changed and now - started >= change_timeout_s:
-            return
+        settled = now - last_change >= stable_s
+        if tracked and requests.started:
+            # Response về trước, WFX vẽ dòng sau ~0,1 giây: đứng yên tính từ
+            # mốc muộn hơn trong hai mốc.
+            if (
+                not requests.pending
+                and now - max(last_change, requests.finished_at) >= stable_s
+            ):
+                return True
+        elif changed and settled:
+            # Không theo dõi được request: bảng đổi rồi đứng yên là kết quả.
+            # Có theo dõi mà chưa thấy request: chưa tin, có thể chỉ là bảng
+            # tự vẽ lại; đợi tới change_timeout_s.
+            if not tracked or now - started >= change_timeout_s:
+                return True
+        elif not changed and now - started >= change_timeout_s:
+            return True
         _wait(page, MODULE_GRID_POLL_MS)
+    return not (tracked and requests.pending)
 
 
 # AG Grid chỉ hiện overlay no-rows khi datasource thật sự rỗng; header và ô lọc
