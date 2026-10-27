@@ -2289,12 +2289,61 @@ def test_packaged_autostart_failure_is_reflected_in_preferences(monkeypatch):
     assert saved == [{"autostart": False}]
 
 
-def test_webview_processes_are_capped_for_low_memory_machines():
+def test_webview_processes_are_capped_before_webview_starts(monkeypatch):
+    import types
+
+    import webview.platforms
+
     import wfx_panel.panel_app as module
 
-    arguments = module.os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]
-    assert "--renderer-process-limit=3" in arguments
-    assert "--process-per-site" in arguments
+    source = Path(module.__file__).read_text(encoding="utf-8")
+    assert (
+        "_install_webview2_arguments()\n"
+        "        webview.start(background, private_mode=True)"
+    ) in source.replace("\r\n", "\n")
+    # Không đẩy cờ vào environment: Chrome automation là tiến trình con của panel.
+    assert "os.environ.setdefault(" not in source
+
+    fake = types.ModuleType("webview.platforms.edgechromium")
+    installed = []
+    monkeypatch.setattr(module.os, "name", "nt")
+    monkeypatch.setitem(module.sys.modules, fake.__name__, fake)
+    monkeypatch.setattr(webview.platforms, "edgechromium", fake, raising=False)
+    monkeypatch.setattr(
+        module.webview2_args,
+        "install",
+        lambda edgechromium: installed.append(edgechromium) or True,
+    )
+
+    assert module._install_webview2_arguments() is True
+    assert installed == [fake]
+
+
+def test_webview_arguments_failure_does_not_block_startup(monkeypatch):
+    import types
+
+    import webview.platforms
+
+    import wfx_panel.panel_app as module
+
+    fake = types.ModuleType("webview.platforms.edgechromium")
+    monkeypatch.setitem(module.sys.modules, fake.__name__, fake)
+    monkeypatch.setattr(webview.platforms, "edgechromium", fake, raising=False)
+    records = []
+
+    def broken(_edgechromium):
+        raise RuntimeError("pythonnet missing")
+
+    monkeypatch.setattr(module.os, "name", "nt")
+    monkeypatch.setattr(module.webview2_args, "install", broken)
+    monkeypatch.setattr(
+        module.crash_log,
+        "record",
+        lambda event, **details: records.append((event, details)),
+    )
+
+    assert module._install_webview2_arguments() is False
+    assert records == [("WEBVIEW2_ARGUMENTS_SKIPPED", {"error": "RuntimeError"})]
 
 
 def test_quit_destroys_every_window_so_the_process_can_exit(monkeypatch):

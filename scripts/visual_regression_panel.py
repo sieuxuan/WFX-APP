@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
-import os
 import subprocess
 import sys
 import time
@@ -195,13 +194,15 @@ def _apply_dpi_emulation(window: Any, factor: float, port: int) -> tuple[Any, An
 def _capture_one(theme: str, dpi: int, suite: str, output: Path) -> None:
     factor = DPI_FACTORS[dpi]
     port = 9400 + list(DPI_FACTORS).index(dpi) + (10 if theme == "dark" else 0)
-    existing_args = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
-    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
-        f"{existing_args} --renderer-process-limit=3 --process-per-site"
-    ).strip()
-
     import webview
+    from webview.platforms import edgechromium
 
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from wfx_panel.app import webview2_args
+
+    # pywebview bỏ qua WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS; dùng cùng cờ với app.
+    webview2_args.install(edgechromium)
     webview.settings["REMOTE_DEBUGGING_PORT"] = port
 
     title = f"WFX Smart Visual · {theme} · {dpi}%"
