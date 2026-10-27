@@ -24,6 +24,15 @@ function handleResult(result) {
   }
   lastErrorCode = (!result.ok && result.code) ? result.code : "";
   $(".footer-help-button").hidden = !manualErrorCodes.has(lastErrorCode);
+  // Chỉ lỗi người dùng còn phải xử lý mới mời báo; "không có kết quả" hay
+  // thao tác bị hủy không phải lỗi của app. Kết quả mới (kể cả thành công)
+  // luôn thay nút cũ để nó không trỏ vào một lần chạy đã qua.
+  if (result.run_id) {
+    lastReportRunId = (!result.ok && result.requires_attention === true)
+      ? String(result.run_id)
+      : "";
+    $(".footer-report-button").hidden = !lastReportRunId;
+  }
   if (result.user_id !== undefined) setAccount(result.user_id);
   if (result.chrome_alive !== undefined) {
     setBrowserStatus(Boolean(result.chrome_alive), result.browser_available, result.browser_name);
@@ -200,6 +209,21 @@ async function callQuiet(method, ...args) {
   }
   try { return await bridge[method](...args); }
   catch (error) { setStatus("error", String(error)); return null; }
+}
+
+// Báo lỗi MỘT CHẠM: người dùng không phải mô tả gì, backend tự đính kèm lỗi,
+// Run ID, máy, tài khoản và log của đúng lần chạy đó.
+async function reportJob(runId) {
+  if (!runId) return null;
+  const result = await callQuiet("report_job", runId);
+  if (!result) return null;
+  setStatus(result.ok ? "success" : "error", result.message || "");
+  if (Array.isArray(result.jobs)) renderJobs(result.jobs);
+  if (runId === lastReportRunId && result.ok) {
+    lastReportRunId = "";
+    $(".footer-report-button").hidden = true;
+  }
+  return result;
 }
 
 async function refreshJobs() {

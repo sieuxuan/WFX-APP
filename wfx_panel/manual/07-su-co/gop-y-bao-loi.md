@@ -1,28 +1,31 @@
 ## Dùng để làm gì
 
-Gửi góp ý hoặc mô tả lỗi cho nhóm phát triển ngay từ WFX Smart.
+Báo lỗi cho nhóm phát triển chỉ bằng một nút bấm, hoặc gửi góp ý tính năng.
 
 ## Các bước
 
-1. Bấm biểu tượng hội thoại ở góc trên bảng điều khiển.
-2. Chọn `Báo lỗi` hoặc `Góp ý tính năng` trong dòng Loại nội dung.
-3. Nhập mô tả từ 5 đến 2.000 ký tự.
-4. Giữ hoặc bỏ chọn `Đính kèm chẩn đoán an toàn`.
-5. Đọc lại nội dung.
-6. Bấm `Gửi`.
+1. Khi một tác vụ gặp lỗi, bấm nút `Báo lỗi` ở thanh trạng thái dưới cùng.
+2. Không cần nhập gì thêm: ứng dụng tự gửi lỗi, thời điểm và nhật ký của đúng
+   lần chạy đó.
+3. Lỗi cũ hơn: mở `Lịch sử hoạt động`, bấm `Báo lỗi` trên thẻ tác vụ bị lỗi.
+4. Muốn góp ý hoặc kể thêm chi tiết: bấm biểu tượng hội thoại ở góc trên, chọn
+   `Báo lỗi` hoặc `Góp ý tính năng`, nhập từ 5 đến 2.000 ký tự rồi bấm `Gửi báo cáo`.
 
 ## Mẹo
 
 > [!meo]
-> Mô tả rõ bạn đã bấm nút nào, thấy thông báo gì và vấn đề xảy ra lúc nào.
+> Mỗi lần chạy lỗi chỉ cần báo một lần. Thẻ đã báo hiện `Đã báo`.
+
+> [!meo]
+> Mất mạng cũng không sao: báo lỗi được lưu trên máy và tự gửi lại khi có mạng.
 
 > [!luuy]
-> Chẩn đoán an toàn chỉ gồm Windows, trạng thái Chrome và mã lỗi gần đây. Ứng
-> dụng không tự chụp màn hình.
+> Ứng dụng không gửi mật khẩu, cookie hay ảnh màn hình.
 
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Nút Gửi chưa bật | Nhập ít nhất 5 ký tự và không vượt quá 2.000 ký tự. |
-| Gửi chưa thành công | Sao chép nội dung, kiểm tra mạng rồi thử gửi lại. |
+| Không thấy nút `Báo lỗi` | Nút chỉ hiện với lỗi cần xử lý; không có kết quả hay thao tác bị dừng không phải lỗi của ứng dụng. |
+| Nút Gửi báo cáo chưa bật | Nhập ít nhất 5 ký tự và không vượt quá 2.000 ký tự. |
+| Báo `Chưa gửi được ngay` | Báo cáo đã lưu an toàn; ứng dụng tự gửi lại sau. |

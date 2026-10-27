@@ -17,6 +17,10 @@ giữ riêng trên máy.
 > Báo lỗi có thể gồm tên thao tác, mã lỗi, Run ID, User ID, Company, Division,
 > phiên bản Windows và trạng thái kết nối.
 
+> [!meo]
+> Nút `Báo lỗi` một chạm gửi thêm tối đa 40 dòng nhật ký cuối của đúng lần chạy
+> lỗi. Địa chỉ web và thông tin đăng nhập trong nhật ký đã được ẩn trước khi gửi.
+
 > [!luuy]
 > Ứng dụng không gửi mật khẩu, cookie, Session ID, nội dung tìm kiếm hoặc địa
 > chỉ WFX đầy đủ. Ứng dụng cũng không tự chụp màn hình.

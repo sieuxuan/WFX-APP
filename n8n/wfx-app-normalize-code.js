@@ -189,9 +189,18 @@ const errorDetail = String(
       || fallbackErrorDetail,
   ),
 );
-const safeMessage = eventType === 'automation_error'
+// Báo lỗi một chạm của người dùng mang đủ context của lần chạy hỏng (Run ID,
+// mã lỗi, log), nên được trình bày như lỗi automation chứ không như góp ý.
+const isOneClickReport = eventType === 'user_feedback'
+  && source.source === 'one_click';
+const hasRunContext = eventType === 'automation_error' || isOneClickReport;
+const safeMessage = hasRunContext
   ? errorDetail
   : String(source.message || '');
+const logTail = (Array.isArray(source.log_tail) ? source.log_tail : [])
+  .map((line) => redactAutomationText(line))
+  .filter(Boolean);
+const repeatCount = Number(source.repeat_count || 0);
 const suggestion = String(
   source.suggestion
     || mappedError.suggestion
@@ -214,7 +223,7 @@ const notificationLines = [
   source.app_version ? `📦 Phiên bản: ${source.app_version}` : '',
 ];
 
-if (eventType === 'automation_error') {
+if (hasRunContext) {
   notificationLines.push(
     `⚙️ Tác vụ: ${methodLabel}`,
     moduleName ? `📂 Module: ${moduleName}` : '',
@@ -227,7 +236,22 @@ if (eventType === 'automation_error') {
     source.elapsed_ms !== undefined && source.elapsed_ms !== ''
       ? `⏱️ Thời gian chạy: ${source.elapsed_ms} ms`
       : '',
+    repeatCount > 1
+      ? `🔁 Lặp lại: ${repeatCount} lần (Run ID cuối: ${source.last_run_id || '?'})`
+      : '',
+    diagnostics.chrome_alive !== undefined
+      ? `🌐 Chrome: ${diagnostics.chrome_alive ? 'đang chạy' : 'không chạy'}`
+      : '',
+    diagnostics.session_active !== undefined
+      ? `🔑 Phiên WFX: ${diagnostics.session_active ? 'còn' : 'mất'}`
+      : '',
+    source.has_screenshot ? '🖼️ Có ảnh lỗi trên máy người dùng' : '',
   );
+  if (logTail.length) {
+    // Telegram giới hạn 4.096 ký tự: tin nhắn chỉ in 15 dòng cuối, đủ dòng
+    // nằm trong trường log_tail của output.
+    notificationLines.push('📜 Log cuối:', ...logTail.slice(-15));
+  }
 } else {
   notificationLines.push(
     `📝 Nội dung: ${source.message || 'Không có mô tả'}`,
@@ -245,9 +269,13 @@ return [{
     method,
     method_label: methodLabel,
     code,
-    error_title: eventType === 'automation_error' ? errorTitle : '',
-    error_detail: eventType === 'automation_error' ? errorDetail : '',
-    suggestion: eventType === 'automation_error' ? suggestion : '',
+    error_title: hasRunContext ? errorTitle : '',
+    error_detail: hasRunContext ? errorDetail : '',
+    suggestion: hasRunContext ? suggestion : '',
+    report_source: String(source.source || ''),
+    repeat_count: repeatCount || 1,
+    last_run_id: source.last_run_id || '',
+    log_tail: logTail,
     module: moduleName,
     filter_kind: filterKind,
     run_id: source.run_id || '',
@@ -263,6 +291,9 @@ return [{
     recent_jobs: Array.isArray(diagnostics.recent_jobs)
       ? diagnostics.recent_jobs
       : [],
-    notification_text: notificationLines.filter(Boolean).join('\n'),
+    notification_text: notificationLines
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 4000),
   },
 }];

@@ -849,6 +849,21 @@ Các workflow riêng hiện có:
   Search tất cả Supplier Category phải tiếp tục khi một Category lỗi, báo rõ
   kết quả một phần và đếm tổng trước khi giới hạn danh sách hiển thị.
 - Crash log phải sanitize exception/stack trước khi ghi xuống ổ đĩa.
+- Báo lỗi cho user phải là MỘT CHẠM: kết quả lỗi có `requires_attention` hiện
+  nút `Báo lỗi` ở footer, thẻ lỗi trong `Tất cả tác vụ` cũng có nút này (đã báo
+  thì thành `Đã báo`, mỗi Run ID chỉ gửi một lần qua `jobs.json.reported`). User
+  không phải nhập mô tả; `report_job(run_id)` tự gửi event `user_feedback`
+  `source=one_click` ĐẦY ĐỦ cho người hỗ trợ: method, module/filter, mã lỗi,
+  tiêu đề/chi tiết/hướng xử lý từ `ERROR_CODE_INFO`, Run ID, thời gian chạy,
+  tài khoản, phiên bản, Windows, trạng thái Chrome/phiên, 5 job gần nhất và tối
+  đa 40 dòng log cuối của đúng lần chạy qua `redact_log_lines`. Form Góp ý vẫn
+  giữ cho nội dung tự do.
+- Lần chạy HỎNG lưu `log_tail` (tối đa 40 dòng đã sanitize) trong `jobs.json`
+  để báo được cả sau khi mở lại app; lần chạy thành công không lưu log. Thẻ lịch
+  sử hiện tiêu đề + hướng xử lý dễ hiểu, message kỹ thuật chỉ nằm trong tooltip.
+- Lỗi automation tự động cùng method + mã + phiên bản + User ID đang chờ trong
+  outbox được gộp bằng `repeat_count`/`last_run_id`, không xếp thêm tin. Outbox
+  được thử gửi lại lúc khởi động và mỗi giờ trong vòng lặp Article Library.
 
 ## Mục tiêu
 

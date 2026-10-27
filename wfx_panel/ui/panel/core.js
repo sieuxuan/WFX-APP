@@ -188,6 +188,8 @@ let sessionActive = null;
 let currentDivision = null;
 let manualErrorCodes = new Set();
 let lastErrorCode = "";
+// Run ID của lần chạy hỏng gần nhất mà người dùng có thể báo một chạm.
+let lastReportRunId = "";
 let hasCredentials = false;
 let accountEditing = false;
 let accountUserId = "";

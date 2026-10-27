@@ -242,7 +242,9 @@ def test_removing_an_outbox_that_is_locked_does_not_raise(
 
 def test_the_outbox_never_grows_past_its_cap(tmp_path):
     for index in range(telemetry.MAX_OUTBOX + 10):
-        size = telemetry.enqueue(tmp_path, _event(run_id=f"run-{index}"))
+        size = telemetry.enqueue(
+            tmp_path, _event(run_id=f"run-{index}", code=f"CODE_{index}")
+        )
 
     assert size == telemetry.MAX_OUTBOX
     rows = telemetry._load_outbox(tmp_path)
@@ -383,3 +385,40 @@ def test_a_discordapp_host_is_also_treated_as_discord(monkeypatch):
     )
 
     assert "embeds" in sent[0]["payload"]
+
+
+def test_a_repeated_automation_error_is_coalesced_while_pending(tmp_path):
+    """Cùng method + mã lỗi + tài khoản lặp lại lúc offline chỉ là MỘT tin
+    kèm số lần lặp, không phải một tin cho mỗi lần bấm."""
+    for index in range(5):
+        size = telemetry.enqueue(tmp_path, _event(run_id=f"run-{index}"))
+    telemetry.enqueue(tmp_path, _event(run_id="other", code="CATALOG_GRID_NOT_FOUND"))
+
+    rows = telemetry._load_outbox(tmp_path)
+    assert size == 1
+    assert len(rows) == 2
+    assert rows[0]["repeat_count"] == 5
+    assert rows[0]["run_id"] == "run-0"
+    assert rows[0]["last_run_id"] == "run-4"
+
+
+def test_user_feedback_is_never_coalesced(tmp_path):
+    for _ in range(3):
+        telemetry.enqueue(
+            tmp_path,
+            {"event_type": "user_feedback", "kind": "bug", "message": "Lỗi"},
+        )
+
+    assert len(telemetry._load_outbox(tmp_path)) == 3
+
+
+def test_report_log_lines_hide_urls_and_keep_only_the_tail():
+    lines = [f"[10:00:{i:02d}] bước {i}" for i in range(60)]
+    lines.append("[10:01:00] mở https://wfx.example.com/a.aspx?SessionID=1")
+
+    redacted = telemetry.redact_log_lines(lines)
+
+    assert len(redacted) == telemetry.MAX_REPORT_LOG_LINES
+    assert "https://" not in redacted[-1]
+    assert "SessionID" not in redacted[-1]
+    assert redacted[0] == "[10:00:21] bước 21"

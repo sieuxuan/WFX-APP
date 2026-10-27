@@ -507,6 +507,12 @@ function bind() {
   $(".footer-help-button").addEventListener("click", () => {
     callQuiet("open_wfx_manual", lastErrorCode);
   });
+  $(".footer-report-button").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    await reportJob(lastReportRunId);
+    button.disabled = false;
+  });
   $(".module-help-button").addEventListener("click", async () => {
     const moduleId = selectedModule?.id || "";
     const found = await callQuiet("get_manual_entry_for_module", moduleId);
@@ -803,6 +809,16 @@ function bind() {
       const button = event.target.closest("[data-job-action]");
       const card = event.target.closest(".job-card");
       if (!button || !card) return;
+      if (button.dataset.jobAction === "report") {
+        button.disabled = true;
+        button.textContent = "Đang gửi…";
+        const result = await reportJob(card.dataset.runId);
+        if (!result?.ok) {
+          button.disabled = false;
+          button.textContent = "Báo lỗi";
+        }
+        return;
+      }
       if (button.dataset.jobAction === "screenshot") {
         const result = await callQuiet("open_job_screenshot", card.dataset.runId);
         if (result) setStatus(result.ok ? "success" : "error", result.message || "");

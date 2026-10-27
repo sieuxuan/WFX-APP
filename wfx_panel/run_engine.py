@@ -225,6 +225,11 @@ class AutomationRunEngine:
                     "started_at": started_at,
                     "elapsed_ms": int(elapsed * 1000),
                     "screenshot": screenshot,
+                    "log_tail": (
+                        []
+                        if result.get("ok")
+                        else panel._run_log_lines(run_id)
+                    ),
                 },
             )
         except Exception as error:

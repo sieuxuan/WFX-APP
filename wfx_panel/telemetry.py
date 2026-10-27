@@ -66,6 +66,26 @@ def redact_telemetry_text(value: object) -> str:
     return _EXACT_CODE_PATTERN.sub("Code [đã ẩn]", text)
 
 
+MAX_REPORT_LOG_LINES = 40
+_REPORT_LOG_LINE_CHARS = 300
+
+
+def redact_log_lines(lines: object) -> list[str]:
+    """Đuôi log của một lần chạy, đã qua đúng lớp che của mô tả lỗi.
+
+    Log trên máy đã qua ``sanitize_log_text`` nhưng lớp đó giữ phần host của
+    URL; thứ đi ra webhook phải ẩn hẳn URL như mọi ``error_detail``.
+    """
+    if not isinstance(lines, (list, tuple)):
+        return []
+    redacted = [
+        redact_telemetry_text(line)[:_REPORT_LOG_LINE_CHARS]
+        for line in lines
+        if isinstance(line, str) and line.strip()
+    ]
+    return redacted[-MAX_REPORT_LOG_LINES:]
+
+
 
 
 def _error_operation_context(
@@ -255,14 +275,44 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
+def _repeat_key(event: dict[str, Any]) -> tuple[str, ...] | None:
+    if event.get("event_type") != "automation_error":
+        return None
+    if not event.get("method") or not event.get("code"):
+        return None
+    account = event.get("account")
+    user_id = account.get("user_id") if isinstance(account, dict) else ""
+    return (
+        str(event.get("method") or ""),
+        str(event.get("code") or ""),
+        str(event.get("app_version") or ""),
+        str(user_id or ""),
+    )
+
+
 def enqueue(base_dir: Path, event: dict[str, Any]) -> int:
     envelope = {
         "schema": SCHEMA_VERSION,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         **_json_safe(event),
     }
+    key = _repeat_key(envelope)
     with _LOCK:
         rows = _load_outbox(base_dir)
+        # Cùng một lỗi tự động lặp lại khi offline (hoặc user bấm lại liên tục)
+        # thì gộp vào event đang chờ thay vì xếp thêm một tin: kênh hỗ trợ
+        # nhận một thông báo kèm số lần lặp, và trần MAX_OUTBOX còn chỗ cho
+        # lỗi khác và cho góp ý của người dùng.
+        pending = next(
+            (row for row in reversed(rows) if key and _repeat_key(row) == key),
+            None,
+        )
+        if pending is not None:
+            pending["repeat_count"] = int(pending.get("repeat_count") or 1) + 1
+            pending["last_run_id"] = envelope.get("run_id")
+            pending["last_timestamp"] = envelope["timestamp"]
+            _write_outbox(base_dir, rows)
+            return len(rows)
         rows.append(envelope)
         rows = rows[-MAX_OUTBOX:]
         _write_outbox(base_dir, rows)
@@ -273,7 +323,15 @@ def _discord_payload(event: dict[str, Any]) -> dict[str, Any]:
     event_type = str(event.get("event_type") or "event")
     title = "WFX Smart · Báo lỗi" if event_type == "automation_error" else "WFX Smart · Góp ý"
     fields = []
-    for key in ("kind", "code", "method", "run_id", "elapsed_ms", "app_version"):
+    for key in (
+        "kind",
+        "code",
+        "method",
+        "run_id",
+        "repeat_count",
+        "elapsed_ms",
+        "app_version",
+    ):
         value = event.get(key)
         if value in (None, ""):
             continue
