@@ -537,6 +537,7 @@
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="sample-search" data-validation-group="sample" disabled>Tìm</button>
             <button type="button" class="sample-check-file-button module-multi-search-button" data-module-action="sample-check-file" data-validation-group="sample" disabled>Xem file đính kèm</button>
             <small class="module-validation-hint" data-validation-hint="sample">Nhập ít nhất một điều kiện.</small>
+            <button type="button" class="module-clear-filters-button" data-clear-group="sample" hidden>Xóa điều kiện</button>
             <section class="sample-file-results" aria-live="polite" hidden>
               <div class="catalog-results-heading">
                 <strong class="sample-file-results-title">Kết quả</strong>
@@ -711,6 +712,7 @@
             </div>
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="rmpo-search" data-validation-group="rmpo" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="rmpo">Nhập Supplier hoặc RMPO No.</small>
+            <button type="button" class="module-clear-filters-button" data-clear-group="rmpo" hidden>Xóa điều kiện</button>
           </div>
           <section class="rmpo-results" aria-live="polite" hidden>
             <div class="catalog-results-heading">
@@ -756,6 +758,7 @@
             </div>
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="indent-search" data-validation-group="indent" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="indent">Nhập ít nhất một điều kiện.</small>
+            <button type="button" class="module-clear-filters-button" data-clear-group="indent" hidden>Xóa điều kiện</button>
           </div>
         </div>
 
@@ -779,6 +782,7 @@
             </div>
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="advance-pr-search" data-validation-group="advance-pr" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="advance-pr">Nhập ít nhất một điều kiện.</small>
+            <button type="button" class="module-clear-filters-button" data-clear-group="advance-pr" hidden>Xóa điều kiện</button>
           </div>
         </div>
 
@@ -796,6 +800,7 @@
             </div>
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="supplier-invoice-search" data-validation-group="supplier-invoice" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="supplier-invoice">Nhập ít nhất một điều kiện.</small>
+            <button type="button" class="module-clear-filters-button" data-clear-group="supplier-invoice" hidden>Xóa điều kiện</button>
           </div>
           <div class="module-search-block module-cancel-section">
             <label class="module-multi-filter-field"><span>Invoice No. cần Cancel</span><input class="supplier-invoice-cancel-query" type="text" autocomplete="off" placeholder="Nhập đúng Invoice No." aria-label="Invoice No. cần Cancel" /></label>
@@ -832,6 +837,7 @@
             </div>
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="expense-invoice-search" data-validation-group="expense-invoice" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="expense-invoice">Nhập ít nhất một điều kiện.</small>
+            <button type="button" class="module-clear-filters-button" data-clear-group="expense-invoice" hidden>Xóa điều kiện</button>
           </div>
         </div>
 
@@ -941,7 +947,7 @@
             <button type="button" class="module-secondary-button" data-module-action="supplier-open">Mở Master</button>
           </div>
           <div class="special-section special-search-section">
-            <label><span>Tìm tên công ty</span><input class="supplier-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
+            <label><span>Tìm Supplier</span><input class="supplier-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
             <button type="button" class="special-primary-button" data-module-action="supplier-find" data-validation-group="supplier" disabled>Tìm tất cả Category</button>
             <button type="button" class="module-secondary-button" data-module-action="supplier-find-category" data-validation-group="supplier" disabled>Chỉ tìm trong Category đang chọn</button>
             <small class="module-validation-hint" data-validation-hint="supplier">Nhập tên Supplier. App tự mở List nếu chưa mở.</small>
@@ -954,7 +960,7 @@
             <span><strong>Buyers List</strong><small>Mở danh sách trên WFX</small></span>
           </button>
           <div class="special-section special-search-section">
-            <label><span>Find Buyer</span><input class="buyer-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
+            <label><span>Tìm Buyer</span><input class="buyer-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
             <button type="button" class="special-primary-button" data-module-action="buyer-find" data-validation-group="buyer" disabled>Tìm và mở Buyer</button>
             <small class="module-validation-hint" data-validation-hint="buyer">Nhập tên Buyer.</small>
           </div>

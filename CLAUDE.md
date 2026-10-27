@@ -252,6 +252,13 @@ Mỗi nút trong module là một flow riêng:
    nhưng List/search vẫn không sẵn sàng, trả lỗi kỹ thuật cụ thể kèm trạng thái
    tự mở thất bại. `*_LIST_NOT_OPEN` chỉ còn dùng cho các thao tác làm thay đổi
    dữ liệu như New khi người dùng chưa mở đúng List.
+   Footer hiện nguyên `message`, nên câu lỗi Search do `_search_failure` dựng
+   theo bước hỏng (mở List / thiếu ô / WFX không nhận giá trị / bảng còn tải);
+   selector và lỗi Playwright gốc chỉ được ghi vào log. Với AG Grid có Floating
+   Filter, thiếu ô lọc phải gợi ý người dùng hiện lại cột đã ẩn. Search xong mà
+   AG Grid của chính frame List hiện overlay no-rows ở hai lần đọc cách nhau
+   400 ms thì trả `MODULE_SEARCH_NO_RESULTS` (không gửi telemetry); bảng ASP.NET
+   cổ điển không có overlay đó nên không được đoán số dòng.
 7. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
    lên foreground chạy song song và không nằm trên critical path. Poll trạng
    thái grid ở 150 ms, nhưng chỉ chấp nhận Floating Filter sau khi visible/enabled

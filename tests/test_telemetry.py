@@ -110,7 +110,7 @@ def test_automation_error_context_explains_generic_codes():
     assert context["method_label"] == "Tìm trong Sample List"
     assert context["error_title"] == "Ô tìm kiếm của module chưa sẵn sàng"
     assert "Không tìm thấy ô Created By" in context["message"]
-    assert "tự mở List" in context["suggestion"]
+    assert "hiện lại cột" in context["suggestion"]
     assert context["module"] == "Sample List"
 
 

@@ -8,7 +8,7 @@ Mở Supplier Master theo một Category, tìm tên nhà cung cấp trong đúng
 1. Mở module Supplier List.
 2. Chọn Category nếu bạn biết nhóm của Supplier, rồi bấm
    `Mở Master`.
-3. Nhập tên hoặc một phần tên công ty.
+3. Nhập tên hoặc một phần tên công ty vào ô `Tìm Supplier`.
 4. Bấm `Chỉ tìm trong Category đang chọn` khi bạn đã biết Supplier thuộc nhóm
    nào — cách này nhanh hơn hẳn.
 5. Bấm `Tìm tất cả Category` khi bạn chưa biết nhóm và muốn tìm rộng.

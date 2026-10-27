@@ -78,6 +78,8 @@ from wfx_panel.automation.modules.context import (  # noqa: F401
     _frame_matches_module_context,
     _frame_serves_search_spec,
     _frame_with_visible_context,
+    _grid_reports_no_rows,
+    _module_search_is_loading,
     _wait_module_search_settled,
 )
 from wfx_panel.automation.modules.creation import (  # noqa: F401
@@ -97,9 +99,9 @@ from wfx_panel.automation.modules.grid import (  # noqa: F401
     open_module_with_floating_filter,
 )
 from wfx_panel.automation.modules.inputs import (  # noqa: F401
+    SearchValueNotConfirmed,
     _apply_module_search,
     _click_navigation_control,
-    _module_search_is_loading,
     _search_input_across_horizontal_grid,
     _search_input_in_frame,
     _search_input_in_frames,

@@ -128,26 +128,39 @@ def _frame_matches_module_context(
     return "indent list" in title and "user indent" not in title
 
 
+# Selector loading khá rộng nên khớp nhiều node ẩn. Hỏi is_visible từng node
+# tốn một round-trip CDP mỗi node, mỗi frame, mỗi nhịp poll; một lần
+# evaluate_all trả lời cả frame. Luật hiển thị bám đúng Playwright: có kích
+# thước và không visibility:hidden.
+_ANY_VISIBLE_JS = """elements => elements.some(element => {
+    if (!element.isConnected) return false;
+    if (getComputedStyle(element).visibility === 'hidden') return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+})"""
+
+
+def _module_search_is_loading(page: Page) -> bool:
+    for frame in page.frames:
+        try:
+            if frame.locator(_MODULE_LOADING_SELECTOR).evaluate_all(
+                _ANY_VISIBLE_JS
+            ):
+                return True
+        except PlaywrightError:
+            continue
+    return False
+
+
 def _wait_module_search_settled(
     page: Page,
     labels: list[str],
+    timeout_s: float = 30,
 ) -> None:
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + timeout_s
     stable_since = 0.0
     while time.monotonic() < deadline:
-        loading = False
-        for frame in page.frames:
-            try:
-                overlays = frame.locator(_MODULE_LOADING_SELECTOR)
-                if any(
-                    overlays.nth(index).is_visible()
-                    for index in range(overlays.count())
-                ):
-                    loading = True
-                    break
-            except PlaywrightError:
-                continue
-        if loading:
+        if _module_search_is_loading(page):
             stable_since = 0.0
         elif stable_since <= 0:
             stable_since = time.monotonic()
@@ -157,3 +170,43 @@ def _wait_module_search_settled(
     raise PlaywrightTimeoutError(
         "Kết quả search chưa ổn định cho: " + ", ".join(labels)
     )
+
+
+# AG Grid chỉ hiện overlay no-rows khi datasource thật sự rỗng; header và ô lọc
+# vẫn còn nên chỉ nhìn số dòng DOM là không đủ để kết luận.
+_GRID_REPORTS_NO_ROWS_JS = """roots => roots.some(root => {
+    const shown = element => {
+        if (!element || !element.isConnected) return false;
+        if (getComputedStyle(element).visibility === 'hidden') return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    };
+    if (!shown(root)) return false;
+    const noRows = [...root.querySelectorAll(
+        '.ag-overlay-no-rows-wrapper, .ag-overlay-no-rows-center'
+    )].some(shown);
+    const rows = [...root.querySelectorAll(
+        '.ag-center-cols-container .ag-row'
+    )].some(shown);
+    return noRows && !rows;
+})"""
+
+
+def _grid_reports_no_rows(page: Page, frame: Frame) -> bool:
+    """True khi AG Grid của chính frame List báo rỗng, đọc hai lần cách nhau.
+
+    Lần đọc thứ hai chặn overlay no-rows còn sót của lượt trước, khi WFX chưa
+    kịp vẽ dòng mới. Màn không dùng AG Grid luôn trả False: không đoán số dòng
+    của bảng ASP.NET cổ điển.
+    """
+    for attempt in range(2):
+        try:
+            if not frame.locator(".ag-root-wrapper").evaluate_all(
+                _GRID_REPORTS_NO_ROWS_JS
+            ):
+                return False
+        except PlaywrightError:
+            return False
+        if attempt == 0:
+            _wait(page, 400)
+    return True

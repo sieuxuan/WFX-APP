@@ -52,6 +52,10 @@ class NodeList:
     def nth(self, index):
         return self.nodes[index]
 
+    def evaluate_all(self, script, _arg=None):
+        assert "elements.some(" in script, script[:80]
+        return any(node.visible for node in self.nodes)
+
 
 class ContextFrame:
     def __init__(
@@ -396,3 +400,60 @@ def test_a_detached_frame_does_not_count_as_a_loading_overlay(clock):
     )
 
     module_context._wait_module_search_settled(page, ["Supplier"])
+
+
+# --- lưới rỗng sau khi tìm ---------------------------------------------
+
+
+class NoRowsFrame:
+    """Frame List trả lời probe no-rows theo kịch bản từng lần đọc."""
+
+    def __init__(self, answers, *, error=None):
+        self.answers = list(answers)
+        self.error = error
+        self.reads = 0
+
+    def locator(self, selector):
+        assert selector == ".ag-root-wrapper"
+        frame = self
+
+        class Roots:
+            def evaluate_all(self, script, _arg=None):
+                assert "ag-overlay-no-rows" in script
+                if frame.error is not None:
+                    raise frame.error
+                frame.reads += 1
+                return frame.answers.pop(0)
+
+        return Roots()
+
+
+def test_an_empty_grid_is_only_reported_after_two_reads_agree(clock):
+    frame = NoRowsFrame([True, True])
+    page = ContextPage(clock=clock)
+
+    assert module_context._grid_reports_no_rows(page, frame) is True
+    assert frame.reads == 2
+
+
+def test_a_stale_no_rows_overlay_that_clears_is_not_reported(clock):
+    """Overlay của lượt trước còn sót một nhịp trước khi WFX vẽ dòng mới."""
+    frame = NoRowsFrame([True, False])
+    page = ContextPage(clock=clock)
+
+    assert module_context._grid_reports_no_rows(page, frame) is False
+
+
+def test_a_grid_with_rows_is_answered_in_one_read(clock):
+    frame = NoRowsFrame([False])
+    page = ContextPage(clock=clock)
+
+    assert module_context._grid_reports_no_rows(page, frame) is False
+    assert frame.reads == 1
+
+
+def test_a_frame_that_detaches_never_claims_the_grid_is_empty(clock):
+    frame = NoRowsFrame([], error=PlaywrightError("frame was detached"))
+    page = ContextPage(clock=clock)
+
+    assert module_context._grid_reports_no_rows(page, frame) is False

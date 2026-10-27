@@ -163,6 +163,24 @@ class _Locator:
     def evaluate(self, script: str, arg: Any = None) -> Any:
         return self.node.evaluate(script, arg)
 
+    def evaluate_all(self, script: str, arg: Any = None) -> Any:
+        def shown(node: Any) -> bool:
+            try:
+                return bool(node.is_visible())
+            except PlaywrightError:
+                return False
+
+        if "elements.some(" in script:
+            return any(shown(node) for node in self._nodes)
+        if "elements.map(" in script and "closest(" in script:
+            return [
+                node.evaluate(script, arg)
+                if shown(node) and node.is_enabled()
+                else None
+                for node in self._nodes
+            ]
+        raise AssertionError(f"Locator chưa hỗ trợ evaluate_all: {script[:120]}")
+
     def locator(self, selector: str) -> _Locator:
         return self.node.locator(selector)
 

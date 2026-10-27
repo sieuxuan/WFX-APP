@@ -163,7 +163,8 @@ def test_oc_sample_and_sale_asn_search_auto_open_their_list():
     assert "search_spec.context_field.aliases" in search_block
     assert "đang tự mở List" in search_block
     assert '"MODULE_LIST_NOT_OPEN"' not in search_block
-    assert '"MODULE_SEARCH_NOT_CONFIRMED"' in search_block
+    assert "_search_failure(" in search_block
+    assert '"MODULE_SEARCH_NOT_CONFIRMED"' in SOURCE
     assert "def open_sample_new" in SOURCE
     assert "New Sample Order" in SOURCE
 

@@ -28,6 +28,7 @@ from wfx_panel.automation.modules.constants import (
 )
 from wfx_panel.automation.modules.context import (
     _frame_with_visible_context,
+    _grid_reports_no_rows,
     _wait_module_search_settled,
 )
 from wfx_panel.automation.modules.grid import (
@@ -35,6 +36,7 @@ from wfx_panel.automation.modules.grid import (
     _show_module_floating_filter,
 )
 from wfx_panel.automation.modules.inputs import (
+    SearchValueNotConfirmed,
     _apply_module_search,
     _search_input_in_frame,
     _search_input_in_frames,
@@ -52,6 +54,59 @@ from wfx_panel.automation.search_specs import (
     SUPPLIER_INVOICE_SEARCH_SPEC,
     ModuleSearchSpec,
 )
+
+
+def _search_failure(
+    search_spec: ModuleSearchSpec,
+    stage: str,
+    labels: str,
+    exc: BaseException,
+    log: Callable[[str], None],
+    **data: Any,
+) -> dict[str, Any]:
+    """Câu lỗi cho người dùng theo bước hỏng; lỗi gốc chỉ nằm trong log.
+
+    Footer hiện nguyên `message`, nên selector hay "Timeout 30000ms exceeded"
+    không được lọt vào đó. Log kỹ thuật vẫn giữ lỗi gốc cho Báo lỗi một chạm.
+    """
+    module = search_spec.module_name
+    if stage == "context":
+        code = "MODULE_SEARCH_NOT_READY"
+        message = (
+            f"App đã tự mở {module} nhưng màn List chưa sẵn sàng để tìm. "
+            "Chờ WFX tải xong rồi bấm Tìm lại."
+        )
+    elif stage == "field" and search_spec.requires_floating_filter:
+        code = "MODULE_SEARCH_NOT_READY"
+        message = (
+            f"Không thấy ô lọc {labels} trên {module}. Nếu bạn đã ẩn cột "
+            f"{labels} trên WFX, hãy hiện lại cột đó rồi tìm lại."
+        )
+    elif stage == "field":
+        code = "MODULE_SEARCH_NOT_READY"
+        message = (
+            f"Không thấy ô {labels} trên {module}. "
+            "Chờ WFX tải xong rồi bấm Tìm lại."
+        )
+    elif stage == "value":
+        code = "MODULE_SEARCH_NOT_CONFIRMED"
+        message = (
+            f"WFX không nhận giá trị {labels} vừa nhập vào {module}. "
+            "Bấm Tìm lại."
+        )
+    else:
+        code = "MODULE_SEARCH_NOT_CONFIRMED"
+        message = (
+            f"Đã nhập {labels} nhưng {module} vẫn đang tải. "
+            "Xem kết quả trên WFX hoặc bấm Tìm lại."
+        )
+    _write_log(
+        log,
+        f"[MODULE SEARCH] {module} dừng ở bước {stage}: "
+        f"{type(exc).__name__}: {_first_line(exc)}",
+    )
+    _write_log(log, message)
+    return _result(False, code, message, module=module, **data)
 
 
 def _open_multi_field_search_context(
@@ -108,6 +163,13 @@ def _resolve_multi_search_fields(
 
 def _clear_multi_search_fields(fields: Mapping[str, Any]) -> None:
     for search_field in fields.values():
+        # Ô đã trống thì không chạm: mỗi `change` trên form lọc ASP.NET có thể
+        # bắn thêm một lượt lọc phía server trước khi điều kiện thật được gõ.
+        try:
+            if not search_field.input_value(timeout=1_000):
+                continue
+        except PlaywrightError:
+            pass
         tag_name = str(
             search_field.evaluate("element => element.tagName") or ""
         ).upper()
@@ -161,7 +223,7 @@ def _fill_multi_search_fields(
                 search_field.input_value(timeout=1_000) == value
             )
         if not value_confirmed:
-            raise PlaywrightTimeoutError(
+            raise SearchValueNotConfirmed(
                 f"WFX không xác nhận giá trị search {field_spec.label}."
             )
         active_labels.append(field_spec.label)
@@ -206,18 +268,21 @@ def _search_module_fields(
         )
 
     playwright: Playwright | None = None
-    search_started = False
+    stage = "browser"
+    active_text = ", ".join(search_spec.fields[key].label for key in active)
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
+        stage = "context"
         frame = _open_multi_field_search_context(
             page,
             search_spec,
             xpath,
             log,
         )
+        stage = "field"
         fields = _resolve_multi_search_fields(frame, search_spec)
-        search_started = True
+        stage = "value"
         _clear_multi_search_fields(fields)
         active_labels, last_field = _fill_multi_search_fields(
             fields,
@@ -226,8 +291,18 @@ def _search_module_fields(
             search_spec,
             log,
         )
+        stage = "settle"
         _submit_multi_search(last_field)
         _wait_module_search_settled(page, active_labels)
+        if _grid_reports_no_rows(page, frame):
+            return _result(
+                False,
+                "MODULE_SEARCH_NO_RESULTS",
+                f"Không có dòng nào trong {search_spec.module_name} khớp "
+                f"{active_text}.",
+                module=search_spec.module_name,
+                filter_kinds=active,
+            )
         return _result(
             True,
             "MODULE_SEARCH_APPLIED",
@@ -252,28 +327,23 @@ def _search_module_fields(
             module=search_spec.module_name,
         )
     except PlaywrightTimeoutError as exc:
-        detail = _first_line(exc)
-        if search_started:
-            code = "MODULE_SEARCH_NOT_CONFIRMED"
-            message = (
-                f"Đã nhập filter trong {search_spec.module_name}, nhưng WFX "
-                "chưa xác nhận: "
-                f"{detail}"
+        labels = active_text
+        if isinstance(exc, SearchValueNotConfirmed):
+            stage = "value"
+        elif stage == "field":
+            # Lỗi resolve nêu đúng ô thiếu ("Không tìm thấy ô Style trong đúng
+            # màn Indent List."), nên báo đúng ô đó thay vì cả nhóm điều kiện.
+            labels = next(
+                (
+                    field_spec.label
+                    for field_spec in search_spec.fields.values()
+                    if f"ô {field_spec.label} " in str(exc)
+                ),
+                active_text,
             )
-        else:
-            code = "MODULE_SEARCH_NOT_READY"
-            message = (
-                f"App đã tự mở {search_spec.module_name}, nhưng các ô search "
-                "chưa sẵn sàng: "
-                f"{detail}"
-            )
-        _write_log(log, message)
-        return _result(
-            False,
-            code,
-            message,
-            module=search_spec.module_name,
-        )
+        elif stage not in {"value", "settle"}:
+            stage = "context"
+        return _search_failure(search_spec, stage, labels, exc, log)
     except Exception as exc:
         detail = f"{type(exc).__name__}: {_first_line(exc)}"
         message = f"Không thể tìm trong {search_spec.module_name}: {detail}"
@@ -340,9 +410,16 @@ def _clear_list_search_fields(
     selectors: tuple[str, ...],
     *,
     scan_horizontal: bool = False,
-) -> None:
-    """Xóa filter cũ để các lần Search không âm thầm kết hợp điều kiện."""
-    def clear_visible() -> None:
+    keep_visible: tuple[str, ...] = (),
+) -> int:
+    """Xóa filter cũ để các lần Search không âm thầm kết hợp điều kiện.
+
+    Trả số ô đã xóa. `keep_visible` là selector của ô sắp điền: nếu lượt quét
+    ngang đi qua cột đó thì dừng grid ở đúng vị trí ấy, để bước tìm ô kế tiếp
+    thấy ngay mà không phải quét lại cả bảng lần hai.
+    """
+    def clear_visible() -> int:
+        cleared = 0
         # Một locator union trả node unique theo DOM order, tránh query lại
         # cùng input khi nhiều selector fallback cùng match nó.
         candidates = frame.locator(", ".join(selectors))
@@ -354,16 +431,30 @@ def _clear_list_search_fields(
                 if not candidate.input_value(timeout=500):
                     continue
                 candidate.fill("")
+                cleared += 1
                 try:
                     candidate.dispatch_event("change")
                 except PlaywrightError:
                     pass
             except PlaywrightError:
                 continue
+        return cleared
 
-    clear_visible()
+    def target_visible() -> bool:
+        if not keep_visible:
+            return False
+        try:
+            candidates = frame.locator(", ".join(keep_visible))
+            return any(
+                candidates.nth(index).is_visible()
+                for index in range(candidates.count())
+            )
+        except PlaywrightError:
+            return False
+
+    cleared = clear_visible()
     if not scan_horizontal:
-        return
+        return cleared
     roots = frame.locator(".ag-root-wrapper")
     for index in range(roots.count()):
         root = roots.nth(index)
@@ -372,13 +463,23 @@ def _clear_list_search_fields(
                 continue
             state = _horizontal_grid_state(root)
             original = max(0, int(float(state.get("current") or 0)))
+            target_position = original if target_visible() else None
             for position in _horizontal_grid_positions(state):
+                # Vị trí hiện tại vừa được clear_visible() ở trên.
+                if position == original:
+                    continue
                 _scroll_horizontal_grid(root, position)
                 _wait(frame, MODULE_GRID_POLL_MS)
-                clear_visible()
-            _scroll_horizontal_grid(root, original)
+                cleared += clear_visible()
+                if target_position is None and target_visible():
+                    target_position = position
+            _scroll_horizontal_grid(
+                root,
+                original if target_position is None else target_position,
+            )
         except PlaywrightError:
             continue
+    return cleared
 
 
 def _search_module_list(
@@ -403,17 +504,22 @@ def _search_module_list(
             f"Vui lòng nhập {selected_field.label} cần tìm.",
         )
     playwright: Playwright | None = None
-    search_started = False
+    stage = "browser"
     try:
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
+        stage = "context"
         frame = _open_list_search_context(page, search_spec, xpath, log)
-        _clear_list_search_fields(
+        stage = "field"
+        cleared = _clear_list_search_fields(
             frame,
             search_spec.field_selectors,
             scan_horizontal=search_spec.requires_floating_filter,
+            keep_visible=selected_field.selectors,
         )
-        _wait(page, 250)
+        # Chỉ chờ grid vẽ lại khi thật sự vừa xóa filter cũ.
+        if cleared:
+            _wait(page, 250)
         field = _search_input_in_frame(
             page,
             frame,
@@ -422,7 +528,7 @@ def _search_module_list(
             timeout_s=8,
             scan_horizontal=search_spec.requires_floating_filter,
         )
-        search_started = True
+        stage = "settle"
         _apply_module_search(
             page,
             field,
@@ -430,6 +536,15 @@ def _search_module_list(
             selected_field.label,
             log,
         )
+        if _grid_reports_no_rows(page, frame):
+            return _result(
+                False,
+                "MODULE_SEARCH_NO_RESULTS",
+                f"Không có dòng nào trong {search_spec.module_name} khớp "
+                f"{selected_field.label}: {query}.",
+                module=search_spec.module_name,
+                filter_kind=selected_field.label,
+            )
         return _result(
             True,
             "MODULE_SEARCH_APPLIED",
@@ -454,26 +569,16 @@ def _search_module_list(
             module=search_spec.module_name,
         )
     except PlaywrightTimeoutError as exc:
-        detail = _first_line(exc)
-        if search_started:
-            code = "MODULE_SEARCH_NOT_CONFIRMED"
-            message = (
-                f"Đã nhập {selected_field.label} trong "
-                f"{search_spec.module_name}, nhưng WFX chưa xác nhận kết quả: "
-                f"{detail}"
-            )
-        else:
-            code = "MODULE_SEARCH_NOT_READY"
-            message = (
-                f"App đã tự mở {search_spec.module_name}, nhưng ô "
-                f"{selected_field.label} chưa sẵn sàng: {detail}"
-            )
-        _write_log(log, message)
-        return _result(
-            False,
-            code,
-            message,
-            module=search_spec.module_name,
+        if isinstance(exc, SearchValueNotConfirmed):
+            stage = "value"
+        elif stage not in {"field", "settle"}:
+            stage = "context"
+        return _search_failure(
+            search_spec,
+            stage,
+            selected_field.label,
+            exc,
+            log,
             filter_kind=selected_field.label,
         )
     except Exception as exc:

@@ -1764,6 +1764,11 @@ body.compact-mode .compact-launcher .compact-mark {
     .module-multi-search-button { width: 100%; }
     .module-validation-hint { color: var(--text-3); font-size: 12px; line-height: 1.35; }
     .module-validation-hint[hidden] { display: none !important; }
+    /* Cùng cỡ chữ và chiều cao dòng với gợi ý mà nó thay chỗ, để form không nhảy. */
+    .module-clear-filters-button { justify-self: start; padding: 0 2px; color: var(--text-3); font: inherit; font-size: 12px; line-height: 1.35; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; border: 0; border-radius: 4px; background: none; }
+    .module-clear-filters-button:hover { color: var(--accent-strong); }
+    .module-clear-filters-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .module-clear-filters-button[hidden] { display: none !important; }
     .rmpo-results { display: grid; gap: 8px; padding-top: 2px; }
     .rmpo-results[hidden],
     .rmpo-selection[hidden],
