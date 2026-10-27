@@ -643,6 +643,9 @@ class PanelAPI:
             category_name, filter_kind, query, destination
         )
 
+    def catalog_recent_styles(self, category_name: str) -> dict:
+        return self._catalog.recent_styles(category_name)
+
     def open_catalog_destination(
         self, destination: str, article_code: str
     ) -> dict:

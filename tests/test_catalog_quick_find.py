@@ -178,8 +178,37 @@ def test_several_codes_without_an_exact_match_wait_for_the_user(grid_on_page):
         "code": "PSG0000000",
         "season": "SS26",
         "internal_costsheet_status": "",
+        "article_name": "",
+        "buyer_reference": "",
     }
     assert result["codes"] == [style["code"] for style in result["styles"]]
+    assert result["total_codes"] == 30
+    assert result["total_capped"] is False
+
+
+def test_a_full_server_page_is_reported_as_at_least_that_many(grid_on_page):
+    rows = [_row(f"SKN{index:05d}", article_id=str(index)) for index in range(100)]
+    grid = FakeGrid(_ok(*rows))
+
+    result, _ = _find(grid_on_page, grid, query="SKN")
+
+    assert result["total_codes"] == 100
+    assert result["total_capped"] is True
+
+
+def test_several_codes_carry_their_name_and_buyer_reference(grid_on_page):
+    grid = FakeGrid(
+        _ok(
+            _row("A-1", article_name="JACKET", buyer_reference="BR-1"),
+            _row("A-2", article_name="PANT", buyer_reference=""),
+        )
+    )
+
+    result, _ = _find(grid_on_page, grid, query="A-")
+
+    assert [
+        (style["article_name"], style["buyer_reference"]) for style in result["styles"]
+    ] == [("JACKET", "BR-1"), ("PANT", "")]
 
 
 # --- mọi tình huống không chắc chắn: nhường cho luồng DOM ---------------------
@@ -295,7 +324,8 @@ const run = async (storage, fetchImpl, search) => {
   return {result, calls};
 };
 const okBody = {ResponseData: [{
-  ArticleCode: ' PSG0000002 ', ArticleID: 7740011351, CGID: 77400636, Season: 'SS26',
+  ArticleCode: ' PSG0000002 ', ArticleName: ' JACKET ', BuyerReference: null,
+  ArticleID: 7740011351, CGID: 77400636, Season: 'SS26',
   CostsheetStatus: null, DisableCatalogLink: 1,
 }]};
 (async () => {
@@ -357,6 +387,8 @@ def test_rows_are_reduced_to_the_fields_the_popup_link_needs(js_outcomes):
         "rows": [
             {
                 "code": "PSG0000002",
+                "article_name": "JACKET",
+                "buyer_reference": "",
                 "article_id": "7740011351",
                 "group_id": "77400636",
                 "season": "SS26",

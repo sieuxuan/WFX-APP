@@ -581,6 +581,25 @@ def test_grid_inside_a_hidden_pane_is_not_accepted_as_the_live_grid(clock):
     assert all(node.disposed for node in hidden.frame_elements)
 
 
+def test_a_missing_grid_says_why_each_catalog_frame_was_rejected(clock):
+    """Log lỗi phải đủ để chẩn đoán: frame nào, ẩn hay không, kích thước."""
+    hidden = FakeCatalogGrid(clock, interactive=False)
+    detached = FakeCatalogGrid(clock, detached=True)
+    page = FakePage(clock=clock, frames=[hidden, detached])
+
+    with pytest.raises(PlaywrightTimeoutError) as raised:
+        catalog._catalog_grid_frame(page, timeout_seconds=1)
+
+    message = str(raised.value)
+    assert "#1 roots=1 hidden display=block 0x0" in message
+    assert "#2 detached" in message
+
+
+def test_a_page_without_any_catalog_frame_says_so(clock):
+    with pytest.raises(PlaywrightTimeoutError, match="không có frame wfxcataloglist"):
+        catalog._catalog_grid_frame(FakePage(clock=clock), timeout_seconds=1)
+
+
 def test_visible_grid_frame_is_returned(clock):
     live = FakeCatalogGrid(clock, rows=[StyleRow("ABC123")], frame_element_visible=True)
     page = _grid_page(clock, live)

@@ -4,6 +4,11 @@
     "date": "2026-10-27",
     "highlights": [
       {
+        "title": "Mở lại Style vừa dùng chỉ với một chạm",
+        "body": "Hàng Gần đây dưới ô tìm Catalog giữ các Style bạn vừa mở trong Category đang chọn; bấm một Style để mở lại ngay. Khi có nhiều kết quả, mỗi dòng hiện thêm Buyer Reference hoặc tên Article, và danh sách vẫn giữ nguyên nếu mở một dòng bị lỗi. Bấm phím mũi tên xuống từ ô tìm để chọn gợi ý bằng bàn phím.",
+        "entry": "catalog-tim-style"
+      },
+      {
         "title": "Tìm Style theo Article Code và mở Costing nhanh hơn",
         "body": "Tìm theo Article Code giờ hỏi thẳng dữ liệu Catalog nên ra kết quả trong khoảng một giây, không phải chờ bảng Catalog lọc xong. Khi cửa sổ Style đang mở sẵn, Costing và BOM mở ngay mà không chờ thêm. Nếu đang mở một thư mục thay vì Master, ứng dụng tự quay về Master trước khi tìm để không báo nhầm là không có kết quả.",
         "entry": "catalog-tim-style"

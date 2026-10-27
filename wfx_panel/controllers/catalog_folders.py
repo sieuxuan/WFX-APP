@@ -103,10 +103,7 @@ class CatalogFolderController:
             # Reset context CHỈ sau khi đã giành được run lock (bên trong _run).
             # Nếu đặt ở đầu method, một lần gọi bị từ chối ACTION_IN_PROGRESS vẫn
             # xóa mất Catalog đang chuẩn bị của workflow đang chạy.
-            catalog.result = None
-            catalog.active_article_destination = None
-            catalog.prepared_category = None
-            catalog.files_view.tokens.clear()
+            catalog._forget_search_and_files()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {

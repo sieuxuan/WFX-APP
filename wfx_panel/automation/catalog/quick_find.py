@@ -41,6 +41,7 @@ ARTICLE_DETAIL_PATH = "/wfx/wfx_ArticleDetail.aspx"
 ARTICLE_WINDOW_NAME = "ArticleDetail"
 FETCH_TIMEOUT_MS = 10_000
 MAX_STYLES = 20
+SERVER_ROW_LIMIT = 100
 
 _DIGITS = re.compile(r"^\d+$")
 _COMPANY = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -91,6 +92,8 @@ _FIND_CODE_JS = r"""async ({path, catCode, query, timeoutMs}) => {
       catalogType: new URLSearchParams(location.search).get('CatalogType') || '',
       rows: body.ResponseData.map(row => ({
         code: String(row.ArticleCode || '').trim(),
+        article_name: String(row.ArticleName || '').trim(),
+        buyer_reference: String(row.BuyerReference || '').trim(),
         article_id: String(row.ArticleID ?? ''),
         group_id: String(row.CGID ?? ''),
         season: String(row.Season || '').trim(),
@@ -198,6 +201,8 @@ def _quick_find_catalog_code(
             "code": style["code"],
             "season": style.get("season") or "",
             "internal_costsheet_status": style.get("costsheet_status") or "",
+            "article_name": style.get("article_name") or "",
+            "buyer_reference": style.get("buyer_reference") or "",
         }
         for style in styles[:MAX_STYLES]
     ]
@@ -222,6 +227,9 @@ def _quick_find_catalog_code(
             codes=[style["code"] for style in shown],
             matches=[style["code"] for style in shown],
             styles=shown,
+            # Server cắt ở 100 dòng: 100 nghĩa là "ít nhất 100".
+            total_codes=len(styles),
+            total_capped=len(rows) >= SERVER_ROW_LIMIT,
         )
 
     target = exact[0] if exact else styles[0]

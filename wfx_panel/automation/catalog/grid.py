@@ -40,7 +40,52 @@ def _catalog_grid_frame(
             if _catalog_grid_is_interactive(frame):
                 return frame
         _wait(page, 250)
-    raise PlaywrightTimeoutError("Không tìm thấy AG Grid của Catalog.")
+    raise PlaywrightTimeoutError(
+        f"Không tìm thấy AG Grid của Catalog ({_catalog_grid_diagnostics(page)})."
+    )
+
+
+_GRID_DIAGNOSTIC_JS = """() => {
+    const roots = [...document.querySelectorAll('.ag-root-wrapper')];
+    const root = roots[0];
+    const rect = root ? root.getBoundingClientRect() : null;
+    const style = root ? getComputedStyle(root) : null;
+    return {
+        roots: roots.length,
+        visibility: document.visibilityState,
+        display: style ? style.display : '',
+        width: rect ? Math.round(rect.width) : 0,
+        height: rect ? Math.round(rect.height) : 0,
+    };
+}"""
+
+
+def _catalog_grid_diagnostics(page: Page) -> str:
+    """Vì sao không frame Catalog nào được nhận, để log lỗi đủ chẩn đoán.
+
+    Chỉ chạy khi đã timeout. Không ghi URL hay nội dung grid, chỉ hình dạng.
+    """
+    parts: list[str] = []
+    try:
+        frames = [f for f in page.frames if "wfxcataloglist" in f.url.lower()]
+    except PlaywrightError:
+        return "không đọc được danh sách frame"
+    if not frames:
+        return "không có frame wfxcataloglist"
+    for index, frame in enumerate(frames[:3], 1):
+        try:
+            if frame.is_detached():
+                parts.append(f"#{index} detached")
+                continue
+            state = frame.evaluate(_GRID_DIAGNOSTIC_JS)
+            parts.append(
+                f"#{index} roots={state['roots']} {state['visibility']} "
+                f"display={state['display'] or '-'} "
+                f"{state['width']}x{state['height']}"
+            )
+        except (PlaywrightError, KeyError, TypeError) as exc:
+            parts.append(f"#{index} lỗi đọc ({type(exc).__name__})")
+    return "; ".join(parts)
 
 
 def _catalog_grid_is_interactive(frame: Frame) -> bool:

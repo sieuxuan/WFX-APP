@@ -272,6 +272,7 @@ function showCatalogSpace(space, { focus = true } = {}) {
   ) {
     scanCatalogFolders(false);
   }
+  if (catalogSpace === "search") loadCatalogRecent();
   if (!focus) return;
   window.setTimeout(() => {
     if (catalogSpace === "costing") {

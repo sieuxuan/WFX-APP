@@ -55,11 +55,20 @@ function sandbox() {
     ".catalog-category": { value: "Apparel" },
     ".catalog-query": { value: "AB12" },
     ".catalog-article-suggestions": { hidden: true, innerHTML: "" },
+    ".catalog-recent": { hidden: true },
+    ".catalog-recent-list": { innerHTML: "" },
   };
   const context = {
     busy: false,
     catalogKind: "code",
     catalogPendingDestination: null,
+    catalogResultChoices: null,
+    rerendered: [],
+    escapeHtml: (value) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;"),
+    syncCatalogKind: () => {},
+    withButtonLoading: async (_button, run) => run(),
+    renderCatalogResults: (result) => { context.rerendered.push(result); },
     articleSuggestionTimer: 0,
     articleSuggestionGeneration: 0,
     bridgeCalls: [],
@@ -163,6 +172,51 @@ const scenarios = {
     };
   },
 
+  async a_failed_row_open_restores_the_list_of_choices() {
+    const ctx = sandbox();
+    const choices = { code: "MULTIPLE_RESULTS", styles: [{ code: "A-1" }, { code: "A-2" }] };
+    ctx.catalogResultChoices = choices;
+    ctx.catalogPendingDestination = "bom";
+    ctx.runSelectedModuleAction = async () => ({ ok: false, code: "CATALOG_DESTINATION_FAILED" });
+    await ctx.openCatalogResultCode({ dataset: { resultCode: "A-2" } });
+    return {
+      restored: ctx.rerendered.length === 1 && ctx.rerendered[0] === choices,
+      pending: ctx.catalogPendingDestination,
+      query: ctx.elements[".catalog-query"].value,
+    };
+  },
+
+  async a_successful_row_open_does_not_redraw_the_old_list() {
+    const ctx = sandbox();
+    ctx.catalogResultChoices = { code: "MULTIPLE_RESULTS", styles: [{ code: "A-1" }] };
+    ctx.catalogPendingDestination = "costsheet";
+    ctx.runSelectedModuleAction = async () => ({ ok: true, code: "CATALOG_DESTINATION_OPENED" });
+    await ctx.openCatalogResultCode({ dataset: { resultCode: "A-1" } });
+    return { rerendered: ctx.rerendered.length, pending: ctx.catalogPendingDestination };
+  },
+
+  async the_note_says_how_many_codes_were_left_out() {
+    const ctx = sandbox();
+    const styles = Array.from({ length: 20 }, (_, index) => ({ code: `C-${index}` }));
+    return {
+      known: ctx.catalogResultsNote({ styles, total_codes: 37 }),
+      capped: ctx.catalogResultsNote({ styles, total_codes: 100, total_capped: true }),
+      domFull: ctx.catalogResultsNote({ styles }),
+      few: ctx.catalogResultsNote({ styles: styles.slice(0, 3), total_codes: 3 }),
+    };
+  },
+
+  async recent_chips_are_escaped_and_hidden_when_empty() {
+    const ctx = sandbox();
+    ctx.renderCatalogRecent([{ code: 'A"<1>', label: "Áo <b>" }, { code: "" }, null]);
+    const shown = {
+      hidden: ctx.elements[".catalog-recent"].hidden,
+      html: ctx.elements[".catalog-recent-list"].innerHTML,
+    };
+    ctx.renderCatalogRecent([]);
+    return { ...shown, emptyHidden: ctx.elements[".catalog-recent"].hidden };
+  },
+
   async an_untouched_suggestion_still_renders() {
     const ctx = sandbox();
     ctx.callQuiet = async () => ({ suggestions: [{ article_code: "AB12" }] });
@@ -193,6 +247,9 @@ def outcomes(tmp_path_factory) -> dict:
             "runCatalogAction",
             "hideArticleSuggestions",
             "scheduleArticleSuggestions",
+            "openCatalogResultCode",
+            "catalogResultsNote",
+            "renderCatalogRecent",
         )
     )
     script = tmp_path_factory.mktemp("catalog_js") / "harness.js"
@@ -247,3 +304,35 @@ def test_hidden_suggestions_never_come_back_on_their_own(outcomes, scenario):
 
 def test_suggestions_still_render_when_nothing_hid_them(outcomes):
     assert outcomes["an_untouched_suggestion_still_renders"]["rendered"] == 1
+
+
+def test_a_failed_row_open_keeps_the_choices_on_screen(outcomes):
+    assert outcomes["a_failed_row_open_restores_the_list_of_choices"] == {
+        "restored": True,
+        "pending": "bom",
+        "query": "A-2",
+    }
+
+
+def test_a_successful_row_open_moves_on(outcomes):
+    assert outcomes["a_successful_row_open_does_not_redraw_the_old_list"] == {
+        "rerendered": 0,
+        "pending": None,
+    }
+
+
+def test_the_results_note_explains_a_truncated_list(outcomes):
+    notes = outcomes["the_note_says_how_many_codes_were_left_out"]
+    assert notes["known"].startswith("Đang hiện 20/37 Code.")
+    assert notes["capped"].startswith("Đang hiện 20/100+ Code.")
+    assert notes["domFull"].startswith("Có thể còn nhiều Code hơn.")
+    assert notes["few"] == ""
+
+
+def test_recent_chips_never_inject_markup(outcomes):
+    chips = outcomes["recent_chips_are_escaped_and_hidden_when_empty"]
+    assert chips["hidden"] is False
+    assert chips["emptyHidden"] is True
+    assert "<1>" not in chips["html"] and "<b>" not in chips["html"]
+    assert chips["html"].count("catalog-recent-chip") == 1
+    assert 'data-recent-code="A&quot;&lt;1&gt;"' in chips["html"]

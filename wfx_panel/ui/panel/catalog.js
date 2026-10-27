@@ -718,6 +718,10 @@ function scheduleArticleSuggestions() {
   }, 180);
 }
 
+// Danh sách MULTIPLE_RESULTS đang hiện. Mở một dòng bị lỗi thì vẽ lại đúng
+// danh sách này thay vì bắt người dùng tìm lại từ đầu.
+let catalogResultChoices = null;
+
 function hideCatalogResults() {
   const wrap = $(".catalog-results");
   if (!wrap) return;
@@ -725,6 +729,53 @@ function hideCatalogResults() {
   $(".catalog-results-title").textContent = "Kết quả";
   $(".catalog-results-list").innerHTML = "";
   $(".catalog-results-count").textContent = "";
+  const note = $(".catalog-results-note");
+  if (note) note.hidden = true;
+}
+
+function catalogResultsNote(result) {
+  const shown = result.styles.length;
+  const total = Number(result.total_codes || 0);
+  if (total > shown) {
+    return `Đang hiện ${shown}/${result.total_capped ? `${total}+` : total} Code.`
+      + " Nhập Code cụ thể hơn để thu hẹp.";
+  }
+  return shown >= 20 ? "Có thể còn nhiều Code hơn. Nhập cụ thể hơn để thu hẹp." : "";
+}
+
+function renderCatalogRecent(styles) {
+  const host = $(".catalog-recent");
+  const list = $(".catalog-recent-list");
+  if (!host || !list) return;
+  const items = Array.isArray(styles) ? styles.filter((item) => item?.code) : [];
+  host.hidden = !items.length;
+  list.innerHTML = items.map((item) => {
+    const code = String(item.code);
+    const label = String(item.label || "");
+    return `<button type="button" class="catalog-recent-chip"
+      data-recent-code="${escapeHtml(code)}"
+      data-tooltip="${escapeHtml(label ? `${code} · ${label}` : code)}"
+      aria-label="${escapeHtml(label ? `Mở lại ${code}, ${label}` : `Mở lại ${code}`)}"
+      >${escapeHtml(code)}</button>`;
+  }).join("");
+}
+
+async function loadCatalogRecent() {
+  const category = $(".catalog-category")?.value || "";
+  const result = await callQuiet("catalog_recent_styles", category);
+  if (result && result.category === ($(".catalog-category")?.value || "")) {
+    renderCatalogRecent(result.recent_styles);
+  }
+}
+
+async function openCatalogRecent(chip) {
+  const code = String(chip?.dataset.recentCode || "");
+  if (!code || busy) return;
+  hideArticleSuggestions();
+  $(".catalog-query").value = code;
+  catalogKind = "code";
+  syncCatalogKind();
+  await withButtonLoading(chip, () => runCatalogAction("code", code));
 }
 
 // Feature: khi có nhiều Code, hiển thị danh sách ngay trong panel để người
@@ -735,8 +786,14 @@ function renderCatalogResults(result) {
   if (!wrap || !list) return;
   if (result.code === "MULTIPLE_RESULTS"
       && Array.isArray(result.styles) && result.styles.length) {
+    catalogResultChoices = result;
     $(".catalog-results-title").textContent = "Chọn Article Code";
     $(".catalog-results-count").textContent = `${result.styles.length} Code`;
+    const note = $(".catalog-results-note");
+    if (note) {
+      note.textContent = catalogResultsNote(result);
+      note.hidden = !note.textContent;
+    }
     list.innerHTML = result.styles.map((style) => {
       const code = String(style.code || "");
       const parts = [];
@@ -744,9 +801,15 @@ function renderCatalogResults(result) {
       if (style.internal_costsheet_status) {
         parts.push(`CS <b>${escapeHtml(style.internal_costsheet_status)}</b>`);
       }
+      const name = [style.buyer_reference, style.article_name]
+        .filter(Boolean).join(" · ");
       return `<button type="button" class="catalog-result-row" role="option"
         data-result-code="${escapeHtml(code)}">
-        <span class="catalog-result-code">${escapeHtml(code)}</span>
+        <span class="catalog-result-main">
+          <span class="catalog-result-code">${escapeHtml(code)}</span>
+          ${name ? `<small class="catalog-result-name" data-tooltip="${
+            escapeHtml(name)}">${escapeHtml(name)}</small>` : ""}
+        </span>
         <span class="catalog-result-meta">${parts.join(" · ")}</span>
       </button>`;
     }).join("");
@@ -810,8 +873,15 @@ async function openCatalogResultCode(row) {
   syncCatalogKind();
   // Mở đúng Code đã chọn: lọc lại grid Master đã chuẩn bị bằng chính Code này.
   const destination = catalogPendingDestination;
-  await withButtonLoading(
+  const choices = catalogResultChoices;
+  const result = await withButtonLoading(
     row,
     () => runCatalogAction("code", code, destination),
   );
+  // Lượt bị chặn vì đang bận không đổi gì; mở lỗi thì giữ danh sách để chọn
+  // lại dòng khác thay vì tìm lại từ đầu.
+  if (choices && result && !result.ok) {
+    renderCatalogResults(choices);
+    catalogPendingDestination = destination;
+  }
 }

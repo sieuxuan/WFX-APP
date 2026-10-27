@@ -469,6 +469,16 @@ Các workflow riêng hiện có:
   chuẩn hóa và khử trùng đúng một lần cho mỗi cặp (Category, field) qua
   `article_library.suggestion_index`, gắn vào chính document trong cache để index
   tự mất hiệu lực khi file cache đổi.
+- Catalog nhớ tối đa 8 Style vừa mở (`RESULT_OPENED`, `CATALOG_DESTINATION_OPENED`,
+  `CATALOG_FILES_SCANNED`) theo User ID + Category trong
+  `stores/catalog_recent.py` (`catalog-recent.json` ở data dir), mới nhất trước,
+  gộp Code không phân biệt hoa/thường. Không có User ID thì không ghi. Hàng
+  `Gần đây` dưới các nút Costing/BOM/File mở lại Style bằng flow Tìm theo Code.
+  Danh sách nhiều Code hiện thêm Buyer Reference/Article Name: đường nhanh lấy từ
+  GetData, luồng DOM bù từ Article Library, không ghi đè tên server đã trả. Khi
+  danh sách bị cắt ở 20 phải báo tổng số (`total_codes`; `total_capped` khi
+  server trả đủ 100 dòng). Mở một dòng bị lỗi thì vẽ lại đúng danh sách cũ và
+  giữ đích Costing/BOM/File, không bắt tìm lại.
 - Khi user chọn một gợi ý từ Buyer Reference hoặc Article Name, UI phải lấy
   exact `Article Code` của chính dòng đó, chuyển filter sang Code và tìm bằng
   code; không lọc lại Buyer Reference/Name khiến user phải chọn Article lần hai.

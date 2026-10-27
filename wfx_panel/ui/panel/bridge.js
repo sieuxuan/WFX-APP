@@ -65,6 +65,9 @@ function handleResult(result) {
   ].includes(result.code)) {
     clearCatalogResult();
   }
+  if (Array.isArray(result.recent_styles)) {
+    renderCatalogRecent(result.recent_styles);
+  }
   if ([
     "MULTIPLE_RESULTS", "NO_RESULTS", "RESULT_OPENED",
     "CATALOG_FILES_SCANNED",
