@@ -75,6 +75,19 @@ def _stub_context(monkeypatch, *, frame: object = "frame") -> None:
         "_grid_reports_no_rows",
         lambda *_args, **_kwargs: False,
     )
+    patch_automation(
+        monkeypatch, modules,
+        "_mark_search_target",
+        lambda *_args, **_kwargs: ("", ""),
+    )
+    patch_automation(
+        monkeypatch, modules, "_grid_signature", lambda *_args, **_kwargs: ""
+    )
+    patch_automation(
+        monkeypatch, modules,
+        "_wait_grid_reflects_search",
+        lambda *_args, **_kwargs: None,
+    )
 
 
 # --- Lỗi người dùng: chặn trước khi chạm Chrome -------------------------
@@ -388,3 +401,97 @@ def test_multi_field_search_also_keeps_unrelated_runtime_errors_distinct(
     )
 
     assert result["code"] == "MODULE_SEARCH_FAILED"
+
+
+# --- Chờ đúng kết quả của lượt gõ (đo trên WFX thật) ---------------------
+
+
+def _record_list_search(monkeypatch, *, cleared: int, current_value: str):
+    """Chạy `_search_module_list` thật, ghi lại từng bước chạm grid."""
+    calls: list[tuple] = []
+    patch_automation(
+        monkeypatch, modules,
+        "_open_list_search_context", lambda *_a, **_k: "frame",
+    )
+    patch_automation(
+        monkeypatch, modules,
+        "_search_input_in_frame", lambda *_a, **_k: "field",
+    )
+    patch_automation(
+        monkeypatch, modules,
+        "_mark_search_target",
+        lambda _field: ("[data-wfx-search-target]", current_value),
+    )
+    signatures = iter(["rows:27:A", "rows:30:B"])
+    patch_automation(
+        monkeypatch, modules,
+        "_grid_signature", lambda _frame: next(signatures),
+    )
+
+    def clear(_frame, _selectors, **kwargs):
+        calls.append(("clear", kwargs["skip"], kwargs["keep_visible"]))
+        return cleared
+
+    patch_automation(monkeypatch, modules, "_clear_list_search_fields", clear)
+    patch_automation(
+        monkeypatch, modules,
+        "_wait_grid_reflects_search",
+        lambda _page, _frame, before, **kwargs: calls.append(
+            ("wait", before, kwargs.get("change_timeout_s"))
+        ),
+    )
+    patch_automation(
+        monkeypatch, modules,
+        "_apply_module_search",
+        lambda *_a, **_k: calls.append(("apply",)),
+    )
+    patch_automation(
+        monkeypatch, modules, "_grid_reports_no_rows", lambda *_a, **_k: False
+    )
+    return calls
+
+
+def test_the_box_about_to_be_filled_is_never_cleared_separately(
+    monkeypatch, world
+):
+    """Xóa riêng ô đích bắn thêm một lượt lọc server về xen giữa lượt tìm."""
+    wire_automation(monkeypatch, modules, world)
+    calls = _record_list_search(monkeypatch, cleared=0, current_value="OC-0")
+
+    result = _search(query="OC-1")
+
+    assert result["code"] == "MODULE_SEARCH_APPLIED"
+    clear = calls[0]
+    assert clear == (
+        "clear", "[data-wfx-search-target]", ("[data-wfx-search-target]",)
+    )
+    # Không có ô cột khác bị xóa thì không chờ lượt tải lại nào trước khi gõ.
+    assert [step[0] for step in calls] == ["clear", "apply", "wait"]
+
+
+def test_clearing_another_column_waits_for_that_reload_before_typing(
+    monkeypatch, world
+):
+    wire_automation(monkeypatch, modules, world)
+    calls = _record_list_search(monkeypatch, cleared=1, current_value="OC-0")
+
+    _search(query="OC-1")
+
+    steps = [step[0] for step in calls]
+    assert steps == ["clear", "wait", "apply", "wait"]
+    # Lần chờ đầu so với bảng TRƯỚC khi xóa; lần sau so với bảng trước lúc gõ.
+    assert calls[1][1] == "rows:27:A"
+    assert calls[3][1] == "rows:30:B"
+    assert calls[3][2] == 4.0
+
+
+def test_searching_the_same_value_again_does_not_wait_for_a_change(
+    monkeypatch, world
+):
+    """Ô đã giữ đúng giá trị thì WFX không lọc lại; bảng hiện tại là kết quả."""
+    wire_automation(monkeypatch, modules, world)
+    calls = _record_list_search(monkeypatch, cleared=0, current_value="OC-1")
+
+    _search(query="OC-1")
+
+    assert calls[-1] == ("wait", "rows:30:B", 0.0)

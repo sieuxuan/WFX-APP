@@ -815,3 +815,32 @@ def test_a_list_that_is_not_open_yet_is_opened_by_the_search_itself(
     assert shown == [["grid-cu"]], "Floating Filter phải bật trên grid mới"
     assert attempts[1] == 30
     assert any("đang tự mở List" in line for line in lines)
+
+
+def test_the_box_about_to_be_filled_is_left_out_of_the_clear():
+    """Ô đích chỉ bị `fill` ghi đè, không xóa riêng thành một lượt lọc thừa."""
+    seen: list[str] = []
+
+    class RecordingFrame(ListFrame):
+        def locator(self, selector):
+            seen.append(selector)
+            return super().locator(selector)
+
+    frame = RecordingFrame([GridInput(value="CŨ")])
+
+    module_search._clear_list_search_fields(
+        frame, ("#a", "#b input"), skip="[data-wfx-search-target]"
+    )
+
+    assert seen[0] == (
+        "#a:not([data-wfx-search-target]), "
+        "#b input:not([data-wfx-search-target])"
+    )
+
+
+def test_a_target_that_cannot_be_marked_falls_back_to_clearing_everything():
+    class Detached:
+        def evaluate(self, *_args, **_kwargs):
+            raise PlaywrightError("Element is not attached to the DOM")
+
+    assert module_search._mark_search_target(Detached()) == ("", "")

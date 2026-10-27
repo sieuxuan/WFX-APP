@@ -29,6 +29,8 @@ from wfx_panel.automation.modules.constants import (
 from wfx_panel.automation.modules.context import (
     _frame_with_visible_context,
     _grid_reports_no_rows,
+    _grid_signature,
+    _wait_grid_reflects_search,
     _wait_module_search_settled,
 )
 from wfx_panel.automation.modules.grid import (
@@ -405,24 +407,59 @@ def _open_list_search_context(
         return frame
 
 
+_SEARCH_TARGET_ATTRIBUTE = "data-wfx-search-target"
+_SEARCH_TARGET_SELECTOR = f"[{_SEARCH_TARGET_ATTRIBUTE}]"
+
+
+def _mark_search_target(field: Any) -> tuple[str, str]:
+    """Gắn dấu tạm vào đúng ô sắp điền; trả (selector của dấu, giá trị hiện có).
+
+    Dấu của lượt trước có thể còn trên ô của cột khác, nên phải gỡ hết trước
+    khi gắn: sót dấu là ô đó không bị xóa và hai lượt Search cộng dồn. Lỗi thì
+    trả selector rỗng để caller quay về xóa hết như cũ.
+    """
+    try:
+        value = field.evaluate(
+            """(element, name) => {
+                element.ownerDocument
+                    .querySelectorAll(`[${name}]`)
+                    .forEach(node => node.removeAttribute(name));
+                element.setAttribute(name, '1');
+                return element.value || '';
+            }""",
+            _SEARCH_TARGET_ATTRIBUTE,
+        )
+    except PlaywrightError:
+        return "", ""
+    return _SEARCH_TARGET_SELECTOR, str(value or "")
+
+
 def _clear_list_search_fields(
     frame: Frame,
     selectors: tuple[str, ...],
     *,
     scan_horizontal: bool = False,
     keep_visible: tuple[str, ...] = (),
+    skip: str = "",
 ) -> int:
     """Xóa filter cũ để các lần Search không âm thầm kết hợp điều kiện.
 
     Trả số ô đã xóa. `keep_visible` là selector của ô sắp điền: nếu lượt quét
     ngang đi qua cột đó thì dừng grid ở đúng vị trí ấy, để bước tìm ô kế tiếp
-    thấy ngay mà không phải quét lại cả bảng lần hai.
+    thấy ngay mà không phải quét lại cả bảng lần hai. `skip` loại đúng ô sắp
+    điền khỏi lượt xóa: `fill` sẽ ghi đè nó, còn xóa riêng thì WFX bắn thêm một
+    lượt lọc server mà kết quả về xen giữa lượt tìm thật.
     """
+    union = ", ".join(
+        f"{selector}:not({skip})" if skip else selector
+        for selector in selectors
+    )
+
     def clear_visible() -> int:
         cleared = 0
         # Một locator union trả node unique theo DOM order, tránh query lại
         # cùng input khi nhiều selector fallback cùng match nó.
-        candidates = frame.locator(", ".join(selectors))
+        candidates = frame.locator(union)
         for index in range(candidates.count()):
             candidate = candidates.nth(index)
             try:
@@ -511,15 +548,6 @@ def _search_module_list(
         stage = "context"
         frame = _open_list_search_context(page, search_spec, xpath, log)
         stage = "field"
-        cleared = _clear_list_search_fields(
-            frame,
-            search_spec.field_selectors,
-            scan_horizontal=search_spec.requires_floating_filter,
-            keep_visible=selected_field.selectors,
-        )
-        # Chỉ chờ grid vẽ lại khi thật sự vừa xóa filter cũ.
-        if cleared:
-            _wait(page, 250)
         field = _search_input_in_frame(
             page,
             frame,
@@ -528,13 +556,47 @@ def _search_module_list(
             timeout_s=8,
             scan_horizontal=search_spec.requires_floating_filter,
         )
+        target, current_value = _mark_search_target(field)
+        before_clear = _grid_signature(frame)
+        cleared = _clear_list_search_fields(
+            frame,
+            search_spec.field_selectors,
+            scan_horizontal=search_spec.requires_floating_filter,
+            keep_visible=(target,) if target else selected_field.selectors,
+            skip=target,
+        )
+        if cleared:
+            # Đo trên WFX: lượt lọc server của ô vừa xóa về sau ~2,5 giây mà
+            # không có loading. Gõ ngay thì kết quả đó về xen giữa và bị nhận
+            # nhầm là kết quả tìm, nên chờ nó vẽ xong trước.
+            if target:
+                _wait_grid_reflects_search(page, frame, before_clear)
+            else:
+                _wait(page, 250)
+            field = _search_input_in_frame(
+                page,
+                frame,
+                selected_field.selectors,
+                selected_field.aliases,
+                timeout_s=8,
+                scan_horizontal=search_spec.requires_floating_filter,
+            )
         stage = "settle"
+        before = _grid_signature(frame)
         _apply_module_search(
             page,
             field,
             query,
             selected_field.label,
             log,
+        )
+        # Ô đã giữ đúng giá trị này thì WFX không lọc lại: bảng đang hiện
+        # chính là kết quả, không cần chờ nó đổi.
+        _wait_grid_reflects_search(
+            page,
+            frame,
+            before,
+            change_timeout_s=0.0 if current_value == query else 4.0,
         )
         if _grid_reports_no_rows(page, frame):
             return _result(

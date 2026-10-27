@@ -259,6 +259,14 @@ Mỗi nút trong module là một flow riêng:
    AG Grid của chính frame List hiện overlay no-rows ở hai lần đọc cách nhau
    400 ms thì trả `MODULE_SEARCH_NO_RESULTS` (không gửi telemetry); bảng ASP.NET
    cổ điển không có overlay đó nên không được đoán số dòng.
+   Đo trên WFX thật (Sale ASN, 27/10/2026): Floating Filter lọc phía server mất
+   1,9–2,9 giây và KHÔNG hiện lớp loading nào, nên "hết loading" không phải là
+   có kết quả. Phải chờ chữ ký grid đổi so với trước lúc gõ rồi đứng yên
+   (`_wait_grid_reflects_search`). Overlay no-rows bật trước, dòng cũ còn trên
+   DOM gần một giây nữa, nên overlay là căn cứ, không đòi DOM hết dòng. Ô đích
+   không bị xóa riêng (gắn `data-wfx-search-target`, `fill` ghi đè), vì mỗi lần
+   xóa là một lượt lọc server về xen giữa; khi có ô của CỘT KHÁC vừa bị xóa thì
+   chờ lượt tải lại đó vẽ xong rồi mới gõ.
 7. Khi chạy flow module, bridge backend phải được gọi trước; thao tác đưa Chrome
    lên foreground chạy song song và không nằm trên critical path. Poll trạng
    thái grid ở 150 ms, nhưng chỉ chấp nhận Floating Filter sau khi visible/enabled
