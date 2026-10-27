@@ -290,6 +290,9 @@ def _current_bundle(base_dir: Path) -> tuple[list[dict], list[dict], list[dict]]
             "article_code": str(option.get("article_code") or ""),
             "article_name": str(option.get("article_name") or ""),
             "buyer_reference": str(option.get("buyer_reference") or ""),
+            # Thiếu Category thì máy user nhận Article mới với Category trống:
+            # Costing lọc đúng Textiles/Fabric và Trims nên item đó biến mất.
+            "article_category": str(option.get("article_category") or ""),
         }
         for section in article_cache.get("sections") or []
         for option in section.get("options") or []

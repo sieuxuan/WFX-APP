@@ -9,9 +9,14 @@ CREATE TABLE IF NOT EXISTS wfx_sync.article_list (
     article_code    text        NOT NULL,
     article_name    text        NOT NULL DEFAULT '',
     buyer_reference text        NOT NULL DEFAULT '',
+    article_category text       NOT NULL DEFAULT '',
     synced_at       timestamptz NOT NULL,
     PRIMARY KEY (company_id, division_key, article_code, buyer_reference)
 );
+
+-- Database tạo từ bản schema cũ chưa có Category; chạy lại file này là đủ.
+ALTER TABLE wfx_sync.article_list
+    ADD COLUMN IF NOT EXISTS article_category text NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS article_list_code_idx
     ON wfx_sync.article_list (company_id, division_key, article_code);
@@ -125,17 +130,20 @@ BEGIN
         SELECT
             btrim(COALESCE(item.article_code, '')) AS article_code,
             btrim(COALESCE(item.article_name, '')) AS article_name,
-            btrim(COALESCE(item.buyer_reference, '')) AS buyer_reference
+            btrim(COALESCE(item.buyer_reference, '')) AS buyer_reference,
+            btrim(COALESCE(item.article_category, '')) AS article_category
         FROM jsonb_to_recordset(COALESCE(p_articles, '[]'::jsonb)) AS item(
             article_code text,
             article_name text,
-            buyer_reference text
+            buyer_reference text,
+            article_category text
         )
     ), deduplicated AS (
         SELECT
             article_code,
             buyer_reference,
-            max(article_name) AS article_name
+            max(article_name) AS article_name,
+            max(article_category) AS article_category
         FROM source
         WHERE article_code <> ''
         GROUP BY article_code, buyer_reference
@@ -146,6 +154,7 @@ BEGIN
         article_code,
         article_name,
         buyer_reference,
+        article_category,
         synced_at
     )
     SELECT
@@ -154,6 +163,7 @@ BEGIN
         article_code,
         article_name,
         buyer_reference,
+        article_category,
         v_now
     FROM deduplicated;
     GET DIAGNOSTICS v_article_count = ROW_COUNT;
@@ -331,7 +341,8 @@ BEGIN
                 jsonb_build_object(
                     'article_code', article_code,
                     'article_name', article_name,
-                    'buyer_reference', buyer_reference
+                    'buyer_reference', buyer_reference,
+                    'article_category', article_category
                 )
                 ORDER BY article_code, buyer_reference
             )
