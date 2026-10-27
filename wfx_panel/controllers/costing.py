@@ -227,6 +227,10 @@ class CostingController:
                 "server": (
                     f" Đã dùng {article_option_count} Article từ thư viện server."
                 ),
+                "server_scan": (
+                    f" Đã dùng {article_option_count} Article từ thư viện server"
+                    " kèm Article mới quét trên WFX."
+                ),
                 "scan": (
                     f" Đã quét {article_option_count} Article và lưu cache 7 ngày."
                 ),

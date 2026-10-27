@@ -273,6 +273,17 @@ def _scan_costing_article_dropdowns(
                 if str(row.get("article_name") or "").strip()
             )
         )
+        # Hai list trên khử trùng độc lập nên không ghép lại theo index được;
+        # cặp Code/Name lấy thẳng từ từng row để controller gộp với thư viện.
+        lookup: dict[str, dict[str, str]] = {}
+        for row in rows:
+            code = str(row.get("article_code") or "").strip()
+            if code and code.casefold() not in lookup:
+                lookup[code.casefold()] = {
+                    "article_code": code,
+                    "article_name": str(row.get("article_name") or "").strip(),
+                }
+        section["article_lookup_options"] = list(lookup.values())
         total += len(rows)
     document["article_dropdown_option_count"] = total
     _write_log(
