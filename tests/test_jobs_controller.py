@@ -395,7 +395,7 @@ def test_feedback_reports_the_queue_when_no_webhook_is_configured(tmp_path):
 
     assert result["code"] == "FEEDBACK_QUEUED"
     assert result["reporting_configured"] is False
-    assert "lưu góp ý an toàn" in result["message"]
+    assert "đã lưu an toàn" in result["message"]
 
 
 def test_flush_error_reports_reports_whether_the_webhook_is_configured(tmp_path):
@@ -424,3 +424,93 @@ def test_the_handler_table_and_can_retry_never_drift_apart():
     handlers = set(re.findall(r'^\s{12}"([a-z_]+)":', block, re.M))
 
     assert handlers == set(job_history._RETRYABLE_METHODS)
+
+
+# --- báo lỗi một chạm -----------------------------------------------------
+
+
+def _queued_events(tmp_path) -> list[dict]:
+    return telemetry._load_outbox(tmp_path)
+
+
+def test_report_job_sends_full_context_without_user_typing(tmp_path):
+    api, _ = _api(tmp_path)
+    run_id = _store(
+        tmp_path,
+        log_tail=[
+            "[10:00:00] [RUN] Bắt đầu open_module",
+            "[10:00:05] mở https://wfx.example.com/x.aspx?SessionID=abc",
+        ],
+    )
+
+    result = api.report_job(run_id)
+
+    assert result["code"] == "BUG_REPORT_QUEUED"
+    event = _queued_events(tmp_path)[-1]
+    assert event["event_type"] == "user_feedback"
+    assert event["kind"] == "bug"
+    assert event["source"] == "one_click"
+    assert event["run_id"] == run_id
+    assert event["method"] == "open_module"
+    assert event["code"] == "MODULE_NOT_FOUND"
+    assert event["error_title"]
+    assert event["suggestion"]
+    assert event["elapsed_ms"] == 42
+    assert "account" in event and "diagnostics" in event
+    assert event["log_tail"][0].endswith("Bắt đầu open_module")
+    assert "SessionID" not in event["log_tail"][1]
+    assert "https://" not in event["log_tail"][1]
+
+
+def test_report_job_is_sent_once_per_run(tmp_path):
+    api, _ = _api(tmp_path)
+    run_id = _store(tmp_path)
+
+    api.report_job(run_id)
+    again = api.report_job(run_id)
+
+    assert again["code"] == "JOB_ALREADY_REPORTED"
+    assert len(_queued_events(tmp_path)) == 1
+    row = next(job for job in again["jobs"] if job["run_id"] == run_id)
+    assert row["reported"] is True
+
+
+def test_report_job_refuses_successful_or_unknown_runs(tmp_path):
+    api, _ = _api(tmp_path)
+    ok_run = _store(tmp_path, run_id="run-ok", ok=True, code="MODULE_OPENED")
+
+    assert api.report_job(ok_run)["code"] == "JOB_NOT_REPORTABLE"
+    assert api.report_job("missing")["code"] == "JOB_NOT_FOUND"
+    assert _queued_events(tmp_path) == []
+
+
+def test_failed_job_keeps_its_log_tail_and_friendly_text(tmp_path):
+    api, _ = _api(tmp_path)
+
+    def broken() -> dict:
+        api._log("bước A")
+        api._log("bước B")
+        return {"ok": False, "code": "MODULE_NOT_FOUND", "message": "x"}
+
+    api._run("open_module", broken, {"module_id": "0004_0050_0020"})
+
+    stored = job_history.get_job(tmp_path, api._jobs.get_job_history()["jobs"][0]["run_id"])
+    assert any(line.endswith("bước A") for line in stored["log_tail"])
+    row = api.get_job_history()["jobs"][0]
+    assert row["has_log"] is True
+    assert row["reportable"] is True
+    assert row["title"]
+    assert row["suggestion"]
+
+
+def test_successful_job_does_not_store_a_log_tail(tmp_path):
+    api, _ = _api(tmp_path)
+
+    def fine() -> dict:
+        api._log("bước A")
+        return {"ok": True, "code": "MODULE_OPENED", "message": "ok"}
+
+    api._run("open_module", fine, {"module_id": "0004_0050_0020"})
+
+    run_id = api.get_job_history()["jobs"][0]["run_id"]
+    assert "log_tail" not in job_history.get_job(tmp_path, run_id)

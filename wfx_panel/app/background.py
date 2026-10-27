@@ -130,6 +130,12 @@ class BackgroundLoopController:
                     "[ARTICLE LIBRARY] Không kiểm tra tự động được: "
                     f"{type(error).__name__}"
                 )
+            # Báo lỗi xếp hàng lúc mất mạng trước đây chỉ được gửi lại khi mở
+            # app. App chạy cả ngày ở khay nên phải thử lại theo nhịp này.
+            try:
+                app.api.flush_error_reports()
+            except Exception:
+                pass
             if app._stop_status.wait(ARTICLE_LIBRARY_POLL_SECONDS):
                 return
 

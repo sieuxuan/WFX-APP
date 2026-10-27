@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,7 @@ class PanelAPI:
         self._prefs = prefs_module or prefs_default
         self._base_dir = base_dir or self._prefs.DATA_DIR
         self._logs: list[str] = []
+        self._run_logs: OrderedDict[str, list[str]] = OrderedDict()
         self._sink: Callable[[str], None] | None = None
         self._result_sink: Callable[[str, dict, float], None] | None = None
         self._progress_sink: Callable[[dict], None] | None = None
@@ -145,8 +147,10 @@ class PanelAPI:
         self._on_top_applier = on_top
 
     def _log(self, message: str) -> None:
-        if self._current_run_id:
-            message = f"[{self._current_run_id}] {message}"
+        run_id = self._current_run_id
+        if run_id:
+            self._remember_run_log(run_id, log_bridge.format_log_line(message))
+            message = f"[{run_id}] {message}"
         line = log_bridge.format_log_line(message)
         self._logs.append(line)
         if len(self._logs) > 300:
@@ -156,6 +160,19 @@ class PanelAPI:
                 self._sink(line)
             except Exception:
                 pass
+
+    def _remember_run_log(self, run_id: str, line: str) -> None:
+        # Buffer riêng theo Run ID: bộ đệm chung 300 dòng có thể đã trôi mất
+        # các bước của lần chạy hỏng khi người dùng bấm "Báo lỗi".
+        lines = self._run_logs.setdefault(run_id, [])
+        self._run_logs.move_to_end(run_id)
+        lines.append(line)
+        del lines[:-job_history.MAX_LOG_TAIL_LINES]
+        while len(self._run_logs) > 30:
+            self._run_logs.popitem(last=False)
+
+    def _run_log_lines(self, run_id: str) -> list[str]:
+        return list(self._run_logs.get(str(run_id or ""), []))
 
     def _account(self) -> dict:
         return self._session._account()
@@ -805,6 +822,9 @@ class PanelAPI:
 
     def submit_feedback(self, kind: str, message: str, include_diagnostics: bool=True) -> dict:
         return self._jobs.submit_feedback(kind, message, include_diagnostics)
+
+    def report_job(self, run_id: str) -> dict:
+        return self._jobs.report_job(run_id)
 
     def flush_error_reports(self) -> dict:
         return self._jobs.flush_error_reports()

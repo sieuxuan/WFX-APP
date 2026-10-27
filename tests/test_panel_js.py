@@ -1257,3 +1257,12 @@ def test_successful_auto_relogin_clears_the_credential_prompt():
     body = JS[start : start + 220]
 
     assert "SESSION_RESTORED" in body
+
+
+def test_one_click_bug_report_is_wired_to_footer_and_job_cards():
+    """User chỉ bấm một nút: footer và thẻ lỗi gọi thẳng report_job, không mở
+    form bắt nhập mô tả; chỉ lỗi cần xử lý mới mời báo."""
+    assert '"report_job"' in JS
+    assert '".footer-report-button"' in JS
+    assert 'data-job-action="report"' in JS
+    assert "result.requires_attention === true" in JS

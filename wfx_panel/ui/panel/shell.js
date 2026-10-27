@@ -439,15 +439,23 @@ function renderJobCards(host, items, emptyMessage) {
     <article class="job-card" data-ok="${job.ok === true}" data-attention="${escapeHtml(job.attention_kind || "")}" data-run-id="${escapeHtml(job.run_id)}">
       <span class="job-tone"></span>
       <div class="job-main">
-        <div class="job-title"><strong>${escapeHtml(jobMethodLabel(job.method))}</strong><code>${escapeHtml(job.run_id)}</code></div>
-        <div class="job-message">${escapeHtml(job.message)}</div>
-        <div class="job-meta">${escapeHtml(job.started_at)} · ${Number(job.elapsed_ms || 0)} ms · ${escapeHtml(job.code)}</div>
+        <div class="job-title"><strong>${escapeHtml(jobMethodLabel(job.method))}</strong></div>
+        <div class="job-message" title="${escapeHtml(job.message)}">${escapeHtml(job.ok ? job.message : (job.title || job.message))}</div>
+        ${!job.ok && job.suggestion ? `<div class="job-suggestion">${escapeHtml(job.suggestion)}</div>` : ""}
+        <div class="job-meta">${escapeHtml(formatJobTime(job.started_at))} · ${escapeHtml(job.code)}</div>
       </div>
       <div class="job-actions">
+        ${job.reportable ? (job.reported ? '<button type="button" data-job-action="report" disabled>Đã báo</button>' : '<button type="button" data-job-action="report">Báo lỗi</button>') : ""}
         ${job.has_screenshot ? '<button type="button" data-job-action="screenshot">Ảnh</button>' : ""}
         ${job.attention_action ? `<button type="button" data-job-action="${escapeHtml(job.attention_action)}">${escapeHtml(job.attention_action_label)}</button>` : (job.retryable ? '<button type="button" data-job-action="retry">Chạy lại</button>' : "")}
       </div>
     </article>`).join("");
+}
+
+// "2026-10-27T09:15:02" → "27/10 09:15": người dùng chỉ cần biết lúc nào.
+function formatJobTime(value) {
+  const match = /^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(value || ""));
+  return match ? `${match[2]}/${match[1]} ${match[3]}:${match[4]}` : String(value || "");
 }
 
 function renderJobs(items) {

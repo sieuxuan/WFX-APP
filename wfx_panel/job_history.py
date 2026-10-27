@@ -12,8 +12,14 @@ from typing import Any
 
 from wfx_panel import log_bridge
 from wfx_panel.atomic_io import write_json_atomic
+from wfx_panel.telemetry_labels import ERROR_CODE_INFO, METHOD_LABELS
 
 MAX_JOBS = 200
+# Chỉ lần chạy HỎNG mới giữ đuôi log, để người dùng báo lỗi được cả sau khi
+# mở lại app. 40 dòng × 300 ký tự đủ thấy bước cuối mà jobs.json (ghi lại
+# toàn bộ sau mỗi job) không phình theo số lần chạy thành công.
+MAX_LOG_TAIL_LINES = 40
+_LOG_TAIL_LINE_CHARS = 300
 RETENTION_DAYS = 7
 _LOCK = threading.Lock()
 _SENSITIVE_REQUEST_KEYS = frozenset(
@@ -93,6 +99,8 @@ _PERSISTED_JOB_KEYS = frozenset(
         "elapsed_ms",
         "screenshot",
         "acknowledged",
+        "log_tail",
+        "reported",
     }
 )
 
@@ -214,7 +222,40 @@ def _safe_job(job: dict[str, Any]) -> dict[str, Any]:
     safe = {key: value for key, value in job.items() if key in _PERSISTED_JOB_KEYS}
     safe["request"] = _safe_request(job.get("request"))
     safe["message"] = log_bridge.sanitize_log_text(job.get("message") or "")
+    log_tail = _safe_log_tail(job.get("log_tail"))
+    if log_tail and not bool(job.get("ok")):
+        safe["log_tail"] = log_tail
+    else:
+        safe.pop("log_tail", None)
     return safe
+
+
+def _safe_log_tail(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    lines = [
+        log_bridge.sanitize_log_text(line)[:_LOG_TAIL_LINE_CHARS]
+        for line in value
+        if isinstance(line, str) and line.strip()
+    ]
+    return lines[-MAX_LOG_TAIL_LINES:]
+
+
+def describe_failure(job: dict[str, Any]) -> tuple[str, str]:
+    """Tiêu đề + hướng xử lý tiếng Việt cho một lần chạy hỏng.
+
+    Thẻ lịch sử trước đây chỉ in message kỹ thuật và mã lỗi; người dùng không
+    biết phải làm gì tiếp. Dùng lại đúng bảng ``ERROR_CODE_INFO`` mà webhook
+    dùng, để app và kênh hỗ trợ nói cùng một câu.
+    """
+    if bool(job.get("ok")):
+        return "", ""
+    code = str(job.get("code") or "")
+    method = str(job.get("method") or "")
+    if code in ERROR_CODE_INFO:
+        return ERROR_CODE_INFO[code]
+    label = METHOD_LABELS.get(method, method or "Tác vụ")
+    return f"{label} chưa hoàn tất", ""
 
 
 def can_retry(job: dict[str, Any]) -> bool:
@@ -265,6 +306,7 @@ def list_jobs(base_dir: Path, limit: int = 30) -> list[dict[str, Any]]:
     for row in rows:
         attention = requires_attention(row)
         action, action_label = attention_action(row)
+        title, suggestion = describe_failure(row)
         public_rows.append(
             {
             "run_id": row.get("run_id"),
@@ -290,6 +332,12 @@ def list_jobs(base_dir: Path, limit: int = 30) -> list[dict[str, Any]]:
             ),
             "attention_action": action,
             "attention_action_label": action_label,
+            "title": title,
+            "suggestion": suggestion,
+            "has_log": bool(row.get("log_tail")),
+            "reportable": not bool(row.get("ok"))
+            and str(row.get("code") or "") != "ACTION_CANCELLED",
+            "reported": bool(row.get("reported")),
             }
         )
     return public_rows
@@ -320,6 +368,22 @@ def acknowledge(base_dir: Path, run_id: str) -> bool:
             found = True
             changed = True
             break
+        if changed:
+            _write(base_dir, rows)
+        return found
+
+
+def mark_reported(base_dir: Path, run_id: str) -> bool:
+    """Ghi nhớ lần chạy đã được báo để nút một chạm không gửi trùng."""
+    base_dir = Path(base_dir)
+    with _LOCK:
+        rows, changed = _prune(base_dir, _load(base_dir))
+        found = False
+        for row in rows:
+            if str(row.get("run_id") or "") == str(run_id or ""):
+                row["reported"] = True
+                found = changed = True
+                break
         if changed:
             _write(base_dir, rows)
         return found

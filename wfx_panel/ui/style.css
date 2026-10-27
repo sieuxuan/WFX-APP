@@ -734,6 +734,22 @@ body.compact-mode .compact-launcher .compact-mark {
       cursor: pointer;
     }
     .footer-help-button:hover { border-color: var(--bad); }
+    .footer-report-button {
+      height: 20px;
+      flex: 0 0 auto;
+      padding: 0 8px;
+      color: var(--bad);
+      border: 1px solid var(--bad-soft);
+      border-radius: 999px;
+      background: var(--bad-soft);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .footer-report-button:hover { border-color: var(--bad); }
+    .footer-report-button:disabled { cursor: wait; opacity: .72; }
     .footer-meta { flex: 0 0 auto; white-space: nowrap; }
 
     .settings-overlay { position: absolute; z-index: 10; inset: 0; display: flex; align-items: flex-end; padding: 10px; visibility: hidden; opacity: 0; background: var(--scrim); backdrop-filter: blur(7px); transition: .2s ease; }
@@ -2070,7 +2086,10 @@ body.compact-mode .compact-launcher .compact-mark {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .job-card:not([data-ok="true"]) .job-message { color: var(--text); white-space: normal; }
+    .job-suggestion { margin-top: 3px; color: var(--text-2); font-size: 12px; }
     .job-meta { margin-top: 4px; color: var(--text-3); font-size: 12px; }
+    .job-actions button:disabled { cursor: default; opacity: .6; }
     .job-actions { display: flex; gap: 4px; }
     .job-actions button,
     .clear-history-button {

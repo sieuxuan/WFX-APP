@@ -184,6 +184,7 @@ class JobsController:
                     {
                         "run_id": row.get("run_id"),
                         "method": row.get("method"),
+                        "ok": row.get("ok"),
                         "code": row.get("code"),
                         "elapsed_ms": row.get("elapsed_ms"),
                     }
@@ -198,9 +199,90 @@ class JobsController:
             "message": (
                 "Đã gửi góp ý. Cảm ơn bạn."
                 if sent
-                else "Đã lưu góp ý an toàn trên máy; app sẽ tự gửi khi webhook được cấu hình."
+                else "Chưa gửi được ngay; góp ý đã lưu an toàn và sẽ tự gửi lại."
             ),
             "reporting_configured": telemetry.is_configured(panel._base_dir),
+        }
+
+    def report_job(self, run_id: str) -> dict:
+        """Báo lỗi MỘT CHẠM cho một lần chạy hỏng.
+
+        Người dùng không phải mô tả gì: họ chỉ bấm "Báo lỗi". Đổi lại, báo cáo
+        gửi về nhóm hỗ trợ phải đủ để chẩn đoán mà không cần hỏi lại — lỗi đã
+        diễn giải, Run ID, context request đã whitelist, tài khoản, máy và đuôi
+        log của đúng lần chạy đó (đã qua ``redact_telemetry_text``).
+        """
+        panel = self._panel
+        run_id = str(run_id or "").strip()
+        job = job_history.get_job(panel._base_dir, run_id) if run_id else None
+        if job is None:
+            return {
+                "ok": False,
+                "code": "JOB_NOT_FOUND",
+                "message": "Không tìm thấy lần chạy này.",
+            }
+        if job.get("ok"):
+            return {
+                "ok": False,
+                "code": "JOB_NOT_REPORTABLE",
+                "message": "Tác vụ này đã chạy thành công.",
+            }
+        if job.get("reported"):
+            return {
+                "ok": True,
+                "code": "JOB_ALREADY_REPORTED",
+                "message": "Lỗi này đã được báo. Cảm ơn bạn.",
+                "jobs": job_history.list_jobs(panel._base_dir, 30),
+            }
+        method = str(job.get("method") or "")
+        code = str(job.get("code") or "UNKNOWN")
+        request = job.get("request") if isinstance(job.get("request"), dict) else {}
+        context = telemetry.automation_error_context(method, job, request)
+        log_tail = job.get("log_tail") or panel._run_log_lines(run_id)
+        recent = job_history.list_jobs(panel._base_dir, 5)
+        event = {
+            "event_type": "user_feedback",
+            "kind": "bug",
+            "source": "one_click",
+            "app_version": APP_VERSION,
+            "method": method,
+            "code": code,
+            "run_id": run_id,
+            "started_at": job.get("started_at"),
+            "elapsed_ms": job.get("elapsed_ms"),
+            "has_screenshot": bool(job.get("screenshot")),
+            **context,
+            "message": f"Người dùng bấm Báo lỗi: {context['message']}"[:4_000],
+            "account": panel._telemetry_account_context(),
+            "log_tail": telemetry.redact_log_lines(log_tail),
+            "diagnostics": {
+                **telemetry.system_summary(),
+                **panel.get_status(),
+                "recent_jobs": [
+                    {
+                        "run_id": row.get("run_id"),
+                        "method": row.get("method"),
+                        "ok": row.get("ok"),
+                        "code": row.get("code"),
+                        "elapsed_ms": row.get("elapsed_ms"),
+                    }
+                    for row in recent
+                ],
+            },
+        }
+        delivery = telemetry.submit(panel._base_dir, event)
+        job_history.mark_reported(panel._base_dir, run_id)
+        sent = delivery.get("delivery") == "sent"
+        return {
+            **delivery,
+            "code": "BUG_REPORT_SENT" if sent else "BUG_REPORT_QUEUED",
+            "message": (
+                "Đã gửi báo lỗi. Nhóm hỗ trợ sẽ kiểm tra."
+                if sent
+                else "Chưa gửi được ngay; báo lỗi đã lưu an toàn và sẽ tự gửi lại."
+            ),
+            "run_id": run_id,
+            "jobs": job_history.list_jobs(panel._base_dir, 30),
         }
 
     def flush_error_reports(self) -> dict:

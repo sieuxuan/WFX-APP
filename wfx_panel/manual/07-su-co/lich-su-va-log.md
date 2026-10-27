@@ -6,8 +6,9 @@ nhờ hỗ trợ.
 ## Các bước
 
 1. Bấm biểu tượng danh sách ở góc trên bảng điều khiển.
-2. Chọn `Tất cả tác vụ` để xem công việc gần đây và thời gian thực hiện.
-3. Dùng hành động phù hợp như `Kiểm tra trên WFX` hoặc `Thử lại an toàn` nếu có.
+2. Chọn `Tất cả tác vụ` để xem công việc gần đây. Thẻ lỗi ghi rõ chuyện gì
+   xảy ra và nên làm gì tiếp.
+3. Dùng hành động phù hợp như `Báo lỗi`, `Kiểm tra trên WFX` hoặc `Thử lại an toàn` nếu có.
 4. Chọn thẻ `Log kỹ thuật` để xem, bôi đen và sao chép thông tin chi tiết.
 
 ## Mẹo
