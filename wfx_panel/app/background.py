@@ -110,9 +110,12 @@ class BackgroundLoopController:
         while not app._stop_status.is_set():
             try:
                 result = app.api.sync_reference_data(False)
-                if not result.get("ok"):
-                    # Tương thích offline/cấu hình cũ: GitHub vẫn là fallback,
-                    # không bao giờ xóa cache PostgreSQL cuối cùng.
+                if not result.get("ok") and not (
+                    result.get("configured") and result.get("last_success")
+                ):
+                    # GitHub chỉ là fallback cho máy chưa từng có dữ liệu
+                    # PostgreSQL: sync GitHub GHI ĐÈ cache Article, nên một lần
+                    # n8n lỗi sẽ kéo thư viện server về CSV cũ trên GitHub.
                     fallback = app.api.sync_article_library()
                     if fallback.get("ok"):
                         result = {**result, **fallback}

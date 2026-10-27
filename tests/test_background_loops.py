@@ -348,6 +348,30 @@ def test_article_library_loop_keeps_the_failure_when_the_fallback_also_fails(
     assert "REFERENCE_SYNC_FAILED" in window.scripts[0]
 
 
+def test_article_library_loop_keeps_postgres_data_when_n8n_is_briefly_down(
+    monkeypatch,
+):
+    # Sync GitHub ghi đè cache Article: máy đã có dữ liệu PostgreSQL mà fallback
+    # thì thư viện quay về CSV cũ trên GitHub, rồi kẹt vì server trả not_modified.
+    api = FakeApi(
+        reference_result={
+            "ok": False,
+            "code": "REFERENCE_SYNC_FAILED",
+            "configured": True,
+            "last_success": 1_800_000_000.0,
+        },
+        article_result={"ok": True, "code": "ARTICLE_LIBRARY_SYNCED"},
+    )
+    window = FakeWindow()
+    app = _app(monkeypatch, api, window=window)
+    app._stop_status = ImmediateEvent(2)  # type: ignore[assignment]
+
+    BackgroundLoopController(app)._article_library_loop()
+
+    assert "sync_article_library" not in api.calls
+    assert "REFERENCE_SYNC_FAILED" in window.scripts[0]
+
+
 def test_article_library_loop_logs_and_survives_an_exception(monkeypatch):
     api = FakeApi(reference_result=OSError("đĩa hỏng"))
     app = _app(monkeypatch, api)
