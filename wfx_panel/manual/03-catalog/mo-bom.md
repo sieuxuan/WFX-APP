@@ -21,4 +21,4 @@ Mở BOM của Style để xem danh sách nguyên phụ liệu trên WFX.
 | Hiện tượng | Cách xử lý |
 |---|---|
 | BOM chưa mở | Chờ WFX tải xong Style rồi bấm `BOM` lại một lần. |
-| Có nhiều kết quả | Chọn đúng Style trên WFX, sau đó bấm `BOM`. |
+| Có nhiều kết quả | Bấm đúng Article Code trong danh sách dưới ô tìm; ứng dụng mở thẳng BOM của Style đó. |

@@ -793,3 +793,36 @@ def test_articles_that_do_not_contain_the_query_are_left_out(api):
     ]
 
     assert [item["article_code"] for item in suggestions] == ["F0012"]
+
+
+def test_a_popup_that_never_opened_is_not_searched_again(api):
+    """CATALOG_DESTINATION_FAILED không phải mất context: không prepare/lọc lại,
+    và lần bấm Costing kế tiếp chỉ probe popup của đúng Style vừa tìm."""
+    failed = {
+        "ok": False,
+        "code": "CATALOG_DESTINATION_FAILED",
+        "message": "ARTICLE_OPEN_NOT_CONFIRMED",
+        "article_code": "F0001",
+        "style_status": "Open",
+    }
+
+    def combined(category_name, filter_kind, query, destination, log=print):
+        api._login.calls.append(("combined", query, destination))
+        return failed
+
+    api._login.find_and_open_catalog_destination = combined
+
+    first = api._catalog.action(APPAREL, "code", "F0001", "costsheet")
+
+    assert first["code"] == "CATALOG_DESTINATION_FAILED"
+    assert [call[0] for call in api._login.calls] == [
+        "prepare_catalog_master",
+        "combined",
+    ]
+    assert api._catalog.prepared_category == APPAREL
+
+    api._login.calls.clear()
+    second = api._catalog.action(APPAREL, "code", "F0001", "costsheet")
+
+    assert second["code"] == "CATALOG_DESTINATION_OPENED"
+    assert api._login.calls == [("destination", "F0001", "costsheet")]

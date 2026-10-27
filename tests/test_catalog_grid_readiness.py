@@ -266,16 +266,24 @@ def test_a_page_with_no_catalog_grid_at_all_reports_the_last_error(clock):
 
 
 class TreeFrame:
-    def __init__(self, value="01", error=None):
+    def __init__(self, value="01", error=None, selected=()):
         self.value = value
         self.error = error
+        self.selected = list(selected)
 
-    def locator(self, _selector):
-        from tests.fakes.wfx_dom import FakeLocator
+    def locator(self, selector):
+        from tests.fakes.wfx_dom import (
+            SELECTED_TREE_NODE_SELECTOR,
+            FakeLocator,
+            TextListLocator,
+        )
 
         if self.error is not None:
             raise self.error
-        return FakeLocator([FakeNode(value=self.value)], _selector)
+        if selector == SELECTED_TREE_NODE_SELECTOR:
+            return TextListLocator(self.selected, selector)
+        assert selector == "#ddlCategory", selector
+        return FakeLocator([FakeNode(value=self.value)], selector)
 
 
 def test_a_prepared_master_on_the_right_category_is_reused(clock, monkeypatch):
@@ -362,3 +370,37 @@ def test_a_grid_whose_data_never_settles_means_the_master_must_be_reopened(
     assert grid_module._reuse_prepared_catalog_master(
         _page(clock, _ready_grid(clock, loading=True)), "01", _quiet
     ) is False
+
+
+@pytest.mark.parametrize("selected", [(), ("Master",), (" master ",)])
+def test_a_tree_on_master_or_with_nothing_selected_is_reused(
+    clock, monkeypatch, selected
+):
+    patch_automation(
+        monkeypatch,
+        grid_module,
+        "_catalog_tree_frame_now",
+        lambda _page: TreeFrame("01", selected=selected),
+    )
+
+    assert grid_module._reuse_prepared_catalog_master(
+        _page(clock, _ready_grid(clock)), "01", _quiet
+    ) is True
+
+
+def test_a_tree_on_a_user_folder_means_the_master_must_be_reopened(
+    clock, monkeypatch
+):
+    """``Mở Catalog`` mở folder mặc định: grid có filter nhưng không phải Master."""
+    patch_automation(
+        monkeypatch,
+        grid_module,
+        "_catalog_tree_frame_now",
+        lambda _page: TreeFrame("01", selected=("SS26 Outerwear",)),
+    )
+    lines: list[str] = []
+
+    assert grid_module._reuse_prepared_catalog_master(
+        _page(clock, _ready_grid(clock)), "01", lines.append
+    ) is False
+    assert any("SS26 Outerwear" in line for line in lines)

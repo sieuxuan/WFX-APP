@@ -59,6 +59,24 @@ def _filter_flow(grid: FakeCatalogGrid, query: str, kind: str = "code") -> dict:
 # --- Tiêu chí 1: Master ------------------------------------------------
 
 
+def _master_tree(clock, page: FakePage, *, opens_grid_on_click: int, **kwargs):
+    """Cây Catalog mà click Master thứ ``opens_grid_on_click`` mới tạo grid."""
+    grid = FakeCatalogGrid(clock)
+
+    def wfx_reacts(clicks: int) -> None:
+        if clicks != opens_grid_on_click:
+            return
+        if grid in page.frames:
+            grid.reload()
+        else:
+            page.frames.append(grid)
+
+    tree = FakeCatalogTree(clock, master=MasterNode(on_click=wfx_reacts, **kwargs))
+    page.frames.insert(0, tree)
+    page.named_frames["left"] = tree
+    return tree, grid
+
+
 def test_master_is_reclicked_on_the_same_actionable_node_after_tree_reloads(clock):
     """Click Master lần đầu chỉ reload cây; phải lấy lại document và click lại.
 
@@ -66,17 +84,59 @@ def test_master_is_reclicked_on_the_same_actionable_node_after_tree_reloads(cloc
     ``FakeCatalogTree`` raise AssertionError cho mọi selector ngoài
     ``#ddlCategory``, nên test này đỏ ngay nếu ai đó thêm nhánh dò IMG/LI.
     """
-    tree = FakeCatalogTree(clock, master=MasterNode(fail_wait_times=1))
-    page = FakePage(clock=clock, frames=[tree], named_frames={"left": tree})
+    page = FakePage(clock=clock)
+    tree, grid = _master_tree(
+        clock, page, opens_grid_on_click=1, fail_wait_times=1
+    )
     lines, log = _logs()
 
-    catalog._click_catalog_master(page, log)
+    opened = catalog._click_catalog_master(page, log)
 
+    assert opened is grid
     assert tree.master.clicks == 1
     assert tree.master.wait_calls == 2, "phải thử lại đúng node Master lần hai"
     assert tree.text_queries == [("Master", True), ("Master", True)]
     assert set(tree.selectors) == {"#ddlCategory"}
-    assert any("Master" in line for line in lines)
+    assert any("MASTER_OPENED" in line for line in lines)
+
+
+def test_a_click_that_only_reloads_the_tree_is_followed_by_a_second_click(clock):
+    """Log 1.7.1: click đầu không tạo grid. Không được báo xong ngay sau click."""
+    page = FakePage(clock=clock)
+    tree, grid = _master_tree(clock, page, opens_grid_on_click=2)
+    lines, log = _logs()
+
+    opened = catalog._click_catalog_master(page, log)
+
+    assert opened is grid
+    assert tree.master.clicks == 2
+    assert any("chưa tạo grid mới sau lần 1" in line for line in lines)
+
+
+def test_the_grid_left_over_from_before_the_click_is_not_accepted(clock):
+    """Grid cũ vẫn còn trong ``page.frames``: chỉ document MỚI mới là MASTER_OPENED."""
+    page = FakePage(clock=clock)
+    tree, grid = _master_tree(clock, page, opens_grid_on_click=2)
+    # Grid đang hiển thị từ trước; click 2 mới reload nó thành document mới.
+    page.frames.append(grid)
+
+    opened = catalog._click_catalog_master(page, print)
+
+    assert opened is grid
+    assert tree.master.clicks == 2, "grid cũ không được tính là Master đã mở"
+
+
+def test_master_that_never_opens_a_grid_reports_master_failed(clock):
+    page = FakePage(clock=clock)
+    tree, _grid = _master_tree(clock, page, opens_grid_on_click=10_000)
+
+    with pytest.raises(PlaywrightTimeoutError) as raised:
+        catalog._click_catalog_master(page, print)
+
+    assert raised.value.code == "MASTER_FAILED"
+    assert "MASTER_CLICK_NO_NAVIGATION" in str(raised.value)
+    # Mỗi lượt chờ 4,5 giây trong ngân sách 50 giây: có retry nhưng có trần.
+    assert 2 <= tree.master.clicks <= 12
 
 
 def test_master_click_gives_up_with_a_timeout_instead_of_looping_forever(clock):
@@ -84,13 +144,11 @@ def test_master_click_gives_up_with_a_timeout_instead_of_looping_forever(clock):
     page = FakePage(clock=clock, frames=[tree], named_frames={"left": tree})
     _lines, log = _logs()
 
-    with pytest.raises(PlaywrightTimeoutError):
+    with pytest.raises(PlaywrightTimeoutError) as raised:
         catalog._click_catalog_master(page, log)
 
+    assert raised.value.code == "MASTER_NOT_FOUND"
     assert tree.master.clicks == 0
-
-
-# --- Tiêu chí 2: GRID_DATA_SETTLED -------------------------------------
 
 
 def test_grid_data_ready_rejects_a_phantom_empty_grid(clock):

@@ -34,11 +34,28 @@ from tests.fakes.mini_dom import Element, MiniFrame, element
 from tests.fakes.wfx_dom import FakeNode, install_fake_clock
 from wfx_panel.automation import _common
 from wfx_panel.automation.catalog import flows
+from wfx_panel.automation.catalog.navigation import CatalogStepError
 
 
 @pytest.fixture
 def clock(monkeypatch):
     return install_fake_clock(monkeypatch, flows, _common)
+
+
+@pytest.fixture(autouse=True)
+def tree_problem(monkeypatch):
+    """Cây Catalog mặc định đang ở đúng Category > Master.
+
+    Test nào cần cây lệch thì gán ``tree_problem.reason``.
+    """
+    state = type("TreeState", (), {"reason": None, "calls": []})()
+
+    def problem(page, category_value):
+        state.calls.append(category_value)
+        return state.reason
+
+    monkeypatch.setattr(flows, "_catalog_master_context_problem", problem)
+    return state
 
 
 def _quiet():
@@ -134,6 +151,29 @@ def test_find_maps_a_lost_master_to_a_recoverable_code(clock, monkeypatch):
     result = flows.find_in_open_catalog("Apparel", "code", "ABC", _quiet())
 
     assert result["code"] == "CATALOG_SEARCH_CONTEXT_LOST"
+    assert world.driver_stops == 1
+
+
+def test_find_on_a_tree_that_left_master_reopens_instead_of_filtering(
+    clock, monkeypatch, tree_problem
+):
+    """Grid của folder mặc định vẫn có Floating Filter nhưng chỉ chứa Style
+    của folder đó; lọc trên nó sẽ báo sai NO_RESULTS."""
+    world = _world(clock)
+    wire_automation(monkeypatch, flows, world, clock=clock)
+    tree_problem.reason = "Cây Catalog đang chọn thư mục SS26, không phải Master."
+    filtered: list[int] = []
+    _stub(
+        monkeypatch,
+        "_show_catalog_floating_filter",
+        lambda *a, **kw: filtered.append(1),
+    )
+
+    result = flows.find_in_open_catalog("Apparel", "code", "ABC", _quiet())
+
+    assert result["code"] == "CATALOG_SEARCH_CONTEXT_LOST"
+    assert filtered == []
+    assert tree_problem.calls == ["01"], "phải so đúng mã Category Apparel"
     assert world.driver_stops == 1
 
 
@@ -233,6 +273,47 @@ def test_destination_reclicks_the_style_then_recycles_exactly_once(
     assert clicks == ["ABC123"]
     assert refreshed == [1]
     assert attempts == [4, 18]
+
+
+def test_a_popup_that_never_answers_is_a_destination_failure_not_a_lost_master(
+    clock, monkeypatch
+):
+    """Recovery 18 giây timeout không được biến thành CONTEXT_LOST: controller
+    sẽ mở lại Catalog và lọc lần hai, người dùng chờ thêm ~25 giây vô ích."""
+    world = _world(clock)
+    wire_automation(monkeypatch, flows, world, clock=clock)
+    grid = _grid_frame(clock)
+    _stub(monkeypatch, "_show_catalog_floating_filter", lambda *a, **kw: grid)
+    _stub(
+        monkeypatch,
+        "_filter_grid_and_maybe_open",
+        lambda *a, **kw: _opened(style_status={"season": "FW26"}),
+    )
+    _stub(monkeypatch, "_article_navigation_states", lambda _ctx: [])
+    _stub(monkeypatch, "_click_catalog_style", lambda *a: None)
+    _stub(
+        monkeypatch,
+        "_refresh_article_context",
+        lambda playwright, browser, page, _log: (playwright, browser, page),
+    )
+
+    def never(*_args, **_kwargs):
+        raise PlaywrightTimeoutError("Không thấy ArticleTop")
+
+    _stub(monkeypatch, "_open_article_destination", never)
+
+    result = flows.find_and_open_catalog_destination(
+        "Apparel", "code", "ABC123", "costsheet", _quiet()
+    )
+
+    assert result["ok"] is False
+    assert result["code"] == "CATALOG_DESTINATION_FAILED"
+    assert "ARTICLE_OPEN_NOT_CONFIRMED" in result["message"]
+    # Giữ Style đã tìm để lần bấm sau probe popup thay vì lọc lại.
+    assert result["article_code"] == "ABC123"
+    assert result["style_status"] == {"season": "FW26"}
+    assert result["destination"] == "costsheet"
+    assert world.driver_stops == 1
 
 
 def test_destination_skips_the_style_reclick_when_a_popup_was_already_open(
@@ -371,6 +452,44 @@ def test_prepare_maps_a_timeout_to_catalog_not_open(clock, monkeypatch):
 
     assert result["code"] == "CATALOG_NOT_OPEN"
     assert world.driver_stops == 1
+
+
+@pytest.mark.parametrize(
+    "code", ["MASTER_FAILED", "MASTER_NOT_FOUND", "CATEGORY_FAILED"]
+)
+def test_prepare_reports_the_failed_step_instead_of_catalog_not_open(
+    clock, monkeypatch, code
+):
+    world = _world(clock)
+    wire_automation(monkeypatch, flows, world, clock=clock)
+    _stub(monkeypatch, "_reuse_prepared_catalog_master", lambda *a: False)
+    _stub(monkeypatch, "_open_catalog_tree_on_page", lambda *a: None)
+
+    def step_failed(*_args, **_kwargs):
+        raise CatalogStepError(code, "bước này không xong")
+
+    _stub(monkeypatch, "_click_catalog_master", step_failed)
+
+    result = flows.prepare_catalog_master("Apparel", "01", _quiet())
+
+    assert result["code"] == code
+    assert "bước này không xong" in result["message"]
+    assert world.driver_stops == 1
+
+
+def test_opening_master_as_a_folder_reports_the_failed_step(clock, monkeypatch):
+    world = _world(clock)
+    wire_automation(monkeypatch, flows, world, clock=clock)
+    _stub(monkeypatch, "_open_catalog_tree_on_page", lambda *a: _grid_frame(clock))
+
+    def step_failed(*_args, **_kwargs):
+        raise CatalogStepError("MASTER_FAILED", "MASTER_CLICK_NO_NAVIGATION")
+
+    _stub(monkeypatch, "_click_catalog_master", step_failed)
+
+    result = flows.open_catalog_folder("Apparel", "01", "", _quiet())
+
+    assert result["code"] == "MASTER_FAILED"
 
 
 def test_prepare_maps_any_other_failure_to_category_failed(clock, monkeypatch):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from wfx_panel import constants
 from wfx_panel.automation._common import (
     CATALOG_XPATH,
     COMPANY_ID,
@@ -41,6 +42,7 @@ from wfx_panel.automation.catalog.folders import (
     _wait_catalog_folder_selected,
 )
 from wfx_panel.automation.catalog.grid import (
+    _catalog_master_context_problem,
     _reuse_prepared_catalog_master,
     _show_catalog_floating_filter,
 )
@@ -53,6 +55,18 @@ from wfx_panel.automation.catalog.navigation import (
     _select_catalog_category_on_page,
 )
 from wfx_panel.automation.session import _session_is_active, login
+
+# Sau khi Master đã tạo grid mới: datasource + Floating Filter có tổng ngân
+# sách riêng, không tính dồn với thời gian click Master.
+_GRID_READY_TIMEOUT_S = 35
+
+
+def _context_lost() -> dict[str, Any]:
+    return _result(
+        False,
+        "CATALOG_SEARCH_CONTEXT_LOST",
+        "Catalog không còn ở bước Master; app sẽ tự mở lại đúng List.",
+    )
 
 
 def _find_in_open_catalog(
@@ -85,6 +99,13 @@ def _find_in_open_catalog(
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
         _write_log(log, "[CATALOG] Đang kiểm tra grid Master hiện tại...")
+        problem = _catalog_master_context_problem(
+            page,
+            constants.CATEGORIES.get(category_name, ""),
+        )
+        if problem is not None:
+            _write_log(log, f"[CATALOG] {problem}")
+            return _context_lost()
         grid = _show_catalog_floating_filter(
             page,
             log,
@@ -156,16 +177,37 @@ def _find_in_open_catalog(
                     log,
                 )
                 context = browser.contexts[0]
-                label = _open_article_destination(
-                    context,
-                    destination,
-                    [],
-                    log,
-                    timeout_seconds=18,
-                    expected_article_code=str(
-                        result.get("article_code") or ""
-                    ),
-                )
+                try:
+                    label = _open_article_destination(
+                        context,
+                        destination,
+                        [],
+                        log,
+                        timeout_seconds=18,
+                        expected_article_code=str(
+                            result.get("article_code") or ""
+                        ),
+                    )
+                except PlaywrightTimeoutError as exc:
+                    # Style ĐÃ được click trên grid; đây là lỗi popup, không
+                    # phải mất context Master. Trả mã riêng để controller
+                    # không mở lại Catalog và lọc lần hai (ARTICLE_OPEN_NOT_
+                    # CONFIRMED trong đặc tả).
+                    _write_log(log, f"[ARTICLE] {_first_line(exc)}")
+                    return {
+                        **result,
+                        **_result(
+                            False,
+                            "CATALOG_DESTINATION_FAILED",
+                            "ARTICLE_OPEN_NOT_CONFIRMED: WFX chưa mở popup "
+                            f"Article {result.get('article_code')}. Bấm lại "
+                            "Costing/BOM để thử mở trên Style vừa tìm.",
+                        ),
+                        "destination": destination,
+                        "category": category_name,
+                        "filter_kind": filter_kind,
+                        "query": query,
+                    }
             result["code"] = "CATALOG_DESTINATION_OPENED"
             result["destination"] = destination
             result["message"] = (
@@ -178,11 +220,7 @@ def _find_in_open_catalog(
         result["query"] = query
         return result
     except PlaywrightTimeoutError:
-        return _result(
-            False,
-            "CATALOG_SEARCH_CONTEXT_LOST",
-            "Catalog không còn ở bước Master; app sẽ tự mở lại đúng List.",
-        )
+        return _context_lost()
     except Exception as exc:
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
@@ -278,6 +316,7 @@ def prepare_catalog_master(
             log,
             previous_frame=previous_grid,
             require_data_ready=True,
+            timeout_seconds=_GRID_READY_TIMEOUT_S,
         )
         return _result(
             True,
@@ -289,7 +328,7 @@ def prepare_catalog_master(
     except PlaywrightTimeoutError as exc:
         message = f"Catalog Master chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
-        return _result(False, "CATALOG_NOT_OPEN", message)
+        return _result(False, getattr(exc, "code", "CATALOG_NOT_OPEN"), message)
     except Exception as exc:
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
@@ -408,6 +447,7 @@ def open_catalog_folder(
                 log,
                 previous_frame=previous_grid,
                 require_data_ready=True,
+                timeout_seconds=_GRID_READY_TIMEOUT_S,
             )
             return _result(
                 True,
@@ -456,7 +496,11 @@ def open_catalog_folder(
     except PlaywrightTimeoutError as exc:
         message = f"Không mở được thư mục Catalog: {_first_line(exc)}"
         _write_log(log, message)
-        return _result(False, "CATALOG_FOLDER_OPEN_TIMEOUT", message)
+        return _result(
+            False,
+            getattr(exc, "code", "CATALOG_FOLDER_OPEN_TIMEOUT"),
+            message,
+        )
     except Exception as exc:
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)

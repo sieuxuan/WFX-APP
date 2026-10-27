@@ -17,10 +17,29 @@ from wfx_panel.automation._common import (
     PlaywrightError,
     PlaywrightTimeoutError,
     _click,
+    _document_changed,
+    _mark_document,
     _wait,
     _write_log,
     time,
 )
+
+# Một lần click Master phải sinh grid mới trong khoảng này; quá hạn thì lấy lại
+# cây và click lại đúng Master. Tổng ngân sách theo tiêu chí nghiệm thu 1.
+_MASTER_CLICK_WAIT_S = 4.5
+_MASTER_TIMEOUT_S = 50
+
+
+class CatalogStepError(PlaywrightTimeoutError):
+    """Timeout của một bước state machine, kèm mã nghiệp vụ riêng cho UI.
+
+    Kế thừa ``PlaywrightTimeoutError`` để mọi ``except`` hiện có vẫn bắt được;
+    entry point đọc ``code`` thay vì gom tất cả về ``CATALOG_NOT_OPEN``.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _is_catalog_tree_frame(frame: Frame) -> bool:
@@ -147,28 +166,108 @@ def _open_catalog_menu_on_page(
     )
 
 
+def _catalog_grid_document_now(page: Page) -> Frame | None:
+    for frame in page.frames:
+        if "wfxcataloglist" in str(frame.url or "").lower():
+            return frame
+    return None
+
+
+def _wait_new_catalog_grid(
+    page: Page,
+    old_grid: tuple[Frame | None, str],
+    timeout_s: float,
+) -> tuple[Frame | None, bool]:
+    """Chờ grid thuộc document mới so với snapshot trước click.
+
+    Trả ``(grid, navigated)``: ``navigated`` nghĩa là document grid đã đổi nhưng
+    AG Grid chưa render xong — click lại lúc này chỉ làm WFX tải lại từ đầu.
+    """
+    deadline = time.monotonic() + max(0.1, timeout_s)
+    navigated = False
+    while True:
+        for frame in page.frames:
+            if "wfxcataloglist" not in str(frame.url or "").lower():
+                continue
+            if not _document_changed(frame, old_grid):
+                continue
+            navigated = True
+            try:
+                if frame.locator(".ag-root-wrapper").count() > 0:
+                    return frame, True
+            except PlaywrightError:
+                continue
+        if time.monotonic() >= deadline:
+            return None, navigated
+        _wait(page, 200)
+
+
 def _click_catalog_master(
     page: Page,
     log: Callable[[str], None],
     previous_frame: Frame | None = None,
-) -> None:
-    """Click Master và tự retry nếu WFX thay frame trong lúc load."""
-    deadline = time.monotonic() + 20
+    timeout_s: float = _MASTER_TIMEOUT_S,
+) -> Frame:
+    """Click Master tới khi WFX tạo Catalog Grid mới (``MASTER_OPENED``).
+
+    Click đầu có thể chỉ reload frame cây; khi đó lấy lại document và click
+    lại đúng Master. Không coi một cú click là thành công khi grid chưa đổi.
+    """
+    deadline = time.monotonic() + timeout_s
+    old_grid = _mark_document(_catalog_grid_document_now(page), "old-grid")
     last_error: Exception | None = None
     old_frame = previous_frame
+    attempt = 0
     while time.monotonic() < deadline:
         try:
-            frame = _catalog_left_frame(page, previous_frame=old_frame)
+            frame = _catalog_left_frame(
+                page,
+                previous_frame=old_frame,
+                timeout_s=max(0.1, min(10, deadline - time.monotonic())),
+            )
             master = frame.get_by_text("Master", exact=True)
             master.wait_for(state="attached", timeout=2_000)
-            _write_log(log, "[CATALOG] Đã tìm thấy Master, đang click...")
+            attempt += 1
+            _write_log(log, f"[CATALOG] Đang click Master (lần {attempt})...")
             master.evaluate("element => element.click()")
-            return
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             last_error = exc
             old_frame = None
             _wait(page, 250)
-    raise PlaywrightTimeoutError(f"Không click được Master: {last_error}")
+            continue
+        grid, navigated = _wait_new_catalog_grid(
+            page,
+            old_grid,
+            min(_MASTER_CLICK_WAIT_S, max(0.1, deadline - time.monotonic())),
+        )
+        if grid is None and navigated:
+            # Grid đang tải document mới: chờ nốt trong ngân sách tổng.
+            grid, _ = _wait_new_catalog_grid(
+                page,
+                old_grid,
+                deadline - time.monotonic(),
+            )
+        if grid is not None:
+            _write_log(
+                log,
+                f"[CATALOG] MASTER_OPENED: Master đã tạo Catalog Grid mới (lần {attempt}).",
+            )
+            return grid
+        _write_log(
+            log,
+            f"[CATALOG] Master chưa tạo grid mới sau lần {attempt}; "
+            "lấy lại cây và click lại đúng Master...",
+        )
+    if attempt == 0:
+        raise CatalogStepError(
+            "MASTER_NOT_FOUND",
+            f"Không click được Master: {last_error}",
+        )
+    raise CatalogStepError(
+        "MASTER_FAILED",
+        f"MASTER_CLICK_NO_NAVIGATION: đã click Master {attempt} lần "
+        "nhưng WFX không tạo Catalog Grid mới.",
+    )
 
 
 def _select_catalog_category_on_page(
@@ -187,10 +286,16 @@ def _select_catalog_category_on_page(
 
     _write_log(log, f"[CATEGORY] Đang tải và chọn: {category_name}")
     category.dispatch_event("mousedown")
-    category.locator(f'option[value="{category_value}"]').wait_for(
-        state="attached",
-        timeout=5_000,
-    )
+    try:
+        category.locator(f'option[value="{category_value}"]').wait_for(
+            state="attached",
+            timeout=5_000,
+        )
+    except PlaywrightTimeoutError as exc:
+        raise CatalogStepError(
+            "CATEGORY_FAILED",
+            f"CATEGORY_OPTION_NOT_FOUND: WFX không có Category {category_name}.",
+        ) from exc
     category.select_option(value=category_value, timeout=5_000)
 
     deadline = time.monotonic() + 8
@@ -207,7 +312,10 @@ def _select_catalog_category_on_page(
             except PlaywrightError:
                 pass
         _wait(page, 200)
-    raise PlaywrightTimeoutError(f"WFX không xác nhận Category {category_name}.")
+    raise CatalogStepError(
+        "CATEGORY_FAILED",
+        f"CATEGORY_NOT_CONFIRMED: WFX không xác nhận Category {category_name}.",
+    )
 
 
 def _open_catalog_tree_on_page(

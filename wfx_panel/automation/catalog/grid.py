@@ -200,7 +200,10 @@ def _show_catalog_floating_filter(
             # vì AG Grid có thể virtualize cột này ngoài viewport của user.
             if _catalog_filter_row_active(grid):
                 if require_data_ready:
-                    _wait_catalog_grid_data_ready(grid)
+                    _wait_catalog_grid_data_ready(
+                        grid,
+                        timeout_seconds=max(0.1, deadline - time.monotonic()),
+                    )
                 _write_log(log, "[FILTER] Floating Filter đã sẵn sàng, dùng lại grid.")
                 return grid
             grid_id = id(grid)
@@ -245,17 +248,51 @@ def _show_catalog_floating_filter(
     raise PlaywrightTimeoutError(f"Floating Filter chưa sẵn sàng: {last_error}")
 
 
+_SELECTED_TREE_NODE = "span.clsTreeSelectedNode"
+
+
+def _catalog_master_context_problem(
+    page: Page,
+    category_value: str,
+) -> str | None:
+    """Lý do cây Catalog không còn ở đúng Category > Master; ``None`` là hợp lệ.
+
+    ``Mở Catalog`` có thể đã mở folder mặc định, hoặc user tự click folder khác
+    trên WFX. Grid khi đó vẫn có Floating Filter nhưng chỉ chứa Style của
+    folder, nên tìm trên nó sẽ báo sai ``NO_RESULTS``. Chỉ chặn khi thấy RÕ một
+    node khác Master đang được chọn.
+    """
+    tree = _catalog_tree_frame_now(page)
+    if tree is None:
+        return "Không còn thấy cây Catalog."
+    current = tree.locator("#ddlCategory").input_value(timeout=500)
+    if current != category_value:
+        return f"Cây Catalog đang ở Category khác ({current or 'trống'})."
+    labels = tree.locator(_SELECTED_TREE_NODE).evaluate_all(
+        """elements => elements.map(element =>
+            String(element.textContent || '').replace(/\\s+/g, ' ').trim()
+        )"""
+    )
+    others = [
+        str(label).strip()
+        for label in labels
+        if str(label).strip().casefold() != "master"
+    ]
+    if others:
+        return f"Cây Catalog đang chọn thư mục {others[0]}, không phải Master."
+    return None
+
+
 def _reuse_prepared_catalog_master(
     page: Page,
     category_value: str,
     log: Callable[[str], None],
 ) -> bool:
-    """Fast-path chỉ nhận đúng Category + grid đang hiển thị và đã ổn định."""
+    """Fast-path chỉ nhận đúng Category > Master + grid hiển thị và đã ổn định."""
     try:
-        tree = _catalog_tree_frame_now(page)
-        if tree is None:
-            return False
-        if tree.locator("#ddlCategory").input_value(timeout=500) != category_value:
+        problem = _catalog_master_context_problem(page, category_value)
+        if problem is not None:
+            _write_log(log, f"[CATALOG] Không dùng lại grid hiện tại: {problem}")
             return False
         grid = _catalog_grid_frame(page, timeout_seconds=0.75)
         if not _catalog_filter_row_active(grid):

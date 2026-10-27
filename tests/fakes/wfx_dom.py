@@ -31,6 +31,7 @@ STYLE_BUTTON_SELECTOR = (
     '[role="gridcell"][col-id="lnkArticleCode"] input[type="button"]'
 )
 CATEGORY_SELECTOR = "#ddlCategory"
+SELECTED_TREE_NODE_SELECTOR = "span.clsTreeSelectedNode"
 
 CODE_FILTER = "Code Filter Input"
 BUYER_REFERENCE_FILTER = "Buyer Reference Filter Input"
@@ -252,6 +253,21 @@ class FakeLocator:
         raise AssertionError(f"Fake DOM chưa hỗ trợ locator lồng: {selector}")
 
 
+class TextListLocator(FakeLocator):
+    """Locator chỉ để đọc ``textContent`` của nhiều node qua ``evaluate_all``."""
+
+    def __init__(self, texts: Iterable[str], selector: str) -> None:
+        self.texts = list(texts)
+        super().__init__([FakeNode() for _ in self.texts], selector)
+
+    def evaluate_all(self, script: str, arg: Any = None) -> list[Any]:
+        if "textContent" not in script:
+            raise AssertionError(
+                f"Fake DOM chưa hỗ trợ evaluate_all trên {self.selector}"
+            )
+        return list(self.texts)
+
+
 @dataclass
 class StyleRow:
     """Một dòng Catalog như ``read_rows_js`` đọc được."""
@@ -419,6 +435,8 @@ class FakeCatalogGrid:
 
         self.show_filter_button = FakeNode() if show_button else None
         self.root = RootNode(self)
+        # ``window.__wfxPanelDocumentMarker`` của document hiện tại.
+        self.document_marker = ""
 
         # Ghi lại để test khẳng định hành vi, không chỉ kết quả.
         self.poll_count = 0
@@ -467,6 +485,18 @@ class FakeCatalogGrid:
 
     def is_detached(self) -> bool:
         return self.detached
+
+    def reload(self) -> None:
+        """WFX thay document tại chỗ: marker cũ mất, Frame object giữ nguyên."""
+        self.document_marker = ""
+
+    def evaluate(self, script: str, arg: Any = None) -> Any:
+        if "__wfxPanelDocumentMarker = marker" in script:
+            self.document_marker = str(arg)
+            return None
+        if "__wfxPanelDocumentMarker ||" in script:
+            return self.document_marker
+        raise AssertionError(f"Fake grid chưa hỗ trợ script: {script[:120]}")
 
     def wait_for_timeout(self, milliseconds: float) -> None:
         self.clock.advance(float(milliseconds) / 1_000.0)
@@ -526,10 +556,23 @@ class _ShowFilterProxy(FakeNode):
 class MasterNode(FakeNode):
     """Node ``Master`` trong cây Catalog, có thể giả lập frame bị thay."""
 
-    def __init__(self, *, fail_wait_times: int = 0) -> None:
+    def __init__(
+        self,
+        *,
+        fail_wait_times: int = 0,
+        on_click: Callable[[int], None] | None = None,
+    ) -> None:
         super().__init__()
         self.fail_wait_times = fail_wait_times
         self.wait_calls = 0
+        # Phản ứng của WFX sau mỗi click (đối số: số lần đã click).
+        self.on_click = on_click
+
+    def evaluate(self, script: str, arg: Any = None) -> Any:
+        result = super().evaluate(script, arg)
+        if self.on_click is not None:
+            self.on_click(self.clicks)
+        return result
 
     def wait_for(self, state: str | None = None, timeout: float | None = None) -> None:
         self.wait_calls += 1
@@ -547,10 +590,12 @@ class FakeCatalogTree:
         category_value: str = "01",
         url: str = "https://wfx.test/wfx/WFX_CatalogTree.aspx?CatalogType=1",
         master: MasterNode | None = None,
+        selected_nodes: Iterable[str] = (),
     ) -> None:
         self.clock = clock
         self.url = url
         self.category = FakeNode(value=category_value)
+        self.selected_nodes = list(selected_nodes)
         self.master = master if master is not None else MasterNode()
         self.text_queries: list[tuple[str, bool]] = []
         self.selectors: list[str] = []
@@ -569,6 +614,8 @@ class FakeCatalogTree:
         self.selectors.append(selector)
         if selector == CATEGORY_SELECTOR:
             return FakeLocator([self.category], selector)
+        if selector == SELECTED_TREE_NODE_SELECTOR:
+            return TextListLocator(self.selected_nodes, selector)
         # Đặc tả cấm click IMG collapse hoặc container LI chỉ vì nó chứa chữ
         # Master. Bất kỳ selector nào khác đều là hồi quy.
         raise AssertionError(

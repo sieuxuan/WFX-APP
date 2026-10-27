@@ -560,6 +560,9 @@ async function browseCatalog() {
 }
 
 async function runCatalogAction(filterKind, query, destination = null) {
+  // Lượt thứ hai (Enter, click dòng) giữa lúc đang chạy chỉ nhận
+  // ACTION_IN_PROGRESS nhưng `finally` của nó vẫn nhả busy của lượt đầu.
+  if (busy) return null;
   const value = String(query || "").trim();
   if (!value) {
     setStatus("error", "Vui lòng nhập nội dung cần tìm.");
@@ -567,7 +570,7 @@ async function runCatalogAction(filterKind, query, destination = null) {
   }
   clearCatalogResult();
   hideCatalogResults();
-  catalogPendingDestination = destination;
+  catalogPendingDestination = null;
   const result = await runSelectedModuleAction(
     "catalog_action",
     $(".catalog-category").value,
@@ -575,9 +578,11 @@ async function runCatalogAction(filterKind, query, destination = null) {
     value,
     destination,
   );
-  if (result?.code !== "MULTIPLE_RESULTS") {
-    catalogPendingDestination = null;
-  }
+  // Gán sau khi có kết quả, từ tham số của CHÍNH lượt này: gõ phím trong lúc
+  // chạy không được làm dòng MULTIPLE_RESULTS mất đích Costing/BOM/File.
+  catalogPendingDestination = result?.code === "MULTIPLE_RESULTS"
+    ? destination
+    : null;
   return result;
 }
 
@@ -655,6 +660,10 @@ function setCostingSpecialOptionsState(state) {
 window.wfxSetCostingSpecialOptionsState = setCostingSpecialOptionsState;
 
 function hideArticleSuggestions() {
+  // Hủy cả lượt gợi ý đang chờ debounce/bridge, nếu không nó bật lại danh
+  // sách đè lên lượt tìm vừa bắt đầu.
+  window.clearTimeout(articleSuggestionTimer);
+  articleSuggestionGeneration += 1;
   const host = $(".catalog-article-suggestions");
   if (!host) return;
   host.hidden = true;

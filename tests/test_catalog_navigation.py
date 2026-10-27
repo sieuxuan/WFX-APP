@@ -13,7 +13,7 @@ import pytest
 import wfx_panel.automation.catalog.navigation as navigation
 from tests.fakes.mini_dom import Element, MiniFrame
 from tests.fakes.module_reflection import patch_automation
-from tests.fakes.wfx_dom import install_fake_clock
+from tests.fakes.wfx_dom import FakeCatalogGrid, install_fake_clock
 from wfx_panel.automation._common import PlaywrightError, PlaywrightTimeoutError
 
 HOME = "https://wfx.test/wfx/default.aspx"
@@ -328,6 +328,7 @@ class MasterFrame(TreeFrame):
         super().__init__(*args, **kwargs)
         self.outcomes = list(outcomes)
         self.master_queries = 0
+        self.on_click = None
 
     def get_by_text(self, text, exact=False):
         assert (text, exact) == ("Master", True)
@@ -337,12 +338,13 @@ class MasterFrame(TreeFrame):
             if len(self.outcomes) > 1
             else (self.outcomes[0] if self.outcomes else None)
         )
-        return _MasterNode(outcome)
+        return _MasterNode(outcome, self.on_click)
 
 
 class _MasterNode:
-    def __init__(self, outcome):
+    def __init__(self, outcome, on_click=None):
         self.outcome = outcome
+        self.on_click = on_click
         self.clicks: list[str] = []
 
     def wait_for(self, **_kwargs):
@@ -351,26 +353,32 @@ class _MasterNode:
 
     def evaluate(self, script):
         self.clicks.append(script)
+        if self.on_click is not None:
+            self.on_click()
 
 
 def _master_page(clock, *outcomes):
+    """Click Master thành công thì WFX dựng Catalog Grid ở body."""
     frame = MasterFrame(
         Element("body", children=[Element("select", id="ddlCategory")]),
         url=CATALOG_URL,
         clock=clock,
         outcomes=list(outcomes),
     )
-    return NavPage(frame, clock=clock), frame
+    page = NavPage(frame, clock=clock)
+    frame.on_click = lambda: page.frames.append(FakeCatalogGrid(clock))
+    return page, frame
 
 
 def test_master_is_clicked_through_its_own_onclick_node(clock):
     page, frame = _master_page(clock, None)
     lines: list[str] = []
 
-    navigation._click_catalog_master(page, lines.append)
+    opened = navigation._click_catalog_master(page, lines.append)
 
+    assert opened is page.frames[-1]
     assert frame.master_queries == 1
-    assert any("Đã tìm thấy Master" in line for line in lines)
+    assert any("MASTER_OPENED" in line for line in lines)
 
 
 def test_a_tree_that_reloads_mid_click_is_retried_not_abandoned(clock):

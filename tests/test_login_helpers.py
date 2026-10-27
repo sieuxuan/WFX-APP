@@ -9,6 +9,18 @@ from tests.fakes.module_reflection import module_source, patch_automation
 from wfx_panel.automation import browser, catalog, modules, session
 
 
+@pytest.fixture(autouse=True)
+def _catalog_tree_on_master(monkeypatch):
+    """Các test ở đây giả lập grid/popup, không dựng cây Catalog.
+
+    Kiểm tra Category > Master của cây được phủ riêng trong
+    ``tests/test_catalog_grid_readiness.py`` và ``test_catalog_entry_points.py``.
+    """
+    patch_automation(
+        monkeypatch, catalog, "_catalog_master_context_problem", lambda *_a: None
+    )
+
+
 def test_legacy_login_exports_atomic_catalog_destination_flow():
     assert callable(login.find_and_open_catalog_destination)
     assert callable(login.scan_active_open_costing)

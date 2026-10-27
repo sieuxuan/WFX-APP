@@ -445,8 +445,15 @@ function bind() {
   });
   window.addEventListener("keydown", trapOverlayFocus, true);
   $(".catalog-query").addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$(".catalog-article-suggestions").hidden) {
+      // Escape đầu tiên chỉ đóng gợi ý; không để handler toàn cục đóng module.
+      event.stopPropagation();
+      hideArticleSuggestions();
+      return;
+    }
     if (event.key !== "Enter") return;
     hideArticleSuggestions();
+    if (busy) return;
     withButtonLoading($('[data-catalog-action="find"]'), () => catalogActions["find"]());
   });
   $(".catalog-category").addEventListener("change", () => {
