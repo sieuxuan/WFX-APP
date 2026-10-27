@@ -301,8 +301,8 @@ def test_a_download_that_never_starts_is_reported(clock, monkeypatch, tmp_path):
 def test_a_native_download_without_a_cdp_event_is_still_picked_up(
     clock, monkeypatch, tmp_path
 ):
-    # Runtime reset Browser.setDownloadBehavior về `default` sau mỗi attach, nên
-    # Chrome lưu file vào Downloads nhưng CDP không phát event `download`. Log
+    # Runtime không bật download event của CDP, nên Chrome lưu file vào
+    # Downloads nhưng Playwright không phát event `download`. Log
     # 1.1.0 lúc 09:57: file (4).xlsx có sau ~20 giây, flow vẫn chờ đủ 90 giây
     # rồi báo GDN_REPORT_DOWNLOAD_FAILED.
     native = tmp_path / "Downloads" / "BuyerDispatchOrder_Invoice (4).xlsx"

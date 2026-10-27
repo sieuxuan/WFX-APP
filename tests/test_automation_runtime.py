@@ -253,10 +253,9 @@ def test_runtime_reuses_one_cdp_browser_within_a_flow():
             },
         )
     ]
-    assert first.cdp_sessions[0].calls == [
-        ("Browser.setDownloadBehavior", {"behavior": "default"})
-    ]
-    assert first.cdp_sessions[0].detach_calls == 1
+    # Không mở browser CDP session nào: mọi Browser.setDownloadBehavior đều
+    # thay vĩnh viễn delegate download của profile.
+    assert first.cdp_sessions == []
 
 
 def test_cancellation_survives_workflow_except_exception_handlers():
@@ -351,14 +350,11 @@ def test_native_connect_does_not_override_chrome_download_behavior(tmp_path, mon
             },
         )
     ]
-    assert connected.cdp_sessions[0].calls == [
-        ("Browser.setDownloadBehavior", {"behavior": "default"})
-    ]
-    assert connected.cdp_sessions[0].detach_calls == 1
+    assert connected.cdp_sessions == []
     assert download.saved_to is None
 
 
-def test_runtime_restores_native_downloads_after_browser_reconnect():
+def test_runtime_keeps_native_downloads_after_browser_reconnect():
     worker = runtime.AutomationRuntime()
     chromium = FakeChromium()
     playwright = type("FakePlaywrightClient", (), {"chromium": chromium})()
@@ -377,10 +373,7 @@ def test_runtime_restores_native_downloads_after_browser_reconnect():
     assert first is not second
     assert len(chromium.calls) == 2
     for browser in (first, second):
-        assert browser.cdp_sessions[0].calls == [
-            ("Browser.setDownloadBehavior", {"behavior": "default"})
-        ]
-        assert browser.cdp_sessions[0].detach_calls == 1
+        assert browser.cdp_sessions == []
 
 
 def test_download_claimed_by_a_flow_is_not_duplicated_into_downloads(tmp_path, monkeypatch):
