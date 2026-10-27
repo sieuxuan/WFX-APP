@@ -8,15 +8,6 @@ import threading
 import keyboard
 import webview
 
-# Giới hạn WebView2 của panel/bubble/menu/notification trên máy 8 GB RAM. WebView2
-# chỉ đọc giá trị này lúc tạo environment, không phải khi import pywebview.
-os.environ.setdefault(
-    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-    "--renderer-process-limit=3 --process-per-site "
-    "--disable-background-networking --disable-component-update "
-    "--disable-sync --no-service-autorun",
-)
-
 from wfx_panel import (
     autostart,
     crash_log,
@@ -24,6 +15,7 @@ from wfx_panel import (
     prefs,
     updater,
 )
+from wfx_panel.app import webview2_args
 from wfx_panel.app.background import BackgroundLoopController
 from wfx_panel.app.bridges import (  # noqa: F401
     _BubbleBridge,
@@ -810,7 +802,24 @@ class PanelApp:
         # UI là file đóng gói và state thật nằm trong prefs/.env riêng. Dùng
         # WebView riêng tư để bản app mới không tái sử dụng HTML/CSS/zoom cache
         # của bản cũ — nguyên nhân từng làm UI khác index.html và bị tràn.
+        _install_webview2_arguments()
         webview.start(background, private_mode=True)
+
+
+def _install_webview2_arguments() -> bool:
+    """Giới hạn renderer WebView2; pywebview bỏ qua biến môi trường WEBVIEW2_*."""
+    if os.name != "nt":
+        return False
+    try:
+        from webview.platforms import edgechromium
+
+        installed = webview2_args.install(edgechromium)
+    except Exception as exc:  # WebView2/pythonnet thiếu: pywebview tự fallback.
+        crash_log.record("WEBVIEW2_ARGUMENTS_SKIPPED", error=type(exc).__name__)
+        return False
+    if not installed:
+        crash_log.record("WEBVIEW2_ARGUMENTS_SKIPPED", error="unsupported_pywebview")
+    return installed
 
 
 def _sync_packaged_autostart() -> bool | None:
