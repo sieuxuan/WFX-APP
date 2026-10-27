@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.1.2",
+    "date": "2026-10-27",
+    "highlights": [
+      {
+        "title": "Dropdown Costing có cả Article vừa tạo trên WFX",
+        "body": "Khi xuất file Costing có quét Article, dropdown Article Code/Name gồm cả Article vừa tạo trên WFX lẫn thư viện Article dùng chung. Bạn không phải chờ thư viện được cập nhật mới chọn được Fabric hoặc Trim mới.",
+        "entry": "costing-xuat-file"
+      },
+      {
+        "title": "Báo lỗi một chạm",
+        "body": "Bấm Báo lỗi ở thanh dưới cùng hoặc trên thẻ lỗi trong Lịch sử để gửi lỗi cho nhóm hỗ trợ, không cần tự nhập mô tả. Mỗi lần chạy chỉ gửi một lần.",
+        "entry": "su-co-gop-y"
+      },
+      {
+        "title": "Mở file từ danh sách tải xuống của Chrome",
+        "body": "Mở file và Hiện trong thư mục trong danh sách tải xuống của Chrome hoạt động lại sau khi WFX Smart chạy thao tác tự động. Hãy đóng hẳn trình duyệt làm việc rồi mở lại một lần sau khi cập nhật.",
+        "entry": "bat-dau-trinh-duyet"
+      },
+      {
+        "title": "Menu chuột phải của biểu tượng tròn gọn hơn",
+        "body": "Bấm chuột phải biểu tượng tròn nổi trên màn hình giờ chỉ còn một mục Thoát. Chọn Thoát để cất biểu tượng vào khay hệ thống; WFX Smart vẫn chạy và gọi lại được bằng khay hoặc Ctrl + Shift + X.",
+        "entry": "bat-dau-mo-panel"
+      }
+    ]
+  },
+  {
     "version": "1.1.1",
     "date": "2026-09-29",
     "highlights": [
