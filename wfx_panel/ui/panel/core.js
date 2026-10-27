@@ -242,6 +242,26 @@ let catalogStyleGroupId = "";
 let catalogStyleAutoSave = false;
 let articleSuggestionTimer = 0;
 let articleSuggestionGeneration = 0;
+// Ô nhận focus khi mở màn module và khi bấm hotkey lúc màn đang mở. Hai lối vào
+// dùng chung một bảng để Ctrl+Shift+X luôn đưa con trỏ về đúng ô cần gõ.
+const MODULE_FOCUS_TARGETS = {
+  catalog: ".catalog-query",
+  oc: ".oc-query",
+  gdn_dispatch: ".gdn-invoice-query",
+  grn_receipt: ".grn-rmpo-query",
+  sample: ".sample-no-query",
+  advance_pr: ".advance-pr-buyer-query",
+  supplier_invoice: ".supplier-invoice-supplier-query",
+  expense_invoice: ".expense-invoice-supplier-query",
+  sale_asn: ".sale-asn-buyer",
+  rmpo: ".rmpo-supplier-query",
+  indent: ".indent-supplier-query",
+  list_new: '[data-module-action="list-new-list"]',
+  supplier: ".supplier-query",
+  buyer: ".buyer-query",
+  company_setup: '[data-module-action="company-list"]',
+  reports: '[data-module-action="report-shipment-summary"]',
+};
 const moduleFilterKinds = {
   oc: "oc_no",
   sale_asn: "invoice_no",

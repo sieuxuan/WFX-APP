@@ -198,13 +198,7 @@ function bind() {
   bindListboxKeys($(".catalog-article-suggestions"));
   $(".gdn-invoice-query")?.addEventListener("input", syncGdnDispatchAction);
   $(".gdn-grn-confirm-input")?.addEventListener("change", syncGdnDispatchAction);
-  Object.entries(INPUT_VALIDATION_GROUPS).forEach(([group, selectors]) => {
-    selectors.forEach((selector) => {
-      $(selector)?.addEventListener("input", () => syncInputValidation(group));
-      $(selector)?.addEventListener("change", () => syncInputValidation(group));
-    });
-  });
-  syncAllInputValidation();
+  bindInputValidationGroups();
   $$('[data-sale-asn-view]').forEach((button) =>
     button.addEventListener("click", () => showSaleAsnView(button.dataset.saleAsnView)));
   $$('[data-sale-asn-stage]').forEach((input) =>
@@ -340,33 +334,14 @@ function bind() {
     openModulePage(button.dataset.moduleId);
   });
   $(".module-back-button").addEventListener("click", closeModulePage);
-  const runModuleActionFromKeyboard = (action) => withButtonLoading(
-    $(`[data-module-action="${action}"]`),
-    () => moduleActions[action]?.(),
-  );
-  $(".oc-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("oc-search"); });
+  // Enter/Esc của các ô tìm được gắn chung trong bindInputValidationGroups().
   $(".gdn-invoice-query")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !$(".dispatch-submit-button")?.disabled) {
+    if (event.key === "Enter" && !event.isComposing) {
       runModuleActionFromKeyboard("gdn-dispatch-submit");
     }
   });
-  [
-    ".sample-no-query",
-    ".sample-style-query",
-    ".sample-created-by-query",
-    ".sample-buyer-query",
-  ].forEach((selector) =>
-    $(selector).addEventListener("keydown", (event) => {
-      if (event.key === "Enter") runModuleActionFromKeyboard("sample-search");
-    }));
-  $(".sale-asn-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("sale-asn-search"); });
   [".rmpo-supplier-query", ".rmpo-order-query"].forEach((selector) =>
-    {
-      $(selector).addEventListener("input", hideRmpoResults);
-      $(selector).addEventListener("keydown", (event) => {
-        if (event.key === "Enter") runModuleActionFromKeyboard("rmpo-search");
-      });
-    });
+    $(selector).addEventListener("input", hideRmpoResults));
   $(".grn-rmpo-query")?.addEventListener("input", (event) => {
     const linkedRmpo = selectedRmpoChoice?.order_no || "";
     if (event.target.value.trim() !== linkedRmpo) {
@@ -379,53 +354,9 @@ function bind() {
     $(".grn-site-step").hidden = true;
     $(".grn-done").hidden = true;
   });
-  $(".grn-search-query")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") runModuleActionFromKeyboard("grn-search");
-  });
   $(".grn-site-select")?.addEventListener("change", () => {
     syncGrnStepActions();
   });
-  [
-    ".indent-supplier-query",
-    ".indent-article-query",
-    ".indent-no-query",
-    ".indent-style-query",
-  ].forEach((selector) =>
-    $(selector).addEventListener("keydown", (event) => {
-      if (event.key === "Enter") runModuleActionFromKeyboard("indent-search");
-    }));
-  [
-    ".advance-pr-buyer-query",
-    ".advance-pr-supplier-query",
-    ".advance-pr-invoice-query",
-    ".advance-pr-order-query",
-  ].forEach((selector) =>
-    $(selector).addEventListener("keydown", (event) => {
-      if (event.key === "Enter") runModuleActionFromKeyboard("advance-pr-search");
-    }));
-  [
-    ".supplier-invoice-supplier-query",
-    ".supplier-invoice-no-query",
-    ".supplier-invoice-po-query",
-    ".supplier-invoice-asn-grn-query",
-  ].forEach((selector) =>
-    $(selector).addEventListener("keydown", (event) => {
-      if (event.key === "Enter") runModuleActionFromKeyboard("supplier-invoice-search");
-    }));
-  $(".supplier-invoice-cancel-query").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") runModuleActionFromKeyboard("supplier-invoice-cancel");
-  });
-  [
-    ".expense-invoice-supplier-query",
-    ".expense-invoice-no-query",
-    ".expense-invoice-created-by-query",
-    ".expense-invoice-status-query",
-  ].forEach((selector) =>
-    $(selector).addEventListener("keydown", (event) => {
-      if (event.key === "Enter") runModuleActionFromKeyboard("expense-invoice-search");
-    }));
-  $(".supplier-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("supplier-find"); });
-  $(".buyer-query").addEventListener("keydown", (event) => { if (event.key === "Enter") runModuleActionFromKeyboard("buyer-find"); });
   // Click ra ngoài app (mất focus sang cửa sổ khác) → tự thu panel về bubble,
   // kể cả khi automation đang chạy, để user có thể theo dõi trực tiếp trên WFX.
   // Backend còn kiểm tra foreground để không thu khi bấm chính bubble/toast.

@@ -20,12 +20,20 @@ from wfx_panel.automation._common import (
     _write_log,
     time,
 )
-from wfx_panel.automation.modules.constants import (
-    _MODULE_LOADING_SELECTOR,
-    MODULE_GRID_POLL_MS,
+from wfx_panel.automation.modules.constants import MODULE_GRID_POLL_MS
+from wfx_panel.automation.modules.context import (
+    _frame_matches_module_context,
+    _wait_module_search_settled,
 )
-from wfx_panel.automation.modules.context import _frame_matches_module_context
 from wfx_panel.automation.modules.text import _normalise_search_text
+
+
+class SearchValueNotConfirmed(PlaywrightTimeoutError):
+    """WFX không giữ đúng giá trị vừa nhập vào ô lọc.
+
+    Tách khỏi timeout chờ kết quả vì người dùng xử lý khác nhau: một bên là ô
+    bị WFX vẽ lại giữa chừng, một bên là bảng còn đang tải.
+    """
 
 
 def _visible_locator_in_frames(
@@ -66,6 +74,26 @@ def _click_navigation_control(locator: Any) -> None:
             raise
 
 
+_INPUT_HEADER_METADATA_JS = """elements => elements.map(element => {
+    if (!element.isConnected || element.disabled) return null;
+    if (getComputedStyle(element).visibility === 'hidden') return null;
+    const rect = element.getBoundingClientRect();
+    if (!(rect.width > 0 && rect.height > 0)) return null;
+    const header = element.closest(
+        '.ag-header-cell, .tdSearch, th, td, label'
+    );
+    return [
+        element.id,
+        element.name,
+        element.getAttribute('aria-label'),
+        element.placeholder,
+        header?.getAttribute('col-id'),
+        header?.getAttribute('aria-label'),
+        header?.innerText
+    ].filter(Boolean).join(' ');
+})"""
+
+
 def _visible_search_input(
     frame: Frame,
     selectors: tuple[str, ...],
@@ -84,43 +112,39 @@ def _visible_search_input(
 
     try:
         inputs = frame.locator("input")
-        best: tuple[int, Any] | None = None
-        for index in range(inputs.count()):
-            candidate = inputs.nth(index)
-            if not candidate.is_visible() or not candidate.is_enabled():
-                continue
-            metadata = candidate.evaluate(
-                """element => {
-                    const header = element.closest(
-                        '.ag-header-cell, .tdSearch, th, td, label'
-                    );
-                    return [
-                        element.id,
-                        element.name,
-                        element.getAttribute('aria-label'),
-                        element.placeholder,
-                        header?.getAttribute('col-id'),
-                        header?.getAttribute('aria-label'),
-                        header?.innerText
-                    ].filter(Boolean).join(' ');
-                }"""
-            )
-            normalised = _normalise_search_text(metadata)
-            compact = normalised.replace(" ", "")
-            score = max(
-                (
-                    len(alias)
-                    for alias in normalised_aliases
-                    if alias in normalised
-                    or alias.replace(" ", "") in compact
-                ),
-                default=0,
-            )
-            if score and (best is None or score > best[0]):
-                best = (score, candidate)
-        return best[1] if best is not None else None
+        # Một evaluate_all cho cả frame thay vì một round-trip CDP cho từng
+        # input: đường dự phòng này chạy ở mọi vị trí khi quét ngang AG Grid.
+        metadata_list = inputs.evaluate_all(_INPUT_HEADER_METADATA_JS)
     except PlaywrightError:
         return None
+    scored: list[tuple[int, int]] = []
+    for index, metadata in enumerate(metadata_list or ()):
+        if not metadata:
+            continue
+        normalised = _normalise_search_text(metadata)
+        compact = normalised.replace(" ", "")
+        score = max(
+            (
+                len(alias)
+                for alias in normalised_aliases
+                if alias in normalised
+                or alias.replace(" ", "") in compact
+            ),
+            default=0,
+        )
+        if score:
+            scored.append((score, index))
+    # sorted ổn định nên cùng điểm thì input đứng trước trong DOM thắng, giống
+    # luật chọn cũ. Xác nhận lại bằng Playwright vì luật hiển thị trong JS chỉ
+    # là xấp xỉ.
+    for _score, index in sorted(scored, key=lambda item: -item[0]):
+        candidate = inputs.nth(index)
+        try:
+            if candidate.is_visible() and candidate.is_enabled():
+                return candidate
+        except PlaywrightError:
+            continue
+    return None
 
 
 def _search_input_in_frames(
@@ -219,35 +243,11 @@ def _search_input_across_horizontal_grid(
     return None
 
 
-def _module_search_is_loading(page: Page) -> bool:
-    for frame in page.frames:
-        try:
-            overlays = frame.locator(_MODULE_LOADING_SELECTOR)
-            if any(
-                overlays.nth(index).is_visible()
-                for index in range(overlays.count())
-            ):
-                return True
-        except PlaywrightError:
-            continue
-    return False
-
-
 def _wait_module_search_stable(
     page: Page,
     label: str,
 ) -> None:
-    deadline = time.monotonic() + 15
-    stable_since = 0.0
-    while time.monotonic() < deadline:
-        if _module_search_is_loading(page):
-            stable_since = 0.0
-        elif stable_since <= 0:
-            stable_since = time.monotonic()
-        elif time.monotonic() - stable_since >= 0.8:
-            return
-        _wait(page, 200)
-    raise PlaywrightTimeoutError(f"Kết quả search {label} chưa ổn định.")
+    _wait_module_search_settled(page, [label], timeout_s=15)
 
 
 def _apply_module_search(
@@ -262,7 +262,7 @@ def _apply_module_search(
     # phần giá trị; `fill()` phát input atomically rồi Enter/change kích search.
     field.fill(query)
     if field.input_value(timeout=1_000) != query:
-        raise PlaywrightTimeoutError(
+        raise SearchValueNotConfirmed(
             f"WFX không xác nhận giá trị search {label}."
         )
     _write_log(log, f"[MODULE SEARCH] Đã nhập {label}.")

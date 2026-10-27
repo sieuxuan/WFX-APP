@@ -19,6 +19,11 @@
         "entry": "costing-xuat-file"
       },
       {
+        "title": "Ô tìm trong từng module gọn hơn",
+        "body": "Màn có nhiều ô điều kiện có thêm nút Xóa điều kiện để bắt đầu lượt tìm mới. Nhấn Esc trong một ô đang có chữ để xóa riêng ô đó. Enter không còn chạy tìm khi các ô còn trống, và mở Supplier List hoặc Buyer List là gõ tên được ngay. Khi WFX không có dòng nào khớp, thanh dưới cùng báo ngay để bạn không phải chuyển sang trình duyệt kiểm tra; thông báo lỗi cũng nói rõ ô nào bị thiếu thay vì mã kỹ thuật.",
+        "entry": "hang-ngay-tim-module"
+      },
+      {
         "title": "Báo lỗi một chạm",
         "body": "Bấm Báo lỗi ở thanh dưới cùng hoặc trên thẻ lỗi trong Lịch sử để gửi lỗi cho nhóm hỗ trợ, không cần tự nhập mô tả. Mỗi lần chạy chỉ gửi một lần.",
         "entry": "su-co-gop-y"

@@ -24,9 +24,11 @@ from tests.fakes.automation_boundary import WfxWorld, wire_automation
 from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
 from wfx_panel.automation import modules
+from wfx_panel.automation.modules.inputs import SearchValueNotConfirmed
 from wfx_panel.automation.search_specs import (
     OC_SEARCH_SPEC,
     RMPO_SEARCH_SPEC,
+    SALE_ASN_SEARCH_SPEC,
 )
 
 LIST_XPATH = '//*[@id="0003_1000"]/a'
@@ -66,7 +68,12 @@ def _stub_context(monkeypatch, *, frame: object = "frame") -> None:
     patch_automation(
         monkeypatch, modules,
         "_clear_list_search_fields",
-        lambda *_args, **_kwargs: None,
+        lambda *_args, **_kwargs: 0,
+    )
+    patch_automation(
+        monkeypatch, modules,
+        "_grid_reports_no_rows",
+        lambda *_args, **_kwargs: False,
     )
 
 
@@ -142,7 +149,7 @@ def test_a_successful_search_names_the_module_and_the_filter(monkeypatch, world)
 # --- Phân loại lỗi kỹ thuật --------------------------------------------
 
 
-def test_a_field_that_never_appears_says_the_app_already_opened_the_list(
+def test_a_field_that_never_appears_names_the_box_and_never_asks_for_list(
     monkeypatch,
     world,
 ):
@@ -158,9 +165,80 @@ def test_a_field_that_never_appears_says_the_app_already_opened_the_list(
     result = _search()
 
     assert result["code"] == "MODULE_SEARCH_NOT_READY"
-    assert "App đã tự mở" in result["message"]
+    assert "Không thấy ô OC No. trên OC List" in result["message"]
+    assert "bấm List" not in result["message"]
+    assert "ô tìm chưa render" not in result["message"]
     assert result["module"] == "OC List"
     assert result["filter_kind"] == "OC No."
+
+
+def test_a_hidden_floating_filter_column_is_named_in_the_message(
+    monkeypatch,
+    world,
+):
+    """AG Grid không vẽ ô lọc của cột bị ẩn: gợi ý đúng nguyên nhân hay gặp."""
+    wire_automation(monkeypatch, modules, world)
+    _stub_context(monkeypatch)
+
+    def slow(*_args, **_kwargs):
+        raise PlaywrightTimeoutError("ô tìm chưa render")
+
+    patch_automation(monkeypatch, modules, "_search_input_in_frame", slow)
+
+    result = modules._search_module_list(
+        SALE_ASN_SEARCH_SPEC, LIST_XPATH, "invoice_no", "INV-1", _logs()[1]
+    )
+
+    assert result["code"] == "MODULE_SEARCH_NOT_READY"
+    assert "ẩn cột Invoice No." in result["message"]
+
+
+def test_an_empty_grid_after_a_list_search_is_reported_as_no_results(
+    monkeypatch,
+    world,
+):
+    wire_automation(monkeypatch, modules, world)
+    _stub_context(monkeypatch)
+    patch_automation(
+        monkeypatch, modules,
+        "_search_input_in_frame",
+        lambda *_args, **_kwargs: "field",
+    )
+    patch_automation(
+        monkeypatch, modules, "_apply_module_search", lambda *_a, **_k: None
+    )
+    patch_automation(
+        monkeypatch, modules, "_grid_reports_no_rows", lambda *_a, **_k: True
+    )
+
+    result = _search(query="OC-404")
+
+    assert result["ok"] is False
+    assert result["code"] == "MODULE_SEARCH_NO_RESULTS"
+    assert "OC-404" in result["message"]
+
+
+def test_a_value_wfx_rewrites_is_told_apart_from_a_slow_grid(
+    monkeypatch,
+    world,
+):
+    wire_automation(monkeypatch, modules, world)
+    _stub_context(monkeypatch)
+    patch_automation(
+        monkeypatch, modules,
+        "_search_input_in_frame",
+        lambda *_args, **_kwargs: "field",
+    )
+
+    def rewritten(*_args, **_kwargs):
+        raise SearchValueNotConfirmed("WFX không xác nhận giá trị search OC No.")
+
+    patch_automation(monkeypatch, modules, "_apply_module_search", rewritten)
+
+    result = _search()
+
+    assert result["code"] == "MODULE_SEARCH_NOT_CONFIRMED"
+    assert "không nhận giá trị OC No." in result["message"]
 
 
 def test_a_search_that_was_typed_but_not_confirmed_is_reported_differently(
@@ -183,7 +261,7 @@ def test_a_search_that_was_typed_but_not_confirmed_is_reported_differently(
     result = _search()
 
     assert result["code"] == "MODULE_SEARCH_NOT_CONFIRMED"
-    assert "chưa xác nhận" in result["message"]
+    assert "vẫn đang tải" in result["message"]
 
 
 def test_an_unexpected_error_falls_back_to_module_search_failed(

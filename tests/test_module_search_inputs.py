@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import pytest
 
+import wfx_panel.automation.modules.context as module_context
 import wfx_panel.automation.modules.inputs as inputs
 from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import FakeLocator, FakeNode, install_fake_clock
 from wfx_panel.automation._common import PlaywrightError, PlaywrightTimeoutError
+from wfx_panel.automation.modules.constants import _MODULE_LOADING_SELECTOR
 
 
 @pytest.fixture
@@ -439,10 +441,10 @@ def test_a_list_frame_without_the_column_reports_the_alias_it_looked_for(clock):
 
 def test_the_search_is_not_settled_while_wfx_shows_its_loading_layer(clock):
     overlay = FakeNode()
-    frame = SearchFrame({inputs._MODULE_LOADING_SELECTOR: [overlay]}, clock=clock)
+    frame = SearchFrame({_MODULE_LOADING_SELECTOR: [overlay]}, clock=clock)
     page = SearchPage(frame, clock=clock)
 
-    assert inputs._module_search_is_loading(page) is True
+    assert module_context._module_search_is_loading(page) is True
     with pytest.raises(PlaywrightTimeoutError, match="chưa ổn định"):
         inputs._wait_module_search_stable(page, "OC No.")
 
@@ -453,12 +455,12 @@ def test_a_frame_that_detaches_while_probing_loading_is_ignored(clock):
         clock=clock,
     )
 
-    assert inputs._module_search_is_loading(page) is False
+    assert module_context._module_search_is_loading(page) is False
 
 
 def test_a_grid_that_stays_quiet_long_enough_counts_as_settled(clock):
     page = SearchPage(
-        SearchFrame({inputs._MODULE_LOADING_SELECTOR: []}, clock=clock),
+        SearchFrame({_MODULE_LOADING_SELECTOR: []}, clock=clock),
         clock=clock,
     )
 
@@ -470,7 +472,7 @@ def test_a_grid_that_stays_quiet_long_enough_counts_as_settled(clock):
 
 def _quiet_page(clock):
     return SearchPage(
-        SearchFrame({inputs._MODULE_LOADING_SELECTOR: []}, clock=clock),
+        SearchFrame({_MODULE_LOADING_SELECTOR: []}, clock=clock),
         clock=clock,
     )
 

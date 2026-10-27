@@ -213,22 +213,8 @@ function focusModuleSearch() {
   $(".log-overlay").classList.remove("log-open");
   feedbackOverlay().classList.remove("feedback-open");
   if (!$(".module-page").hidden) {
-    const focusTarget = {
-      catalog: ".catalog-query",
-      oc: ".oc-query",
-      gdn_dispatch: ".gdn-invoice-query",
-      sample: ".sample-no-query",
-      advance_pr: ".advance-pr-buyer-query",
-      supplier_invoice: ".supplier-invoice-supplier-query",
-      expense_invoice: ".expense-invoice-supplier-query",
-      sale_asn: ".sale-asn-buyer",
-      rmpo: ".rmpo-supplier-query",
-      indent: ".indent-supplier-query",
-      list_new: '[data-module-action="list-new-list"]',
-      supplier: ".supplier-query",
-      buyer: ".buyer-query",
-      company_setup: '[data-module-action="company-list"]',
-    }[selectedModule?.kind] || ".module-back-button";
+    const focusTarget =
+      MODULE_FOCUS_TARGETS[selectedModule?.kind] || ".module-back-button";
     $(focusTarget)?.focus();
     return;
   }

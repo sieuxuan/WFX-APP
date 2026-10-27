@@ -810,9 +810,9 @@ def test_action_buttons_show_inline_spinner():
 
 def test_all_module_workflows_keep_their_source_button_highlighted():
     assert '$$("[data-module-action]").forEach' in JS
-    assert "runModuleActionFromKeyboard" in JS
-    assert 'runModuleActionFromKeyboard("oc-search")' in JS
-    assert 'runModuleActionFromKeyboard("rmpo-search")' in JS
+    assert "function runModuleActionFromKeyboard(action)" in JS
+    assert 'oc: "oc-search"' in JS
+    assert 'rmpo: "rmpo-search"' in JS
 
 
 def test_read_only_help_surfaces_remain_available_while_busy():

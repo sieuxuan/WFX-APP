@@ -85,7 +85,7 @@
           "title": "Tìm và mở module",
           "summary": "Gõ vài chữ là ra đúng màn hình cần dùng.",
           "file": "02-hang-ngay/tim-module.md",
-          "keywords": ["tìm", "module", "danh sách"],
+          "keywords": ["tìm", "module", "danh sách", "xóa điều kiện", "enter", "esc"],
           "covers": {}
         },
         {

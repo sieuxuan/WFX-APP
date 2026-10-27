@@ -34,24 +34,7 @@ function openModulePage(moduleId) {
   page.hidden = false;
   page.setAttribute("aria-hidden", "false");
   replayMotion(page, "view-enter");
-  const focusTarget = {
-    catalog: ".catalog-query",
-    oc: ".oc-query",
-    gdn_dispatch: ".gdn-invoice-query",
-    grn_receipt: ".grn-rmpo-query",
-    sample: ".sample-no-query",
-    advance_pr: ".advance-pr-buyer-query",
-    supplier_invoice: ".supplier-invoice-supplier-query",
-    expense_invoice: ".expense-invoice-supplier-query",
-    sale_asn: ".sale-asn-buyer",
-    rmpo: ".rmpo-supplier-query",
-    indent: ".indent-supplier-query",
-    list_new: '[data-module-action="list-new-list"]',
-    supplier: ".supplier-category",
-    buyer: '[data-module-action="buyer-list"]',
-    company_setup: '[data-module-action="company-list"]',
-    reports: '[data-module-action="report-shipment-summary"]',
-  }[module.kind] || ".module-back-button";
+  const focusTarget = MODULE_FOCUS_TARGETS[module.kind] || ".module-back-button";
   if (module.kind === "list_new") {
     $(".list-new-module-label").textContent = `Mở New từ ${module.name}`;
   }

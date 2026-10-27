@@ -83,7 +83,8 @@ ERROR_CODE_INFO = {
     ),
     "MODULE_SEARCH_NOT_READY": (
         "Ô tìm kiếm của module chưa sẵn sàng",
-        "App đã thử tự mở List; hãy chờ WFX ổn định rồi thử tìm lại.",
+        "Chờ WFX tải xong rồi tìm lại. Nếu đã ẩn cột cần tìm trên WFX, "
+        "hãy hiện lại cột đó.",
     ),
     "MODULE_SEARCH_NOT_CONFIRMED": (
         "WFX chưa xác nhận kết quả tìm kiếm",

@@ -234,12 +234,31 @@ class FakeLocator:
     def check(self, timeout: float | None = None) -> None:
         self._node.check(timeout)
 
-    def evaluate_all(self, script: str, arg: Any = None) -> list[Any]:
+    def evaluate_all(self, script: str, arg: Any = None) -> Any:
         if not self._nodes:
-            return []
+            return [] if "elements.some(" not in script else False
+        if "elements.some(" in script:
+            # Probe "có node nào hiển thị": node detach coi như không hiển thị.
+            return any(self._shown(node) for node in self._nodes)
+        if "elements.map(" in script and "closest(" in script:
+            # Metadata header: chỉ node hiển thị + enabled mới có mô tả, đúng
+            # như script thật trả null cho phần còn lại.
+            return [
+                node.evaluate(script, arg)
+                if self._shown(node) and node.is_enabled()
+                else None
+                for node in self._nodes
+            ]
         raise AssertionError(
             f"Fake DOM chưa hỗ trợ evaluate_all trên {self.selector}"
         )
+
+    @staticmethod
+    def _shown(node: FakeNode) -> bool:
+        try:
+            return node.is_visible()
+        except PlaywrightError:
+            return False
 
     def locator(self, selector: str) -> FakeLocator:
         # WFX gắn onclick vào TD cha của anchor, nên automation phải leo lên

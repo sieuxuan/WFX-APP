@@ -112,6 +112,7 @@ def _wire(monkeypatch, clock, fields, **overrides):
         "_open_multi_field_search_context": lambda *_a, **_k: "frame",
         "_resolve_multi_search_fields": lambda *_a, **_k: fields,
         "_wait_module_search_settled": lambda *_a, **_k: None,
+        "_grid_reports_no_rows": lambda *_a, **_k: False,
     }
     defaults.update(overrides)
     for name, value in defaults.items():
@@ -145,8 +146,11 @@ def test_a_search_without_any_condition_lists_every_field_it_accepts(
 def test_only_the_conditions_the_user_filled_are_applied(monkeypatch, clock):
     spec = _spec()
     fields = _fields(spec)
+    names = list(spec.fields)
+    # Ô thứ ba còn điều kiện của lượt trước, ô thứ tư vốn đã trống.
+    fields[names[2]].value = "giá trị cũ"
     _wire(monkeypatch, clock, fields)
-    first, second = list(spec.fields)[:2]
+    first, second = names[:2]
     lines: list[str] = []
 
     result = _run(spec, {first: " PSHK ", second: "F0001"}, lines.append)
@@ -155,9 +159,12 @@ def test_only_the_conditions_the_user_filled_are_applied(monkeypatch, clock):
     assert result["filter_kinds"] == [first, second]
     assert fields[first].typed == ["PSHK"]
     assert fields[second].typed == ["F0001"]
-    # Ô không nhập vẫn phải được xóa trắng.
-    for name in list(spec.fields)[2:]:
-        assert fields[name].fills == [""]
+    # Ô không nhập nhưng còn giá trị cũ vẫn phải được xóa trắng.
+    assert fields[names[2]].fills == [""]
+    assert fields[names[2]].value == ""
+    # Ô vốn đã trống thì không chạm: mỗi `change` thừa là một lượt lọc server.
+    assert fields[names[3]].fills == []
+    assert fields[names[3]].events == []
 
 
 def test_every_field_is_cleared_before_anything_is_typed(monkeypatch, clock):
@@ -166,7 +173,8 @@ def test_every_field_is_cleared_before_anything_is_typed(monkeypatch, clock):
 
     class Tracking(Field):
         def __init__(self, name):
-            super().__init__()
+            # Mọi ô còn điều kiện của lượt trước, nên ô nào cũng phải xóa.
+            super().__init__(value="cũ")
             self.name = name
 
         def fill(self, value, **kwargs):
@@ -229,7 +237,7 @@ def test_a_value_wfx_silently_drops_stops_the_search(monkeypatch, clock):
     result = _run(spec, {name: "PSHK"}, lines.append)
 
     assert result["code"] == "MODULE_SEARCH_NOT_CONFIRMED"
-    assert "chưa xác nhận" in result["message"]
+    assert "không nhận giá trị" in result["message"]
     assert result["module"] == spec.module_name
 
 
@@ -237,7 +245,7 @@ def test_a_value_wfx_silently_drops_stops_the_search(monkeypatch, clock):
 
 
 def test_a_dropdown_without_an_empty_option_falls_back_to_the_first_one():
-    field = Field(tag="SELECT")
+    field = Field(tag="SELECT", value="Open")
 
     def refuse_empty(**kwargs):
         Field.select_option(field, **kwargs)
@@ -252,12 +260,27 @@ def test_a_dropdown_without_an_empty_option_falls_back_to_the_first_one():
 
 
 def test_a_field_that_refuses_the_change_event_does_not_stop_clearing():
-    field = Field(change_error=PlaywrightError("node đã bị thay"))
+    field = Field(value="cũ", change_error=PlaywrightError("node đã bị thay"))
 
     module_search._clear_multi_search_fields({"supplier": field})
 
     assert field.fills == [""]
     assert field.events == []
+
+
+def test_fields_that_are_already_empty_are_not_touched():
+    """Mỗi `change` thừa trên form ASP.NET có thể bắn thêm một lượt lọc."""
+    empty_input = Field()
+    empty_select = Field(tag="SELECT")
+
+    module_search._clear_multi_search_fields(
+        {"supplier": empty_input, "status": empty_select}
+    )
+
+    assert empty_input.fills == []
+    assert empty_input.events == []
+    assert empty_select.selects == []
+    assert empty_select.events == []
 
 
 # --- gửi Search ---------------------------------------------------------
@@ -318,8 +341,57 @@ def test_the_search_fields_not_being_ready_is_told_apart_from_a_lost_result(
     result = _run(spec, {next(iter(spec.fields)): "PSHK"}, lines.append)
 
     assert result["code"] == "MODULE_SEARCH_NOT_READY"
-    assert "App đã tự mở" in result["message"]
+    assert "Không thấy ô Supplier" in result["message"]
     assert lines[-1] == result["message"]
+    # Lỗi gốc chỉ nằm trong log, không lọt vào footer.
+    assert any("Không thấy ô Supplier" in line for line in lines[:-1])
+
+
+def test_a_list_that_never_shows_up_says_the_app_already_tried_to_open_it(
+    monkeypatch, clock
+):
+    spec = _spec()
+
+    def explode(*_args, **_kwargs):
+        raise PlaywrightTimeoutError(
+            "Không tìm thấy context List: #gridMOLList_tblGridHeader"
+        )
+
+    _wire(
+        monkeypatch,
+        clock,
+        _fields(spec),
+        _open_multi_field_search_context=explode,
+    )
+    lines: list[str] = []
+
+    result = _run(spec, {next(iter(spec.fields)): "PSHK"}, lines.append)
+
+    assert result["code"] == "MODULE_SEARCH_NOT_READY"
+    assert "App đã tự mở Indent List" in result["message"]
+    # Selector chỉ dành cho log kỹ thuật.
+    assert "#gridMOLList" not in result["message"]
+    assert any("#gridMOLList" in line for line in lines)
+
+
+def test_an_empty_grid_after_the_search_is_reported_as_no_results(
+    monkeypatch, clock
+):
+    spec = _spec()
+    _wire(
+        monkeypatch,
+        clock,
+        _fields(spec),
+        _grid_reports_no_rows=lambda *_a, **_k: True,
+    )
+    first = next(iter(spec.fields))
+
+    result = _run(spec, {first: "PSHK"})
+
+    assert result["ok"] is False
+    assert result["code"] == "MODULE_SEARCH_NO_RESULTS"
+    assert "Không có dòng nào" in result["message"]
+    assert result["filter_kinds"] == [first]
 
 
 def test_a_timeout_after_the_fields_were_found_is_a_confirmation_problem(
@@ -340,7 +412,8 @@ def test_a_timeout_after_the_fields_were_found_is_a_confirmation_problem(
     result = _run(spec, {next(iter(spec.fields)): "PSHK"})
 
     assert result["code"] == "MODULE_SEARCH_NOT_CONFIRMED"
-    assert "Đã nhập filter" in result["message"]
+    assert "vẫn đang tải" in result["message"]
+    assert "grid chưa ổn định" not in result["message"]
 
 
 def test_an_unexpected_runtime_error_is_reported_as_a_search_failure(
@@ -637,10 +710,44 @@ def test_a_horizontal_scan_clears_filters_hidden_outside_the_viewport(
         frame, ("input",), scan_horizontal=True
     )
 
-    # Quét hết các vị trí rồi trả grid về đúng chỗ người dùng đang xem.
-    assert root.scrolled[0] == 240
-    assert root.scrolled[-1] == 240
-    assert len(root.scrolled) > 2
+    # Vị trí đang xem đã được xóa trước khi quét nên không cuộn tới lại;
+    # quét hết phần còn lại rồi trả grid về đúng chỗ người dùng đang xem.
+    assert root.scrolled == [0, 300, 600, 240]
+
+
+def test_the_scan_stops_on_the_column_that_is_about_to_be_filled(
+    clock, monkeypatch
+):
+    """Bước tìm ô kế tiếp thấy ngay ô đích, không phải quét cả bảng lần hai."""
+    root = GridRoot(state={"current": 0, "maximum": 600, "viewport": 400})
+    target = GridInput(visible=False)
+
+    class TargetFrame(ListFrame):
+        def locator(self, selector):
+            if selector == "#target":
+                return ListLocator([target])
+            return super().locator(selector)
+
+    frame = TargetFrame([GridInput(value="CŨ")], [root], clock=clock)
+    patch_automation(
+        monkeypatch,
+        module_search,
+        "_horizontal_grid_state",
+        lambda target_root: target_root.state,
+    )
+
+    def scroll(target_root, position):
+        target_root.scrolled.append(position)
+        target.visible = position == 300
+
+    patch_automation(monkeypatch, module_search, "_scroll_horizontal_grid", scroll)
+
+    cleared = module_search._clear_list_search_fields(
+        frame, ("input",), scan_horizontal=True, keep_visible=("#target",)
+    )
+
+    assert cleared == 1
+    assert root.scrolled == [300, 600, 300]
 
 
 def test_a_grid_that_is_hidden_or_broken_is_skipped_during_the_scan(
