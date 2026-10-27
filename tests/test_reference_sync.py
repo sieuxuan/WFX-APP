@@ -2,6 +2,7 @@ import json
 import threading
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from wfx_panel.stores import article_library, reference_sync, style_options
 
@@ -128,17 +129,103 @@ def test_user_sync_saves_article_and_style_caches(tmp_path, monkeypatch):
     assert style_options.load_cached(tmp_path)["source"] == "postgresql"
 
 
-def test_monthly_cache_skips_network_when_fresh(tmp_path, monkeypatch):
+def _capture_client_version(monkeypatch, payload):
+    sent = []
+
+    def open_request(request, timeout):
+        sent.append(parse_qs(urlparse(request.full_url).query).get("client_version"))
+        return _Response(payload)
+
+    monkeypatch.setattr(reference_sync, "urlopen", open_request)
+    return sent
+
+
+def test_hourly_sync_asks_the_server_even_while_the_cache_is_fresh(
+    tmp_path,
+    monkeypatch,
+):
     _configure(tmp_path, monkeypatch)
     _seed_caches(tmp_path)
-    reference_sync._save_state(tmp_path, last_success=time.time(), version="v1")
-    monkeypatch.setattr(
-        reference_sync,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("no network")),
+    reference_sync._save_state(tmp_path, last_success=time.time(), version="old")
+    sent = _capture_client_version(
+        monkeypatch,
+        {"ok": True, "not_modified": True, "version": "old"},
     )
-    result = reference_sync.sync_latest(tmp_path, lambda _line: None)
+    logs = []
+
+    result = reference_sync.sync_latest(tmp_path, logs.append)
+
+    assert sent == [["old"]]
     assert result["code"] == "REFERENCE_SYNC_CURRENT"
+    assert result["article_count"] == 1
+    # Lượt hỏi mỗi giờ không đổi gì thì không được ghi log.
+    assert logs == []
+
+
+def test_new_publish_reaches_a_fresh_cache_on_the_next_hourly_sync(
+    tmp_path,
+    monkeypatch,
+):
+    _configure(tmp_path, monkeypatch)
+    _seed_caches(tmp_path)
+    reference_sync._save_state(tmp_path, last_success=time.time(), version="old")
+    _capture_client_version(
+        monkeypatch,
+        {
+            "ok": True,
+            "not_modified": False,
+            "version": "new",
+            "articles": [
+                {"article_code": "SWN-1", "article_name": "Old"},
+                {"article_code": "SWN-9", "article_name": "Just published"},
+            ],
+            "style_options": [
+                {"field_name": field, "option_value": "X"}
+                for field in (
+                    "material_type",
+                    "buyer",
+                    "division",
+                    "product_group",
+                    "color_card",
+                    "size_range",
+                    "season",
+                )
+            ],
+            "style_subcategories": [{"product_group": "X", "sub_category": "Y"}],
+        },
+    )
+
+    result = reference_sync.sync_latest(tmp_path, lambda _line: None)
+
+    assert result["code"] == "REFERENCE_SYNC_UPDATED"
+    assert result["article_count"] == 2
+    assert result["version"] == "new"
+
+
+def test_a_cache_replaced_from_another_source_downloads_the_full_bundle(
+    tmp_path,
+    monkeypatch,
+):
+    _configure(tmp_path, monkeypatch)
+    _seed_caches(tmp_path)  # Article cache có remote_version "old".
+    reference_sync._save_state(tmp_path, last_success=time.time(), version="v7")
+    sent = _capture_client_version(monkeypatch, {"ok": False, "message": "x"})
+
+    reference_sync.sync_latest(tmp_path, lambda _line: None)
+
+    # Hỏi có điều kiện ở đây sẽ nhận not_modified và kẹt ở cache sai.
+    assert sent == [None]
+
+
+def test_force_sync_always_downloads_the_full_bundle(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    _seed_caches(tmp_path)
+    reference_sync._save_state(tmp_path, last_success=time.time(), version="old")
+    sent = _capture_client_version(monkeypatch, {"ok": False, "message": "x"})
+
+    reference_sync.sync_latest(tmp_path, lambda _line: None, force=True)
+
+    assert sent == [None]
 
 
 def test_reference_state_invalid_timestamp_does_not_break_status(

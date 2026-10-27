@@ -14,8 +14,7 @@ hoặc điền file Costing.
 ## Mẹo
 
 > [!meo]
-> Dữ liệu được lấy từ PostgreSQL qua n8n tối đa một lần mỗi 30 ngày. Muốn lấy
-> ngay bản mới, mở `Cài đặt > Tài khoản` và bấm `Đồng bộ ngay`.
+> Muốn lấy ngay bản mới, mở `Cài đặt > Tài khoản` và bấm `Đồng bộ ngay`.
 
 > [!meo]
 > Khi mất mạng, ứng dụng tiếp tục dùng danh sách gần nhất đã lưu trên máy.

@@ -41,10 +41,9 @@ Card, Size Range và Season có dropdown lấy từ cache dùng chung. Sub-Categ
 > Style sẽ được ghi lên WFX ngay sau khi điền xong.
 
 > [!meo]
-> Dropdown ưu tiên snapshot PostgreSQL dùng chung và chỉ tự tải tối đa một lần
-> mỗi 30 ngày. Nút `Đồng bộ ngay` nằm trong `Cài đặt > Tài khoản`. Nếu server
-> tạm lỗi, app giữ nguyên cache gần nhất; Group đã chọn vẫn dùng để quét WFX khi
-> cần làm mới trực tiếp.
+> Dropdown ưu tiên snapshot PostgreSQL dùng chung. Nút `Đồng bộ ngay` nằm trong
+> `Cài đặt > Tài khoản`. Nếu server tạm lỗi, app giữ nguyên cache gần nhất; Group
+> đã chọn vẫn dùng để quét WFX khi cần làm mới trực tiếp.
 
 > [!luuy]
 > Bấm `Tải form Excel` sẽ hỏi nơi lưu file ngay. Nếu dữ liệu dropdown đã quá 30

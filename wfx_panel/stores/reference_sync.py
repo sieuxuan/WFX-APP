@@ -138,6 +138,21 @@ def status(base_dir: Path) -> dict[str, Any]:
     }
 
 
+def _caches_match_version(base_dir: Path, version: str) -> bool:
+    """Cache trên máy đúng là bundle ``version`` thì mới được hỏi có điều kiện.
+
+    Nếu cache Article đã bị thay bằng nguồn khác (GitHub, lượt Lấy Article của
+    Admin) hoặc mất file, ``not_modified`` sẽ giữ máy kẹt ở dữ liệu sai cho tới
+    lần publish sau; khi đó phải tải trọn bundle.
+    """
+    articles = article_library.load_cached(base_dir)
+    return (
+        articles is not None
+        and str(articles.get("remote_version") or "") == version
+        and style_options.load_cached(base_dir) is not None
+    )
+
+
 def _request_json(request: Request) -> dict[str, Any]:
     with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
         payload = response.read(MAX_RESPONSE_BYTES + 1)
@@ -176,15 +191,14 @@ def _sync_latest_unlocked(
     *,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Tải snapshot mới; lỗi mạng không xóa cache cuối cùng."""
+    """Hỏi server mỗi lượt; lỗi mạng không xóa cache cuối cùng.
+
+    Trước đây cache còn hạn 30 ngày là không hỏi server, nên bản Admin vừa
+    publish phải tới một tháng sau mới về máy user. Giờ lượt nào cũng hỏi, kèm
+    ``client_version`` để server chỉ trả ``not_modified`` nhẹ khi chưa đổi.
+    ``force`` bỏ ``client_version`` để tải lại trọn bundle.
+    """
     current = status(base_dir)
-    if not force and current["fresh"]:
-        return {
-            "ok": True,
-            "code": "REFERENCE_SYNC_CURRENT",
-            "message": "Dữ liệu Article/Style vẫn còn hạn trong tháng này.",
-            **current,
-        }
     config = _config(base_dir)
     if not config["read_key"]:
         return {
@@ -199,7 +213,7 @@ def _sync_latest_unlocked(
         "division_key": config["division_key"],
     }
     version = str(state.get("version") or "").strip()
-    if version:
+    if version and not force and _caches_match_version(base_dir, version):
         query["client_version"] = version
     try:
         # Dựng Request bên trong try: read key nằm trong header nên URL phải
@@ -228,6 +242,13 @@ def _sync_latest_unlocked(
                 company_id=config["company_id"],
                 division_key=config["division_key"],
             )
+            # Lượt hỏi mỗi giờ: chưa đổi thì im lặng, không thêm dòng log.
+            return {
+                "ok": True,
+                "code": "REFERENCE_SYNC_CURRENT",
+                "message": "Dữ liệu Article/Style đã là bản mới nhất.",
+                **status(base_dir),
+            }
         else:
             articles = response.get("articles")
             options = response.get("style_options")
