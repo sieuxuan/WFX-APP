@@ -648,6 +648,9 @@ class PanelAPI:
     ) -> dict:
         return self._catalog.open_destination(destination, article_code)
 
+    def probe_catalog_data_source(self, category_name: str = "Apparel") -> dict:
+        return self._catalog.probe_data_source(category_name)
+
     def download_catalog_file(self, file_id: str) -> dict:
         return self._catalog.files_view.download_file(file_id)
 

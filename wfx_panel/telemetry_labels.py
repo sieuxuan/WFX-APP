@@ -17,6 +17,7 @@ METHOD_LABELS = {
     "open_module": "Mở module",
     "prepare_catalog": "Chuẩn bị Catalog",
     "browse_catalog": "Mở Catalog List",
+    "probe_catalog_data_source": "Dò nguồn dữ liệu Catalog",
     "catalog_action": "Tìm trong Catalog",
     "find_code": "Tìm Article Code",
     "find_buyer_reference": "Tìm Buyer Reference",

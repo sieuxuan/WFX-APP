@@ -346,6 +346,7 @@ const BUSY_MESSAGES = {
   run_color_report_batch: "Đang tải báo cáo theo từng style…",
   sync_reference_data: "Đang đồng bộ Article và Style từ server…",
   publish_reference_data: "Đang publish Article và Style lên server…",
+  probe_catalog_data_source: "Đang dò nguồn dữ liệu Catalog…",
   login: "Đang đăng nhập WFX…",
 };
 // Nhãn tiếng Việt cho lịch sử tác vụ; tránh phơi tên hàm kỹ thuật ra người dùng.
@@ -373,6 +374,7 @@ const JOB_METHOD_LABELS = {
   clear_catalog_style_import: "Hủy Tạo Style",
   sync_reference_data: "Đồng bộ Article và Style",
   publish_reference_data: "Publish Article và Style",
+  probe_catalog_data_source: "Dò nguồn dữ liệu Catalog",
   open_sale_asn_new: "Sale ASN mới",
   scan_sale_asn_buyers: "Quét Buyer Sale ASN",
   scan_sale_asn_order_details: "Xuất PO đang mở",

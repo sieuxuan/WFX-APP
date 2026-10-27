@@ -127,6 +127,13 @@ DELEGATIONS = [
     ("_catalog", "sync_article_library", "sync_article_library", (), {}),
     ("_settings", "save_sync_admin_key", "save_sync_admin_key", ("khoa",), {}),
     ("_settings", "publish_reference_data", "publish_reference_data", (), {}),
+    (
+        "_catalog",
+        "probe_data_source",
+        "probe_catalog_data_source",
+        ("Apparel",),
+        {},
+    ),
 ]
 
 

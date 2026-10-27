@@ -2582,7 +2582,8 @@ body.compact-mode .compact-launcher .compact-mark {
       align-items: center;
       gap: 6px;
     }
-    .check-update-button {
+    .check-update-button,
+    .catalog-probe-button {
       min-height: 30px;
       padding: 0 9px;
       border: 1px solid var(--border);
@@ -2594,11 +2595,15 @@ body.compact-mode .compact-launcher .compact-mark {
       font-weight: 750;
       cursor: pointer;
     }
-    .check-update-button:hover:not(:disabled) {
+    .check-update-button:hover:not(:disabled),
+    .catalog-probe-button:hover:not(:disabled) {
       border-color: var(--accent-border);
       background: var(--accent-soft);
     }
-    .check-update-button:disabled { cursor: wait; opacity: .7; }
+    .check-update-button:disabled,
+    .catalog-probe-button:disabled { cursor: wait; opacity: .7; }
+    .catalog-probe-row[hidden] { display: none !important; }
+    .catalog-probe-status { overflow-wrap: anywhere; user-select: text; }
     .setting-row {
       min-height: 46px;
       margin-top: 6px;

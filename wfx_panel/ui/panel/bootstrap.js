@@ -774,6 +774,22 @@ function bind() {
     );
     if (result) setReferenceSyncStatus(result);
   });
+  $(".catalog-probe-button")?.addEventListener("click", async (event) => {
+    if (!window.confirm(
+      "App sẽ mở lại Catalog Apparel > Master trên trình duyệt làm việc và ghi "
+      + "lại các request nạp dữ liệu (chỉ đọc). Tiếp tục?"
+    )) return;
+    const result = await withButtonLoading(
+      event.currentTarget,
+      () => call("probe_catalog_data_source", "Apparel"),
+    );
+    const statusNode = $(".catalog-probe-status");
+    if (result && statusNode) {
+      statusNode.textContent = result.ok && result.file_path
+        ? `Đã lưu: ${result.file_path}`
+        : (result.message || "Chưa dò được.");
+    }
+  });
   $(".health-refresh").addEventListener("click", async () => {
     const result = await callQuiet("refresh_status");
     if (result) {
