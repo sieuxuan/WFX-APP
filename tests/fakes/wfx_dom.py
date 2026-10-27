@@ -496,6 +496,15 @@ class FakeCatalogGrid:
             return None
         if "__wfxPanelDocumentMarker ||" in script:
             return self.document_marker
+        if "document.visibilityState" in script and "roots: roots.length" in script:
+            # Script chẩn đoán khi timeout: chỉ đọc hình dạng grid.
+            return {
+                "roots": 1,
+                "visibility": "visible" if self.interactive else "hidden",
+                "display": "block",
+                "width": 800 if self.interactive else 0,
+                "height": 400 if self.interactive else 0,
+            }
         raise AssertionError(f"Fake grid chưa hỗ trợ script: {script[:120]}")
 
     def wait_for_timeout(self, milliseconds: float) -> None:

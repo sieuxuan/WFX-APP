@@ -25,6 +25,7 @@ from wfx_panel.controllers.catalog_folders import CatalogFolderController
 from wfx_panel.controllers.catalog_style import StyleImportController
 from wfx_panel.controllers.costing import CostingController
 from wfx_panel.stores import article_library
+from wfx_panel.stores.catalog_recent import CatalogRecentStore
 from wfx_panel.version import APP_VERSION
 
 
@@ -63,12 +64,26 @@ class CatalogController:
         # lần chạy chỉ chuẩn bị một dòng và luôn dừng trước Save.
 
     # -- state hooks do panel gọi -----------------------------------------
-    def reset_context(self) -> None:
-        """Mất phiên / đổi Division / login lại: kết quả & Master cũ hết hiệu lực."""
+    @property
+    def recent(self) -> CatalogRecentStore:
+        # Tạo khi dùng: store chỉ giữ đường dẫn, và panel giả trong test của
+        # module khác không có ``_base_dir``.
+        return CatalogRecentStore(self._panel._base_dir)
+
+    def _forget_search(self) -> None:
+        """Kết quả tìm, popup đang mở và Master đã chuẩn bị đều hết hiệu lực."""
         self.result = None
         self.active_article_destination = None
         self.prepared_category = None
+
+    def _forget_search_and_files(self) -> None:
+        """Flow sắp mở lại Catalog: token file của Style cũ cũng hết hiệu lực."""
+        self._forget_search()
         self.files_view.tokens.clear()
+
+    def reset_context(self) -> None:
+        """Mất phiên / đổi Division / login lại: kết quả & Master cũ hết hiệu lực."""
+        self._forget_search_and_files()
         self.files_view.sample_choices.clear()
         self.costing.plans.clear()
         self.style.imports.clear()
@@ -76,13 +91,7 @@ class CatalogController:
     def reset_for_account_change(self) -> None:
         """Đổi tài khoản: cache cây folder theo user cũ cũng không còn dùng được."""
         self.folders.cache.clear()
-        self.result = None
-        self.active_article_destination = None
-        self.prepared_category = None
-        self.files_view.tokens.clear()
-        self.files_view.sample_choices.clear()
-        self.costing.plans.clear()
-        self.style.imports.clear()
+        self.reset_context()
 
     def default_folder_for_account(self, preferences: Mapping | None=None) -> dict | None:
         return self.folders.default_folder_for_account(preferences)
@@ -98,9 +107,7 @@ class CatalogController:
 
     def _invalidate_catalog_search_only(self) -> None:
         """Sample đã đổi trang WFX; bỏ Catalog context nhưng giữ token file."""
-        self.result = None
-        self.active_article_destination = None
-        self.prepared_category = None
+        self._forget_search()
 
     def scan_folders(self, category_name: str, force: bool=False) -> dict:
         return self.folders.scan_folders(category_name, force)
@@ -115,10 +122,7 @@ class CatalogController:
         def action() -> dict:
             # Reset context sau khi giành run lock, không phải ở đầu method:
             # tránh xóa Catalog đang chuẩn bị khi lần gọi này bị ACTION_IN_PROGRESS.
-            self.result = None
-            self.active_article_destination = None
-            self.prepared_category = None
-            self.files_view.tokens.clear()
+            self._forget_search_and_files()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -187,10 +191,7 @@ class CatalogController:
             # Reset context sau khi giành run lock (bên trong _run). Đặt ở đầu
             # method sẽ xóa Catalog đang chuẩn bị ngay cả khi lần gọi này bị
             # từ chối ACTION_IN_PROGRESS vì một workflow khác đang chạy.
-            self.result = None
-            self.active_article_destination = None
-            self.prepared_category = None
-            self.files_view.tokens.clear()
+            self._forget_search_and_files()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {
@@ -549,7 +550,10 @@ class CatalogController:
         )
         result = self._panel._run(
             method_name,
-            lambda: self._execute_catalog_action(request),
+            lambda: self._with_style_details(
+                request,
+                self._execute_catalog_action(request),
+            ),
             {
                 "category_name": request.category_name,
                 "filter_kind": request.filter_kind,
@@ -562,9 +566,7 @@ class CatalogController:
             "CATALOG_RESULT_EXPIRED",
             "CATALOG_FILES_CONTEXT_EXPIRED",
         }:
-            self.prepared_category = None
-            self.result = None
-            self.active_article_destination = None
+            self._forget_search()
         elif (
             result.get("ok")
             and request.destination in {"costsheet", "bom"}
@@ -580,6 +582,90 @@ class CatalogController:
         ):
             self.active_article_destination = None
         return result
+
+    def _library_details(
+        self,
+        category_name: str,
+        codes: list[str],
+    ) -> dict[str, tuple[str, str]]:
+        """``code.casefold() -> (Article Name, Buyer Reference)`` từ thư viện."""
+        wanted = {code.casefold() for code in codes if code}
+        cached = article_library.load_cached(self._panel._base_dir) if wanted else None
+        if not cached:
+            return {}
+        found: dict[str, tuple[str, str]] = {}
+        for (
+            _key,
+            _searchable,
+            code,
+            name,
+            buyer_reference,
+            _category,
+        ) in article_library.suggestion_index(cached, category_name, "article_code"):
+            folded = code.casefold()
+            if folded in wanted and folded not in found:
+                found[folded] = (name, buyer_reference)
+        return found
+
+    def _with_style_details(
+        self,
+        request: CatalogActionRequest,
+        result: dict,
+    ) -> dict:
+        """Gắn tên Style cho danh sách chọn và ghi nhớ Style vừa mở.
+
+        Đường nhanh GetData đã có tên từ server; luồng DOM chỉ đọc được Code
+        nên lấy từ Thư viện Article. Thiếu ở cả hai thì để trống.
+        """
+        code = result.get("code")
+        if code == "MULTIPLE_RESULTS" and isinstance(result.get("styles"), list):
+            styles = [dict(style) for style in result["styles"]]
+            details = self._library_details(
+                request.category_name,
+                [str(style.get("code") or "") for style in styles],
+            )
+            for style in styles:
+                name, buyer_reference = details.get(
+                    str(style.get("code") or "").casefold(),
+                    ("", ""),
+                )
+                style["article_name"] = str(style.get("article_name") or "") or name
+                style["buyer_reference"] = (
+                    str(style.get("buyer_reference") or "") or buyer_reference
+                )
+            return {**result, "styles": styles}
+        article_code = str(result.get("article_code") or "").strip()
+        if not (
+            result.get("ok")
+            and article_code
+            and code in {"RESULT_OPENED", "CATALOG_DESTINATION_OPENED", "CATALOG_FILES_SCANNED"}
+        ):
+            return result
+        name, buyer_reference = self._library_details(
+            request.category_name, [article_code]
+        ).get(article_code.casefold(), ("", ""))
+        label = (
+            buyer_reference or name
+            if request.category_name == "Apparel"
+            else name
+        )
+        user_id = str(self._panel._account().get("user_id") or "")
+        try:
+            recent = self.recent.remember(
+                user_id, request.category_name, article_code, label
+            )
+        except OSError:
+            recent = self.recent.load(user_id, request.category_name)
+        return {**result, "recent_styles": recent}
+
+    def recent_styles(self, category_name: str) -> dict:
+        user_id = str(self._panel._account().get("user_id") or "")
+        return {
+            "ok": True,
+            "code": "CATALOG_RECENT_STYLES",
+            "category": str(category_name or ""),
+            "recent_styles": self.recent.load(user_id, str(category_name or "")),
+        }
 
     def article_library_status(self) -> dict:
         return article_library.status(self._panel._base_dir)
@@ -770,10 +856,7 @@ class CatalogController:
             }
 
         def action() -> dict:
-            self.result = None
-            self.active_article_destination = None
-            self.prepared_category = None
-            self.files_view.tokens.clear()
+            self._forget_search_and_files()
             value = constants.CATEGORIES.get(category_name)
             if value is None:
                 return {

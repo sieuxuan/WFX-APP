@@ -451,15 +451,44 @@ function bind() {
       hideArticleSuggestions();
       return;
     }
+    if (event.key === "ArrowDown") {
+      // Từ ô tìm đi thẳng xuống gợi ý; trong danh sách thì bindListboxKeys lo.
+      const first = $('.catalog-article-suggestions:not([hidden]) [role="option"]');
+      if (first) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (event.key !== "Enter") return;
     hideArticleSuggestions();
     if (busy) return;
     withButtonLoading($('[data-catalog-action="find"]'), () => catalogActions["find"]());
   });
+  const closeCatalogSuggestionsUnlessFocused = () => {
+    // Chờ click chọn gợi ý xong mới đóng; focus còn ở ô tìm/danh sách thì giữ.
+    window.setTimeout(() => {
+      const active = document.activeElement;
+      if (active !== $(".catalog-query")
+          && !$(".catalog-article-suggestions")?.contains(active)) {
+        hideArticleSuggestions();
+      }
+    }, 150);
+  };
+  $(".catalog-query").addEventListener("blur", closeCatalogSuggestionsUnlessFocused);
+  $(".catalog-article-suggestions").addEventListener(
+    "focusout", closeCatalogSuggestionsUnlessFocused,
+  );
+  $(".catalog-recent-list").addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-recent-code]");
+    if (chip) openCatalogRecent(chip);
+  });
   $(".catalog-category").addEventListener("change", () => {
     clearCatalogPreparation();
     hideCatalogResults();
     hideArticleSuggestions();
+    catalogResultChoices = null;
+    loadCatalogRecent();
     catalogFolderEditorOpen = false;
     $(".catalog-folder-search").value = "";
     syncCatalogKind();
@@ -480,6 +509,7 @@ function bind() {
   $(".catalog-query").addEventListener("input", () => {
     clearCatalogResult();
     catalogPendingDestination = null;
+    catalogResultChoices = null;
     discardCostingPlan();
     hideCatalogResults();
     scheduleArticleSuggestions();

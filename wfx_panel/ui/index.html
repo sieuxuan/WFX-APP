@@ -190,12 +190,17 @@
               <button type="button" class="catalog-secondary-action" data-catalog-action="bom">BOM</button>
               <button type="button" class="catalog-secondary-action" data-catalog-action="files">File</button>
             </div>
+            <div class="catalog-recent" hidden>
+              <span class="catalog-recent-label" id="catalog-recent-label">Gần đây</span>
+              <div class="catalog-recent-list" role="group" aria-labelledby="catalog-recent-label"></div>
+            </div>
           </div>
           <div class="catalog-results" aria-live="polite" hidden>
             <div class="catalog-results-heading">
               <span class="catalog-results-title">Kết quả</span>
               <span class="catalog-results-count"></span>
             </div>
+            <p class="catalog-results-note" hidden></p>
             <div class="catalog-results-list" role="listbox" aria-label="Chọn Article Code để mở"></div>
           </div>
           <div class="style-status" aria-live="polite" hidden>

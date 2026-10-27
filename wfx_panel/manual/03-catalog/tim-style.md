@@ -21,7 +21,13 @@ WFX.
 > Article Name dành cho các Category còn lại.
 
 > [!meo]
-> Gõ từ hai ký tự để nhận tối đa 20 gợi ý từ Thư viện Article.
+> Gõ từ hai ký tự để nhận tối đa 20 gợi ý từ Thư viện Article. Bấm phím mũi
+> tên xuống để đi vào danh sách gợi ý, Enter để chọn, Esc để đóng.
+
+> [!meo]
+> Hàng `Gần đây` dưới các nút Costing, BOM, File giữ tối đa 8 Style bạn vừa mở
+> trong Category đang chọn. Bấm một Style để mở lại ngay, không phải gõ lại.
+> Danh sách này riêng cho từng tài khoản trên máy.
 
 > [!meo]
 > Bạn không cần kéo Code, Buyer Reference hoặc Article Name về vị trí cũ.
@@ -29,9 +35,12 @@ WFX.
 
 > [!luuy]
 > Nếu chỉ có một kết quả, ứng dụng tự mở Style. Nếu có nhiều kết quả, bảng
-> điều khiển hiện danh sách Article Code ngay dưới ô tìm; bấm đúng dòng cần
-> dùng. Nếu bạn vừa bấm `Costing`, `BOM` hoặc `File`, dòng bạn chọn sẽ mở
-> thẳng phần đó.
+> điều khiển hiện danh sách Article Code kèm Buyer Reference hoặc tên Article
+> ngay dưới ô tìm; bấm đúng dòng cần dùng. Nếu bạn vừa bấm `Costing`, `BOM`
+> hoặc `File`, dòng bạn chọn sẽ mở thẳng phần đó. Danh sách hiện tối đa 20
+> Code; khi còn nhiều hơn, dòng ghi chú phía trên cho biết tổng số để bạn nhập
+> Code cụ thể hơn. Nếu mở một dòng bị lỗi, danh sách vẫn giữ nguyên để bạn
+> chọn lại.
 
 ## Gặp lỗi thì sao
 
