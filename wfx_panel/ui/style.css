@@ -2601,7 +2601,8 @@ body.compact-mode .compact-launcher .compact-mark {
       gap: 6px;
     }
     .check-update-button,
-    .catalog-probe-button {
+    .catalog-probe-button,
+    .article-extract-button {
       min-height: 30px;
       padding: 0 9px;
       border: 1px solid var(--border);
@@ -2614,14 +2615,17 @@ body.compact-mode .compact-launcher .compact-mark {
       cursor: pointer;
     }
     .check-update-button:hover:not(:disabled),
-    .catalog-probe-button:hover:not(:disabled) {
+    .catalog-probe-button:hover:not(:disabled),
+    .article-extract-button:hover:not(:disabled) {
       border-color: var(--accent-border);
       background: var(--accent-soft);
     }
     .check-update-button:disabled,
-    .catalog-probe-button:disabled { cursor: wait; opacity: .7; }
+    .catalog-probe-button:disabled,
+    .article-extract-button:disabled { cursor: wait; opacity: .7; }
     .catalog-probe-row[hidden] { display: none !important; }
-    .catalog-probe-status { overflow-wrap: anywhere; user-select: text; }
+    .catalog-probe-status,
+    .article-extract-status { overflow-wrap: anywhere; user-select: text; }
     .setting-row {
       min-height: 46px;
       margin-top: 6px;

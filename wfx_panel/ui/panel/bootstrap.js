@@ -758,6 +758,25 @@ function bind() {
         : (result.message || "Chưa dò được.");
     }
   });
+  $(".article-extract-button")?.addEventListener("click", async (event) => {
+    if (!window.confirm(
+      "App sẽ đọc toàn bộ Article của mọi Category từ WFX (chỉ đọc, khoảng "
+      + "15–20 phút; trong lúc đó không chạy được tác vụ khác), thay thư viện "
+      + "Article trên máy rồi publish lên server, thay snapshot Article hiện "
+      + "tại cho mọi máy. Tiếp tục?"
+    )) return;
+    const result = await withButtonLoading(
+      event.currentTarget,
+      () => call("extract_catalog_articles", []),
+    );
+    const statusNode = $(".article-extract-status");
+    if (result && statusNode) {
+      statusNode.textContent = result.file_path
+        ? `${result.message || ""} File: ${result.file_path}`
+        : (result.message || "Chưa lấy được Article.");
+    }
+    if (result && "admin_configured" in result) setReferenceSyncStatus(result);
+  });
   $(".health-refresh").addEventListener("click", async () => {
     const result = await callQuiet("refresh_status");
     if (result) {

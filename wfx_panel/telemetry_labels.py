@@ -18,6 +18,7 @@ METHOD_LABELS = {
     "prepare_catalog": "Chuẩn bị Catalog",
     "browse_catalog": "Mở Catalog List",
     "probe_catalog_data_source": "Dò nguồn dữ liệu Catalog",
+    "extract_catalog_articles": "Lấy Article từ WFX",
     "catalog_action": "Tìm trong Catalog",
     "find_code": "Tìm Article Code",
     "find_buyer_reference": "Tìm Buyer Reference",

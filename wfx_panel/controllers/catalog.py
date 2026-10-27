@@ -19,12 +19,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wfx_panel import constants
-from wfx_panel.coercion import bounded_int
+from wfx_panel.coercion import boolean, bounded_int
 from wfx_panel.controllers.catalog_files import ArticleFileController
 from wfx_panel.controllers.catalog_folders import CatalogFolderController
 from wfx_panel.controllers.catalog_style import StyleImportController
 from wfx_panel.controllers.costing import CostingController
-from wfx_panel.stores import article_library
+from wfx_panel.stores import article_library, extracted_articles
 from wfx_panel.stores.catalog_recent import CatalogRecentStore
 from wfx_panel.version import APP_VERSION
 
@@ -880,3 +880,67 @@ class CatalogController:
         if result.get("code") == "CATALOG_DATA_SOURCE_PROBED":
             self.prepared_category = category_name
         return result
+
+    def extract_articles(
+        self,
+        categories: list[str] | None = None,
+        publish: bool = True,
+    ) -> dict:
+        """Quản trị: lấy toàn bộ Article từ WFX, thay thư viện rồi publish.
+
+        Chỉ gọi ``fetch`` trong tab WFX, không điều hướng nên không làm mất
+        Catalog/kết quả tìm đang mở. Danh sách rỗng nghĩa là mọi Category.
+        Bước thay thư viện + publish là IO/HTTP thuần nên chạy SAU ``_run()``,
+        không giữ automation worker.
+        """
+        result = self._run_article_extract(categories)
+        if result.get("code") != "CATALOG_ARTICLES_EXTRACTED" or not result.get(
+            "file_path"
+        ):
+            return result
+        installed = extracted_articles.install_and_publish(
+            self._panel._base_dir,
+            result["file_path"],
+            extracted_categories=result.get("categories") or {},
+            all_categories=constants.CATEGORIES,
+            publish=boolean(publish, True),
+            log=self._panel._log,
+        )
+        return {
+            **result,
+            **installed,
+            "extract_message": result.get("message"),
+            "file_path": result["file_path"],
+        }
+
+    def _run_article_extract(self, categories: list[str] | None) -> dict:
+        panel = self._panel
+        if panel._admin_access is not True:
+            return {
+                "ok": False,
+                "code": "ADMIN_ACCESS_DENIED",
+                "message": "Tài khoản WFX chưa có quyền quản trị.",
+            }
+        wanted = [
+            str(name).strip()
+            for name in (categories or ())
+            if str(name or "").strip()
+        ] or list(constants.CATEGORIES)
+        unknown = [name for name in wanted if name not in constants.CATEGORIES]
+        if unknown:
+            return {
+                "ok": False,
+                "code": "CATEGORY_UNKNOWN",
+                "message": f"Category lạ: {', '.join(unknown)}",
+            }
+        selected = {name: constants.CATEGORIES[name] for name in wanted}
+        return panel._run(
+            "extract_catalog_articles",
+            lambda: panel._login.extract_catalog_articles(
+                selected,
+                Path(panel._base_dir) / "exports",
+                panel._log,
+                app_version=APP_VERSION,
+            ),
+            {"categories": wanted},
+        )
