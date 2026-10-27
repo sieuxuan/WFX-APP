@@ -7,7 +7,7 @@ và lưu cache thành công — và KHÔNG được bỏ qua scan Color/Size hay
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,6 +21,39 @@ _SPECIAL_COST_SECTION_KEYS = frozenset(
 )
 
 
+def _merge_article_options(*groups: Iterable[Mapping]) -> list[dict]:
+    """Nối các nhóm option Article, trùng Code thì giữ bản ở nhóm đứng trước."""
+    merged: dict[str, dict] = {}
+    for group in groups:
+        for option in group:
+            if not isinstance(option, Mapping):
+                continue
+            code = str(option.get("article_code") or "").strip()
+            name = str(option.get("article_name") or "").strip()
+            identity = code.casefold() or f"name:{name.casefold()}"
+            if (code or name) and identity not in merged:
+                merged[identity] = {"article_code": code, "article_name": name}
+    return list(merged.values())
+
+
+def _section_index(sections: Iterable[Mapping]) -> tuple[dict, dict]:
+    by_key: dict[str, Mapping] = {}
+    by_name: dict[str, Mapping] = {}
+    for section in sections:
+        by_key.setdefault(str(section.get("section_key") or "").casefold(), section)
+        by_name.setdefault(str(section.get("section_name") or "").casefold(), section)
+    return by_key, by_name
+
+
+def _match_section(index: tuple[dict, dict], section: Mapping) -> Mapping | None:
+    by_key, by_name = index
+    return (
+        by_key.get(str(section.get("section_key") or "").casefold())
+        or by_name.get(str(section.get("name") or "").casefold())
+        or by_key.get("*")
+    )
+
+
 class CostingOptionController:
     def __init__(self, costing: CostingController) -> None:
         self._costing = costing
@@ -30,17 +63,23 @@ class CostingOptionController:
     def _article_cache_sections(document: Mapping) -> list[dict]:
         sections = []
         for section in document.get("sections") or ():
-            codes = list(section.get("article_code_options") or ())
-            names = list(section.get("article_name_options") or ())
-            options = [
-                {
-                    "article_code": str(codes[index] if index < len(codes) else ""),
-                    "article_name": str(names[index] if index < len(names) else ""),
-                }
-                for index in range(max(len(codes), len(names)))
-                if (index < len(codes) and str(codes[index]).strip())
-                or (index < len(names) and str(names[index]).strip())
-            ]
+            # Scanner mới trả sẵn cặp Code/Name theo từng row; hai list
+            # code/name khử trùng độc lập nên ghép theo index chỉ là fallback.
+            options = _merge_article_options(
+                section.get("article_lookup_options") or ()
+            )
+            if not options:
+                codes = list(section.get("article_code_options") or ())
+                names = list(section.get("article_name_options") or ())
+                options = [
+                    {
+                        "article_code": str(codes[index] if index < len(codes) else ""),
+                        "article_name": str(names[index] if index < len(names) else ""),
+                    }
+                    for index in range(max(len(codes), len(names)))
+                    if (index < len(codes) and str(codes[index]).strip())
+                    or (index < len(names) and str(names[index]).strip())
+                ]
             if options:
                 sections.append(
                     {
@@ -87,69 +126,59 @@ class CostingOptionController:
         *,
         scanned: bool,
     ) -> tuple[int, str]:
+        """Ghép dropdown Article: item quét live (hoặc cache scan 7 ngày) + thư viện.
+
+        Thư viện server chỉ mới bằng lần publish gần nhất, nên Article vừa tạo
+        trên WFX chỉ có trong lần quét live. Trước đây có thư viện là bỏ hẳn kết
+        quả quét; giờ live đứng trước và thắng khi trùng Code vì đó là WFX hiện
+        tại, thư viện bổ sung phần còn lại.
+        """
         panel = self._panel
         user_id = str(panel._account().get("user_id") or "").strip()
-        sections = self._article_cache_sections(document)
-        server_cache = article_library.load_cached(panel._base_dir)
-        source = "server" if server_cache else ""
-        if server_cache:
-            cached = list(server_cache.get("sections") or ())
-        elif scanned and sections:
+        live = self._article_cache_sections(document)
+        fresh_scan = scanned and bool(live)
+        if fresh_scan:
             saver = getattr(panel._prefs, "save_costing_article_cache", None)
             if callable(saver):
-                sections = saver(
-                    user_id,
-                    sections,
-                    base_dir=panel._base_dir,
-                )
-            return sum(len(section["options"]) for section in sections), "scan"
+                live = saver(user_id, live, base_dir=panel._base_dir) or live
         else:
             loader = getattr(panel._prefs, "load_costing_article_cache", None)
-            cached = (
+            live = (
                 loader(user_id, base_dir=panel._base_dir)
                 if callable(loader)
                 else None
-            )
-            source = "cache" if cached else ""
-        if not cached:
+            ) or []
+        server_cache = article_library.load_cached(panel._base_dir)
+        server = list(server_cache.get("sections") or ()) if server_cache else []
+        if not live and not server:
             return 0, "none"
-        by_key = {
-            str(section.get("section_key") or "").casefold(): section
-            for section in cached
-        }
-        by_name = {
-            str(section.get("section_name") or "").casefold(): section
-            for section in cached
-        }
-        wildcard = by_key.get("*")
+        live_index = _section_index(live)
+        server_index = _section_index(server)
         count = 0
+        used_server = False
+        added_live = False
         for section in document.get("sections") or ():
-            match = by_key.get(
-                str(section.get("section_key") or "").casefold()
-            ) or by_name.get(
-                str(section.get("name") or "").casefold()
-            ) or wildcard
-            if not match:
-                continue
-            options = list(match.get("options") or ())
-            if source == "server":
-                options = self._server_options_for_costing_section(
+            server_match = _match_section(server_index, section)
+            server_options = (
+                self._server_options_for_costing_section(
                     section,
-                    options,
+                    list(server_match.get("options") or ()),
                 )
+                if server_match
+                else []
+            )
+            live_match = _match_section(live_index, section)
+            options = _merge_article_options(
+                live_match.get("options") or () if live_match else (),
+                server_options,
+            )
             if not options:
                 continue
-            section["article_lookup_options"] = [
-                {
-                    "article_code": str(
-                        option.get("article_code") or ""
-                    ).strip(),
-                    "article_name": str(
-                        option.get("article_name") or ""
-                    ).strip(),
-                }
-                for option in options
-            ]
+            used_server = used_server or bool(server_options)
+            added_live = added_live or len(options) > len(
+                _merge_article_options(server_options)
+            )
+            section["article_lookup_options"] = options
             section["article_code_options"] = list(
                 dict.fromkeys(
                     str(option.get("article_code") or "").strip()
@@ -165,7 +194,11 @@ class CostingOptionController:
                 )
             )
             count += len(options)
-        return count, source if count else "none"
+        if not count:
+            return 0, "none"
+        if used_server:
+            return count, "server_scan" if added_live else "server"
+        return count, "scan" if fresh_scan else "cache"
 
     @staticmethod
     def _special_cost_section_key(section: Mapping) -> str:

@@ -916,6 +916,30 @@ def test_dropdown_scan_collects_unique_codes_and_names_per_section():
     assert any("Đã quét 2 lựa chọn Article" in line for line in logs)
 
 
+def test_dropdown_scan_keeps_code_and_name_paired_per_row():
+    # Hai mã cùng tên: list name khử trùng còn một phần tử, nên controller cần
+    # cặp Code/Name theo row để ghép với thư viện mà không lệch tên.
+    rows = [
+        {"row_id": "1", "article_code": "F-001", "article_name": "Vải chính"},
+        {"row_id": "2", "article_code": "F-002", "article_name": "Vải chính"},
+        {"row_id": "3", "article_code": "F-003", "article_name": "Vải phụ"},
+    ]
+    _context, costing, _material = _dropdown_world(rows)
+    document = {
+        "sections": [
+            {"section_key": "section-1-fabric", "name": "Fabric"},
+        ]
+    }
+
+    costing_articles._scan_costing_article_dropdowns(costing, document, lambda _: None)
+
+    assert document["sections"][0]["article_lookup_options"] == [
+        {"article_code": "F-001", "article_name": "Vải chính"},
+        {"article_code": "F-002", "article_name": "Vải chính"},
+        {"article_code": "F-003", "article_name": "Vải phụ"},
+    ]
+
+
 def test_dropdown_scan_skips_the_three_special_cost_sections():
     """CM/Production/Indirect Costs không dùng Material Search."""
     _context, costing, material = _dropdown_world(
