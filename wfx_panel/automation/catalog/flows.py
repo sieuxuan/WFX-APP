@@ -54,6 +54,7 @@ from wfx_panel.automation.catalog.navigation import (
     _open_catalog_tree_on_page,
     _select_catalog_category_on_page,
 )
+from wfx_panel.automation.catalog.quick_find import _quick_find_catalog_code
 from wfx_panel.automation.session import _session_is_active, login
 
 # Sau khi Master đã tạo grid mới: datasource + Floating Filter có tổng ngân
@@ -98,78 +99,89 @@ def _find_in_open_catalog(
                 "NOT_LOGGED_IN",
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
-        _write_log(log, "[CATALOG] Đang kiểm tra grid Master hiện tại...")
-        problem = _catalog_master_context_problem(
-            page,
-            constants.CATEGORIES.get(category_name, ""),
-        )
-        if problem is not None:
-            _write_log(log, f"[CATALOG] {problem}")
-            return _context_lost()
-        grid = _show_catalog_floating_filter(
-            page,
-            log,
-            timeout_seconds=2,
-        )
-        _write_log(log, "[CATALOG] Đã xác nhận grid Master, bắt đầu tìm.")
+        category_value = constants.CATEGORIES.get(category_name, "")
         context = (
             browser.contexts[0]
             if destination in {"costsheet", "bom"}
             else None
         )
+        # Chụp popup TRƯỚC mọi lối mở Style (GetData hoặc click grid).
         previous_states = (
             _article_navigation_states(context)
             if context is not None
             else []
         )
-        result = _filter_grid_and_maybe_open(
-            grid,
-            filter_kind,
-            query,
-            log,
+        grid = None
+        result = (
+            _quick_find_catalog_code(page, category_value, query, log)
+            if filter_kind == "code"
+            else None
         )
+        if result is None:
+            _write_log(log, "[CATALOG] Đang kiểm tra grid Master hiện tại...")
+            problem = _catalog_master_context_problem(page, category_value)
+            if problem is not None:
+                _write_log(log, f"[CATALOG] {problem}")
+                return _context_lost()
+            grid = _show_catalog_floating_filter(
+                page,
+                log,
+                timeout_seconds=2,
+            )
+            _write_log(log, "[CATALOG] Đã xác nhận grid Master, bắt đầu tìm.")
+            result = _filter_grid_and_maybe_open(
+                grid,
+                filter_kind,
+                query,
+                log,
+            )
         if (
             destination in {"costsheet", "bom"}
             and result.get("code") == "RESULT_OPENED"
         ):
-            # WFX đôi khi tạo native popup nhưng không publish target đó cho
-            # kết nối CDP hiện tại. Probe ngắn rồi recycle đúng một lần giúp
-            # nhận popup sớm, thay vì chờ 30 + 20 giây rồi để controller mở lại
-            # Master và lọc cùng Style lần thứ hai.
+            article_code = str(result.get("article_code") or "")
+            # WFX đặt tên cửa sổ `ArticleDetail`: nếu popup Article đã mở thì
+            # window.open TÁI DÙNG nó và kết nối CDP hiện tại không thấy
+            # document mới (đo trên WFX: probe 3–4 giây luôn trượt, driver mới
+            # thấy ngay). Khi đó recycle ngay đúng một lần, không probe.
             popup_already_open = any(state[2] for state in previous_states)
-            try:
-                label = _open_article_destination(
-                    context,
-                    destination,
-                    previous_states,
+            label: str | None = None
+            if not popup_already_open:
+                try:
+                    label = _open_article_destination(
+                        context,
+                        destination,
+                        previous_states,
+                        log,
+                        timeout_seconds=4,
+                        expected_article_code=article_code,
+                    )
+                except PlaywrightTimeoutError:
+                    if grid is not None:
+                        # Một số bản WFX bỏ click đầu tiên khi native popup
+                        # chưa được activate. Click lại đúng nút Style trên
+                        # grid đang có nhanh hơn mở lại Catalog và lọc từ đầu.
+                        _write_log(
+                            log,
+                            "[ARTICLE] Popup chưa phản hồi; đang kích hoạt lại "
+                            "đúng Style trên grid hiện tại...",
+                        )
+                        _click_catalog_style(
+                            grid,
+                            article_code,
+                            _CATALOG_FILTER_SPECS[filter_kind].label,
+                            log,
+                        )
+            else:
+                _write_log(
                     log,
-                    timeout_seconds=3 if popup_already_open else 4,
-                    expected_article_code=str(
-                        result.get("article_code") or ""
-                    ),
+                    "[ARTICLE] WFX tái dùng popup Article đang mở; "
+                    "kết nối lại để thấy trang mới...",
                 )
-            except PlaywrightTimeoutError:
-                if not popup_already_open:
-                    # Một số bản WFX bỏ click đầu tiên khi native popup chưa
-                    # được activate. Click lại đúng nút Style trên grid đang có
-                    # nhanh hơn nhiều so với mở lại Catalog/Category/Master và
-                    # lọc từ đầu; named popup của WFX vẫn được tái sử dụng.
-                    _write_log(
-                        log,
-                        "[ARTICLE] Popup chưa phản hồi; đang kích hoạt lại "
-                        "đúng Style trên grid hiện tại...",
-                    )
-                    _click_catalog_style(
-                        grid,
-                        str(result.get("article_code") or ""),
-                        _CATALOG_FILTER_SPECS[filter_kind].label,
-                        log,
-                    )
-                # WFX thường tái sử dụng popup Article cùng tên. Khi đó lần
-                # click style đã thành công nhưng ArticleTop bị detach khỏi
-                # phiên CDP hiện tại. Phục hồi ngay tại popup; không trả nhầm
-                # CATALOG_SEARCH_CONTEXT_LOST để controller mở lại Catalog và
-                # lọc lần hai trên một grid đang chuyển trạng thái.
+            if label is None:
+                # Không trả nhầm CATALOG_SEARCH_CONTEXT_LOST để controller mở
+                # lại Catalog và lọc lần hai: Style đã được mở, chỉ cần nhận
+                # lại popup bằng driver mới.
                 playwright, browser, page = _refresh_article_context(
                     playwright,
                     browser,
@@ -184,15 +196,11 @@ def _find_in_open_catalog(
                         [],
                         log,
                         timeout_seconds=18,
-                        expected_article_code=str(
-                            result.get("article_code") or ""
-                        ),
+                        expected_article_code=article_code,
                     )
                 except PlaywrightTimeoutError as exc:
-                    # Style ĐÃ được click trên grid; đây là lỗi popup, không
-                    # phải mất context Master. Trả mã riêng để controller
-                    # không mở lại Catalog và lọc lần hai (ARTICLE_OPEN_NOT_
-                    # CONFIRMED trong đặc tả).
+                    # Style ĐÃ được mở; đây là lỗi popup, không phải mất
+                    # context Master (ARTICLE_OPEN_NOT_CONFIRMED trong đặc tả).
                     _write_log(log, f"[ARTICLE] {_first_line(exc)}")
                     return {
                         **result,
@@ -200,7 +208,7 @@ def _find_in_open_catalog(
                             False,
                             "CATALOG_DESTINATION_FAILED",
                             "ARTICLE_OPEN_NOT_CONFIRMED: WFX chưa mở popup "
-                            f"Article {result.get('article_code')}. Bấm lại "
+                            f"Article {article_code}. Bấm lại "
                             "Costing/BOM để thử mở trên Style vừa tìm.",
                         ),
                         "destination": destination,

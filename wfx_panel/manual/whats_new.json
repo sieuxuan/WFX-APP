@@ -4,6 +4,11 @@
     "date": "2026-10-27",
     "highlights": [
       {
+        "title": "Tìm Style theo Article Code và mở Costing nhanh hơn",
+        "body": "Tìm theo Article Code giờ hỏi thẳng dữ liệu Catalog nên ra kết quả trong khoảng một giây, không phải chờ bảng Catalog lọc xong. Khi cửa sổ Style đang mở sẵn, Costing và BOM mở ngay mà không chờ thêm. Nếu đang mở một thư mục thay vì Master, ứng dụng tự quay về Master trước khi tìm để không báo nhầm là không có kết quả.",
+        "entry": "catalog-tim-style"
+      },
+      {
         "title": "Dropdown Costing có cả Article vừa tạo trên WFX",
         "body": "Khi xuất file Costing có quét Article, dropdown Article Code/Name gồm cả Article vừa tạo trên WFX lẫn thư viện Article dùng chung. Bạn không phải chờ thư viện được cập nhật mới chọn được Fabric hoặc Trim mới.",
         "entry": "costing-xuat-file"

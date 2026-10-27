@@ -19,6 +19,11 @@ def _catalog_tree_on_master(monkeypatch):
     patch_automation(
         monkeypatch, catalog, "_catalog_master_context_problem", lambda *_a: None
     )
+    # Đường nhanh GetData có test riêng (`test_catalog_quick_find.py`); ở đây
+    # khóa luồng DOM dự phòng.
+    patch_automation(
+        monkeypatch, catalog, "_quick_find_catalog_code", lambda *_a: None
+    )
 
 
 def test_legacy_login_exports_atomic_catalog_destination_flow():
@@ -1337,10 +1342,11 @@ def test_catalog_search_and_destination_share_popup_driver(monkeypatch):
             calls.append(("start",))
             return PlaywrightRuntime()
 
-    article_top = SimpleNamespace(url="https://example.test/old-top")
+    # Tab Article cũ chưa dựng ArticleTop: không phải popup đang được tái
+    # dùng, nên probe trên chính driver vừa lọc grid.
     article_page = SimpleNamespace(
         url="https://example.test/wfx_ArticleDetail.aspx",
-        frame=lambda name: article_top if name == "ArticleTop" else None,
+        frame=lambda name: None,
     )
     context = SimpleNamespace(pages=[article_page])
     browser_instance = SimpleNamespace(contexts=[context])
@@ -1415,10 +1421,10 @@ def test_catalog_search_and_destination_share_popup_driver(monkeypatch):
         (
             article_page,
             "https://example.test/wfx_ArticleDetail.aspx",
-            "https://example.test/old-top",
+            "",
         )
     ]
-    assert destination_call[4:] == (3, "NEW-STYLE")
+    assert destination_call[4:] == (4, "NEW-STYLE")
     assert calls[-1] == ("stop",)
 
 
@@ -1506,7 +1512,7 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
                 expected_article_code,
             )
         )
-        if len(attempts) == 1:
+        if actual_context is old_context:
             raise catalog.PlaywrightTimeoutError("ArticleTop detached")
         return "Costsheet"
 
@@ -1520,18 +1526,9 @@ def test_combined_catalog_destination_recovers_popup_without_research(monkeypatc
     )
 
     assert result["code"] == "CATALOG_DESTINATION_OPENED"
-    assert len(attempts) == 2
-    assert attempts[0][0] is old_context
-    assert attempts[0][1] == "costsheet"
-    assert attempts[0][2] == [
-        (
-            old_article_page,
-            "https://example.test/wfx_ArticleDetail.aspx",
-            "https://example.test/old-top",
-        )
-    ]
-    assert attempts[0][3:] == (3, "ABC123")
-    assert attempts[1:] == [
+    # Popup ArticleTop cũ đang mở => WFX tái dùng cửa sổ, driver cũ không thấy
+    # trang mới: recycle ngay, không probe driver cũ.
+    assert attempts == [
         (new_context, "costsheet", [], 18, "ABC123"),
     ]
     # Không lọc Catalog lần hai sau khi popup bị detach.

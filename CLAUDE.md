@@ -196,8 +196,11 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   đạt (đặc biệt sau khi user chuyển module/màn hình), phải mở lại đầy đủ.
 - Sau khi tìm Article để mở Costing/BOM, popup phải được xác nhận bằng exact
   Article Code trong `#lblArticleNameValue`; không chờ cứng khi header đã đúng.
-  Probe popup hiện tại tối đa 3–4 giây, sau đó recycle CDP không activate tab
-  Catalog và recovery cuối tối đa 18 giây.
+  Probe popup mới tối đa 4 giây, sau đó recycle CDP không activate tab
+  Catalog và recovery cuối tối đa 18 giây. Nếu trước khi mở Style đã có popup
+  Article (có `ArticleTop`), WFX tái dùng cửa sổ tên `ArticleDetail` và CDP
+  hiện tại không thấy document mới (đo trên WFX: probe luôn trượt, driver mới
+  thấy ngay), nên recycle ngay đúng một lần, không probe trước.
 - Khi automation đang chạy, footer hiện nút `Stop`. Nút chỉ đặt cờ hủy; flow
   dừng ở checkpoint kế tiếp và trả `ACTION_CANCELLED`. Không đóng browser hoặc
   Playwright để ép dừng. Đoạn click/chờ Save phải dùng `cancellation_deferred()`
@@ -331,7 +334,9 @@ Mỗi nút trong module là một flow riêng:
   kiện: mỗi `connect_over_cdp` mới re-attach mọi tab và làm Chrome nhấp banner
   "đang bị điều khiển", gây lag. Thay vào đó phải probe popup trên CDP hiện tại
   trước (`_open_article_destination`/`_article_page_for_code`); chỉ khi probe ngắn timeout
-  mới `recycle_playwright` đúng một lần rồi thử lại, và không đóng Chrome. Khi
+  mới `recycle_playwright` đúng một lần rồi thử lại, và không đóng Chrome. Ngoại
+  lệ duy nhất: popup Article đã mở từ trước sẽ bị WFX tái dùng (cùng tên
+  `ArticleDetail`), driver cũ chắc chắn không thấy trang mới nên recycle ngay. Khi
   driver cũ không thấy popup trong `context.pages`, vẫn phải recycle: không được
   dùng chính danh sách target stale đó để bỏ qua recovery.
   Quy tắc này cũng áp dụng ngay trong flow kết hợp Tìm → Costing/BOM: nếu người
@@ -343,6 +348,9 @@ Các workflow riêng hiện có:
 - Catalog: Category/folder, Master, Article Code; Apparel dùng Buyer Reference,
   category khác dùng Article Name; Costing, BOM,
   file đính kèm và Costing file import/export XLSX.
+  Tìm theo Article Code đi đường nhanh GetData (xem mục "Đường nhanh tìm theo
+  Code" ở cuối file) rồi mới dự phòng bằng state machine DOM; Buyer Reference/
+  Article Name gõ tự do luôn đi DOM vì server chỉ lọc được theo Code.
 - Catalog có workspace `Tạo Style` riêng cho Apparel. User phải quét/chọn một
   node đúng loại Group rồi mới Import form XLSX. Form gồm Type New/Copy, Style
   copy và các trường Style; Style copy có dropdown lấy Article Name từ Article
@@ -918,6 +926,32 @@ HOME
 Không được nhảy state. Mode `prepare` chỉ thành công tại `FILTER_VISIBLE` sau khi
 `GRID_DATA_SETTLED`, không phải ngay khi tìm thấy một input ẩn hoặc input thuộc grid cũ.
 
+## Đường nhanh tìm theo Code (GetData)
+
+Đo trên WFX thật (27/10/2026): nút Code của grid chỉ gọi
+`window.open('/wfx/wfx_ArticleDetail.aspx?ID=<ArticleID>&GroupID=<CGID>&ArticleSelection=&CatalogType=<CatalogType của URL grid>&CatalogCompany=<sessionStorage.CompanyCode>&ComboCode=<Category>&StyleSheet=wfx_Style', 'ArticleDetail')`,
+và grid lấy dữ liệu từ `GET /WFXERPAPI/api/WFXCommon/GetData` (server lọc
+`contains` theo `lnkArticleCode`, tối đa 100 dòng). `catalog/quick_find.py` dùng
+đúng hai thứ đó: lọc mất ~1 giây thay vì ~3 giây quét Floating Filter + debounce.
+
+- Chỉ áp dụng cho `filter_kind == "code"`, sau khi controller đã chuẩn bị Master
+  như cũ (frame grid và GUID chắc chắn có). Không đổi bước prepare.
+- `fetch` và `window.open` chạy TRONG frame grid để cookie, GUID và
+  `window.opener` y hệt khi người dùng tự click. Không điều hướng, không ghi.
+- Kết quả giữ đúng luật DOM: 0 Code → `NO_RESULTS`, không mở; nhiều Code không
+  có exact duy nhất → `MULTIPLE_RESULTS` (tối đa 20, kèm Season/CostsheetStatus);
+  đúng một exact Code, hoặc đúng một Code, mới mở popup. Gộp Code không phân
+  biệt hoa/thường.
+- Trả `None` để rơi về state machine DOM khi: không có frame grid sống, thiếu
+  GUID/CompanyCode, fetch lỗi/timeout 10 giây/`Status=Fail`, server trả dòng
+  nhưng không dòng nào chứa query (điều kiện lọc bị bỏ qua — tuyệt đối không
+  kết luận `NO_RESULTS` từ danh sách "mới nhất"), Style có
+  `DisableCatalogLink`, ArticleID/CGID/CatalogType/CompanyCode không hợp lệ, hoặc
+  `window.open` bị chặn.
+- Popup mở bằng đường nhanh vẫn phải xác nhận exact Article Code trong
+  `#lblArticleNameValue` trước khi click Costing/BOM; khi probe trượt thì recycle
+  CDP, không có bước click lại Style trên grid vì grid chưa được lọc.
+
 ## Điều kiện xác nhận
 
 ### Mở Master
@@ -976,6 +1010,10 @@ Code không phân biệt hoa/thường.
 - Điền query bằng thao tác tương đương `locator.fill(query)`, không chỉ gán `.value`.
 - Xác nhận `input.value === query`.
 - Chờ debounce và chờ loading kết thúc.
+- Chụp trạng thái row TRƯỚC khi gõ. Kết quả trùng hệt trạng thái đó chỉ được
+  nhận khi đã thấy grid loading hoặc sau 2,5 giây: row của lần tìm trước có thể
+  tình cờ chứa query mới (tìm `PSG` rồi `0000`) và thỏa điều kiện dưới đây
+  trước khi server trả lời — đã mở nhầm Style cũ trên WFX thật.
 - Với Code: mọi Code đang render phải chứa query.
 - Với Buyer Reference: mọi Buyer Reference đang render phải chứa query.
 - Đếm `unique Code`, không đếm DOM button.

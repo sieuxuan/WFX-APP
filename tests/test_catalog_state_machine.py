@@ -292,8 +292,70 @@ def test_filter_value_not_confirmed_when_wfx_drops_the_typed_query(clock):
 
     assert result["ok"] is False
     assert result["code"] == "FILTER_VALUE_NOT_CONFIRMED"
-    assert grid.poll_count == 0, "không được đọc kết quả khi giá trị chưa vào ô"
+    # Lần đọc duy nhất là ảnh chụp grid TRƯỚC khi gõ; không đọc kết quả nào.
+    assert grid.poll_count == 1, "không được đọc kết quả khi giá trị chưa vào ô"
     assert grid.clicked_codes == []
+
+
+def test_rows_left_over_from_the_previous_search_are_not_the_new_result(clock):
+    """Tìm "PSG" rồi "0000": PSG0000002 cũng chứa "0000" nên điều kiện lọc
+    đúng ngay trên row CŨ. Đo trên WFX thật, bản trước đã mở nhầm Style này
+    thay vì báo nhiều kết quả từ server."""
+    grid = FakeCatalogGrid(
+        clock,
+        rows=[StyleRow("PSG0000002")],
+        filters=[_code_filter()],
+        filter_row_visible=True,
+    )
+    started = clock.monotonic()
+
+    def server_answers_late(grid, polls):
+        if clock.monotonic() - started >= 1.5:
+            grid.rows = [StyleRow("SWN0000001"), StyleRow("PSW0000029")]
+
+    grid.on_poll = server_answers_late
+
+    result = _filter_flow(grid, "0000")
+
+    assert result["code"] == "MULTIPLE_RESULTS"
+    assert result["codes"] == ["SWN0000001", "PSW0000029"]
+    assert grid.clicked_codes == []
+
+
+def test_the_same_rows_as_before_are_accepted_after_the_grace_window(clock):
+    """Query mới thật sự cho đúng kết quả cũ: chậm hơn một chút nhưng vẫn mở."""
+    grid = FakeCatalogGrid(
+        clock,
+        rows=[StyleRow("ABC123")],
+        filters=[_code_filter()],
+        filter_row_visible=True,
+    )
+    started = clock.monotonic()
+
+    result = _filter_flow(grid, "ABC123")
+
+    assert result["code"] == "RESULT_OPENED"
+    assert clock.monotonic() - started >= 2.5
+
+
+def test_a_grid_that_shows_loading_is_trusted_without_the_grace_window(clock):
+    grid = FakeCatalogGrid(
+        clock,
+        rows=[StyleRow("ABC123")],
+        filters=[_code_filter()],
+        filter_row_visible=True,
+    )
+
+    def loading_once(grid, polls):
+        grid.loading = polls == 2
+
+    grid.on_poll = loading_once
+    started = clock.monotonic()
+
+    result = _filter_flow(grid, "ABC123")
+
+    assert result["code"] == "RESULT_OPENED"
+    assert clock.monotonic() - started < 2.0
 
 
 # --- Grid rỗng giả trong lúc lọc: áp dụng lại bộ lọc đúng một lần ------

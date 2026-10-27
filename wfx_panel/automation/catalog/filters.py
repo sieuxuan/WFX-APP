@@ -41,6 +41,18 @@ class _CatalogGridPoll:
     query: str
     spec: _CatalogFilterSpec
     log: Callable[[str], None]
+    # Trạng thái grid ngay trước khi gõ query và thời điểm gõ: kết quả y hệt
+    # trước đó chưa phải của query mới (xem _UNCHANGED_RESULT_GRACE_S).
+    before_key: tuple[Any, ...] | None = None
+    filled_at: float = 0.0
+
+
+# Grid giữ nguyên row cũ cho tới khi debounce Floating Filter + GetData xong.
+# Nếu row cũ tình cờ cũng chứa query mới (tìm "PSG" rồi "0000"), điều kiện
+# "mọi Code đang hiện chứa query" đúng NGAY, trước khi server trả lời — đo trên
+# WFX thật, app đã mở nhầm Style cũ. Kết quả trùng hệt trạng thái trước khi gõ
+# chỉ được nhận khi đã thấy grid loading hoặc sau khoảng chờ này.
+_UNCHANGED_RESULT_GRACE_S = 2.5
 
 
 _CATALOG_FILTER_SPECS = {
@@ -177,6 +189,7 @@ def _wait_catalog_grid_rows(
     empty_since: float | None = None
     filter_reapplied = False
     rows: list[dict[str, str]] = []
+    saw_loading = False
     while time.monotonic() < deadline:
         state = poll.root.evaluate(
             poll.read_rows_js,
@@ -184,6 +197,7 @@ def _wait_catalog_grid_rows(
         )
         rows = state["rows"]
         now = time.monotonic()
+        saw_loading = saw_loading or bool(state["loading"])
         phantom_empty = not state["loading"] and not state["noRows"] and not rows
         empty_since = empty_since or now if phantom_empty else None
         if (
@@ -212,8 +226,15 @@ def _wait_catalog_grid_rows(
             _wait(poll.grid, 500)
             continue
         state_key = _catalog_grid_state_key(state)
+        fresh = (
+            poll.before_key is None
+            or saw_loading
+            or state_key != poll.before_key
+            or now - poll.filled_at >= _UNCHANGED_RESULT_GRACE_S
+        )
         if (
-            _catalog_grid_result_ready(state, poll.query)
+            fresh
+            and _catalog_grid_result_ready(state, poll.query)
             and state_key == stable_key
         ):
             required_stable = 1.8 if state["noRows"] else 0.6
@@ -354,17 +375,6 @@ def _filter_grid_and_maybe_open(
     if spec is None:
         return _result(False, "INVALID_FILTER", f"Filter không hỗ trợ: {filter_kind}")
 
-    # Không để điều kiện cũ ở cột ngoài viewport chồng lên lần tìm mới.
-    search_input = _resolve_catalog_filter(grid, spec)
-    _write_log(log, f"[{spec.label.upper()}] Đang lọc gần đúng: {query}")
-    search_input.fill(query, timeout=3_000)
-    if search_input.input_value(timeout=1_000) != query:
-        return _result(
-            False,
-            "FILTER_VALUE_NOT_CONFIRMED",
-            f"WFX chưa xác nhận giá trị {spec.label}.",
-        )
-
     root = grid.locator(".ag-root-wrapper").first
     read_rows_js = """(root, args) => {
         const shown = element => {
@@ -453,6 +463,24 @@ def _filter_grid_and_maybe_open(
         return {loading, noRows, rows};
     }"""
 
+    # Không để điều kiện cũ ở cột ngoài viewport chồng lên lần tìm mới.
+    search_input = _resolve_catalog_filter(grid, spec)
+    try:
+        before_key: tuple[Any, ...] | None = _catalog_grid_state_key(
+            root.evaluate(read_rows_js, {"valueColumn": spec.value_column})
+        )
+    except PlaywrightError:
+        before_key = None
+    _write_log(log, f"[{spec.label.upper()}] Đang lọc gần đúng: {query}")
+    search_input.fill(query, timeout=3_000)
+    filled_at = time.monotonic()
+    if search_input.input_value(timeout=1_000) != query:
+        return _result(
+            False,
+            "FILTER_VALUE_NOT_CONFIRMED",
+            f"WFX chưa xác nhận giá trị {spec.label}.",
+        )
+
     rows, polling_error = _wait_catalog_grid_rows(
         _CatalogGridPoll(
             grid=grid,
@@ -462,6 +490,8 @@ def _filter_grid_and_maybe_open(
             query=query,
             spec=spec,
             log=log,
+            before_key=before_key,
+            filled_at=filled_at,
         )
     )
     if polling_error is not None:

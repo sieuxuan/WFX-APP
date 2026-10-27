@@ -58,6 +58,22 @@ def tree_problem(monkeypatch):
     return state
 
 
+@pytest.fixture(autouse=True)
+def quick_find(monkeypatch):
+    """Đường nhanh GetData mặc định nhường cho luồng DOM.
+
+    Test nào cần nó trả kết quả thì gán ``quick_find.result``.
+    """
+    state = type("QuickState", (), {"result": None, "calls": []})()
+
+    def quick(page, category_value, query, log):
+        state.calls.append((category_value, query))
+        return state.result
+
+    monkeypatch.setattr(flows, "_quick_find_catalog_code", quick)
+    return state
+
+
 def _quiet():
     return lambda _line: None
 
@@ -316,10 +332,11 @@ def test_a_popup_that_never_answers_is_a_destination_failure_not_a_lost_master(
     assert world.driver_stops == 1
 
 
-def test_destination_skips_the_style_reclick_when_a_popup_was_already_open(
+def test_a_reused_popup_is_recycled_at_once_without_a_wasted_probe(
     clock, monkeypatch
 ):
-    """Popup Style đang mở sau MULTIPLE_RESULTS: phục hồi, không search lại."""
+    """Popup Style đang mở: WFX tái dùng cửa sổ `ArticleDetail` và driver cũ
+    không thấy document mới. Recycle ngay, không probe 3 giây, không search lại."""
     world = _world(clock)
     wire_automation(monkeypatch, flows, world, clock=clock)
     _stub(monkeypatch, "_show_catalog_floating_filter", lambda *a, **kw: None)
@@ -333,8 +350,6 @@ def test_destination_skips_the_style_reclick_when_a_popup_was_already_open(
 
     def destination(*_args, **kwargs):
         attempts.append(kwargs.get("timeout_seconds"))
-        if len(attempts) == 1:
-            raise PlaywrightTimeoutError("popup chưa phản hồi")
         return "Costsheet"
 
     _stub(monkeypatch, "_open_article_destination", destination)
@@ -344,11 +359,13 @@ def test_destination_skips_the_style_reclick_when_a_popup_was_already_open(
         "_click_catalog_style",
         lambda *a: clicks.append("clicked"),
     )
-    _stub(
-        monkeypatch,
-        "_refresh_article_context",
-        lambda playwright, browser, page, _log: (playwright, browser, page),
-    )
+    refreshed: list[int] = []
+
+    def refresh(playwright, browser, page, _log):
+        refreshed.append(1)
+        return playwright, browser, page
+
+    _stub(monkeypatch, "_refresh_article_context", refresh)
 
     result = flows.find_and_open_catalog_destination(
         "Apparel", "code", "ABC123", "costsheet", _quiet()
@@ -356,7 +373,8 @@ def test_destination_skips_the_style_reclick_when_a_popup_was_already_open(
 
     assert result["code"] == "CATALOG_DESTINATION_OPENED"
     assert clicks == []
-    assert attempts == [3, 18]
+    assert refreshed == [1]
+    assert attempts == [18], "không probe trên driver cũ trước khi recycle"
 
 
 def test_destination_is_not_opened_when_the_filter_found_several_codes(
@@ -998,3 +1016,82 @@ def test_filter_code_maps_timeout_and_other_failures(clock, monkeypatch):
         flows.filter_and_open_catalog_code("ABC", _quiet())["code"]
         == "CODE_FILTER_FAILED"
     )
+
+
+# --- đường nhanh GetData ----------------------------------------------------
+
+
+def test_a_quick_code_answer_never_touches_the_grid_filters(
+    clock, monkeypatch, quick_find, tree_problem
+):
+    world = _world(clock)
+    wire_automation(monkeypatch, flows, world, clock=clock)
+    quick_find.result = _opened()
+    touched: list[str] = []
+    _stub(
+        monkeypatch,
+        "_show_catalog_floating_filter",
+        lambda *a, **kw: touched.append("filter-row"),
+    )
+    _stub(
+        monkeypatch,
+        "_filter_grid_and_maybe_open",
+        lambda *a, **kw: touched.append("filter"),
+    )
+
+    result = flows.find_in_open_catalog("Apparel", "code", "ABC123", _quiet())
+
+    assert result["code"] == "RESULT_OPENED"
+    assert result["query"] == "ABC123"
+    assert quick_find.calls == [("01", "ABC123")]
+    assert touched == []
+    assert tree_problem.calls == [], "đường nhanh không cần cây ở Master"
+    assert world.driver_stops == 1
+
+
+@pytest.mark.parametrize("kind", ["buyer_reference", "article_name"])
+def test_free_text_kinds_stay_on_the_dom_flow(clock, monkeypatch, quick_find, kind):
+    """Server chỉ lọc được theo Code."""
+    world = _world(clock)
+    wire_automation(monkeypatch, flows, world, clock=clock)
+    _stub(monkeypatch, "_show_catalog_floating_filter", lambda *a, **kw: None)
+    _stub(monkeypatch, "_filter_grid_and_maybe_open", lambda *a, **kw: _opened())
+
+    result = flows.find_in_open_catalog("Apparel", kind, "PO-99", _quiet())
+
+    assert result["code"] == "RESULT_OPENED"
+    assert quick_find.calls == []
+
+
+def test_a_quick_open_that_the_popup_misses_recycles_without_a_grid_reclick(
+    clock, monkeypatch, quick_find
+):
+    """Đường nhanh không lọc grid nên không có nút Style nào để click lại."""
+    world = _world(clock)
+    wire_automation(monkeypatch, flows, world, clock=clock)
+    quick_find.result = _opened()
+    _stub(monkeypatch, "_article_navigation_states", lambda _ctx: [])
+    attempts: list[float] = []
+
+    def destination(*_args, **kwargs):
+        attempts.append(kwargs.get("timeout_seconds"))
+        if len(attempts) == 1:
+            raise PlaywrightTimeoutError("popup chưa publish")
+        return "BOM"
+
+    _stub(monkeypatch, "_open_article_destination", destination)
+    clicks: list[str] = []
+    _stub(monkeypatch, "_click_catalog_style", lambda *a: clicks.append("x"))
+    _stub(
+        monkeypatch,
+        "_refresh_article_context",
+        lambda playwright, browser, page, _log: (playwright, browser, page),
+    )
+
+    result = flows.find_and_open_catalog_destination(
+        "Apparel", "code", "ABC123", "bom", _quiet()
+    )
+
+    assert result["code"] == "CATALOG_DESTINATION_OPENED"
+    assert attempts == [4, 18]
+    assert clicks == []
