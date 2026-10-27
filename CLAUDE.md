@@ -264,11 +264,16 @@ Mỗi nút trong module là một flow riêng:
    treo Chrome khi đóng tab đó. Việc "dùng lại grid Master đang mở" vẫn chạy vì
    nó tái dùng DOM đang mở trong Chrome, không phụ thuộc Playwright có giữ kết
    nối. Không dùng object Playwright sync từ thread khác.
-9. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True`, rồi reset
-   `Browser.setDownloadBehavior` đúng một lần về `behavior=default` ngay sau
-   mỗi attach/re-attach để xóa override artifact stale; tuyệt đối không dùng
-   `allow`, `allowAndName`, `deny` hoặc truyền `downloadPath` cho download thông
-   thường. Chrome phải tự quản lý file theo profile và lưu thẳng vào Windows
+9. Mọi kết nối Playwright qua CDP phải truyền `no_defaults=True` và tuyệt đối
+   KHÔNG gửi `Browser.setDownloadBehavior` với bất kỳ behavior nào, kể cả
+   `default`. Lệnh đầu tiên khiến Chromium thay DownloadManagerDelegate của
+   profile bằng `DevToolsDownloadManagerDelegate` cho tới khi Chrome thoát;
+   delegate này không có `OpenDownload`/`ShowDownloadInShell`/
+   `ShouldCompleteDownload`, nên `Mở file`, `Hiện trong thư mục` im lặng và
+   cảnh báo download của Chrome biến mất dù file vẫn tải bình thường. Override
+   của một phiên CDP tự hết khi phiên đó detach nên không cần "reset".
+   Chrome đã từng nhận lệnh này phải được đóng hẳn rồi mở lại mới hết lỗi.
+   Chrome phải tự quản lý file theo profile và lưu thẳng vào Windows
    Known Folder Downloads
    (kể cả khi đã redirect/OneDrive), để file thật và Chrome Download history
    cùng một đường dẫn; `Mở file`/`Hiện trong thư

@@ -654,34 +654,24 @@ def test_a_browser_that_cannot_answer_is_replaced_not_reused():
     assert engine._browser is fresh
 
 
-def test_every_attach_resets_the_download_behaviour_to_chrome_default():
+def test_attach_never_overrides_the_chrome_download_behaviour():
+    """Chromium thay hẳn DownloadManagerDelegate của profile bằng
+    DevToolsDownloadManagerDelegate ngay lần đầu nhận Browser.setDownloadBehavior,
+    kể cả `default`, và giữ tới khi Chrome thoát. Delegate đó không có
+    OpenDownload/ShowDownloadInShell/ShouldCompleteDownload, nên `Mở file`,
+    `Hiện trong thư mục` im lặng và cảnh báo download của Chrome biến mất."""
     engine = runtime.AutomationRuntime()
     sent: list[tuple] = []
     session = SimpleNamespace(
-        send=lambda method, payload: sent.append((method, payload)),
+        send=lambda method, payload=None: sent.append((method, payload)),
         detach=lambda: sent.append(("detach", None)),
     )
     playwright = FakePlaywright(FakeBrowser(session=session))
 
     engine.connect_browser(playwright, "http://127.0.0.1:9222")
 
-    assert sent[0] == (
-        "Browser.setDownloadBehavior",
-        {"behavior": "default"},
-    )
-    assert sent[1][0] == "detach"
-
-
-def test_a_session_that_cannot_detach_does_not_fail_the_attach():
-    engine = runtime.AutomationRuntime()
-
-    def explode():
-        raise RuntimeError("session đã mất")
-
-    session = SimpleNamespace(send=lambda *_a: None, detach=explode)
-    browser = FakeBrowser(session=session)
-
-    engine._restore_native_download_behavior(browser)
+    assert sent == []
+    assert not hasattr(engine, "_restore_native_download_behavior")
 
 
 def test_invalidating_only_drops_the_browser_the_caller_named():

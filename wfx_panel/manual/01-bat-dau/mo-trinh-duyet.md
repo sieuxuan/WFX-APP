@@ -44,4 +44,4 @@ trong cửa sổ này như Chrome thông thường.
 |---|---|
 | Bấm mở nhưng chưa thấy trình duyệt | Chờ vài giây rồi bấm `Kiểm tra lại` trên dải thông báo. |
 | Đèn Chrome sáng nhưng đèn WFX chưa sáng | Mở cửa sổ trình duyệt và đăng nhập WFX, sau đó bấm nút kiểm tra lại ở góc dưới. |
-| Tự bấm tải file trên WFX nhưng không mở được từ Download history | Đóng WFX Smart và trình duyệt làm việc, sau đó mở lại WFX Smart 1.0.31 trở lên. Download mới sẽ vào thư mục `Downloads` chuẩn và dùng được cả `Mở file` lẫn `Hiện trong thư mục`. Mục history cũ từng trỏ vào thư mục tạm không thể tự sửa lại. |
+| File tải về bình thường nhưng bấm `Mở file` hoặc `Hiện trong thư mục` trong Chrome không phản ứng, và Chrome không còn hiện cảnh báo tải xuống | Lưu công việc, bấm chuột phải biểu tượng WFX Smart ở khay hệ thống, chọn `Thoát và đóng trình duyệt`, rồi mở lại WFX Smart. Chrome chỉ hết lỗi này sau khi được đóng hẳn và mở lại; các file đã tải trước đó vẫn nằm trong thư mục `Downloads`. |

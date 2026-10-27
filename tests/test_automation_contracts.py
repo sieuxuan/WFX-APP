@@ -178,35 +178,30 @@ def test_downloads_never_use_playwright_save_as():
     )
 
 
-def test_download_behavior_is_only_ever_reset_to_default():
-    """Chỉ được reset về `default`; `allow`/`deny`/`downloadPath` bị cấm."""
-    tree = _tree(Path(runtime.__file__))
-    checked = 0
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not node.args:
-            continue
-        first = node.args[0]
-        if not isinstance(first, ast.Constant):
-            continue
-        if first.value != "Browser.setDownloadBehavior":
-            continue
-        checked += 1
-        payload = node.args[1] if len(node.args) > 1 else None
-        assert isinstance(payload, ast.Dict), (
-            "setDownloadBehavior phải truyền dict literal để kiểm tra được"
+def test_product_code_never_sends_set_download_behavior():
+    """Mọi `Browser.setDownloadBehavior`, kể cả `behavior=default`, khiến
+    Chromium thay delegate download của profile bằng bản DevTools tới khi Chrome
+    thoát. Bản đó không có OpenDownload/ShowDownloadInShell nên `Mở file`/
+    `Hiện trong thư mục` im lặng và cảnh báo download của Chrome bị bỏ qua.
+    Override của một phiên CDP tự hết khi phiên đó detach, nên không cần reset.
+    """
+    package_dir = AUTOMATION_DIR.parent
+    # Chỉ bắt string literal đúng tên method CDP; comment/docstring giải thích
+    # lý do cấm vẫn được phép nhắc tới nó.
+    offenders = [
+        str(path.relative_to(package_dir))
+        for path in package_dir.rglob("*.py")
+        if any(
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.strip().endswith(".setDownloadBehavior")
+            for node in ast.walk(_tree(path))
         )
-        options = {
-            key.value: value
-            for key, value in zip(payload.keys, payload.values, strict=True)
-            if isinstance(key, ast.Constant)
-        }
-        assert "downloadPath" not in options, (
-            "Không được ép downloadPath: Chrome phải tự lưu vào Known Folder "
-            "Downloads theo profile."
-        )
-        behavior = options.get("behavior")
-        assert isinstance(behavior, ast.Constant) and behavior.value == "default"
-    assert checked >= 1, "AST scan không còn thấy call site nào — test đã mục"
+    ]
+    assert not offenders, (
+        "Không được gửi Browser.setDownloadBehavior: "
+        f"{', '.join(offenders)}"
+    )
 
 
 def test_every_cdp_connection_disables_playwright_defaults():

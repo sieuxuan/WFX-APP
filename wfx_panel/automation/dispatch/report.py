@@ -147,8 +147,8 @@ def _download_report(
         native_file: Path | None = None
         stable_file: tuple[Path, tuple[int, int]] | None = None
         while time.monotonic() < deadline and not downloads:
-            # Runtime reset Browser.setDownloadBehavior về `default`, nên Chrome
-            # lưu file native mà CDP có thể không phát event `download`. Đối
+            # Runtime không bật download event của CDP, nên Chrome lưu file
+            # native mà Playwright có thể không phát event `download`. Đối
             # chiếu snapshot Downloads để không chờ hết 90 giây rồi báo lỗi giả.
             candidate = native_download_candidate(
                 downloads_before_click,

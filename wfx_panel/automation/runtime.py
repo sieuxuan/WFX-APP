@@ -462,13 +462,19 @@ class AutomationRuntime:
         return _PlaywrightLease(self._playwright)
 
     def connect_browser(self, playwright: Any, cdp_url: str) -> Browser:
+        # Tuyệt đối không gửi Browser.setDownloadBehavior, kể cả `default`:
+        # lệnh đầu tiên khiến Chromium thay DownloadManagerDelegate của profile
+        # bằng DevToolsDownloadManagerDelegate tới khi Chrome thoát. Delegate đó
+        # không có OpenDownload/ShowDownloadInShell/ShouldCompleteDownload nên
+        # `Mở file`, `Hiện trong thư mục` im lặng và cảnh báo download của Chrome
+        # bị bỏ qua. no_defaults=True đã giữ Playwright không đụng download, và
+        # override của một phiên CDP tự hết khi phiên đó detach.
         if threading.get_ident() != self._thread_id:
             browser = playwright.chromium.connect_over_cdp(
                 cdp_url,
                 timeout=CDP_CONNECT_TIMEOUT_MS,
                 no_defaults=True,
             )
-            self._restore_native_download_behavior(browser)
             self._preserve_native_dialogs(browser)
             return browser
         self.checkpoint()
@@ -484,7 +490,6 @@ class AutomationRuntime:
             timeout=CDP_CONNECT_TIMEOUT_MS,
             no_defaults=True,
         )
-        self._restore_native_download_behavior(browser)
         self._preserve_native_dialogs(browser)
         self._browser = browser
         self._track_downloads(self._browser)
@@ -501,21 +506,6 @@ class AutomationRuntime:
         """
         for context in browser.contexts:
             context.on("dialog", lambda _dialog: None)
-
-    def _restore_native_download_behavior(self, browser: Browser) -> None:
-        """Xóa override artifact cũ để Chrome dùng Download Manager native."""
-
-        session = browser.new_browser_cdp_session()
-        try:
-            session.send(
-                "Browser.setDownloadBehavior",
-                {"behavior": "default"},
-            )
-        finally:
-            try:
-                session.detach()
-            except Exception:
-                pass
 
     def invalidate_browser(self, browser: Browser | None = None) -> None:
         if browser is None or browser is self._browser:
