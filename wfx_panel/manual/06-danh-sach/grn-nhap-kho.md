@@ -11,6 +11,12 @@ Bạn có thể chỉ nhập phần số cuối, ví dụ `2345`. Nếu RMPO Lis
 dòng như `PSW-TRM-23-2345`, ứng dụng tự dùng Order No. đầy đủ cho các bước sau.
 Nếu có nhiều dòng chứa phần số đó, ứng dụng yêu cầu nhập rõ hơn.
 
+> [!meo]
+> RMPO No. đầy đủ dạng `PSG-…`, `PSW-…` hoặc `PSK-…` cho biết Division PSSG,
+> Woven hoặc Knit. Ứng dụng tự chuyển Division trước khi tra RMPO, tìm GRN theo
+> RMPO và khi bấm `Tiếp tục làm GRN` hay `Next — mở New GRN` thì tự quay về
+> Division lúc bắt đầu, kể cả khi bạn đã đổi Division trong lúc làm trên WFX.
+
 > [!luuy]
 > RMPO có Status `Received` đã nhập kho hết. Ứng dụng sẽ báo và không cho bắt
 > đầu thêm Sourcing ASN hoặc GRN mới.
@@ -65,3 +71,4 @@ Nếu có nhiều dòng chứa phần số đó, ứng dụng yêu cầu nhập 
 | Không có Site | Kiểm tra Receipt Type, Supplier và kết quả Search trên GRN Pending. |
 | Không mở được New GRN | Kiểm tra Site và dòng có PO No. đúng RMPO trên WFX. |
 | Không tìm thấy GRN | Đổi đúng kiểu Invoice/RMPO, kiểm tra giá trị rồi tìm lại. |
+| Chưa đổi được Division của RMPO | Kiểm tra tài khoản có quyền Division đó, chọn Division bằng tay rồi thử lại. |

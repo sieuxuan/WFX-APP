@@ -2,7 +2,11 @@
 
 Lựa chọn RMPO chỉ sống tới lần Search kế tiếp; mọi action phải kiểm tra lại
 row/status trên WFX trước khi click. Phiên nhập kho giữ RMPO/Supplier đã xác
-thực và danh sách Site giữa các checkpoint user tự Confirm trên WFX."""
+thực và danh sách Site giữa các checkpoint user tự Confirm trên WFX.
+
+RMPO No. mang Division trong tiền tố (``PSW-JLD-26-6242`` thuộc Woven), mà
+RMPO List/GRN chỉ thấy chứng từ của Division đang chọn: tìm và chuẩn bị nhập kho
+đổi Division trước, còn bước nối tiếp quay về đúng Division lúc bắt đầu."""
 
 from __future__ import annotations
 
@@ -14,6 +18,39 @@ if TYPE_CHECKING:
 
 from wfx_panel import constants
 from wfx_panel.coercion import boolean
+from wfx_panel.controllers.document_division import (
+    align_division,
+    align_document_division,
+    document_no_division,
+    with_document_division_state,
+)
+
+_RMPO_LABEL = "RMPO No."
+_GRN_MODULE = "(GRN) Nhập kho"
+# Mode sai đã bị automation từ chối trước khi chạm Chrome; không đổi Division
+# cho một lượt chắc chắn không chạy.
+_GRN_MODES = {"foreign", "domestic"}
+
+_NOT_FOUND_CODES = {"RMPO_NO_RESULTS", "GRN_RMPO_NOT_FOUND", "GRN_SEARCH_NO_RESULTS"}
+
+
+def _hint_other_division(result: dict[str, Any], rmpo_no: str) -> dict[str, Any]:
+    """Không thấy RMPO gõ thiếu tiền tố: có thể nó nằm ở Division khác."""
+    text = str(rmpo_no or "").strip()
+    if (
+        result.get("code") not in _NOT_FOUND_CODES
+        or not text
+        or document_no_division(text) is not None
+    ):
+        return result
+    message = str(result.get("message") or "").strip()
+    return {
+        **result,
+        "message": (
+            f"{message} Nếu RMPO thuộc Division khác, hãy nhập đủ số có tiền "
+            "tố PSG-/PSW-/PSK- để ứng dụng tự chuyển Division."
+        ).strip(),
+    }
 
 
 class InventoryController:
@@ -22,6 +59,24 @@ class InventoryController:
         # Token hoá dòng RMPO: WebView chỉ nhận token, không nhận row key WFX.
         self.rmpo_choices: dict[str, dict[str, str]] = {}
         self.grn_sessions: dict[str, dict[str, Any]] = {}
+        # Division của lượt tìm sinh ra rmpo_choices: đổi Division thì grid
+        # RMPO List cũ đã bị WFX nạp lại, token không còn trỏ vào dòng thật.
+        self.rmpo_choices_division: str | None = None
+
+    def _division_after(self, state: dict[str, Any]) -> str | None:
+        division = state.get("current_division") or self._panel._current_division
+        return str(division) if division else None
+
+    def _align_grn_session(
+        self,
+        session: dict[str, Any],
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        return align_division(
+            self._panel,
+            session.get("division"),
+            reason=f"Phiên nhập kho RMPO {session['rmpo_no']}",
+            module=_GRN_MODULE,
+        )
 
     def search_rmpo(
         self,
@@ -30,13 +85,27 @@ class InventoryController:
     ) -> dict:
         panel = self._panel
         rmpo = constants.MODULE_BY_ID["0005_0050_0020"]
+        cleaned_order = str(order_no or "").strip()
 
         def action() -> dict:
             self.rmpo_choices.clear()
+            self.rmpo_choices_division = None
+            failed, division = align_document_division(
+                panel, cleaned_order, label=_RMPO_LABEL, module="RMPO List"
+            )
+            if failed is not None:
+                return failed
+            result = _hint_other_division(search(), cleaned_order)
+            self.rmpo_choices_division = self._division_after(division)
+            return with_document_division_state(
+                result, division, label=_RMPO_LABEL
+            )
+
+        def search() -> dict:
             result = panel._login.search_rmpo_list(
                 rmpo["xpath"],
                 str(supplier or "").strip(),
-                str(order_no or "").strip(),
+                cleaned_order,
                 panel._log,
             )
             if result.get("code") != "RMPO_RESULTS_READY":
@@ -105,6 +174,21 @@ class InventoryController:
                     "code": "RMPO_RESULT_EXPIRED",
                     "message": "Lựa chọn RMPO đã hết hiệu lực. Hãy tìm lại.",
                 }
+            current = panel._current_division
+            if (
+                self.rmpo_choices_division
+                and current
+                and str(current) != self.rmpo_choices_division
+            ):
+                self.rmpo_choices.clear()
+                return {
+                    "ok": False,
+                    "code": "RMPO_RESULT_EXPIRED",
+                    "message": (
+                        "Division đã đổi sau lượt tìm RMPO nên danh sách cũ "
+                        "hết hiệu lực. Hãy tìm lại."
+                    ),
+                }
             return panel._login.open_rmpo_result_action(
                 choice["row_key"],
                 choice["order_no"],
@@ -157,12 +241,26 @@ class InventoryController:
                         ),
                     }
                 supplier = choice["supplier"]
-            result = panel._login.prepare_grn_receipt(
-                constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
-                cleaned_rmpo,
-                supplier,
-                cleaned_mode,
-                panel._log,
+            division: dict[str, Any] = {}
+            if cleaned_mode in _GRN_MODES:
+                failed, division = align_document_division(
+                    panel, cleaned_rmpo, label=_RMPO_LABEL, module=_GRN_MODULE
+                )
+                if failed is not None:
+                    return failed
+            result = with_document_division_state(
+                _hint_other_division(
+                    panel._login.prepare_grn_receipt(
+                        constants.MODULE_BY_ID["0005_0050_0020"]["xpath"],
+                        cleaned_rmpo,
+                        supplier,
+                        cleaned_mode,
+                        panel._log,
+                    ),
+                    cleaned_rmpo,
+                ),
+                division,
+                label=_RMPO_LABEL,
             )
             if result.get("code") not in {
                 "GRN_SOURCING_ASN_READY",
@@ -186,6 +284,9 @@ class InventoryController:
                     else "site"
                 ),
                 "sites": sites,
+                # Bước nối tiếp quay về đúng Division này, kể cả khi user đổi
+                # Division trong lúc tự Confirm Sourcing ASN trên WFX.
+                "division": self._division_after(division),
             }
             return {**result, "receipt_token": receipt_token, "sites": sites}
 
@@ -222,9 +323,16 @@ class InventoryController:
                     "code": "GRN_SOURCING_CONFIRM_REQUIRED",
                     "message": "Chỉ tiếp tục sau khi đã Confirm Sourcing ASN trên WFX.",
                 }
-            result = panel._login.continue_grn_receipt(
-                session["supplier"],
-                panel._log,
+            failed, division = self._align_grn_session(session)
+            if failed is not None:
+                return failed
+            result = with_document_division_state(
+                panel._login.continue_grn_receipt(
+                    session["supplier"],
+                    panel._log,
+                ),
+                division,
+                label=_RMPO_LABEL,
             )
             if result.get("code") == "GRN_SITE_SELECTION_REQUIRED":
                 sites = [
@@ -276,10 +384,17 @@ class InventoryController:
                     "code": "GRN_SITE_INVALID",
                     "message": "Site không còn trong danh sách GRN hiện tại.",
                 }
-            result = panel._login.finalize_grn_receipt(
-                session["rmpo_no"],
-                canonical_site,
-                panel._log,
+            failed, division = self._align_grn_session(session)
+            if failed is not None:
+                return failed
+            result = with_document_division_state(
+                panel._login.finalize_grn_receipt(
+                    session["rmpo_no"],
+                    canonical_site,
+                    panel._log,
+                ),
+                division,
+                label=_RMPO_LABEL,
             )
             if result.get("ok"):
                 self.grn_sessions.pop(token, None)
@@ -295,13 +410,33 @@ class InventoryController:
         panel = self._panel
         cleaned_kind = str(filter_kind or "").strip().casefold()
         cleaned_query = " ".join(str(query or "").split())
-        return panel._run(
-            "search_grn",
-            lambda: panel._login.search_grn_receipt(
+
+        def action() -> dict:
+            # Chỉ RMPO/Order No. mang tiền tố Division; số Invoice thì tìm ở
+            # Division hiện tại.
+            division: dict[str, Any] = {}
+            if cleaned_kind == "rmpo":
+                failed, division = align_document_division(
+                    panel, cleaned_query, label=_RMPO_LABEL, module=_GRN_MODULE
+                )
+                if failed is not None:
+                    return failed
+            result = panel._login.search_grn_receipt(
                 cleaned_kind,
                 cleaned_query,
                 panel._log,
-            ),
+            )
+            if cleaned_kind == "rmpo":
+                result = _hint_other_division(result, cleaned_query)
+            return with_document_division_state(
+                result,
+                division,
+                label=_RMPO_LABEL,
+            )
+
+        return panel._run(
+            "search_grn",
+            action,
             {
                 "module_id": "grn_receipt",
                 "filter_kind": cleaned_kind,
