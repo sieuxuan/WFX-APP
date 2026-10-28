@@ -286,6 +286,12 @@ class PanelApp:
     def download_oc_template(self) -> dict:
         return self._dialogs.download_oc_template()
 
+    def download_expense_template(self) -> dict:
+        return self._dialogs.expense_file_dialog(save=True)
+
+    def choose_expense_import_file(self) -> dict:
+        return self._dialogs.expense_file_dialog()
+
     def download_sale_asn_template(self) -> dict:
         return self._dialogs.download_sale_asn_template()
 
@@ -687,6 +693,8 @@ class PanelApp:
         self.api.choose_style_import_file = self.choose_style_import_file  # type: ignore[attr-defined]
         self.api.download_style_template = self.download_style_template  # type: ignore[attr-defined]
         self.api.download_oc_template = self.download_oc_template  # type: ignore[attr-defined]
+        self.api.download_expense_template = self.download_expense_template  # type: ignore[attr-defined]
+        self.api.choose_expense_import_file = self.choose_expense_import_file  # type: ignore[attr-defined]
         self.api.download_sale_asn_template = self.download_sale_asn_template  # type: ignore[attr-defined]
         self.api.save_sale_asn_continue_template = (  # type: ignore[attr-defined]
             self.save_sale_asn_continue_template

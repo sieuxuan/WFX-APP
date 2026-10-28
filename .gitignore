@@ -2,6 +2,7 @@
 !.env.example
 wfx_panel/assets/sync-config.json
 prefs.json
+expense-options.json
 jobs.json
 __pycache__/
 *.pyc

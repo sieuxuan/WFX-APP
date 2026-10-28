@@ -1,4 +1,64 @@
 "use strict";
+let expenseReviewToken = "";
+let expenseSelectionRevision = 0;
+
+function downloadExpenseTemplate() {
+  return call("download_expense_template");
+}
+
+function syncExpenseImportActions() {
+  const button = $('[data-module-action="expense-invoice-fill"]');
+  if (button) button.disabled = busy || !expenseReviewToken;
+}
+
+function clearExpenseImportView() {
+  expenseReviewToken = "";
+  const view = $(".expense-import-review");
+  if (view) view.hidden = true;
+  syncExpenseImportActions();
+}
+
+async function chooseExpenseImport() {
+  const revision = ++expenseSelectionRevision;
+  const selected = await callQuiet("choose_expense_import_file");
+  if (revision !== expenseSelectionRevision) return null;
+  if (!selected?.ok) {
+    if (selected && selected.code !== "EXPENSE_FILE_DIALOG_CANCELLED") handleResult(selected);
+    return selected;
+  }
+  if (expenseReviewToken) await callQuiet("clear_expense_import", expenseReviewToken);
+  clearExpenseImportView();
+  const result = await call("review_expense_import", selected.file_path);
+  if (revision !== expenseSelectionRevision) {
+    if (result?.review_token) await callQuiet("clear_expense_import", result.review_token);
+    return null;
+  }
+  if (result?.ok) {
+    expenseReviewToken = result.review_token;
+    $(".expense-import-file").textContent = result.file_name;
+    $(".expense-import-summary").textContent =
+      `${result.supplier} · ${result.invoice_no} · ${result.row_count} dòng · ${result.total} ${result.currency}`;
+    $(".expense-import-review").hidden = false;
+    syncExpenseImportActions();
+  }
+  return result;
+}
+
+async function clearExpenseImport() {
+  expenseSelectionRevision += 1;
+  const token = expenseReviewToken;
+  clearExpenseImportView();
+  return token ? callQuiet("clear_expense_import", token) : null;
+}
+
+async function fillExpenseImport() {
+  if (!expenseReviewToken) return null;
+  const token = expenseReviewToken;
+  // Mỗi review chỉ chạy một lần; sau lỗi cần chọn lại file để kiểm tra lại.
+  clearExpenseImportView();
+  return call("fill_expense_import", token);
+}
+
 // Kết quả file Sample, huỷ hoá đơn nhà cung cấp, tải file.
 // Một phần của panel UI — các file trong thư mục này chia chung global
 // scope và chạy theo đúng thứ tự index.html khai báo.

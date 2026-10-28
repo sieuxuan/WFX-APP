@@ -648,7 +648,8 @@
               "0065_0880_0010_0020",
               "0065_0880_0030_0020"
             ],
-            "actions": ["list-new-list", "list-new-new", "advance-pr-list", "advance-pr-new", "advance-pr-search", "expense-invoice-list", "expense-invoice-new", "expense-invoice-search"]
+            "actions": ["list-new-list", "list-new-new", "advance-pr-list", "advance-pr-new", "advance-pr-search", "expense-invoice-list", "expense-invoice-new", "expense-invoice-search", "expense-invoice-template", "expense-invoice-import", "expense-invoice-fill", "expense-invoice-clear", "expense-invoice-template-continue", "expense-invoice-template-cancel"],
+            "errors": ["EXPENSE_FILE_INVALID", "EXPENSE_FILE_DIALOG_FAILED", "EXPENSE_REVIEW_EXPIRED", "EXPENSE_INPUT_FAILED"]
           }
         },
         {

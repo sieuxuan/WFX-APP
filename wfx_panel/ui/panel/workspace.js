@@ -26,6 +26,7 @@ function openModulePage(moduleId) {
   $("#module-page-title").textContent = module.name;
   $(".module-modal-subtitle").textContent =
     module.description || "Mở màn hình WFX.";
+  $(".module-modal-subtitle").hidden = module.kind === "expense_invoice";
   $$('[data-module-view]').forEach((view) => {
     view.hidden = view.dataset.moduleView !== module.kind;
   });

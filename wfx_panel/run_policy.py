@@ -97,6 +97,9 @@ AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
 
 NON_REPORTABLE_FAILURES = frozenset(
     {
+        "EXPENSE_FILE_INVALID",
+        "EXPENSE_FILE_DIALOG_CANCELLED",
+        "EXPENSE_REVIEW_EXPIRED",
         "BROWSER_NOT_FOUND",
         "CHROME_CLOSED",
         "MISSING_CREDENTIALS",
@@ -289,6 +292,7 @@ DIAGNOSTIC_FAILURES = frozenset(
 # List, thay vì thử dùng một grid cũ không còn tồn tại.
 CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
     {
+        "fill_expense_import",
         "open_module",
         "open_sale_asn_new",
         "scan_sale_asn_buyers",
@@ -335,6 +339,7 @@ CATALOG_CONTEXT_INVALIDATING_METHODS = frozenset(
 # thao tác thật trên WFX, còn lỗi nhập liệu hay lỗi đọc file thì không.
 SCREENSHOT_METHODS = frozenset(
     {
+        "fill_expense_import",
         "login",
         "check_session",
         "open_module",

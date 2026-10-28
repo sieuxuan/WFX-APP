@@ -67,6 +67,7 @@ ICON_PATH = prefs.RESOURCE_DIR / "wfx_panel" / "assets" / "wfx.ico"
 
 MODULE_NOTIFICATION_METHODS = frozenset(
     {
+        "fill_expense_import",
         "open_module",
         "prepare_catalog",
         "browse_catalog",
@@ -108,6 +109,7 @@ MODULE_NOTIFICATION_METHODS = frozenset(
 )
 
 NOTIFICATION_ACTION_LABELS = {
+    "fill_expense_import": "Nhập Expense Invoice",
     "open_module": "Mở module",
     "prepare_catalog": "Catalog",
     "browse_catalog": "Catalog",

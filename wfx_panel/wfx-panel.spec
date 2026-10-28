@@ -9,6 +9,7 @@ datas = [
     ("ui", "wfx_panel/ui"),
     ("manual", "wfx_panel/manual"),
     ("assets/wfx.ico", "wfx_panel/assets"),
+    ("assets/templates", "wfx_panel/assets/templates"),
     ("../Article List.csv", "."),
 ]
 sync_config = project / "wfx_panel" / "assets" / "sync-config.json"

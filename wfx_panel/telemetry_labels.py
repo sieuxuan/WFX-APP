@@ -11,6 +11,7 @@ moi ma reportable con thieu mapping.
 from __future__ import annotations
 
 METHOD_LABELS = {
+    "fill_expense_import": "Điền Expense Invoice từ Excel",
     "login": "Đăng nhập WFX",
     "check_session": "Kiểm tra phiên WFX",
     "open_chrome": "Mở trình duyệt làm việc",
@@ -74,6 +75,10 @@ METHOD_LABELS = {
 }
 
 ERROR_CODE_INFO = {
+    "EXPENSE_FILE_INVALID": ("File Expense Invoice chưa hợp lệ", "Kiểm tra dòng/cột trong thông báo hoặc tải lại mẫu Excel."),
+    "EXPENSE_FILE_DIALOG_FAILED": ("Không chọn/lưu được file Expense Invoice", "Đóng file Excel đang mở và kiểm tra quyền thư mục rồi thử lại."),
+    "EXPENSE_REVIEW_EXPIRED": ("File Expense Invoice đã hết hiệu lực", "Chọn lại file sau khi đổi tài khoản/Division hoặc quá 30 phút."),
+    "EXPENSE_INPUT_FAILED": ("Chưa hoàn tất điền Expense Invoice", "Kiểm tra form trên WFX trước khi chạy lại; app không tự Save/Confirm."),
     "DIVISION_CHANGE_NOT_CONFIRMED": (
         "WFX chưa xác nhận đổi Division",
         "Kiểm tra menu Division trên WFX rồi thử lại.",

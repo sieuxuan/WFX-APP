@@ -252,7 +252,7 @@ const MODULE_FOCUS_TARGETS = {
   sample: ".sample-no-query",
   advance_pr: ".advance-pr-buyer-query",
   supplier_invoice: ".supplier-invoice-supplier-query",
-  expense_invoice: ".expense-invoice-supplier-query",
+  expense_invoice: '[data-module-action="expense-invoice-template"]',
   sale_asn: ".sale-asn-buyer",
   rmpo: ".rmpo-supplier-query",
   indent: ".indent-supplier-query",
@@ -268,6 +268,7 @@ const moduleFilterKinds = {
   grn: "invoice",
 };
 const MODULE_RUN_METHODS = new Set([
+  "fill_expense_import",
   "open_chrome", "login", "retry_job", "open_module",
   "prepare_catalog", "scan_catalog_folders", "find_code", "find_buyer_reference",
   "open_catalog_destination", "browse_catalog", "catalog_action",
@@ -297,6 +298,9 @@ const MODULE_RUN_METHODS = new Set([
   "download_style_template",
 ]);
 const BUSY_MESSAGES = {
+  download_expense_template: "Đang lưu mẫu Expense Invoice…",
+  review_expense_import: "Đang kiểm tra file Expense Invoice…",
+  fill_expense_import: "Đang điền Expense Invoice trên WFX…",
   open_chrome: "Đang mở và đăng nhập WFX…",
   retry_job: "Đang chạy lại tác vụ…",
   open_module: "Đang mở module trên WFX…",

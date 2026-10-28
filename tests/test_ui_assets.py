@@ -1242,4 +1242,5 @@ def test_only_the_list_that_enables_a_filter_row_advertises_it():
         "<strong>Sample Order</strong>"
         "<small>Mở danh sách, bật ô lọc</small>"
     ) in html
-    assert html.count("Mở danh sách trên WFX") == 8
+    assert html.count("Mở danh sách trên WFX") == 7
+    assert 'data-module-action="expense-invoice-list">Mở Expense Inv List</button>' in html

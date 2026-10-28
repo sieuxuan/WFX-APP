@@ -24,6 +24,7 @@ from wfx_panel.app.helpers import (
     _safe_costing_file_stem,
 )
 from wfx_panel.stores import article_library
+from wfx_panel.workbooks.expense_invoice import save_template as save_expense_template
 from wfx_panel.workbooks.oc import write_oc_input_template
 from wfx_panel.workbooks.sale_asn import write_sale_asn_template
 from wfx_panel.workbooks.style import write_style_template
@@ -32,6 +33,48 @@ from wfx_panel.workbooks.style import write_style_template
 class FileDialogController:
     def __init__(self, app: PanelApp) -> None:
         self._app = app
+
+    def _save_expense_export(self, target: Path, result: dict) -> dict:
+        try:
+            save_expense_template(target, result.get("options"))
+        except (OSError, ValueError):
+            return {"ok": False, "code": "EXPENSE_FILE_DIALOG_FAILED", "message": "Không lưu được mẫu; hãy đóng file Excel và thử lại."}
+        self._handle_downloaded_excel(str(target))
+        message = f"Đã lưu mẫu {target.name}."
+        if result.get("code") != "EXPENSE_OPTIONS_READY":
+            message = f"{message} {result.get('message', '')}".strip()
+        return {"ok": True, "code": "EXPENSE_TEMPLATE_SAVED", "message": message, "file_path": str(target), "file_name": target.name, "options_source": result.get("code")}
+
+    def expense_file_dialog(self, save: bool = False) -> dict:
+        app = self._app
+        if app.window is None:
+            return {"ok": False, "code": "EXPENSE_FILE_DIALOG_FAILED", "message": "Cửa sổ chọn file chưa sẵn sàng."}
+        try:
+            options = {"allow_multiple": False, "file_types": ("Excel workbook (*.xlsx)",)}
+            if save:
+                options["save_filename"] = "Expense-Invoice.xlsx"
+            selected = app.window.create_file_dialog(
+                webview.SAVE_DIALOG if save else webview.OPEN_DIALOG, **options,
+            )
+            if not selected:
+                return {"ok": False, "code": "EXPENSE_FILE_DIALOG_CANCELLED", "message": "Đã hủy chọn file Expense Invoice."}
+            target = _dialog_selected_path(selected)
+            if save:
+                target = target.with_suffix(".xlsx")
+                result = app.api._finance.expense_template_options()
+                if not result.get("ok"):
+                    return result
+                return self._save_expense_export(target, result)
+            elif target.suffix.casefold() != ".xlsx":
+                return {"ok": False, "code": "EXPENSE_FILE_INVALID", "message": "Chỉ chọn mẫu Expense Invoice .xlsx của WFX Smart."}
+            return {
+                "ok": True, "code": "EXPENSE_TEMPLATE_SAVED" if save else "EXPENSE_FILE_SELECTED",
+                "message": f"Đã {'lưu mẫu' if save else 'chọn'} {target.name}.",
+                "file_path": str(target), "file_name": target.name,
+            }
+        except Exception as error:
+            app.api._log(f"[EXPENSE FILE] {type(error).__name__}: {error}")
+            return {"ok": False, "code": "EXPENSE_FILE_DIALOG_FAILED", "message": "Không mở/lưu được file; hãy kiểm tra quyền thư mục và đóng file Excel nếu đang mở."}
 
 
     def reveal_download(self, value: object) -> bool:

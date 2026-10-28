@@ -530,6 +530,15 @@ class PanelAPI:
     def search_advance_pr(self, buyer: str='', supplier: str='', invoice_no: str='', order_no: str='') -> dict:
         return self._finance.search_advance_pr(buyer, supplier, invoice_no, order_no)
 
+    def review_expense_import(self, file_path: str) -> dict:
+        return self._finance.review_expense_import(file_path)
+
+    def clear_expense_import(self, review_token: str) -> dict:
+        return self._finance.clear_expense_import(review_token)
+
+    def fill_expense_import(self, review_token: str) -> dict:
+        return self._finance.fill_expense_import(review_token)
+
     def search_expense_invoice(self, supplier: str='', invoice_no: str='', created_by: str='', status: str='') -> dict:
         return self._modules.search_expense_invoice(
             supplier,
