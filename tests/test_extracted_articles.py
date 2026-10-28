@@ -12,7 +12,7 @@ import json
 import time
 from pathlib import Path
 
-from tests.test_panel_api import make_api
+from tests.test_panel_api import enable_admin_mode, make_api
 from wfx_panel import constants
 from wfx_panel.automation.catalog.article_partition import articles_csv
 from wfx_panel.stores import (
@@ -250,7 +250,7 @@ def test_the_controller_installs_and_publishes_after_a_full_extract(
     tmp_path, monkeypatch
 ):
     api, fake = make_api(tmp_path)
-    api._admin_access = True
+    enable_admin_mode(api)
     csv_path = _extracted_csv(tmp_path)
     fake.extract_catalog_articles = lambda categories, output_dir, log, *, app_version: {
         "ok": True,
@@ -278,7 +278,7 @@ def test_the_controller_installs_and_publishes_after_a_full_extract(
 
 def test_a_failed_extract_is_returned_without_installing(tmp_path, monkeypatch):
     api, fake = make_api(tmp_path)
-    api._admin_access = True
+    enable_admin_mode(api)
     fake.extract_catalog_articles = lambda *_a, **_k: {
         "ok": False,
         "code": "CATALOG_ARTICLES_PARTIAL",

@@ -1,7 +1,8 @@
 """Quyền quản trị và Division đang làm việc.
 
-Thẻ `Dữ liệu Article & Style` dùng CHUNG điều kiện hiển thị với `Chế độ
-quản trị`: tài khoản không có quyền thì không thấy cả hai mục.
+Tài khoản có quyền quản trị chỉ thấy công tắc `Chế độ quản trị`. Thẻ
+`Dữ liệu Article & Style` và mọi tính năng quản trị khác chỉ hiện — và backend
+chỉ chạy — khi công tắc đó đang bật.
 
 State (`_admin_access`, `_current_division`…) cố tình ở lại ``PanelAPI``:
 mọi kết quả flow đều mang nó về UI qua ``_run_unlocked``, nên nó là state
@@ -104,6 +105,17 @@ class AccessController:
                 else "Đã ẩn nhóm module Admin."
             ),
             **self._admin_state(),
+        }
+
+    def admin_mode_error(self, **extra) -> dict | None:
+        """Chặn tính năng quản trị khi chưa bật Chế độ quản trị (UI đã ẩn)."""
+        if self._admin_state()["admin_mode"]:
+            return None
+        return {
+            "ok": False,
+            "code": "ADMIN_ACCESS_DENIED",
+            "message": "Hãy bật Chế độ quản trị trong Cài đặt trước.",
+            **extra,
         }
 
     def _admin_module_access_error(self, module_id: str) -> dict | None:

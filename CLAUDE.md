@@ -174,8 +174,11 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   tên process. Chỉ tải/thay file sau khi PID đã biến mất.
 - Settings hiển thị nút `Kiểm tra ngay` cạnh trạng thái cập nhật tự động để
   người dùng chủ động kiểm tra release mới, ngoài lịch nền mỗi 4 giờ.
-- Thẻ `Dữ liệu Article & Style` dùng cùng điều kiện hiển thị với `Chế độ quản
-  trị`: tài khoản không có quyền quản trị không thấy cả hai mục.
+- Tài khoản có quyền quản trị chỉ thấy công tắc `Chế độ quản trị`. Thẻ `Dữ liệu
+  Article & Style`, các hàng chẩn đoán/`Lấy Article từ WFX` và nhóm module
+  Admin chỉ hiện khi công tắc đang BẬT (`adminMode`, không phải `adminAccess`);
+  backend cũng từ chối lưu Admin key, publish, extract và probe bằng
+  `ADMIN_ACCESS_DENIED` qua `PanelAPI._admin_mode_error()` khi công tắc tắt.
 - Release phải phát hành song song `WFX-Smart-Setup-v<version>.exe` và ZIP
   portable. Installer dùng AppId cố định, cài per-user vào
   `%LocalAppData%\Programs\WFX Smart`, không yêu cầu Admin, mặc định tạo shortcut

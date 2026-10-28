@@ -217,6 +217,9 @@ class PanelAPI:
     def _refresh_admin_access(self) -> dict:
         return self._access._refresh_admin_access()
 
+    def _admin_mode_error(self, **extra) -> dict | None:
+        return self._access.admin_mode_error(**extra)
+
     def _with_admin_access(self, result: dict) -> dict:
         return self._access._with_admin_access(result)
 

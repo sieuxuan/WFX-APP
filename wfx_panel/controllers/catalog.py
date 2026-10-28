@@ -848,12 +848,9 @@ class CatalogController:
         """
         panel = self._panel
         category_name = str(category_name or "Apparel").strip() or "Apparel"
-        if panel._admin_access is not True:
-            return {
-                "ok": False,
-                "code": "ADMIN_ACCESS_DENIED",
-                "message": "Tài khoản WFX chưa có quyền quản trị.",
-            }
+        denied = panel._admin_mode_error()
+        if denied:
+            return denied
 
         def action() -> dict:
             self._forget_search_and_files()
@@ -915,12 +912,9 @@ class CatalogController:
 
     def _run_article_extract(self, categories: list[str] | None) -> dict:
         panel = self._panel
-        if panel._admin_access is not True:
-            return {
-                "ok": False,
-                "code": "ADMIN_ACCESS_DENIED",
-                "message": "Tài khoản WFX chưa có quyền quản trị.",
-            }
+        denied = panel._admin_mode_error()
+        if denied:
+            return denied
         wanted = [
             str(name).strip()
             for name in (categories or ())
