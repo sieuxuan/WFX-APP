@@ -508,7 +508,9 @@ def test_row_key_cua_grid_khong_bao_gio_ra_webview():
     ]
 
 
-def test_token_la_khong_the_doan_va_khong_dung_lai_sau_khi_mo():
+def test_token_van_dung_duoc_sau_khi_mo_de_quay_lai_chon_sample_khac():
+    """Grid Sample vẫn mở nên danh sách còn hiệu lực; mỗi lần bấm vẫn đối
+    chiếu lại dòng trên grid (open_sample_file_result) trước khi click."""
     login = _FakeLogin()
     controller = _controller(login)
     controller.files_view._publish_sample_file_choices(
@@ -526,10 +528,12 @@ def test_token_la_khong_the_doan_va_khong_dung_lai_sau_khi_mo():
     assert opened["article_code"] == "ABC123"
     assert login.open_calls == [("17", "ABC123")]
 
+    assert opened["choice_id"] == choice_id
+
     again = controller.files_view.open_sample_file_choice(choice_id)
 
-    assert again["code"] == "SAMPLE_RESULT_EXPIRED"
-    assert login.open_calls == [("17", "ABC123")]
+    assert again["code"] == "CATALOG_FILES_SCANNED"
+    assert login.open_calls == [("17", "ABC123"), ("17", "ABC123")]
 
 
 def test_token_la_khong_cham_automation():
@@ -677,3 +681,124 @@ def test_thong_bao_loi_goi_dung_ten_nut_tren_panel():
         assert "bấm Check File" not in path.read_text(encoding="utf-8")
     index_html = (root / "wfx_panel/ui/index.html").read_text(encoding="utf-8")
     assert "Xem file đính kèm" in index_html
+
+
+# --- gộp Sample cùng Style, grid ảo hóa, popup Article tái dùng ---------
+
+
+def test_nhieu_sample_cung_style_thi_mo_luon_khong_hoi_chon(clock):
+    """File nằm ở Style: mọi dòng cùng Style Code cho đúng một bộ file."""
+    frame = _grid(
+        clock,
+        rows=[
+            SampleRow("0", style_code="ABC123", sample_no="SMP-001"),
+            SampleRow("1", style_code="abc123", sample_no="SMP-002"),
+        ],
+    )
+
+    result = modules._sample_file_result(frame, _logs()[1])
+
+    assert result["code"] == "SAMPLE_STYLE_OPENED"
+    assert result["article_code"] == "ABC123"
+    assert result["sample_count"] == 2
+    assert "2 Sample cùng Style Code ABC123" in result["message"]
+    assert frame.clicked == [("0", "ABC123")]
+
+
+def test_cung_style_nhung_con_dong_ao_hoa_thi_van_hoi_chon(clock):
+    """Dòng chưa render có thể là Style khác: không được gộp."""
+    frame = _grid(
+        clock,
+        rows=[
+            SampleRow("0", style_code="ABC123"),
+            SampleRow("1", style_code="ABC123"),
+        ],
+        grid_total=57,
+    )
+
+    result = modules._sample_file_result(frame, _logs()[1])
+
+    assert result["code"] == "SAMPLE_MULTIPLE_RESULTS"
+    assert result["total_rows"] == 57
+    assert result["message"].startswith("Có 57 kết quả")
+    assert "chỉ hiện 2 dòng đầu" in result["message"]
+    assert frame.clicked == []
+
+
+def test_cung_style_nhung_co_dong_thieu_style_code_thi_van_hoi_chon(clock):
+    frame = _grid(
+        clock,
+        rows=[
+            SampleRow("0", style_code="ABC123"),
+            SampleRow("1", style_code="ABC123"),
+            SampleRow("2", sample_no="SMP-003"),
+        ],
+    )
+
+    result = modules._sample_file_result(frame, _logs()[1])
+
+    assert result["code"] == "SAMPLE_MULTIPLE_RESULTS"
+    assert frame.clicked == []
+
+
+def test_bao_popup_article_da_mo_truoc_khi_click_style(clock, monkeypatch):
+    """Popup `ArticleDetail` có sẵn bị WFX tái dùng; bước quét file phải biết."""
+    frame = _grid(clock, rows=[SampleRow("4", style_code="ABC123")])
+    world = _world(clock, frame)
+    world.add_page(
+        FakePage(clock, frames=[SampleGridFrame(clock, name="ArticleTop")])
+    )
+    wire_automation(monkeypatch, modules, world)
+
+    found = modules.find_sample_file_results_with_filters(
+        SAMPLE_XPATH, {"sample_no": "SMP-001"}, _logs()[1]
+    )
+    reopened = modules.open_sample_file_result("4", "ABC123", _logs()[1])
+
+    assert found["article_popup_reused"] is True
+    assert reopened["article_popup_reused"] is True
+
+
+def test_chua_co_popup_article_thi_khong_bao_tai_dung(clock, monkeypatch):
+    frame = _grid(clock, rows=[SampleRow("4", style_code="ABC123")])
+    world = _world(clock, frame)
+    wire_automation(monkeypatch, modules, world)
+
+    found = modules.find_sample_file_results_with_filters(
+        SAMPLE_XPATH, {"sample_no": "SMP-001"}, _logs()[1]
+    )
+
+    assert found["article_popup_reused"] is False
+
+
+def test_controller_chuyen_co_popup_tai_dung_sang_buoc_quet_file():
+    class _Login(_FakeLogin):
+        def __init__(self) -> None:
+            super().__init__(
+                opened={
+                    "ok": True,
+                    "code": "SAMPLE_STYLE_OPENED",
+                    "article_code": "ABC123",
+                    "article_popup_reused": True,
+                }
+            )
+            self.scans: list[tuple[str, dict]] = []
+
+        def scan_catalog_files(self, article_code, log=print, **kwargs):
+            self.scans.append((article_code, kwargs))
+            return super().scan_catalog_files(article_code, log)
+
+    login = _Login()
+    controller = _controller(login)
+    controller.files_view._publish_sample_file_choices(
+        {
+            "code": "SAMPLE_MULTIPLE_RESULTS",
+            "samples": [{"row_key": "17", "style_code": "ABC123"}],
+        }
+    )
+
+    controller.files_view.open_sample_file_choice(
+        next(iter(controller.files_view.sample_choices))
+    )
+
+    assert login.scans == [("ABC123", {"popup_reused": True})]

@@ -170,6 +170,7 @@ function bind() {
     const file = event.target.closest("[data-file-id]");
     if (file) downloadCatalogFile(file);
   });
+  $(".sample-file-results-back")?.addEventListener("click", showSampleChoiceList);
   $(".supplier-invoice-cancel-results-list").addEventListener("click", (event) => {
     const choice = event.target.closest("[data-supplier-invoice-cancel-choice]");
     if (choice) cancelSupplierInvoiceChoice(choice);

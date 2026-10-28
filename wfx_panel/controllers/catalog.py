@@ -488,7 +488,10 @@ class CatalogController:
     ) -> dict:
         article_code = str(search_result["article_code"])
         opened = (
-            self._scan_open_article_files(article_code)
+            self.files_view._scan_open_article_files(
+                article_code,
+                popup_reused=bool(search_result.get("article_popup_reused")),
+            )
             if request.destination == "files"
             else self._panel._login.open_catalog_destination(
                 article_code,

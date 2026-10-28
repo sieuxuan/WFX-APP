@@ -583,6 +583,59 @@ def test_scan_catalog_files_recycles_cdp_exactly_once_before_giving_up(
     assert refreshed == [1]
 
 
+def test_scan_catalog_files_recycles_first_when_the_popup_was_reused(
+    clock, monkeypatch
+):
+    """WFX tái dùng cửa sổ `ArticleDetail`: probe CDP cũ chắc chắn trượt."""
+    world = WfxWorld(clock)
+    wire_automation(monkeypatch, catalog_files, world, clock=clock)
+    page, top, _content = _popup(clock)
+    probes: list[float] = []
+
+    def article_page(_context, _code, timeout_seconds=0):
+        probes.append(timeout_seconds)
+        return page, top
+
+    monkeypatch.setattr(catalog_files, "_article_page_for_code", article_page)
+    monkeypatch.setattr(
+        catalog_files, "_ensure_article_techpack", lambda *a, **kw: top
+    )
+    sections = [{"index": 5, "name": "Mục 5", "available": True, "file_count": 0}]
+    monkeypatch.setattr(
+        catalog_files, "_scan_article_file_tabs", lambda *a, **kw: ([], sections)
+    )
+    refreshed: list[int] = []
+
+    def refresh(playwright, browser, current_page, _log):
+        refreshed.append(1)
+        return playwright, browser, current_page
+
+    monkeypatch.setattr(catalog_files, "_refresh_article_context", refresh)
+
+    result = catalog_files.scan_catalog_files(
+        "ABC123", _quiet(), popup_reused=True
+    )
+
+    assert result["ok"] is True
+    assert probes == [20]
+    assert refreshed == [1]
+
+
+def test_scan_catalog_files_names_the_sections_it_could_not_read(
+    clock, monkeypatch
+):
+    sections = [
+        {"index": 5, "name": "Style Files", "available": True, "file_count": 0},
+        {"index": 6, "name": "Sketch", "available": False, "file_count": 0},
+    ]
+    _world, _page = _wire_reader(monkeypatch, clock, lambda *a, **kw: ([], sections))
+
+    result = catalog_files.scan_catalog_files("ABC123", _quiet())
+
+    assert result["ok"] is True
+    assert "Chưa đọc được: Sketch." in result["message"]
+
+
 def test_scan_catalog_files_maps_a_lost_popup_to_a_retryable_code(
     clock, monkeypatch
 ):
