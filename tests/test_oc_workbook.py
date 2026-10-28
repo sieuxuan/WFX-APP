@@ -610,6 +610,6 @@ def test_revise_requires_delivery_date_to_equal_oc_delivery_date(tmp_path):
 
     assert caught.value.code == "OC_FILE_VALIDATION_FAILED"
     assert any(
-        "Buyer Delivery Date phải bằng OC Delivery Date" in error
+        "Buyer Delivery Date (" in error and "phải bằng OC Delivery Date (" in error
         for error in caught.value.errors
     )

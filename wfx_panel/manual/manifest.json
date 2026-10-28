@@ -408,12 +408,13 @@
           "file": "05-don-hang/oc-confirm-fast.md",
           "keywords": ["confirm oc", "new", "revision", "wfx sales order"],
           "covers": {
-            "actions": ["oc-confirm-new", "oc-confirm-revision"],
+            "actions": ["oc-confirm-new", "oc-confirm-revision", "oc-next-confirm"],
             "errors": [
               "OC_FAST_CONFIRM_FAILED",
               "OC_FAST_CONFIRM_NOT_READY",
               "OC_FAST_CONFIRM_MULTIPLE_SALES_ORDERS",
               "OC_FAST_CONFIRM_PROCESS_TIMEOUT",
+              "OC_FAST_CONFIRM_REFUSED",
               "OC_FAST_CONFIRM_UNCONFIRMED"
             ]
           }
@@ -430,6 +431,7 @@
               "OC_REJECT_ALL_FAILED",
               "OC_REJECT_ALL_NOT_READY",
               "OC_REJECT_ALL_PROCESS_TIMEOUT",
+              "OC_REJECT_ALL_REFUSED",
               "OC_REJECT_ALL_UNCONFIRMED"
             ]
           }

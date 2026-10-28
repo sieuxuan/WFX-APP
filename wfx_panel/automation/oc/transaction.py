@@ -20,27 +20,68 @@ from wfx_panel.automation._common import (
     time,
 )
 from wfx_panel.automation.oc.dom import _toolbar_link
+from wfx_panel.automation.oc.package import (
+    PackageTarget,
+    _own_package_rows,
+    _status_rows,
+)
 from wfx_panel.automation.runtime import cancellation_deferred, checkpoint
 
 
-def _click_pending_transaction(page: Page) -> None:
+def _is_pending_link(link: Any) -> bool:
+    if not link.is_visible() or not link.is_enabled():
+        return False
+    return " ".join((link.inner_text() or "").casefold().split()) == "pending"
+
+
+def _click_own_pending(page: Page, target: PackageTarget) -> bool:
+    """Click Pending trên đúng dòng package của lượt này, nếu đã thấy."""
+    frame, rows = _status_rows(page)
+    own = _own_package_rows(rows, target)
+    if frame is None or not own or own[0].get("index") is None:
+        return False
+    links = frame.locator(f'[data-wfx-oc-package-row="{own[0]["index"]}"] a')
+    for index in range(links.count()):
+        link = links.nth(index)
+        if _is_pending_link(link):
+            _click(link)
+            return True
+    return False
+
+
+def _click_pending_transaction(
+    page: Page,
+    target: PackageTarget | None = None,
+) -> None:
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         checkpoint()
+        if target is not None:
+            # Link Pending đầu tiên trên trang có thể thuộc package của lượt
+            # trước; Create Transaction trên nó là tạo nhầm chứng từ.
+            try:
+                if _click_own_pending(page, target):
+                    return
+            except PlaywrightError:
+                pass
+            _wait(page, 250)
+            continue
         for frame in page.frames:
             try:
                 links = frame.locator("a")
                 for index in range(links.count()):
                     link = links.nth(index)
-                    if not link.is_visible() or not link.is_enabled():
-                        continue
-                    if " ".join((link.inner_text() or "").casefold().split()) == "pending":
+                    if _is_pending_link(link):
                         _click(link)
                         return
             except PlaywrightError:
                 continue
         _wait(page, 250)
-    raise PlaywrightTimeoutError("Không tìm thấy Pending ở Transaction Detail.")
+    raise PlaywrightTimeoutError(
+        "Không tìm thấy Pending ở Transaction Detail của package vừa upload."
+        if target is not None
+        else "Không tìm thấy Pending ở Transaction Detail."
+    )
 
 
 def _transaction_checkboxes(frame: Frame) -> list[Any]:
@@ -137,28 +178,46 @@ class _CreateTransactionDialogs:
         return any(_TRANSACTION_SUCCESS_RE.search(m) for m in self.messages)
 
 
-def _success_banner_text(page: Page) -> str:
-    """Nội dung banner thành công đang hiển thị, rỗng nếu chưa có."""
+def _success_banner_texts(page: Page) -> set[str]:
+    """Mọi banner thành công đang HIỂN THỊ (banner ẩn không phải bằng chứng)."""
+    texts: set[str] = set()
     for frame in page.frames:
         try:
             banners = frame.locator(SUCCESS_BANNER_SELECTOR)
             for index in range(banners.count()):
-                text = " ".join((banners.nth(index).text_content() or "").split())
+                banner = banners.nth(index)
+                if not banner.is_visible():
+                    continue
+                text = " ".join((banner.text_content() or "").split())
                 if text and _TRANSACTION_SUCCESS_RE.search(text):
-                    return text
+                    texts.add(text)
         except PlaywrightError:
             continue
-    return ""
+    return texts
+
+
+def _success_banner_text(page: Page) -> str:
+    """Một banner thành công đang hiển thị, rỗng nếu chưa có."""
+    return next(iter(sorted(_success_banner_texts(page))), "")
 
 
 def _wait_transaction_confirmed(
-    page: Page, dialogs: _CreateTransactionDialogs, timeout_s: float = 35
+    page: Page,
+    dialogs: _CreateTransactionDialogs,
+    timeout_s: float = 35,
+    before: frozenset[str] = frozenset(),
 ) -> tuple[bool, list[str]]:
     """Chờ WFX xác nhận, trả (đã thành công, các message đọc được).
 
     Không cho Stop ngắt đoạn này: Create Transaction không idempotent nên mất
     xác nhận phải được caller coi là unconfirmed chứ không phải thất bại.
+
+    ``before`` là các banner thành công đã hiện TRƯỚC cú click (ví dụ câu
+    "uploaded successfully" của Process Package): chúng không phải xác nhận
+    của Create Transaction. Một banner cũ chỉ được tính lại sau khi nó đã biến
+    mất rồi hiện lại.
     """
+    stale = set(before)
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         checkpoint()
@@ -166,9 +225,11 @@ def _wait_transaction_confirmed(
             return False, dialogs.messages
         if dialogs.reports_success:
             return True, dialogs.messages
-        banner = _success_banner_text(page)
-        if banner:
-            return True, dialogs.messages + [banner]
+        current = _success_banner_texts(page)
+        fresh = sorted(current - stale)
+        if fresh:
+            return True, dialogs.messages + [fresh[0]]
+        stale &= current
         _wait(page, 300)
     return False, dialogs.messages
 
@@ -180,12 +241,15 @@ def _create_transaction(page: Page, log: Callable[[str], None]) -> tuple[bool, l
         _select_first_transaction(page, force=attempt > 0)
         _frame, create_link = _toolbar_link(page, "Create Transaction", timeout_s=10)
         dialogs = _CreateTransactionDialogs()
+        before = frozenset(_success_banner_texts(page))
         page.on("dialog", dialogs.accept)
         try:
             with cancellation_deferred():
                 _click(create_link)
                 _write_log(log, "[OC EDI] Đã gửi Create Transaction")
-                confirmed, messages = _wait_transaction_confirmed(page, dialogs)
+                confirmed, messages = _wait_transaction_confirmed(
+                    page, dialogs, 35, before
+                )
             if confirmed:
                 return True, messages
             if not dialogs.saw_no_record or attempt > 0:

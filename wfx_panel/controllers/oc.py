@@ -15,6 +15,7 @@ import os
 import secrets
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,13 @@ if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
 from wfx_panel.workbooks.oc import OCWorkbookError, prepare_oc_workbook
+
+# Review chỉ sống đủ lâu cho một lượt kiểm tra/tải/xác nhận. Quá hạn thì số
+# liệu trên WFX (Buyer, PO đã có) có thể đã đổi, nên phải chọn lại file.
+OC_REVIEW_TTL_SECONDS = 30 * 60
+# Thư mục tạm do lần chạy bị kill (update, tắt máy) bỏ lại; một ngày là đủ xa
+# để không bao giờ đụng review của chính phiên này.
+OC_STALE_CACHE_SECONDS = 24 * 60 * 60
 
 
 def _snapshot_oc_source(source: Path, target: Path) -> str:
@@ -61,12 +69,70 @@ def _snapshot_oc_source(source: Path, target: Path) -> str:
     )
 
 
+def _expired_review_result() -> dict:
+    return {
+        "ok": False,
+        "code": "OC_UPLOAD_REVIEW_EXPIRED",
+        "message": (
+            "Review Upload OC đã hết hiệu lực (quá 30 phút hoặc đã đổi tài "
+            "khoản/Division); hãy chọn lại file."
+        ),
+    }
+
+
 class OCController:
     def __init__(self, panel: PanelAPI) -> None:
         self._panel = panel
         # Workbook đã chuẩn hoá chỉ sống từ bước Review đến Confirm/Cancel.
         # Token ngẫu nhiên ngăn UI cũ hoặc click lặp upload nhầm review khác.
         self.reviews: dict[str, dict] = {}
+
+    def _review_context(self) -> tuple[str, str]:
+        """Review chỉ hợp lệ cho đúng tài khoản + Division đã kiểm tra nó:
+        Buyer trong file phải khớp exact trên WFX của chính phiên đó."""
+        account = self._panel._account()
+        return (
+            str(account.get("user_id") or "").casefold(),
+            str(self._panel._current_division or ""),
+        )
+
+    def _live_review(self, review_token: str) -> dict | None:
+        review = self.reviews.get(review_token)
+        if review is None:
+            return None
+        expired = (
+            time.monotonic() - float(review.get("created", 0.0))
+            > OC_REVIEW_TTL_SECONDS
+        )
+        if expired or review.get("context") != self._review_context():
+            self._discard_oc_upload_review(review_token)
+            return None
+        return review
+
+    def _oc_cache_root(self) -> Path:
+        cache_root = self._panel._base_dir / "oc-upload-cache"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        live = {
+            Path(review["temporary"].name).name
+            for review in self.reviews.values()
+            if review.get("temporary") is not None
+        }
+        cutoff = time.time() - OC_STALE_CACHE_SECONDS
+        try:
+            leftovers = list(cache_root.iterdir())
+        except OSError:
+            return cache_root
+        for leftover in leftovers:
+            try:
+                stale = leftover.stat().st_mtime < cutoff
+            except OSError:
+                continue
+            if stale and leftover.name not in live:
+                if leftover.is_dir():
+                    shutil.rmtree(leftover, ignore_errors=True)
+                else:
+                    leftover.unlink(missing_ok=True)
+        return cache_root
 
     @staticmethod
     def _oc_review_payload(prepared) -> dict:
@@ -109,8 +175,7 @@ class OCController:
             # tình confirm sau khi user đã chọn workbook khác.
             for old_token in tuple(self.reviews):
                 self._discard_oc_upload_review(old_token)
-            cache_root = panel._base_dir / "oc-upload-cache"
-            cache_root.mkdir(parents=True, exist_ok=True)
+            cache_root = self._oc_cache_root()
             temporary = tempfile.TemporaryDirectory(
                 prefix="review-",
                 dir=cache_root,
@@ -143,6 +208,8 @@ class OCController:
                 "prepared": prepared,
                 "source_file": source.name,
                 "source_sha256": source_sha256,
+                "created": time.monotonic(),
+                "context": self._review_context(),
             }
             panel._log(
                 "[OC] Review sẵn sàng: "
@@ -221,13 +288,9 @@ class OCController:
                 raise
 
         def action() -> dict:
-            review = self.reviews.get(token)
+            review = self._live_review(token)
             if review is None:
-                return {
-                    "ok": False,
-                    "code": "OC_UPLOAD_REVIEW_EXPIRED",
-                    "message": "Review Upload OC không còn hiệu lực; hãy chọn lại file.",
-                }
+                return _expired_review_result()
             source = Path(review["prepared"].upload_path)
             if not source.is_file():
                 return {
@@ -283,13 +346,9 @@ class OCController:
         token = str(review_token or "").strip()
 
         def action() -> dict:
-            review = self.reviews.get(token)
+            review = self._live_review(token)
             if review is None:
-                return {
-                    "ok": False,
-                    "code": "OC_UPLOAD_REVIEW_EXPIRED",
-                    "message": "Review Upload OC không còn hiệu lực; hãy chọn lại file.",
-                }
+                return _expired_review_result()
             prepared = review["prepared"]
             try:
                 result = panel._login.upload_oc_edi(
@@ -340,8 +399,7 @@ class OCController:
         source = Path(str(file_path or "")).expanduser().resolve()
 
         def action() -> dict:
-            cache_root = panel._base_dir / "oc-upload-cache"
-            cache_root.mkdir(parents=True, exist_ok=True)
+            cache_root = self._oc_cache_root()
             try:
                 with tempfile.TemporaryDirectory(
                     prefix="run-",

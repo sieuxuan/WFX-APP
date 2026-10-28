@@ -30,15 +30,55 @@ from wfx_panel.automation.oc.constants import (
 )
 from wfx_panel.automation.oc.dom import (
     _attached_in_frames,
+    _DialogCollector,
     _toolbar_link,
     _visible_in_frames,
 )
 from wfx_panel.automation.runtime import cancellation_deferred, checkpoint
 
 
-def _read_confirm_styles(frame: Frame) -> list[dict[str, Any]]:
+def _read_confirm_styles(frame: Frame) -> list[dict[str, Any]] | None:
+    """Các nhóm Style/PO đang chờ; ``None`` khi bảng chưa render."""
     rows = frame.evaluate(_CONFIRM_GROUPS_JS)
+    if rows is None:
+        return None
     return [dict(row) for row in rows if isinstance(row, dict) and row.get("key")]
+
+
+PENDING_GRID_TIMEOUT_SECONDS = 30
+
+
+def _read_pending(
+    page: Page,
+    frame: Frame,
+    *,
+    timeout_s: float = PENDING_GRID_TIMEOUT_SECONDS,
+) -> tuple[Frame, list[dict[str, Any]]]:
+    """Đọc lại danh sách chờ, chịu được frame bị thay sau postback.
+
+    Sau mỗi Confirm/Reject WFX vẽ lại bảng: frame cũ có thể đã detach hoặc
+    bảng chưa kịp render. Không đọc được thì resolve lại frame và chờ; tuyệt
+    đối không coi "không có bảng" là "hết việc".
+    """
+    deadline = time.monotonic() + timeout_s
+    current = frame
+    while True:
+        checkpoint()
+        try:
+            styles = _read_confirm_styles(current)
+        except PlaywrightError:
+            styles = None
+        if styles is not None:
+            return current, styles
+        if time.monotonic() >= deadline:
+            raise PlaywrightTimeoutError(
+                "Bảng EDI Buyer PO không hiện lại sau khi WFX xử lý."
+            )
+        try:
+            current = _confirm_frame(page, timeout_s=2)
+        except PlaywrightTimeoutError:
+            pass
+        _wait(page, 300)
 
 
 def _focus_confirm_grid(page: Page, frame: Frame) -> None:
@@ -102,7 +142,11 @@ def _click_reject_toolbar(page: Page) -> None:
         _frame, reject = _toolbar_link(page, "Reject", timeout_s=12)
 
     def accept_reject_dialog(dialog: Any) -> None:
-        dialog.accept()
+        try:
+            dialog.accept()
+        except Exception:
+            # Collector của cả lượt Reject có thể đã đóng hộp thoại này.
+            pass
 
     page.on("dialog", accept_reject_dialog)
     try:
@@ -153,14 +197,21 @@ def _wait_style_processed(
     style_key: str,
     *,
     timeout_s: float,
+    abort: Callable[[], Any] | None = None,
 ) -> bool:
     deadline = time.monotonic() + timeout_s
     absent_since: float | None = None
     current_frame = frame
     while time.monotonic() < deadline:
         checkpoint()
+        # WFX đã trả lời bằng một alert từ chối: chờ thêm cũng không đổi gì.
+        if abort is not None and abort():
+            return False
         try:
             styles = _read_confirm_styles(current_frame)
+            if styles is None:
+                # Bảng đang được vẽ lại, chưa thể nói Style đã rời tab.
+                raise PlaywrightError("Bảng EDI Buyer PO đang được vẽ lại.")
             loading = current_frame.locator(
                 ".loading, .clsLoading, [class*='loading' i], "
                 "[id*='progress' i]"
@@ -300,11 +351,38 @@ def _confirm_all_pending(
     mode: str,
     log: Callable[[str], None],
 ) -> dict[str, Any]:
-    confirmed_styles = 0
-    selected_sales_orders = 0
+    progress = {"confirmed_styles": 0, "selected_sales_orders": 0}
+    try:
+        return _confirm_pending_loop(page, frame, mode, log, progress)
+    except Exception as error:
+        if not progress["confirmed_styles"]:
+            raise
+        # Đã Confirm xong vài Style rồi mới hỏng: kết quả phải giữ đúng số đó,
+        # nếu không user tưởng chưa có gì được Confirm và bấm chạy lại từ đầu.
+        not_ready = isinstance(error, PlaywrightTimeoutError)
+        return _result(
+            False,
+            "OC_FAST_CONFIRM_NOT_READY" if not_ready else "OC_FAST_CONFIRM_FAILED",
+            f"Đã Confirm {progress['confirmed_styles']} Style rồi dừng: "
+            f"{_first_line(error)} Kiểm tra tab trên WFX trước khi chạy lại.",
+            mode=mode,
+            **progress,
+            confirmation_submitted=True,
+            errors=[f"{type(error).__name__}: {_first_line(error)}"],
+        )
+
+
+def _confirm_pending_loop(
+    page: Page,
+    frame: Frame,
+    mode: str,
+    log: Callable[[str], None],
+    progress: dict[str, int],
+) -> dict[str, Any]:
     while True:
         checkpoint()
-        styles = _read_confirm_styles(frame)
+        frame, styles = _read_pending(page, frame)
+        confirmed_styles = progress["confirmed_styles"]
         if not styles:
             return _result(
                 True,
@@ -315,8 +393,7 @@ def _confirm_all_pending(
                     else "Không còn Style chờ Confirm."
                 ),
                 mode=mode,
-                confirmed_styles=confirmed_styles,
-                selected_sales_orders=selected_sales_orders,
+                **progress,
                 confirmation_submitted=confirmed_styles > 0,
             )
         style = styles[0]
@@ -339,8 +416,7 @@ def _confirm_all_pending(
                         f"Style {style_label} có nhiều WFX Sales Order. "
                         "Hãy chọn thủ công rồi chạy lại Confirm nhanh.",
                         mode=mode,
-                        confirmed_styles=confirmed_styles,
-                        selected_sales_orders=selected_sales_orders,
+                        **progress,
                         stopped_style=style_label,
                         stopped_row=prepared.get("row_number"),
                         sales_order_options=options,
@@ -349,9 +425,12 @@ def _confirm_all_pending(
                 raise PlaywrightTimeoutError(
                     "Style đã thay đổi khi chuẩn bị WFX Sales Order."
                 )
-            selected_sales_orders += int(prepared.get("selected_count") or 0)
+            progress["selected_sales_orders"] += int(
+                prepared.get("selected_count") or 0
+            )
 
         confirmation_submitted = False
+        dialogs = _DialogCollector().attach(page)
         try:
             with cancellation_deferred():
                 processed = False
@@ -373,9 +452,25 @@ def _confirm_all_pending(
                             if attempt == 0
                             else CONFIRM_PROCESS_TIMEOUT_SECONDS
                         ),
+                        abort=dialogs.refusal,
                     )
                     if processed:
                         break
+                    refusal = dialogs.refusal()
+                    if refusal:
+                        # WFX đã trả lời "không": bấm lượt hai cũng nhận đúng
+                        # câu đó, nên dừng và đưa nguyên văn cho user.
+                        _write_log(log, f"[OC CONFIRM] WFX báo: {refusal}")
+                        return _result(
+                            False,
+                            "OC_FAST_CONFIRM_REFUSED",
+                            f"WFX không Confirm Style {style_label}: {refusal}",
+                            mode=mode,
+                            **progress,
+                            stopped_style=style_label,
+                            confirmation_submitted=True,
+                            errors=list(dialogs.alerts),
+                        )
                 if not processed:
                     return _result(
                         False,
@@ -383,8 +478,7 @@ def _confirm_all_pending(
                         f"Style {style_label} chưa process xong sau khi Confirm. "
                         "App đã dừng trước Style tiếp theo.",
                         mode=mode,
-                        confirmed_styles=confirmed_styles,
-                        selected_sales_orders=selected_sales_orders,
+                        **progress,
                         stopped_style=style_label,
                         confirmation_submitted=True,
                     )
@@ -396,14 +490,15 @@ def _confirm_all_pending(
                     f"Đã bấm Confirm cho Style {style_label} nhưng không đọc được "
                     "kết quả. App không tự chạy lại để tránh Confirm nhầm Style.",
                     mode=mode,
-                    confirmed_styles=confirmed_styles,
-                    selected_sales_orders=selected_sales_orders,
+                    **progress,
                     stopped_style=style_label,
                     confirmation_submitted=True,
                     errors=[f"{type(error).__name__}: {_first_line(error)}"],
                 )
             raise
-        confirmed_styles += 1
+        finally:
+            dialogs.detach()
+        progress["confirmed_styles"] += 1
         _write_log(log, f"[OC CONFIRM] Style {style_label} đã process xong")
 
 
@@ -413,10 +508,36 @@ def _reject_all_pending(
     mode: str,
     log: Callable[[str], None],
 ) -> dict[str, Any]:
-    rejected_rows = 0
+    progress = {"rejected_rows": 0}
+    try:
+        return _reject_pending_loop(page, frame, mode, log, progress)
+    except Exception as error:
+        if not progress["rejected_rows"]:
+            raise
+        not_ready = isinstance(error, PlaywrightTimeoutError)
+        return _result(
+            False,
+            "OC_REJECT_ALL_NOT_READY" if not_ready else "OC_REJECT_ALL_FAILED",
+            f"Đã Reject {progress['rejected_rows']} PO rồi dừng: "
+            f"{_first_line(error)} Kiểm tra tab trên WFX trước khi chạy lại.",
+            mode=mode,
+            **progress,
+            rejection_submitted=True,
+            errors=[f"{type(error).__name__}: {_first_line(error)}"],
+        )
+
+
+def _reject_pending_loop(
+    page: Page,
+    frame: Frame,
+    mode: str,
+    log: Callable[[str], None],
+    progress: dict[str, int],
+) -> dict[str, Any]:
     while True:
         checkpoint()
-        pending = _read_confirm_styles(frame)
+        frame, pending = _read_pending(page, frame)
+        rejected_rows = progress["rejected_rows"]
         if not pending:
             return _result(
                 True,
@@ -427,7 +548,7 @@ def _reject_all_pending(
                     else "Không còn PO chờ Reject trong tab đang mở."
                 ),
                 mode=mode,
-                rejected_rows=rejected_rows,
+                **progress,
                 rejection_submitted=rejected_rows > 0,
             )
         row = pending[0]
@@ -438,6 +559,7 @@ def _reject_all_pending(
             f"[OC REJECT] Đang Reject {row_label} ({rejected_rows + 1})",
         )
         rejection_submitted = False
+        dialogs = _DialogCollector().attach(page)
         try:
             with cancellation_deferred():
                 _focus_confirm_grid(page, frame)
@@ -450,7 +572,21 @@ def _reject_all_pending(
                     frame,
                     row_key,
                     timeout_s=CONFIRM_PROCESS_TIMEOUT_SECONDS,
+                    abort=dialogs.refusal,
                 )
+                refusal = "" if processed else dialogs.refusal()
+                if refusal:
+                    _write_log(log, f"[OC REJECT] WFX báo: {refusal}")
+                    return _result(
+                        False,
+                        "OC_REJECT_ALL_REFUSED",
+                        f"WFX không Reject {row_label}: {refusal}",
+                        mode=mode,
+                        **progress,
+                        stopped_row=row_label,
+                        rejection_submitted=True,
+                        errors=list(dialogs.alerts),
+                    )
                 if not processed:
                     return _result(
                         False,
@@ -458,7 +594,7 @@ def _reject_all_pending(
                         f"PO {row_label} chưa rời khỏi tab sau khi Reject. "
                         "App đã dừng trước PO tiếp theo.",
                         mode=mode,
-                        rejected_rows=rejected_rows,
+                        **progress,
                         stopped_row=row_label,
                         rejection_submitted=True,
                     )
@@ -470,11 +606,13 @@ def _reject_all_pending(
                     f"Đã bấm Reject cho {row_label} nhưng chưa đọc được kết quả. "
                     "App không tự chạy lại để tránh Reject nhầm PO.",
                     mode=mode,
-                    rejected_rows=rejected_rows,
+                    **progress,
                     stopped_row=row_label,
                     rejection_submitted=True,
                     errors=[f"{type(error).__name__}: {_first_line(error)}"],
                 )
             raise
-        rejected_rows += 1
+        finally:
+            dialogs.detach()
+        progress["rejected_rows"] += 1
         _write_log(log, f"[OC REJECT] {row_label} đã được xử lý xong")

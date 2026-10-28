@@ -12,6 +12,7 @@ from typing import Any
 from zipfile import BadZipFile, ZipFile
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 from openpyxl.utils.datetime import from_excel
 from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -29,7 +30,10 @@ from wfx_panel.workbooks.oc.schema import (
 
 
 def _normalise_text(value: Any) -> str:
-    return " ".join(str(value or "").strip().split())
+    # Số 0 là giá trị thật (Size 0 của hàng trẻ em), không phải ô trống.
+    if value is None:
+        return ""
+    return " ".join(str(value).strip().split())
 
 
 def _normalise_header(value: Any) -> str:
@@ -179,6 +183,27 @@ def _date_value(value: Any, label: str, row_number: int) -> date:
     )
 
 
+EXCEL_ERROR_VALUES = frozenset(
+    {
+        "#REF!",
+        "#VALUE!",
+        "#N/A",
+        "#NAME?",
+        "#DIV/0!",
+        "#NUM!",
+        "#NULL!",
+        "#SPILL!",
+        "#CALC!",
+        "#FIELD!",
+        "#BLOCKED!",
+        "#BUSY!",
+        "#CONNECT!",
+        "#UNKNOWN!",
+        "#GETTING_DATA",
+    }
+)
+
+
 def _safe_text(value: Any, label: str, row_number: int) -> str:
     text = _normalise_text(value)
     if text.startswith(("=", "+", "@")):
@@ -187,15 +212,7 @@ def _safe_text(value: Any, label: str, row_number: int) -> str:
             "Workbook Upload OC có dữ liệu chưa hợp lệ.",
             (f"Dòng {row_number}: {label} không được bắt đầu bằng công thức.",),
         )
-    if text.startswith("#") and text.upper() in {
-        "#REF!",
-        "#VALUE!",
-        "#N/A",
-        "#NAME?",
-        "#DIV/0!",
-        "#NUM!",
-        "#NULL!",
-    }:
+    if text.startswith("#") and text.upper() in EXCEL_ERROR_VALUES:
         raise OCWorkbookError(
             "OC_FILE_FORMULA_ERROR",
             "Workbook còn lỗi công thức Excel.",
@@ -232,7 +249,7 @@ def _canonical_option(
     raise OCWorkbookError(
         "OC_FILE_VALIDATION_FAILED",
         "Workbook Upload OC có dữ liệu chưa hợp lệ.",
-        (f"Dòng {row_number}: {label} '{text or '[trống]'} không có trong danh sách.",),
+        (f"Dòng {row_number}: {label} '{text or '[trống]'}' không có trong danh sách.",),
     )
 
 
@@ -248,11 +265,14 @@ def _validate_delivery_dates(
     if not buyer_order_date < raw_material_eta < buyer_delivery_date:
         errors.append(
             f"Dòng {row_number}: ngày phải theo Buyer Order Date "
-            "< Raw Material ETA < Buyer Delivery Date."
+            "< Raw Material ETA < Buyer Delivery Date (đang là "
+            f"{buyer_order_date:%d/%m/%Y} · {raw_material_eta:%d/%m/%Y} · "
+            f"{buyer_delivery_date:%d/%m/%Y})."
         )
     if oc_delivery_date is not None and buyer_delivery_date != oc_delivery_date:
         errors.append(
-            f"Dòng {row_number}: Buyer Delivery Date phải bằng OC Delivery Date."
+            f"Dòng {row_number}: Buyer Delivery Date ({buyer_delivery_date:%d/%m/%Y}) "
+            f"phải bằng OC Delivery Date ({oc_delivery_date:%d/%m/%Y})."
         )
     return errors
 
@@ -267,7 +287,7 @@ def _ensure_headers(actual: list[Any], expected: tuple[str, ...], label: str) ->
         actual_header = _normalise_text(actual[index]) if index < len(actual) else ""
         if _normalise_header(actual_header) != _normalise_header(expected_header):
             errors.append(
-                f"Cột {index + 1}: cần '{expected_header}', đang là "
+                f"Cột {get_column_letter(index + 1)}: cần '{expected_header}', đang là "
                 f"'{actual_header or '[trống]'}'."
             )
         if len(errors) >= 8:

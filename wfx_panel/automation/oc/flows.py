@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 from wfx_panel.automation._common import (
@@ -31,12 +33,15 @@ from wfx_panel.automation.oc.constants import (
 )
 from wfx_panel.automation.oc.dom import (
     _attached_in_frames,
+    _DialogCollector,
     _toolbar_link,
     _visible_in_frames,
 )
 from wfx_panel.automation.oc.package import (
+    PackageTarget,
     _open_edi_form,
     _open_status_error_details,
+    _package_snapshot,
     _process_package,
     _status_kind,
     _wait_statuses,
@@ -140,6 +145,20 @@ def confirm_oc_pending(
             playwright.stop()
 
 
+def _unique_upload_copy(path: Path, mode: str) -> Path:
+    """Bản sao mang tên riêng của lượt upload này.
+
+    Mọi lượt đều sinh cùng một ``OC-EDI-Upload.xlsx``, nên trong bảng Error
+    Resolution không phân biệt được package của lượt này với lượt trước. Tên
+    có giờ tạo cho phép đọc trạng thái và click Pending đúng dòng của mình.
+    """
+    label = "Revise" if str(mode).casefold() == "revise" else "New"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = path.with_name(f"OC-{label}-{stamp}{path.suffix}")
+    shutil.copyfile(path, target)
+    return target
+
+
 def upload_oc_edi(
     upload_path: str | Path,
     buyer: str,
@@ -150,6 +169,8 @@ def upload_oc_edi(
     path = Path(upload_path).expanduser().resolve()
     playwright: Playwright | None = None
     transaction_submitted = False
+    upload: Path | None = None
+    dialogs = _DialogCollector()
     try:
         if not path.is_file() or path.suffix.casefold() != ".xlsx":
             return _result(
@@ -157,16 +178,21 @@ def upload_oc_edi(
                 "OC_UPLOAD_FILE_MISSING",
                 "File EDI đã chuẩn hóa không còn tồn tại.",
             )
+        upload = _unique_upload_copy(path, mode)
         playwright = sync_playwright().start()
         _browser, page = _active_wfx_page(playwright, log)
         _open_edi_form(page, buyer, log)
-        _process_package(page, path, log)
+        target = PackageTarget(upload.name, _package_snapshot(page))
+        # Alert WFX có thể tới bất cứ lúc nào từ Process Package tới khi đọc
+        # xong trạng thái, nên handler sống suốt đoạn đó chứ không chỉ cú click.
+        dialogs.attach(page)
+        _process_package(page, upload, log, dialogs)
         try:
             _frame, resolution = _toolbar_link(page, "Error Resolution", timeout_s=8)
             _click(resolution)
         except PlaywrightTimeoutError:
             _write_log(log, "[OC EDI] Bảng trạng thái đã hiển thị trực tiếp")
-        rows = _wait_statuses(page, log)
+        rows = _wait_statuses(page, log, target, dialogs)
         failed = [
             row
             for row in rows
@@ -190,7 +216,10 @@ def upload_oc_edi(
                 resolution_rows=resolution_rows,
                 errors=errors,
             )
-        _click_pending_transaction(page)
+        _click_pending_transaction(page, target)
+        # Create Transaction có handler riêng; hai handler cùng accept một hộp
+        # thoại là lỗi của Playwright.
+        dialogs.detach()
         _select_first_transaction(page)
         # Đặt cờ trước click: nếu browser rơi đúng lúc dispatch, không thể biết
         # WFX đã nhận hay chưa nên phải chặn mọi retry tự động.
@@ -261,8 +290,11 @@ def upload_oc_edi(
             transaction_submitted=transaction_submitted,
         )
     finally:
+        dialogs.detach()
         if playwright is not None:
             playwright.stop()
+        if upload is not None:
+            upload.unlink(missing_ok=True)
 
 
 def open_oc_revision_report(

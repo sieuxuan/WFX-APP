@@ -552,7 +552,10 @@ Các workflow riêng hiện có:
   CostSheet `Open`, phải hỏi xác nhận ở UI, click toàn bộ link trùng id
   `#lnkClearDependency` trong đúng frame Costing rồi Save một lần. Không tự chạy
   khi người dùng chỉ Export/Import bình thường.
-- OC List: tìm theo OC No. hoặc Style; tải form `OC INPUT` một hàng header;
+- OC List: tìm theo OC No. hoặc Style; tìm theo OC No. có tiền tố `PSG-`/
+  `PSW-`/`PSK-` phải tự đổi sang PSSG/Woven/Knit trước khi tìm
+  (`controllers/oc_division.py`), đổi thất bại thì dừng, không tìm ở Division
+  sai; tải form `OC INPUT` một hàng header;
   Upload OC New và Revise OC qua EDI Buyer PO.
 - Workspace OC gom nút mở `OC List` và Search trong cùng card; selector OC
   No./Style, ô nhập và nút Tìm nằm trên một hàng gọn. Hai card `Upload OC New`
@@ -575,6 +578,9 @@ Các workflow riêng hiện có:
   Destination nhận cả tên quốc gia lẫn ref Buyer, phải chuẩn hóa thành Country
   và Market theo bảng mapping trong `oc_workbook.py`. Revise phải giữ đủ định
   danh OC gốc như `DeliveryOCID`.
+- Review Upload OC chỉ sống 30 phút và gắn với User ID + Division lúc chọn
+  file; quá hạn hoặc đổi tài khoản/Division thì `OC_UPLOAD_REVIEW_EXPIRED`.
+  Thư mục `oc-upload-cache` bị bỏ lại quá 1 ngày được dọn ở lượt review sau.
 - Sau validate local phải hiện review và chưa được mở EDI: Buyer, Season, số PO
   distinct theo `Summary Buyer Order Ref`, số Style distinct theo `Article`,
   `Sum of Units` và số dòng. Workbook tạm dùng token một lần; chỉ nút `Xác nhận
@@ -593,6 +599,16 @@ Các workflow riêng hiện có:
   cả `Data Imported`, `Data Validated`, `Mapping Resolved`. Chỉ khi tất cả đều
   Success mới chọn transaction đầu tiên và bấm `Create Transaction`; New đi
   tab `New`, Revise đi tab `Revision`.
+- Mỗi lượt upload gửi bản sao tên riêng `OC-New|Revise-<yyyymmdd-hhmmss>.xlsx`
+  (`_unique_upload_copy`). Trạng thái và link `Pending` chỉ được lấy từ dòng
+  package có đúng tên file đó (`PackageTarget`, `_STATUS_JS` gắn
+  `data-wfx-oc-package-row`); WFX không hiện tên file thì chỉ nhận dòng đầu khi
+  nó không trùng dòng nào đã có trước Process Package. Không bao giờ click
+  `Pending` đầu tiên bất kỳ trên trang. Một `_DialogCollector` sống từ Process
+  Package tới khi click Pending (alert tới sau postback), rồi gỡ trước Create
+  Transaction vì thao tác đó có handler riêng. Banner thành công chỉ là xác
+  nhận Create Transaction khi nó đang hiển thị và không có sẵn trước cú click
+  (hoặc đã biến mất rồi hiện lại).
 - Chỉ đọc package mới nhất trong Error Resolution. Bất kỳ trạng thái `InProgress`/
   `In Progress` hoặc Fail nào ở Imported/Validated/Mapping đều được coi là lỗi
   ngay, không chờ timeout. Automation click đúng link trạng thái, đọc popup
@@ -618,6 +634,13 @@ Các workflow riêng hiện có:
   khi bấm lại. Sau Confirm phải chờ Style biến mất khỏi tab New/Revision và
   bảng ổn định tối đa 180 giây rồi mới chuyển Style tiếp theo. Nếu kết quả chưa
   rõ hoặc quá thời gian, dừng toàn bộ flow và không tự retry.
+- Confirm/Reject: `_CONFIRM_GROUPS_JS` trả `null` khi bảng chưa render, khác
+  bảng rỗng; vòng lặp chờ/resolve lại frame (`_read_pending`) chứ không kết luận
+  "đã hết". Collector hộp thoại sống suốt click + chờ; alert từ chối (không phải
+  câu thành công, hoặc có phủ định như `cannot`/`already`) dừng ngay với
+  `OC_FAST_CONFIRM_REFUSED`/`OC_REJECT_ALL_REFUSED`, không bấm lượt hai. Lỗi
+  giữa chừng sau khi đã xử lý ít nhất một Style/PO phải trả kết quả giữ nguyên
+  `confirmed_styles`/`rejected_rows`.
 - Nút `Reject All · tab đang mở` chỉ xử lý tab New hoặc Revision hiện đang được
   chọn trên WFX, không tự chuyển tab. Sau xác nhận ở UI, flow đổi page size thành
   100, chọn đúng dòng/nhóm đầu tiên, click Reject theo

@@ -12,8 +12,12 @@ xác nhận.
 5. Bấm `Chọn file OC mới` trong thẻ Upload OC New.
 6. Đọc bảng Review trước khi Upload.
 7. Kiểm tra Buyer, Season, số PO, số Style, Sum of Units và số dòng.
-8. Bấm `Tải file EDI xuống máy` để lưu bản form hệ thống đã tự tạo.
-9. Mở kiểm tra file nếu cần, sau đó bấm `Xác nhận Upload` để bắt đầu tạo OC trên WFX.
+8. Bấm `1 · Tải file EDI` để lưu bản form hệ thống đã tự tạo. Nút đổi thành
+   `✓ Đã tải file EDI` khi lưu xong.
+9. Mở kiểm tra file nếu cần, sau đó bấm `2 · Xác nhận Upload` để bắt đầu tạo OC
+   trên WFX.
+10. Khi WFX báo tạo transaction thành công, bấm `Confirm ngay tab New` ngay
+    trong thẻ kết quả nếu muốn Confirm luôn.
 
 ## Mẹo
 
@@ -41,10 +45,21 @@ xác nhận.
 > sinh trước khi cho phép tự Upload. Nếu WFX báo lỗi, dùng file đã lưu để Upload
 > thủ công lại trên WFX hoặc chọn lại file nguồn trong ứng dụng.
 
+> [!meo]
+> Mỗi lần Upload, file gửi lên WFX mang tên riêng theo giờ, ví dụ
+> `OC-New-20261028-153012.xlsx`. Ứng dụng chỉ đọc trạng thái và bấm Pending
+> trên đúng package đó, không dùng nhầm package của lần Upload trước.
+
+> [!luuy]
+> Review chỉ giữ 30 phút và chỉ dùng được với đúng tài khoản, Division lúc chọn
+> file. Quá thời gian hoặc đã đổi tài khoản/Division thì chọn lại file.
+
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Báo file có nhiều Buyer | Tách dữ liệu thành từng file, mỗi file chỉ giữ một Buyer. |
-| Báo sai ngày hoặc số lượng | Mở đúng ô được báo, sửa giá trị rồi chọn lại file. |
+| Báo sai ngày hoặc số lượng | Mở đúng ô được báo, sửa giá trị rồi chọn lại file. Thẻ kết quả liệt kê từng lỗi và cho biết còn bao nhiêu lỗi khác nếu danh sách dài. |
+| Review đã hết hiệu lực | Chọn lại file. Review chỉ giữ 30 phút và mất khi đổi tài khoản hoặc Division. |
+| Báo chưa thấy package của lượt này | Mở Error Resolution trên WFX, tìm package tên `OC-New-…` hoặc `OC-Revise-…` theo giờ vừa Upload và kiểm tra trạng thái trước khi Upload lại. |
 | WFX chưa sẵn sàng nhận file | Giữ file đã sửa, kiểm tra phiên WFX rồi thực hiện Upload lại. |

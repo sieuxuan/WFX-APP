@@ -57,7 +57,8 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
     warnings: list[str] = []
     prepared: list[dict[str, Any]] = []
     buyers: dict[str, str] = {}
-    seen_keys: set[tuple[str, ...]] = set()
+    buyer_rows: dict[str, int] = {}
+    seen_keys: dict[tuple[str, ...], int] = {}
     known_buyers = {item.casefold() for item in BUYER_OPTIONS}
     known_factories = {item.casefold() for item in FACTORY_OPTIONS}
     skipped_zero_units = 0
@@ -107,6 +108,7 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
                 default="FOB",
             )
             buyers.setdefault(buyer.casefold(), buyer)
+            buyer_rows.setdefault(buyer.casefold(), row_number)
             if buyer.casefold() not in known_buyers:
                 warning = (
                     f"Buyer '{buyer}' chưa có trong danh sách gợi ý; "
@@ -159,9 +161,10 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
             )
             if duplicate_key in seen_keys:
                 errors.append(
-                    f"Dòng {row_number}: trùng PO/Style/Color/Size với dòng trước."
+                    f"Dòng {row_number}: trùng PO/Style/Color/Size với dòng "
+                    f"{seen_keys[duplicate_key]}."
                 )
-            seen_keys.add(duplicate_key)
+            seen_keys.setdefault(duplicate_key, row_number)
             prepared.append(
                 {
                     "buyer": buyer,
@@ -194,7 +197,11 @@ def _simple_new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ..
             errors.extend(error.errors or (f"Dòng {row_number}: {error.message}",))
     if len(buyers) > 1:
         errors.append(
-            "File có nhiều Buyer: " + ", ".join(sorted(buyers.values()))
+            "File có nhiều Buyer: "
+            + ", ".join(
+                f"{name} (từ dòng {buyer_rows[key]})"
+                for key, name in sorted(buyers.items(), key=lambda item: item[1])
+            )
             + ". Mỗi lần EDI chỉ upload một Buyer."
         )
     if errors:
@@ -322,7 +329,7 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
 
     errors = list(metadata_errors)
     prepared: list[dict[str, Any]] = []
-    seen_keys: set[tuple[str, ...]] = set()
+    seen_keys: dict[tuple[str, ...], int] = {}
     skipped_zero_units = 0
     for row_number, values in source_rows:
         if _is_zero_quantity(values[15]):
@@ -395,9 +402,10 @@ def _new_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
             )
             if duplicate_key in seen_keys:
                 errors.append(
-                    f"Dòng {row_number}: trùng PO/Style/Color/Size với dòng trước."
+                    f"Dòng {row_number}: trùng PO/Style/Color/Size với dòng "
+                    f"{seen_keys[duplicate_key]}."
                 )
-            seen_keys.add(duplicate_key)
+            seen_keys.setdefault(duplicate_key, row_number)
             prepared.append(
                 {
                     "source_row": row_number,
@@ -522,8 +530,9 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
     indexes = {header: index for index, header in enumerate(EDI_HEADERS)}
     errors: list[str] = []
     buyers: dict[str, str] = {}
+    buyer_rows: dict[str, int] = {}
     prepared: list[list[Any]] = []
-    seen_keys: set[tuple[str, ...]] = set()
+    seen_keys: dict[tuple[str, ...], int] = {}
     skipped_zero_units = 0
     for row_number, values in source_rows:
         if _is_zero_quantity(values[indexes["Units"]]):
@@ -548,6 +557,7 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
                 continue
             buyer = _safe_text(values[indexes["Buyer"]], "Buyer", row_number)
             buyers.setdefault(buyer.casefold(), buyer)
+            buyer_rows.setdefault(buyer.casefold(), row_number)
             for header in DATE_HEADERS:
                 value = values[indexes[header]]
                 if value not in (None, ""):
@@ -605,15 +615,22 @@ def _revise_rows(workbook: Any) -> tuple[str, list[list[Any]], tuple[str, ...]]:
                 )
             )
             if duplicate_key in seen_keys:
-                errors.append(f"Dòng {row_number}: trùng Delivery/Style/Color/Size.")
-            seen_keys.add(duplicate_key)
+                errors.append(
+                    f"Dòng {row_number}: trùng Delivery/Style/Color/Size với dòng "
+                    f"{seen_keys[duplicate_key]}."
+                )
+            seen_keys.setdefault(duplicate_key, row_number)
             prepared.append(values)
         except OCWorkbookError as error:
             errors.extend(error.errors or (f"Dòng {row_number}: {error.message}",))
 
     if len(buyers) > 1:
         errors.append(
-            "File có nhiều Buyer: " + ", ".join(sorted(buyers.values()))
+            "File có nhiều Buyer: "
+            + ", ".join(
+                f"{name} (từ dòng {buyer_rows[key]})"
+                for key, name in sorted(buyers.items(), key=lambda item: item[1])
+            )
             + ". EDI chỉ cho chọn một Buyer mỗi lần upload."
         )
     if errors:

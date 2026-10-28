@@ -6,6 +6,8 @@ sau postback."""
 
 from __future__ import annotations
 
+import re
+
 from wfx_panel.automation._common import (
     Any,
     Frame,
@@ -17,6 +19,83 @@ from wfx_panel.automation._common import (
     time,
 )
 from wfx_panel.automation.runtime import checkpoint
+
+# Alert WFX báo xong việc; mọi alert khác sau một thao tác ghi là WFX từ chối.
+_DIALOG_SUCCESS_RE = re.compile(
+    r"success|successful|confirmed|rejected|processed|uploaded|saved|updated|created|complete",
+    re.IGNORECASE,
+)
+_DIALOG_FAILURE_RE = re.compile(r"error|fail|invalid", re.IGNORECASE)
+# Câu phủ định thắng chữ "confirmed"/"rejected" trong cùng câu:
+# "Cannot reject: PO already confirmed" là từ chối, không phải thành công.
+_DIALOG_REFUSAL_RE = re.compile(
+    r"error|fail|invalid|cannot|can't|unable|not\s+allowed|already|please|"
+    r"must|required|mandatory",
+    re.IGNORECASE,
+)
+
+
+class _DialogCollector:
+    """Nhận và ghi lại mọi hộp thoại WFX trong suốt MỘT thao tác automation.
+
+    Handler chỉ gắn trong lúc click thì bỏ sót alert WFX bắn ra sau postback:
+    hộp thoại nằm đó chặn trang, flow chờ tới hết timeout mà không biết WFX
+    nói gì. Collector gắn từ trước cú click tới khi thao tác đọc xong kết quả.
+    Đây là handler của một thao tác cụ thể (CLAUDE.md: listener chung của
+    runtime không được tự accept), và chỉ đóng hộp thoại bằng OK/accept.
+    """
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+        self.alerts: list[str] = []
+        self._page: Any = None
+
+    def handle(self, dialog: Any) -> None:
+        message = " ".join(str(getattr(dialog, "message", "") or "").split())
+        self.messages.append(message)
+        # confirm() là câu hỏi cho chính thao tác user vừa bấm; alert mới là
+        # câu trả lời của WFX.
+        if str(getattr(dialog, "type", "alert") or "alert") != "confirm":
+            self.alerts.append(message)
+        try:
+            dialog.accept()
+        except Exception:
+            # Handler khác của cùng thao tác có thể đã đóng hộp thoại này.
+            pass
+
+    def attach(self, page: Any) -> _DialogCollector:
+        subscribe = getattr(page, "on", None)
+        if callable(subscribe):
+            subscribe("dialog", self.handle)
+            self._page = page
+        return self
+
+    def detach(self) -> None:
+        page, self._page = self._page, None
+        if page is None:
+            return
+        try:
+            page.remove_listener("dialog", self.handle)
+        except Exception:
+            pass
+
+    def failure(self) -> str:
+        """Alert báo lỗi rõ ràng (error/fail/invalid), rỗng nếu chưa có."""
+        return next(
+            (m for m in self.messages if _DIALOG_FAILURE_RE.search(m)), ""
+        )
+
+    def refusal(self) -> str:
+        """Alert không phải thông báo thành công — WFX từ chối thao tác."""
+        return next(
+            (
+                m
+                for m in self.alerts
+                if m
+                and (_DIALOG_REFUSAL_RE.search(m) or not _DIALOG_SUCCESS_RE.search(m))
+            ),
+            "",
+        ) or self.failure()
 
 
 def _visible_in_frames(
