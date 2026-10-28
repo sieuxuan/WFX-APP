@@ -24,5 +24,6 @@ Reject lần lượt toàn bộ PO trong thẻ New hoặc Revision đang mở tr
 |---|---|
 | Không xác định được thẻ đang mở | Chọn lại thẻ New hoặc Revision trên WFX rồi bấm `Reject All · tab đang mở` lại. |
 | PO chưa rời khỏi bảng | Kiểm tra kết quả Reject trên WFX trước khi chạy lại. |
+| WFX báo không Reject được PO | Thẻ kết quả ghi nguyên văn thông báo của WFX và số PO đã Reject xong. Kiểm tra PO được báo trên WFX rồi chạy lại. |
 | Không đọc được kết quả Reject | Không chạy lại ngay. Kiểm tra PO còn xuất hiện trong thẻ đang mở hay không. |
 | Màn Reject chưa sẵn sàng | Chờ EDI Buyer PO tải xong rồi thử lại. |

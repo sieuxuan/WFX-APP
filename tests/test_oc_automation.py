@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 
 from playwright.sync_api import sync_playwright
@@ -5,6 +6,18 @@ from playwright.sync_api import sync_playwright
 from tests.fakes.module_reflection import patch_automation
 from wfx_panel.automation import oc
 from wfx_panel.automation.oc import _status_kind
+
+
+class _StubPage:
+    """Trang không có frame nào; đủ cho các bước EDI đã được stub."""
+
+    frames: list = []
+
+    def on(self, _event, _handler):
+        return None
+
+    def remove_listener(self, _event, _handler):
+        return None
 
 
 class _Lease:
@@ -18,7 +31,7 @@ def _stub_edi_before_transaction(monkeypatch, rows):
         "sync_playwright",
         lambda: SimpleNamespace(start=_Lease),
     )
-    patch_automation(monkeypatch, oc, "_active_wfx_page", lambda *_args: (object(), object()))
+    patch_automation(monkeypatch, oc, "_active_wfx_page", lambda *_args: (object(), _StubPage()))
     patch_automation(monkeypatch, oc, "_open_edi_form", lambda *_args: None)
     patch_automation(monkeypatch, oc, "_process_package", lambda *_args: None)
     patch_automation(
@@ -147,10 +160,35 @@ def test_failed_record_is_formatted_for_the_user():
     assert "InActive: No" in error
 
 
-def test_status_reader_targets_only_the_latest_wfx_grid_row():
-    assert "#gridEDIPackageImport_tblGridHeader" in oc._STATUS_JS
-    assert "#gridEDIPackageImport_tblGridContent" in oc._STATUS_JS
-    assert "return [record]" in oc._STATUS_JS
+def test_status_reader_marks_every_package_row_newest_first():
+    """Bảng Error Resolution giữ cả package các lượt trước: reader phải trả
+    từng dòng kèm tên file và đánh dấu dòng để click đúng link của nó."""
+    markup = """
+      <table id="gridEDIPackageImport_tblGridHeader"><tr>
+        <th>File Name</th><th>Data Imported</th><th>Data Validated</th>
+        <th>Mapping Resolved</th><th>Transaction Detail</th>
+      </tr></table>
+      <table id="gridEDIPackageImport_tblGridContent">
+        <tr><td>OC-New-20261028-153012.xlsx</td><td>Success</td><td>Success</td>
+            <td>Success</td><td><a href="#">Pending</a></td></tr>
+        <tr><td>OC-New-20261027-090000.xlsx</td><td>Success</td><td>Success</td>
+            <td>Success</td><td><a href="#">Pending</a></td></tr>
+      </table>
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            rows = page.evaluate(oc._STATUS_JS)
+            marked = page.locator('[data-wfx-oc-package-row="1"] td').first.inner_text()
+        finally:
+            browser.close()
+
+    assert [row["index"] for row in rows] == [0, 1]
+    assert rows[0]["file_name"] == "OC-New-20261028-153012.xlsx"
+    assert rows[1]["transaction"] == "Pending"
+    assert marked == "OC-New-20261027-090000.xlsx"
 
 
 def test_select_exact_option_waits_for_package_options(monkeypatch):
@@ -792,3 +830,53 @@ def test_reject_all_stops_before_next_row_when_wfx_does_not_finish(monkeypatch):
     assert result["stopped_row"] == "PO-A"
     assert result["rejection_submitted"] is True
     assert clicks == ["reject"]
+
+
+def test_edi_partial_results_never_count_as_success():
+    for status in ("Incomplete", "Partially Completed", "Partial Success", "Not Completed"):
+        assert _status_kind(status) == "failed", status
+    assert _status_kind("Completed") == "success"
+
+
+def test_each_upload_carries_its_own_file_name_and_cleans_it_up(
+    tmp_path, monkeypatch
+):
+    """Mọi lượt từng upload cùng tên `OC-EDI-Upload.xlsx`, nên bảng Error
+    Resolution không phân biệt được package của lượt này với lượt trước."""
+    path = tmp_path / "OC-EDI-Upload.xlsx"
+    path.write_bytes(b"placeholder")
+    rows = [{"imported": "Success", "validated": "Success", "mapped": "Resolved"}]
+    _stub_edi_before_transaction(monkeypatch, rows)
+    seen = {}
+
+    def process(_page, upload, _log, dialogs):
+        seen["upload"] = upload
+        seen["bytes"] = upload.read_bytes()
+        seen["dialogs"] = dialogs
+
+    def statuses(_page, _log, target, dialogs):
+        seen["target"] = target
+        assert dialogs is seen["dialogs"], "Một collector cho cả đoạn EDI"
+        return rows
+
+    patch_automation(monkeypatch, oc, "_process_package", process)
+    patch_automation(monkeypatch, oc, "_wait_statuses", statuses)
+    patch_automation(
+        monkeypatch, oc, "_click_pending_transaction",
+        lambda _page, target: seen.setdefault("pending_target", target),
+    )
+    patch_automation(monkeypatch, oc, "_select_first_transaction", lambda *_: None)
+    patch_automation(
+        monkeypatch, oc, "_create_transaction", lambda *_: (True, ["Created"])
+    )
+
+    result = oc.upload_oc_edi(path, "J.LINDEBERG", "revise", log=lambda _: None)
+
+    assert result["code"] == "OC_TRANSACTION_CREATED"
+    upload = seen["upload"]
+    assert re.fullmatch(r"OC-Revise-\d{8}-\d{6}\.xlsx", upload.name)
+    assert seen["bytes"] == b"placeholder"
+    assert seen["target"].file_name == upload.name
+    assert seen["pending_target"] is seen["target"]
+    assert not upload.exists(), "Bản sao tạm phải được xóa sau lượt upload"
+    assert path.exists()

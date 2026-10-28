@@ -7,6 +7,7 @@ Sheet1 và review; chỉ cặp PO No. + Style trùng hoàn toàn mới là lỗi
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -203,7 +204,20 @@ def test_two_rows_identical_on_po_style_colour_and_size_are_refused(tmp_path):
     with pytest.raises(OCWorkbookError) as error:
         _prepare(tmp_path, _row(), _row())
 
-    assert any("trùng" in item for item in error.value.errors)
+    # Phải chỉ ra dòng gốc bị trùng để user tìm được trong Excel.
+    assert any(
+        re.search(r"^Dòng (\d+): trùng .* với dòng (\d+)\.$", item)
+        for item in error.value.errors
+    ), error.value.errors
+
+
+def test_a_size_typed_as_the_number_zero_reaches_sheet1(tmp_path):
+    row = _row()
+    row[INPUT_HEADERS.index("Size Code")] = 0
+
+    index, rows = _uploaded(_prepare(tmp_path, row))
+
+    assert str(rows[0][index["Size"]]) == "0"
 
 
 def test_two_rows_differing_only_by_size_are_both_kept(tmp_path):
@@ -226,9 +240,10 @@ def test_a_file_with_two_buyers_is_refused(tmp_path):
     with pytest.raises(OCWorkbookError) as error:
         _prepare(tmp_path, _row(), other)
 
-    assert any("nhiều Buyer" in item for item in error.value.errors) or (
-        "nhiều Buyer" in error.value.message
-    )
+    joined = " ".join(error.value.errors)
+    assert "nhiều Buyer" in joined
+    # Mỗi Buyer kèm dòng đầu tiên chứa nó để tìm ra dòng lạc.
+    assert re.search(r"TRUEWERK \(từ dòng \d+\)", joined), joined
 
 
 # --- Destination → Country + Market ------------------------------------

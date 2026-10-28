@@ -5,7 +5,9 @@ nào cũng là lỗi ngay, không chờ hết timeout."""
 
 from __future__ import annotations
 
+import dataclasses
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from wfx_panel.automation._common import (
@@ -30,6 +32,7 @@ from wfx_panel.automation.oc.constants import (
 )
 from wfx_panel.automation.oc.dom import (
     _attached_in_frames,
+    _DialogCollector,
     _select_exact_option,
     _toolbar_link,
     _visible_in_frames,
@@ -55,7 +58,76 @@ def _open_edi_form(page: Page, buyer: str, log: Callable[[str], None]) -> Frame:
     return frame
 
 
-def _process_package(page: Page, upload_path: Path, log: Callable[[str], None]) -> None:
+@dataclass(frozen=True)
+class PackageTarget:
+    """Package của ĐÚNG lượt upload này trong bảng Error Resolution.
+
+    Bảng giữ cả package của các lượt trước. Đọc nhầm dòng cũ (đã Success) là
+    Create Transaction — thao tác không idempotent — chạy trên package khác.
+    ``file_name`` là tên file duy nhất của lượt này; ``stale`` là nội dung các
+    dòng đã có trước khi Process Package, dùng khi WFX không hiện tên file.
+    """
+
+    file_name: str = ""
+    stale: frozenset[str] = dataclasses.field(default_factory=frozenset)
+
+
+def _package_snapshot(page: Page) -> frozenset[str]:
+    """Nội dung các dòng package đang hiện TRƯỚC khi Process Package."""
+    try:
+        _frame, rows = _status_rows(page)
+    except PlaywrightError:
+        return frozenset()
+    return frozenset(str(row.get("detail") or "") for row in rows if row.get("detail"))
+
+
+def _own_package_rows(
+    rows: list[dict[str, Any]],
+    target: PackageTarget | None,
+) -> list[dict[str, Any]]:
+    """Dòng package của lượt này (tối đa một), rỗng khi chưa xuất hiện."""
+    if target is None:
+        return rows[:1]
+    stem = Path(target.file_name).stem.casefold() if target.file_name else ""
+    if stem and any(row.get("file_name") for row in rows):
+        return [
+            row
+            for row in rows
+            if stem in str(row.get("file_name") or "").casefold()
+        ][:1]
+    # WFX không hiện tên file: chỉ nhận dòng mới nhất khi nó KHÔNG phải một
+    # dòng đã có sẵn trước lượt Process Package này.
+    if rows and str(rows[0].get("detail") or "") not in target.stale:
+        return rows[:1]
+    return []
+
+
+def _process_package(
+    page: Page,
+    upload_path: Path,
+    log: Callable[[str], None],
+    dialogs: _DialogCollector | None = None,
+) -> None:
+    """Upload và Process Package.
+
+    ``dialogs`` do caller giữ suốt từ Process Package tới khi đọc xong trạng
+    thái: alert WFX có thể tới sau postback, sau khi hàm này đã trả về.
+    """
+    owned = dialogs is None
+    collector = dialogs or _DialogCollector().attach(page)
+    try:
+        _upload_and_process(page, upload_path, log, collector)
+    finally:
+        if owned:
+            collector.detach()
+
+
+def _upload_and_process(
+    page: Page,
+    upload_path: Path,
+    log: Callable[[str], None],
+    dialogs: _DialogCollector,
+) -> None:
     _frame, import_link = _toolbar_link(page, "Import", timeout_s=30)
     _click(import_link)
     _popup_frame, file_input = _attached_in_frames(
@@ -71,21 +143,9 @@ def _process_package(page: Page, upload_path: Path, log: Callable[[str], None]) 
         "Process Package",
         timeout_s=15,
     )
-    dialog_messages: list[str] = []
-
-    def accept_process_dialog(dialog: Any) -> None:
-        dialog_messages.append(" ".join(str(dialog.message or "").split()))
-        dialog.accept()
-
-    page.on("dialog", accept_process_dialog)
-    try:
-        with cancellation_deferred():
-            _click(process_link)
-    finally:
-        try:
-            page.remove_listener("dialog", accept_process_dialog)
-        except Exception:
-            pass
+    dialog_messages = dialogs.messages
+    with cancellation_deferred():
+        _click(process_link)
     _write_log(log, "[OC EDI] Đã gửi Process Package; đang chờ WFX xử lý")
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
@@ -153,7 +213,10 @@ def _status_rows(page: Page) -> tuple[Frame | None, list[dict[str, str]]]:
 def _status_kind(value: str) -> str:
     normalised = " ".join(str(value or "").casefold().split())
     if re.search(
-        r"fail|error|invalid|unresolved|not\s+resolved|reject|in\s*progress",
+        # Kết quả một phần chứa chữ "complete"/"success" nhưng KHÔNG phải
+        # thành công: đi tiếp là Create Transaction trên package thiếu dòng.
+        r"fail|error|invalid|unresolved|not\s+resolved|reject|in\s*progress"
+        r"|incomplete|not\s+complete|partial",
         normalised,
     ):
         return "failed"
@@ -162,13 +225,26 @@ def _status_kind(value: str) -> str:
     return "pending"
 
 
-def _wait_statuses(page: Page, log: Callable[[str], None]) -> list[dict[str, str]]:
+def _wait_statuses(
+    page: Page,
+    log: Callable[[str], None],
+    target: PackageTarget | None = None,
+    dialogs: _DialogCollector | None = None,
+) -> list[dict[str, str]]:
     deadline = time.monotonic() + STATUS_TIMEOUT_SECONDS
     last: list[dict[str, str]] = []
     last_summary = ""
+    saw_any_row = False
     while time.monotonic() < deadline:
         checkpoint()
-        _frame, rows = _status_rows(page)
+        failed_dialog = dialogs.failure() if dialogs is not None else ""
+        if failed_dialog:
+            raise PlaywrightTimeoutError(
+                f"Process Package thất bại: {failed_dialog}"
+            )
+        _frame, all_rows = _status_rows(page)
+        saw_any_row = saw_any_row or bool(all_rows)
+        rows = _own_package_rows(all_rows, target)
         if rows:
             last = rows
             summary = " | ".join(
@@ -197,7 +273,15 @@ def _wait_statuses(page: Page, log: Callable[[str], None]) -> list[dict[str, str
                 )
                 return rows
         _wait(page, 500)
-    detail = last[0].get("detail", "") if last else "không đọc được bảng trạng thái"
+    if last:
+        detail = last[0].get("detail", "")
+    elif saw_any_row and target is not None:
+        detail = (
+            f"chưa thấy package {target.file_name or 'của lượt này'} "
+            "trong Error Resolution"
+        )
+    else:
+        detail = "không đọc được bảng trạng thái"
     raise PlaywrightTimeoutError(f"Trạng thái EDI chưa hoàn tất: {detail}")
 
 
@@ -253,7 +337,19 @@ def _open_status_error_details(
     selector = _STATUS_LINK_SELECTORS[field]
     target_frame: Frame | None = None
     target: Any = None
-    for frame in page.frames:
+    own_index = rows[0].get("index")
+    if own_index is not None:
+        # Link trạng thái trên đúng dòng package của lượt này.
+        own_selector = f'[data-wfx-oc-package-row="{own_index}"] {selector}'
+        for frame in page.frames:
+            try:
+                link = frame.locator(own_selector)
+                if link.count() and link.first.is_visible() and link.first.is_enabled():
+                    target_frame, target = frame, link.first
+                    break
+            except PlaywrightError:
+                continue
+    for frame in page.frames if target is None else ():
         try:
             grid_rows = frame.locator("#gridEDIPackageImport_tblGridContent tr")
             for index in range(grid_rows.count()):

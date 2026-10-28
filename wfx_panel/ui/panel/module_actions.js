@@ -23,6 +23,7 @@ const moduleActions = {
   },
   "oc-upload-new": () => uploadOcFile("new"),
   "oc-confirm-new": () => confirmOcPending("new"),
+  "oc-next-confirm": confirmOcFromUploadResult,
   "oc-review-cancel": cancelOcUploadReview,
   "oc-review-download": downloadOcUploadFile,
   "oc-review-confirm": confirmOcUploadReview,

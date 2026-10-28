@@ -425,7 +425,8 @@ def test_the_oc_delivery_date_must_equal_the_buyer_delivery_date():
     )
 
     assert errors == [
-        "Dòng 4: Buyer Delivery Date phải bằng OC Delivery Date."
+        "Dòng 4: Buyer Delivery Date (01/03/2026) phải bằng "
+        "OC Delivery Date (02/03/2026)."
     ]
 
 
@@ -446,7 +447,8 @@ def test_a_wrong_header_names_the_column_and_both_values():
         oc_values._ensure_headers(actual, EDI_HEADERS, "Sheet1")
 
     assert error.value.code == "OC_FILE_HEADERS_INVALID"
-    assert "Cột 2" in error.value.errors[0]
+    # Chữ cột Excel, không phải số thứ tự: Sheet1 Revise có tới 51 cột.
+    assert "Cột B" in error.value.errors[0]
     assert "Cot Sai" in error.value.errors[0]
 
 
@@ -528,3 +530,32 @@ def test_the_workbook_stream_helper_reads_what_was_written(tmp_path):
     assert path.read_bytes().startswith(b"PK")
     with ZipFile(BytesIO(path.read_bytes())) as archive:
         assert "[Content_Types].xml" in archive.namelist()
+
+
+def test_a_wrong_order_of_dates_shows_the_three_dates():
+    errors = oc_values._validate_delivery_dates(
+        date(2026, 3, 1), date(2026, 2, 1), date(2026, 4, 1), 7
+    )
+
+    assert errors and "(đang là 01/03/2026 · 01/02/2026 · 01/04/2026)" in errors[0]
+
+
+def test_zero_in_a_text_column_is_kept_not_blanked():
+    # Size 0 của hàng trẻ em là giá trị thật, không phải ô trống.
+    assert oc_values._normalise_text(0) == "0"
+    assert oc_values._normalise_text(None) == ""
+
+
+@pytest.mark.parametrize("value", ["#SPILL!", "#CALC!", "#N/A"])
+def test_every_excel_error_value_is_rejected(value):
+    with pytest.raises(OCWorkbookError) as error:
+        oc_values._safe_text(value, "Color Code", 5)
+
+    assert error.value.code == "OC_FILE_FORMULA_ERROR"
+
+
+def test_an_unknown_option_quotes_the_value_on_both_sides():
+    with pytest.raises(OCWorkbookError) as error:
+        oc_values._canonical_option("Bogus", "Order Type", 3, ("Confirmed",))
+
+    assert "Order Type 'Bogus' không có" in error.value.errors[0]

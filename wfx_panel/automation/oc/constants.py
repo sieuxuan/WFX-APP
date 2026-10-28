@@ -60,12 +60,18 @@ _STATUS_JS = r"""() => {
     }
     if (columns.imported < 0 || columns.validated < 0 ||
         columns.mapped < 0 || columns.transaction < 0) return [];
+    // Đánh dấu từng dòng package để bước sau click đúng link của CHÍNH dòng
+    // đó, không phải link Pending/trạng thái đầu tiên bất kỳ trên trang.
+    document.querySelectorAll('[data-wfx-oc-package-row]').forEach(row =>
+      row.removeAttribute('data-wfx-oc-package-row'));
+    const records = [];
     for (const row of contentTable.querySelectorAll('tr')) {
       const cells = [...row.querySelectorAll(':scope > td, :scope > th')];
       const read = index => index >= 0
         ? norm(cells[index]?.innerText || cells[index]?.textContent)
         : '';
       const record = {
+        index: records.length,
         file_name: read(columns.file_name),
         imported: read(columns.imported),
         validated: read(columns.validated),
@@ -73,9 +79,12 @@ _STATUS_JS = r"""() => {
         transaction: read(columns.transaction),
         detail: norm(row.innerText || row.textContent).slice(0, 800)
       };
-      if (record.imported || record.validated || record.mapped) return [record];
+      if (!(record.imported || record.validated || record.mapped)) continue;
+      row.setAttribute('data-wfx-oc-package-row', String(record.index));
+      records.push(record);
+      if (records.length >= 10) break;
     }
-    return [];
+    return records;
   };
   const direct = readGrid(
     document.querySelector('#gridEDIPackageImport_tblGridHeader'),
@@ -131,7 +140,9 @@ _CONFIRM_GROUPS_JS = r"""() => {
   const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
   const table = document.querySelector('#gridEDIBuyerPO_tblGridContent') ||
     document.querySelector('#gridEDIBuyerPO_divFocus');
-  if (!table) return [];
+  // Bảng chưa render (postback đang vẽ lại) KHÁC bảng rỗng: trả null để
+  // caller chờ, không kết luận "đã hết Style".
+  if (!table) return null;
   const rows = table.matches('table')
     ? [...table.querySelectorAll(':scope > tbody > tr')]
     : [...table.querySelectorAll('table > tbody > tr')];

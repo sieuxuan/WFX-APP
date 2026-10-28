@@ -18,6 +18,10 @@ if TYPE_CHECKING:
 
 from wfx_panel import constants, module_registry
 from wfx_panel.coercion import boolean
+from wfx_panel.controllers.oc_division import (
+    align_oc_division,
+    with_oc_division_state,
+)
 from wfx_panel.controllers.sample_division import (
     align_sample_division,
     with_division_state,
@@ -85,14 +89,24 @@ class ModulesController:
     ) -> dict:
         panel = self._panel
         oc = constants.MODULE_BY_ID["0004_0050_0020"]
+        kind = str(filter_kind or "")
+        text = str(query or "").strip()
+
+        def action() -> dict:
+            # Chỉ OC No. mang tiền tố Division; Style thì tìm ở Division hiện tại.
+            division: dict = {}
+            if kind == "oc_no":
+                failed, division = align_oc_division(panel, text)
+                if failed is not None:
+                    return failed
+            return with_oc_division_state(
+                panel._login.search_oc_list(oc["xpath"], kind, text, panel._log),
+                division,
+            )
+
         return panel._run(
             "search_oc",
-            lambda: panel._login.search_oc_list(
-                oc["xpath"],
-                str(filter_kind or ""),
-                str(query or "").strip(),
-                panel._log,
-            ),
+            action,
             {
                 "filter_kind": str(filter_kind or ""),
                 "query": str(query or "").strip(),
