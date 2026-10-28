@@ -162,7 +162,9 @@ async function call(method, ...args) {
   // không resolve), giải phóng UI thay vì để mọi nút disable vĩnh viễn ("đơ").
   // Backend vẫn giữ run lock; kết quả thật (nếu có) sẽ về sau qua result sink.
   let watchdog;
-  const watchdogMs = method === "run_color_report_batch"
+  const watchdogMs = method === "fill_expense_import"
+    ? 1800000
+    : method === "run_color_report_batch"
     ? COLOR_REPORT_BATCH_WATCHDOG_MS
     : (method === "export_report_excel"
     ? REPORT_CALL_WATCHDOG_MS

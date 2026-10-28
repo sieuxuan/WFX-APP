@@ -126,6 +126,10 @@ const moduleActions = {
     );
   },
   "expense-invoice-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+  "expense-invoice-template": downloadExpenseTemplate,
+  "expense-invoice-import": chooseExpenseImport,
+  "expense-invoice-fill": fillExpenseImport,
+  "expense-invoice-clear": clearExpenseImport,
   "expense-invoice-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
   "expense-invoice-search": () => runSelectedModuleAction(
     "search_expense_invoice",

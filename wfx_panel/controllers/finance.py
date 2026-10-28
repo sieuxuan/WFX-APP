@@ -6,13 +6,23 @@ tuyệt đối không Search hay Cancel trên màn của module kia."""
 
 from __future__ import annotations
 
+import json
 import secrets
+import threading
+import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
 from wfx_panel import constants
+from wfx_panel.automation.expense_invoice import fill_expense_invoice
+from wfx_panel.workbooks.expense_invoice import (
+    ExpenseWorkbookError,
+    load_seed_options,
+    read_expense_workbook,
+)
 
 
 class FinanceController:
@@ -20,6 +30,86 @@ class FinanceController:
         self._panel = panel
         # Token hoá dòng Supplier Invoice khi Invoice No. có nhiều kết quả.
         self.supplier_invoice_choices: dict[str, dict[str, str]] = {}
+        self.expense_reviews: dict[str, dict] = {}
+        self._expense_lock = threading.Lock()
+
+    def _expense_context(self) -> tuple:
+        account = self._panel._account()
+        return (str(account.get("user_id") or ""), self._panel._current_division)
+
+    def review_expense_import(self, file_path: str) -> dict:
+        # Local validation không giữ automation worker/Chrome.
+        with self._expense_lock:
+            self.expense_reviews.clear()
+            try:
+                source = Path(str(file_path or ""))
+                data = read_expense_workbook(source)
+            except ExpenseWorkbookError as error:
+                return {"ok": False, "code": "EXPENSE_FILE_INVALID", "message": str(error)}
+            token = secrets.token_urlsafe(24)
+            self.expense_reviews[token] = {
+                "created": time.monotonic(), "data": data,
+                "context": self._expense_context(),
+            }
+        return {
+            "ok": True, "code": "EXPENSE_REVIEW_READY",
+            "message": "File hợp lệ. Bấm Điền trên WFX để chuẩn bị hóa đơn.",
+            "review_token": token, "file_name": source.name,
+            "supplier": data["header"]["supplier"], "invoice_no": data["header"]["invoice_no"],
+            "row_count": len(data["lines"]), "total": data["total"],
+            "currency": data["header"]["currency"],
+        }
+
+    def _expense_cache_path(self) -> Path:
+        return self._panel._base_dir / "expense-options.json"
+
+    def _save_expense_options(self, options: object) -> None:
+        if not isinstance(options, dict) or not options:
+            return
+        try:
+            self._expense_cache_path().write_text(json.dumps({"context": list(self._expense_context()), "options": options}, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+
+    def expense_template_options(self) -> dict:
+        """Dropdown cho mẫu, không chạm Chrome và không cần chọn Supplier.
+
+        Ưu tiên danh sách thật của đúng tài khoản/Division (đọc lại sau mỗi lượt
+        điền thành công), chưa có thì dùng bộ dữ liệu ban đầu đóng gói kèm app."""
+        try:
+            cached = json.loads(self._expense_cache_path().read_text(encoding="utf-8"))
+            if cached.get("context") == list(self._expense_context()) and cached.get("options"):
+                return {"ok": True, "code": "EXPENSE_OPTIONS_CACHED", "options": cached["options"]}
+        except (OSError, ValueError, AttributeError):
+            pass
+        options = load_seed_options()
+        if options:
+            return {"ok": True, "code": "EXPENSE_OPTIONS_SEED", "options": options}
+        return {"ok": True, "code": "EXPENSE_OPTIONS_UNAVAILABLE", "options": {}, "message": "Mẫu chưa có dropdown; hãy nhập đúng tên như trên WFX."}
+
+    def clear_expense_import(self, review_token: str) -> dict:
+        with self._expense_lock:
+            self.expense_reviews.pop(str(review_token or ""), None)
+        return {"ok": True, "code": "EXPENSE_REVIEW_CLEARED", "message": "Đã bỏ file nhập Expense Invoice."}
+
+    def fill_expense_import(self, review_token: str) -> dict:
+        review = None
+        loaded = False
+
+        def action() -> dict:
+            nonlocal review, loaded
+            if not loaded:
+                with self._expense_lock:
+                    review = self.expense_reviews.pop(str(review_token or ""), None)
+                loaded = True
+            if (review is None or time.monotonic() - review["created"] > 1800
+                    or review["context"] != self._expense_context()):
+                return {"ok": False, "code": "EXPENSE_REVIEW_EXPIRED", "message": "File đã hết hiệu lực hoặc tài khoản/Division đã đổi; hãy chọn lại file."}
+            result = fill_expense_invoice(review["data"], self._panel._log)
+            # Danh sách dropdown chỉ để làm mới cache, không gửi sang UI/lịch sử.
+            self._save_expense_options(result.pop("options", None))
+            return result
+        return self._panel._run("fill_expense_import", action, {"module_id": "0065_0880_0030_0020"})
 
     def search_supplier_invoice(
         self,

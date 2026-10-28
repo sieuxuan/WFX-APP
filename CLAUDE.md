@@ -381,6 +381,32 @@ Mỗi nút trong module là một flow riêng:
 
 Các workflow riêng hiện có:
 
+- Expense Invoice: tải mẫu XLSX 13 cột KHÔNG cần chọn Supplier và không chạm
+  Chrome: bấm tải là lưu ngay, kèm dropdown đầy đủ Supplier/Currency/Payment
+  Term/Ledger/Brand/Team. Nguồn dropdown theo thứ tự: cache danh sách thật của
+  đúng User ID + Division (`expense-options.json` ở data dir) → bộ dữ liệu ban
+  đầu đóng gói `assets/templates/Expense-Invoice-options.json` (tạo lại bằng
+  `python scripts/seed_expense_options.py` khi đang mở form New) → mẫu không
+  dropdown. Cache được làm mới sau mỗi lượt `fill_expense_import` thành công
+  bằng `read_expense_options`, chỉ đọc handler dropdown WFX
+  (`GetBindDDLData`), không đổi form; lỗi đọc không được làm hỏng lượt điền và
+  danh sách không gửi sang UI/lịch sử. Không mousedown `#ddlInvoiceCurrency`
+  khi chưa có Supplier (WFX bật hộp "Please select Supplier first"); Currency
+  là hợp các `CurrencyCode` của Supplier, Ledger lấy từ handler vì form New
+  không có dòng nên không có editor. Dropdown trong Excel chỉ cảnh báo
+  (errorStyle warning) để vẫn gõ được Supplier/Ledger mới; WFX đối chiếu
+  exact khi điền. UI hiện phần nhập Excel và phần Tra cứu (Search + `Mở Expense
+  Inv List`) luôn mở, không gấp. Mỗi
+  file một hóa đơn, mỗi dòng một Ledger; thông tin chung trống ở dòng sau kế
+  thừa dòng đầu, dữ liệu mâu thuẫn bị từ chối trước khi mở WFX. Local review
+  giữ snapshot đã parse bằng mã dùng một lần trong 30 phút; đổi tài khoản hoặc
+  Division phải chọn lại file. Điền trên form New trống, không ghi đè draft;
+  Invoice Type=General Expense, Sub-Type=ALL OTHER EXPENSES. Phải đối chiếu
+  lại header và mọi dòng sau khi điền, không tự Save/Confirm, không dùng native
+  Import Expense Invoice. Mẫu nguồn tại
+  `wfx_panel/assets/templates/Expense-Invoice.xlsx`; khảo sát và tiến độ nằm
+  ở `docs/EXPENSE_INVOICE_SCAN.md`.
+
 - Catalog: Category/folder, Master, Article Code; Apparel dùng Buyer Reference,
   category khác dùng Article Name; Costing, BOM,
   file đính kèm và Costing file import/export XLSX.

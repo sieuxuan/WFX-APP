@@ -818,16 +818,29 @@
         </div>
 
         <div class="special-module-workspace" data-module-view="expense_invoice" hidden>
-          <div class="workflow-choice-grid">
-            <button type="button" class="workflow-choice" data-module-action="expense-invoice-list">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-              <span><strong>Expense Inv</strong><small>Mở danh sách trên WFX</small></span>
-            </button>
-            <button type="button" class="workflow-choice" data-module-action="expense-invoice-new">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-              <span><strong>New</strong><small>Mặc định General Expense</small></span>
-            </button>
-          </div>
+          <section class="expense-import-block" aria-label="Nhập Expense Invoice từ Excel">
+            <div class="expense-section-heading">
+              <strong>Nhập từ Excel</strong>
+              <button type="button" class="module-clear-filters-button" data-module-action="expense-invoice-new">New trống</button>
+            </div>
+            <div class="workflow-choice-grid">
+              <button type="button" class="special-primary-button" data-module-action="expense-invoice-template">Tải mẫu Excel</button>
+              <button type="button" class="special-primary-button" data-module-action="expense-invoice-import">Chọn file Excel</button>
+            </div>
+            <div class="expense-import-review" hidden>
+              <strong class="expense-import-file"></strong>
+              <span class="expense-import-summary"></span>
+              <div class="workflow-choice-grid">
+                <button type="button" class="special-primary-button" data-module-action="expense-invoice-fill" disabled>Điền trên WFX</button>
+                <button type="button" class="module-clear-filters-button" data-module-action="expense-invoice-clear">Bỏ file</button>
+              </div>
+            </div>
+          </section>
+          <section class="expense-lookup" aria-label="Tra cứu Expense Invoice">
+            <div class="expense-section-heading">
+              <strong>Tra cứu</strong>
+              <button type="button" class="module-clear-filters-button" data-module-action="expense-invoice-list">Mở Expense Inv List</button>
+            </div>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
               <label class="module-multi-filter-field"><span>Supplier</span><input class="expense-invoice-supplier-query" type="text" autocomplete="off" aria-label="Supplier" /></label>
@@ -839,6 +852,7 @@
             <small class="module-validation-hint" data-validation-hint="expense-invoice">Nhập ít nhất một điều kiện.</small>
             <button type="button" class="module-clear-filters-button" data-clear-group="expense-invoice" hidden>Xóa điều kiện</button>
           </div>
+          </section>
         </div>
 
         <div class="special-module-workspace reports-workspace" data-module-view="reports" hidden>

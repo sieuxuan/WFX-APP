@@ -2871,3 +2871,20 @@ body.compact-mode .compact-launcher .compact-mark {
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
     }
+:root .expense-import-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+  margin-bottom: 14px;
+}
+.expense-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.expense-section-heading .module-clear-filters-button { margin: 0; }
+.expense-lookup { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.expense-import-review:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.expense-import-summary, .expense-import-file { overflow-wrap: anywhere; }
+.expense-import-block .workflow-choice-grid[hidden], .module-modal-subtitle[hidden] { display: none; }

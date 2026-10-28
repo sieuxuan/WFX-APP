@@ -138,6 +138,7 @@ function setBusy(value, message = "Đang xử lý trên WFX…") {
     syncCatalogStepButtons();
     syncGdnDispatchAction();
     syncAllInputValidation();
+    syncExpenseImportActions();
     syncGrnStepActions();
     syncSaleAsnCreate();
     const continueButton = $('[data-module-action="sale-asn-continue"]');
