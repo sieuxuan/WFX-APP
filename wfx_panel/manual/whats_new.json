@@ -4,6 +4,11 @@
     "date": "2026-10-27",
     "highlights": [
       {
+        "title": "Sample: tự đổi Division và xem file nhanh hơn",
+        "body": "Tìm theo Sample Order No. dạng PSG-, PSW- hoặc PSK- giờ tự chuyển sang Division PSSG, Woven hoặc Knit trước khi tìm. Khi xem file đính kèm, nhiều Sample cùng một Style được mở luôn, bạn có thể quay lại danh sách để xem Sample khác mà không phải tìm lại, và lần xem tiếp theo không còn phải chờ thêm khoảng 12 giây khi cửa sổ Style đang mở sẵn.",
+        "entry": "don-hang-sample-file"
+      },
+      {
         "title": "Mở lại Style vừa dùng chỉ với một chạm",
         "body": "Hàng Gần đây dưới ô tìm Catalog giữ các Style bạn vừa mở trong Category đang chọn; bấm một Style để mở lại ngay. Khi có nhiều kết quả, mỗi dòng hiện thêm Buyer Reference hoặc tên Article, và danh sách vẫn giữ nguyên nếu mở một dòng bị lỗi. Bấm phím mũi tên xuống từ ô tìm để chọn gợi ý bằng bàn phím.",
         "entry": "catalog-tim-style"

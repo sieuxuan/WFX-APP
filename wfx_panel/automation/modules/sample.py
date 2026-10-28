@@ -156,15 +156,36 @@ _SAMPLE_RESULT_ROWS_JS = """root => {
             ]),
         });
     });
+    // DOM trả dòng theo thứ tự AG Grid chèn vào, không phải thứ tự hiển thị.
+    uniqueRows.sort((a, b) =>
+        (Number(a.row_index) || 0) - (Number(b.row_index) || 0));
+    // AG Grid chỉ render dòng gần viewport. `aria-rowcount` đếm cả header,
+    // còn `aria-rowindex - row-index` của một dòng dữ liệu = số header + 1.
+    let gridTotal = 0;
+    const gridNode = root.querySelector(
+        '[role="grid"][aria-rowcount], [role="treegrid"][aria-rowcount]'
+    );
+    const ariaCount = Number(gridNode?.getAttribute('aria-rowcount'));
+    const probe = rowNodes.find(row => row.hasAttribute('aria-rowindex'));
+    if (Number.isFinite(ariaCount) && ariaCount > 0 && probe) {
+        const offset = Number(probe.getAttribute('aria-rowindex'))
+            - Number(probe.getAttribute('row-index'));
+        if (Number.isFinite(offset) && offset >= 1) {
+            gridTotal = ariaCount - (offset - 1);
+        }
+    }
     const noRows = [...root.querySelectorAll(
         '.ag-overlay-no-rows-wrapper, .ag-overlay-no-rows-center'
     )].some(shown);
     return {
         rows: uniqueRows,
         noRows,
-        totalRows: uniqueRows.length,
+        totalRows: Math.max(uniqueRows.length, gridTotal),
     };
 }"""
+
+# Panel chỉ hiện chừng này lựa chọn; nhiều hơn thì user nên thêm điều kiện.
+MAX_SAMPLE_CHOICES = 20
 
 
 _CLICK_SAMPLE_STYLE_JS = """(row, expectedCode) => {
@@ -210,6 +231,26 @@ _CLICK_SAMPLE_STYLE_JS = """(row, expectedCode) => {
     best.click();
     return value;
 }"""
+
+
+def _article_popup_open(page: Page) -> bool:
+    """Popup Article đã mở trước cú click Style Code hay chưa.
+
+    WFX đặt tên cửa sổ `ArticleDetail`, nên khi đã có popup thì click Style
+    TÁI DÙNG cửa sổ đó và kết nối CDP hiện tại không thấy document mới. Bước
+    quét file cần biết để recycle ngay thay vì probe chắc chắn trượt.
+    """
+    try:
+        pages = list(page.context.pages)
+    except (PlaywrightError, AttributeError):
+        return False
+    for candidate in pages:
+        try:
+            if candidate.frame(name="ArticleTop") is not None:
+                return True
+        except PlaywrightError:
+            continue
+    return False
 
 
 def _sample_result_grid(
@@ -314,6 +355,7 @@ def _click_sample_style_result(
 def _sample_file_result(
     frame: Frame,
     log: Callable[[str], None],
+    popup_open: bool = False,
 ) -> dict[str, Any]:
     _root, payload = _sample_result_grid(frame)
     rows = [
@@ -340,23 +382,45 @@ def _sample_file_result(
             "SAMPLE_STYLE_NOT_FOUND",
             "Kết quả Sample không có Style Code có thể mở.",
         )
-    if total_rows > 1 or len(rows) > 1:
+    hidden_rows = max(total_rows - len(rows), 0)
+    style_codes = {
+        str(row.get("style_code") or "").strip().casefold() for row in usable
+    }
+    # File nằm ở Style chứ không ở Sample: nhiều Sample cùng một Style Code
+    # cho đúng một bộ file, hỏi chọn chỉ thêm một cú bấm vô ích. Chỉ gộp khi
+    # đã thấy MỌI dòng (không dòng nào bị ảo hóa ngoài viewport hay thiếu
+    # Style Code), nếu không dòng chưa thấy có thể là Style khác.
+    same_style = (
+        len(style_codes) == 1
+        and hidden_rows == 0
+        and len(usable) == len(rows)
+    )
+    if (total_rows > 1 or len(rows) > 1) and not same_style:
         # `result_count` là số dòng người dùng bấm được, không phải số dòng
         # grid trả về: dòng không có Style Code không vào danh sách, nên đếm
         # theo `total_rows` sẽ hiện "3 kết quả" cho một danh sách chỉ có một
         # dòng chọn được. Chênh lệch phải nói rõ trong message.
-        message = f"Có {len(usable)} kết quả; chọn Sample cần kiểm tra file."
-        if len(usable) < total_rows:
+        listed = usable[:MAX_SAMPLE_CHOICES]
+        message = f"Có {total_rows} kết quả; chọn Sample cần kiểm tra file."
+        if hidden_rows == 0 and len(usable) < total_rows:
             message = (
                 f"Có {total_rows} kết quả, {len(usable)} dòng mở được Style "
                 "Code; chọn Sample cần kiểm tra file."
+            )
+        truncated = bool(hidden_rows or len(usable) > len(listed))
+        if truncated:
+            message += (
+                f" Danh sách chỉ hiện {len(listed)} dòng đầu; "
+                "thêm điều kiện để thu hẹp."
             )
         return _result(
             True,
             "SAMPLE_MULTIPLE_RESULTS",
             message,
-            samples=usable[:20],
+            samples=listed,
             result_count=len(usable),
+            total_rows=total_rows,
+            truncated=truncated,
         )
     selected = usable[0]
     if not _click_sample_style_result(
@@ -371,11 +435,19 @@ def _sample_file_result(
             "Dòng Sample vừa thay đổi trước khi mở Style Code. Hãy thử lại.",
         )
     article_code = str(selected.get("style_code") or "").strip()
+    message = f"Đã mở Style Code {article_code} từ Sample List."
+    if len(usable) > 1:
+        message = (
+            f"{len(usable)} Sample cùng Style Code {article_code}; "
+            "đã mở Style đó từ Sample List."
+        )
     return _result(
         True,
         "SAMPLE_STYLE_OPENED",
-        f"Đã mở Style Code {article_code} từ Sample List.",
+        message,
         article_code=article_code,
+        sample_count=len(usable),
+        article_popup_reused=popup_open,
     )
 
 
@@ -571,7 +643,7 @@ def find_sample_file_results_with_filters(
             raise PlaywrightTimeoutError(
                 "WFX chưa trả kết quả lọc Sample sau 30 giây."
             )
-        return _sample_file_result(frame, log)
+        return _sample_file_result(frame, log, _article_popup_open(page))
     except PlaywrightTimeoutError as exc:
         detail = _first_line(exc)
         code = (
@@ -629,6 +701,7 @@ def open_sample_file_result(
             scan_horizontal=SAMPLE_SEARCH_SPEC.requires_floating_filter,
             module_name=SAMPLE_SEARCH_SPEC.module_name,
         )
+        popup_open = _article_popup_open(page)
         if not _click_sample_style_result(frame, row_key, style_code, log):
             return _result(
                 False,
@@ -640,6 +713,7 @@ def open_sample_file_result(
             "SAMPLE_STYLE_OPENED",
             f"Đã mở Style Code {style_code} từ Sample List.",
             article_code=style_code,
+            article_popup_reused=popup_open,
         )
     except (PlaywrightTimeoutError, PlaywrightError):
         return _result(

@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     from wfx_panel.controllers.catalog import CatalogController
 
 from wfx_panel import constants
+from wfx_panel.controllers.sample_division import (
+    align_sample_division,
+    with_division_state,
+)
 
 
 class ArticleFileController:
@@ -53,7 +57,11 @@ class ArticleFileController:
             "file_count": len(public_files),
         }
 
-    def _scan_open_article_files(self, article_code: str) -> dict:
+    def _scan_open_article_files(
+        self,
+        article_code: str,
+        popup_reused: bool = False,
+    ) -> dict:
         scanner = getattr(self._panel._login, "scan_catalog_files", None)
         if not callable(scanner):
             return {
@@ -61,8 +69,11 @@ class ArticleFileController:
                 "code": "CATALOG_FILES_UNSUPPORTED",
                 "message": "Phiên bản tự động hóa chưa hỗ trợ kiểm tra file Style.",
             }
+        log = self._panel._log
         return self._publish_file_scan(
-            scanner(article_code, self._panel._log)
+            scanner(article_code, log, popup_reused=True)
+            if popup_reused
+            else scanner(article_code, log)
         )
 
     def _publish_sample_file_choices(self, result: dict) -> dict:
@@ -98,8 +109,12 @@ class ArticleFileController:
             "source": "sample",
         }
 
-    def _sample_files_result(self, article_code: str) -> dict:
-        scanned = self._scan_open_article_files(article_code)
+    def _sample_files_result(self, opened: dict) -> dict:
+        article_code = str(opened.get("article_code") or "").strip()
+        scanned = self._scan_open_article_files(
+            article_code,
+            popup_reused=bool(opened.get("article_popup_reused")),
+        )
         return {
             **scanned,
             "source": "sample",
@@ -157,6 +172,14 @@ class ArticleFileController:
             catalog._invalidate_catalog_search_only()
             self.tokens.clear()
             self.sample_choices.clear()
+            failed, division = align_sample_division(
+                panel, cleaned_values["sample_no"]
+            )
+            if failed is not None:
+                return {**failed, "source": "sample"}
+            return with_division_state(find_and_scan(), division)
+
+        def find_and_scan() -> dict:
             finder = getattr(
                 panel._login,
                 "find_sample_file_results_with_filters",
@@ -177,8 +200,7 @@ class ArticleFileController:
                 return self._publish_sample_file_choices(found)
             if found.get("code") != "SAMPLE_STYLE_OPENED":
                 return {**found, "source": "sample"}
-            article_code = str(found.get("article_code") or "").strip()
-            return self._sample_files_result(article_code)
+            return self._sample_files_result(found)
 
         return panel._run(
             "check_sample_files",
@@ -222,8 +244,15 @@ class ArticleFileController:
                     # token là mời người dùng bấm tiếp vào dòng đã chết.
                     self.sample_choices.clear()
                 return {**opened, "source": "sample"}
-            self.sample_choices.clear()
-            return self._sample_files_result(choice["style_code"])
+            # Giữ danh sách: grid Sample vẫn mở nguyên trên WFX, nên người dùng
+            # quay lại chọn Sample kế tiếp mà không phải tìm lại. Mỗi lần bấm
+            # vẫn đối chiếu lại row key + Style Code trên grid trước khi click.
+            return {
+                **self._sample_files_result(
+                    {**opened, "article_code": choice["style_code"]}
+                ),
+                "choice_id": choice_id,
+            }
 
         return panel._run(
             "open_sample_file_choice",

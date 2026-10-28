@@ -19,6 +19,11 @@ Order mới.
 > Bạn có thể bấm `Tìm` ngay. Ứng dụng tự mở danh sách nếu cần.
 
 > [!meo]
+> Sample Order No. dạng `PSG-…`, `PSW-…` hoặc `PSK-…` thuộc Division PSSG,
+> Woven hoặc Knit. Ứng dụng tự chuyển Division trước khi tìm, nên bạn không cần
+> đổi tay.
+
+> [!meo]
 > Bạn có thể sắp xếp cột theo cách làm việc riêng. Ứng dụng tự quét ngang để tìm
 > Sample Order No., Style, Created By hoặc Buyer, xóa filter cũ trước khi tìm và
 > kết hợp các điều kiện đã nhập.
@@ -29,3 +34,4 @@ Order mới.
 |---|---|
 | New chưa mở | Chờ WFX tải xong rồi bấm `New` lại một lần. |
 | Không thấy Sample | Kiểm tra các điều kiện đã nhập và cách viết nội dung trên WFX. |
+| Báo chưa đổi được Division | Tài khoản có thể chưa có quyền ở Division đó; đổi Division trên WFX hoặc nhờ quản trị cấp quyền. |

@@ -407,11 +407,28 @@ def _scan_article_file_tabs(
     return files, sections
 
 
+def _unreadable_sections_note(sections: list[dict[str, Any]]) -> str:
+    names = [
+        str(section.get("name") or "")
+        for section in sections
+        if not section.get("available")
+    ]
+    names = [name for name in names if name]
+    return f" Chưa đọc được: {', '.join(names)}." if names else ""
+
+
 def scan_catalog_files(
     article_code: str,
     log: Callable[[str], None] = print,
+    popup_reused: bool = False,
 ) -> dict[str, Any]:
-    """Quét file ở các mục 5, 6, 8, 9 của popup style đang mở."""
+    """Quét file ở các mục 5, 6, 8, 9 của popup style đang mở.
+
+    ``popup_reused`` nghĩa là popup Article đã mở TRƯỚC cú click Style: WFX
+    đặt tên cửa sổ `ArticleDetail` nên window.open tái dùng nó và CDP hiện tại
+    không thấy document mới — probe trên CDP cũ chắc chắn trượt, nên recycle
+    ngay đúng một lần thay vì chờ hết 12 giây probe.
+    """
     article_code = str(article_code or "").strip()
     if not article_code:
         return _result(
@@ -450,16 +467,27 @@ def scan_catalog_files(
         # Đọc file trên CDP hiện tại trước; chỉ khi popup không với tới được mới
         # dựng lại driver/CDP đúng một lần rồi thử lại (tránh banner + re-attach
         # mọi tab mỗi lần bấm File).
-        try:
-            files, sections = _read_article_files(browser, 12)
-        except (PlaywrightTimeoutError, PlaywrightError):
+        read: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None
+        if popup_reused:
+            _write_log(
+                log,
+                "[ARTICLE] WFX tái dùng popup Article đang mở; "
+                "kết nối lại để thấy trang mới...",
+            )
+        else:
+            try:
+                read = _read_article_files(browser, 12)
+            except (PlaywrightTimeoutError, PlaywrightError):
+                read = None
+        if read is None:
             playwright, browser, page = _refresh_article_context(
                 playwright,
                 browser,
                 page,
                 log,
             )
-            files, sections = _read_article_files(browser, 20)
+            read = _read_article_files(browser, 20)
+        files, sections = read
         available = sum(1 for section in sections if section["available"])
         if available == 0:
             return _result(
@@ -469,11 +497,13 @@ def scan_catalog_files(
                 article_code=article_code,
                 sections=sections,
             )
+        # Mục nào click không xác nhận được thì "không có file" chỉ đúng một
+        # phần; phải nói rõ để người dùng không tin nhầm là Style thiếu file.
         message = (
             f"Đã tìm thấy {len(files)} file đính kèm của style {article_code}."
             if files
             else f"Style {article_code} không có file đính kèm trong bốn mục."
-        )
+        ) + _unreadable_sections_note(sections)
         return _result(
             True,
             "CATALOG_FILES_SCANNED",

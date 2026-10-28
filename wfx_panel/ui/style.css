@@ -2035,6 +2035,8 @@ body.compact-mode .compact-launcher .compact-mark {
     .sample-file-results { margin-top: 1px; }
     .sample-file-results[hidden] { display: none !important; }
     .sample-file-results-list { display: flex; flex-direction: column; gap: 3px; }
+    .sample-file-results-back { margin: 0 0 5px; }
+    .sample-file-results-list .catalog-result-row.is-checked .catalog-result-code::after { content: " ✓"; color: var(--text-3); font-weight: 500; }
     .company-foc-state {
       display: flex;
       align-items: center;

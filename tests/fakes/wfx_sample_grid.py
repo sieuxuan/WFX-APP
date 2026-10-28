@@ -270,6 +270,7 @@ class SampleGridFrame:
         scroll_maximum: int = 0,
         scroll_viewport: int = 800,
         on_poll: Callable[[SampleGridFrame, int], None] | None = None,
+        grid_total: int | None = None,
     ) -> None:
         self.clock = clock
         self.url = url
@@ -282,6 +283,8 @@ class SampleGridFrame:
         self.scroll_maximum = scroll_maximum
         self.scroll_viewport = scroll_viewport
         self.on_poll = on_poll
+        # Tổng dòng theo `aria-rowcount` khi AG Grid ảo hóa bớt dòng.
+        self.grid_total = grid_total
         self.root = _RootNode(self)
 
         self.inputs: list[SampleFilter] = list(
@@ -308,7 +311,7 @@ class SampleGridFrame:
         return {
             "rows": [row.as_payload() for row in self.rows],
             "noRows": bool(self.no_rows and not self.rows),
-            "totalRows": len(self.rows),
+            "totalRows": max(len(self.rows), self.grid_total or 0),
         }
 
     def grid_signature(self) -> str:

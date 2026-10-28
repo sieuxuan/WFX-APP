@@ -18,6 +18,10 @@ if TYPE_CHECKING:
 
 from wfx_panel import constants, module_registry
 from wfx_panel.coercion import boolean
+from wfx_panel.controllers.sample_division import (
+    align_sample_division,
+    with_division_state,
+)
 
 
 class ModulesController:
@@ -111,13 +115,23 @@ class ModulesController:
             "buyer": str(buyer or "").strip(),
         }
         active_filters = [key for key, value in values.items() if value]
+
+        def action() -> dict:
+            failed, division = align_sample_division(panel, values["sample_no"])
+            if failed is not None:
+                return failed
+            return with_division_state(
+                panel._login.search_sample_list_with_filters(
+                    sample["xpath"],
+                    values,
+                    panel._log,
+                ),
+                division,
+            )
+
         return panel._run(
             "search_sample",
-            lambda: panel._login.search_sample_list_with_filters(
-                sample["xpath"],
-                values,
-                panel._log,
-            ),
+            action,
             {
                 "filter_kind": "multiple",
                 "filter_kinds": active_filters,

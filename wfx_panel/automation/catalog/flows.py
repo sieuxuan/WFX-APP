@@ -100,11 +100,8 @@ def _find_in_open_catalog(
                 "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
             )
         category_value = constants.CATEGORIES.get(category_name, "")
-        context = (
-            browser.contexts[0]
-            if destination in {"costsheet", "bom"}
-            else None
-        )
+        contexts = getattr(browser, "contexts", None) or []
+        context = contexts[0] if contexts else None
         # Chụp popup TRƯỚC mọi lối mở Style (GetData hoặc click grid).
         previous_states = (
             _article_navigation_states(context)
@@ -135,16 +132,19 @@ def _find_in_open_catalog(
                 query,
                 log,
             )
+        # WFX đặt tên cửa sổ `ArticleDetail`: nếu popup Article đã mở thì
+        # window.open TÁI DÙNG nó và kết nối CDP hiện tại không thấy document
+        # mới (đo trên WFX: probe 3–4 giây luôn trượt, driver mới thấy ngay).
+        # Khi đó recycle ngay đúng một lần, không probe. Nút File quét popup ở
+        # một sub-op sau nên nhận cờ này qua kết quả.
+        popup_already_open = any(state[2] for state in previous_states)
+        if result.get("code") == "RESULT_OPENED":
+            result["article_popup_reused"] = popup_already_open
         if (
             destination in {"costsheet", "bom"}
             and result.get("code") == "RESULT_OPENED"
         ):
             article_code = str(result.get("article_code") or "")
-            # WFX đặt tên cửa sổ `ArticleDetail`: nếu popup Article đã mở thì
-            # window.open TÁI DÙNG nó và kết nối CDP hiện tại không thấy
-            # document mới (đo trên WFX: probe 3–4 giây luôn trượt, driver mới
-            # thấy ngay). Khi đó recycle ngay đúng một lần, không probe.
-            popup_already_open = any(state[2] for state in previous_states)
             label: str | None = None
             if not popup_already_open:
                 try:

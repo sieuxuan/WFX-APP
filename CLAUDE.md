@@ -630,6 +630,24 @@ Các workflow riêng hiện có:
   nếu chỉ có một dòng thì tự click Style Code, quét bốn mục file giống Catalog
   và trả danh sách tải trực tiếp. Nếu có nhiều dòng, panel hiển thị lựa chọn
   Sample; sau khi user chọn, app tiếp tục từ grid đang mở, không tìm lại.
+  File thuộc Style nên khi đã thấy MỌI dòng (không dòng bị ảo hóa — tổng từ
+  `aria-rowcount` — và dòng nào cũng có Style Code) mà tất cả cùng một Style
+  Code (không phân biệt hoa/thường) thì mở luôn, không hỏi chọn. Dòng đọc theo
+  thứ tự `row-index`; có nhiều hơn 20 dòng hoặc còn dòng ảo hóa thì trả
+  `truncated` và báo thêm điều kiện. Token lựa chọn vẫn còn hiệu lực sau khi mở
+  thành công để user `← Chọn Sample khác` không phải tìm lại (mỗi lần vẫn đối
+  chiếu row key + Style Code trên grid); chỉ `SAMPLE_RESULT_EXPIRED`, lượt tìm
+  mới hoặc reset context mới xóa. Trước cú click Style Code, automation ghi
+  `article_popup_reused` nếu đã có popup `ArticleTop`; `scan_catalog_files(...,
+  popup_reused=True)` khi đó recycle CDP ngay (giống luật `ArticleDetail` của
+  Catalog), nút File của Catalog cũng truyền cờ này. Mục file click không xác
+  nhận được phải được nêu trong message (`Chưa đọc được: …`).
+  Sample Order No. có tiền tố `PSG-`/`PSW-`/`PSK-` thuộc Division PSSG/Woven/
+  Knit: cả Search lẫn Check File gọi `switch_division` trong CÙNG flow trước khi
+  tìm (`controllers/sample_division.py`), reset route menu + context Catalog khi
+  đã đổi, gộp `current_division` vào kết quả cuối và báo `Đã tự chuyển sang
+  Division …`. Đổi không được thì dừng, không tìm ở Division sai;
+  `CHROME_CLOSED`/`NOT_LOGGED_IN` giữ nguyên để run engine tự retry.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
   No., New từ Excel, và tải Documents. Workspace có đúng MỘT tầng tab gồm
   `Tạo mới` (mặc định) và `Tra cứu`; nút mở `Sale ASN List` là icon nằm trên
