@@ -50,6 +50,13 @@ VersionInfoProductVersion={#AppVersion}
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[InstallDelete]
+; Runtime PyInstaller của bản cũ phải bị xóa trước khi chép bản mới: [Files]
+; chỉ ghi đè chứ không xóa, nên DLL/.pyd của bản trước (kể cả bản build bằng
+; Python khác) cứ tích lại sau mỗi lần nâng cấp. Dữ liệu người dùng nằm ở
+; %LocalAppData%\WFX-Panel, ngoài {app}, nên không bị đụng tới.
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

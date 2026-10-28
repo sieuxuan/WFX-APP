@@ -74,6 +74,10 @@ def test_installer_contains_complete_pyinstaller_onedir_build():
 
     assert 'Source: "{#SourceDir}\\*"' in source
     assert "recursesubdirs createallsubdirs" in source
+    # Nâng cấp phải thay trọn runtime, không để DLL/.pyd của bản cũ tích lại.
+    assert '[InstallDelete]\n' in source
+    assert 'Type: filesandordirs; Name: "{app}\\_internal"' in source
+    assert source.index("[InstallDelete]") < source.index("[Files]")
     assert 'Join-Path $SourceDir "WFX-Panel.exe"' in build
     assert 'Join-Path $SourceDir "_internal"' in build
     assert "from wfx_panel.version import APP_VERSION" in build
