@@ -718,6 +718,13 @@ def make_api(tmp_path):
     return api, fake
 
 
+def enable_admin_mode(api):
+    """Tính năng quản trị cần cả quyền WFX lẫn công tắc Chế độ quản trị bật."""
+    api._admin_access = True
+    api._admin_module_ids = set(constants.ADMIN_MODULE_IDS)
+    prefs.save_prefs(base_dir=api._base_dir, admin_mode=True)
+
+
 def test_gdn_dispatch_requires_15_minute_grn_confirmation(tmp_path):
     api, fake = make_api(tmp_path)
 

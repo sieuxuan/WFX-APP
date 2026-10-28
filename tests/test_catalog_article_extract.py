@@ -12,7 +12,7 @@ import io
 
 import pytest
 
-from tests.test_panel_api import make_api
+from tests.test_panel_api import enable_admin_mode, make_api
 from wfx_panel.automation.catalog import article_extract as extract
 from wfx_panel.automation.catalog import article_partition as partition
 
@@ -259,7 +259,7 @@ def test_only_an_admin_can_extract_articles(tmp_path):
 
 def test_an_unknown_category_is_rejected_before_touching_chrome(tmp_path):
     api, fake = make_api(tmp_path)
-    api._admin_access = True
+    enable_admin_mode(api)
 
     result = api.extract_catalog_articles(["Shoes"])
 
@@ -269,7 +269,7 @@ def test_an_unknown_category_is_rejected_before_touching_chrome(tmp_path):
 
 def test_an_empty_selection_extracts_every_category_into_exports(tmp_path):
     api, fake = make_api(tmp_path)
-    api._admin_access = True
+    enable_admin_mode(api)
     seen = {}
 
     def fake_extract(categories, output_dir, log, *, app_version):

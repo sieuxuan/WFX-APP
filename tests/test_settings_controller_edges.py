@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.test_panel_api import FakeLogin, make_api
+from tests.test_panel_api import FakeLogin, enable_admin_mode, make_api
 from wfx_panel.controllers import settings as settings_module
 
 
@@ -48,8 +48,27 @@ def test_an_account_without_admin_rights_cannot_save_an_admin_key(api, settings)
     assert result["code"] == "ADMIN_ACCESS_DENIED"
 
 
-def test_an_admin_account_saves_the_key_and_is_told_so(api, settings):
+def test_admin_features_need_the_admin_mode_switch_not_just_rights(
+    api, settings, monkeypatch
+):
+    from wfx_panel import constants
+
     api._admin_access = True
+    api._admin_module_ids = set(constants.ADMIN_MODULE_IDS)
+    monkeypatch.setattr(
+        settings_module.reference_sync,
+        "publish_current",
+        lambda *a, **k: pytest.fail("must not publish while admin mode is off"),
+    )
+
+    assert settings.save_sync_admin_key("khoa-bi-mat")["code"] == "ADMIN_ACCESS_DENIED"
+    assert settings.publish_reference_data()["code"] == "ADMIN_ACCESS_DENIED"
+    assert api.extract_catalog_articles([])["code"] == "ADMIN_ACCESS_DENIED"
+    assert api.probe_catalog_data_source()["code"] == "ADMIN_ACCESS_DENIED"
+
+
+def test_an_admin_account_saves_the_key_and_is_told_so(api, settings):
+    enable_admin_mode(api)
 
     result = settings.save_sync_admin_key("khoa-bi-mat")
 
@@ -58,7 +77,7 @@ def test_an_admin_account_saves_the_key_and_is_told_so(api, settings):
 
 
 def test_clearing_the_admin_key_says_it_was_removed(api, settings):
-    api._admin_access = True
+    enable_admin_mode(api)
     settings.save_sync_admin_key("khoa-bi-mat")
 
     result = settings.save_sync_admin_key("   ")
@@ -70,7 +89,7 @@ def test_clearing_the_admin_key_says_it_was_removed(api, settings):
 def test_an_admin_key_windows_refuses_to_encrypt_is_reported(
     api, settings, monkeypatch
 ):
-    api._admin_access = True
+    enable_admin_mode(api)
 
     def refuse(*_args, **_kwargs):
         raise RuntimeError("DPAPI từ chối mã hóa")

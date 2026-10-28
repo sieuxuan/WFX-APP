@@ -97,10 +97,11 @@ function setAdminAccess(access, moduleIds, enabled) {
   if (row) row.hidden = !adminAccess;
   const input = $(".admin-mode-input");
   if (input) input.checked = adminMode;
+  // Có quyền chỉ hiện công tắc; mọi tính năng quản trị chỉ hiện khi đã bật nó.
   const syncCard = $(".reference-sync-card");
-  if (syncCard) syncCard.hidden = !adminAccess;
+  if (syncCard) syncCard.hidden = !adminMode;
   const syncAdmin = $(".reference-sync-admin");
-  if (syncAdmin) syncAdmin.hidden = !adminAccess;
+  if (syncAdmin) syncAdmin.hidden = !adminMode;
   $$(".catalog-probe-row").forEach((row) => { row.hidden = !adminMode; });
   buildModules();
 }

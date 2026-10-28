@@ -993,7 +993,8 @@ def test_settings_can_check_for_updates_immediately():
 
 def test_reference_data_uses_admin_visibility():
     assert 'const syncCard = $(".reference-sync-card")' in JS
-    assert "syncCard.hidden = !adminAccess" in JS
+    assert "syncCard.hidden = !adminMode" in JS
+    assert "syncAdmin.hidden = !adminMode" in JS
 
 
 def test_panel_auto_hides_when_focus_leaves_the_app():

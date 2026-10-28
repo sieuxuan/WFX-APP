@@ -291,13 +291,9 @@ class SettingsController:
 
     def save_sync_admin_key(self, admin_key: str) -> dict:
         panel = self._panel
-        if panel._admin_access is not True:
-            return {
-                "ok": False,
-                "code": "ADMIN_ACCESS_DENIED",
-                "message": "Tài khoản WFX chưa có quyền quản trị.",
-                **reference_sync.status(panel._base_dir),
-            }
+        denied = panel._admin_mode_error(**reference_sync.status(panel._base_dir))
+        if denied:
+            return denied
         try:
             configured = panel._prefs.save_sync_admin_key(
                 str(admin_key or ""),
@@ -358,13 +354,9 @@ class SettingsController:
 
     def publish_reference_data(self) -> dict:
         panel = self._panel
-        if panel._admin_access is not True:
-            return {
-                "ok": False,
-                "code": "ADMIN_ACCESS_DENIED",
-                "message": "Tài khoản WFX chưa có quyền quản trị.",
-                **reference_sync.status(panel._base_dir),
-            }
+        denied = panel._admin_mode_error(**reference_sync.status(panel._base_dir))
+        if denied:
+            return denied
         return panel._run(
             "publish_reference_data",
             lambda: reference_sync.publish_current(

@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from tests.test_panel_api import make_api
+from tests.test_panel_api import enable_admin_mode, make_api
 from wfx_panel.automation.catalog import endpoint_probe as probe
 
 # --- che giá trị nhạy cảm -------------------------------------------------
@@ -504,7 +504,7 @@ def test_only_an_admin_account_can_run_the_probe(tmp_path):
 
 def test_the_probe_writes_into_the_app_data_diagnostics_folder(tmp_path):
     api, fake = make_api(tmp_path)
-    api._admin_access = True
+    enable_admin_mode(api)
     seen = {}
 
     def fake_probe(category_name, category_value, output_dir, log, *, app_version):
