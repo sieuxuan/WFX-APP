@@ -4,6 +4,21 @@
     "date": "2026-10-27",
     "highlights": [
       {
+        "title": "Nhập Expense Invoice từ Excel",
+        "body": "Màn Expense Inv có thêm luồng Tải mẫu Excel → Chọn file → Điền trên WFX. Mẫu tải về ngay, không cần chọn Supplier và đã có sẵn dropdown Supplier, Currency, Payment Term, Ledger, Brand và Team. Mỗi file là một hóa đơn, mỗi dòng một Ledger; ứng dụng kiểm tra file trước, điền vào form New trống rồi đối chiếu lại mọi trường. Bạn tự kiểm tra và Save trên WFX.",
+        "entry": "danh-sach-qa-tai-chinh"
+      },
+      {
+        "title": "OC: tự đổi Division và Upload rõ ràng hơn",
+        "body": "Tìm theo OC No. dạng PSG-, PSW- hoặc PSK- giờ tự chuyển sang Division PSSG, Woven hoặc Knit trước khi tìm. Phần kiểm tra và kết quả Upload OC nằm ngay dưới hai thẻ Upload, báo đúng dòng bị lỗi trong file và nêu tiến độ Confirm hoặc Reject. Nếu WFX từ chối Confirm hoặc Reject, ứng dụng dừng ngay thay vì bấm thêm lượt nữa.",
+        "entry": "don-hang-oc-tim"
+      },
+      {
+        "title": "RMPO và nhập kho: tự đổi Division",
+        "body": "Tìm RMPO, nhập kho và tìm GRN theo RMPO No. dạng PSG-, PSW- hoặc PSK- giờ tự chuyển sang đúng Division trước khi tìm, nên không còn báo không có kết quả chỉ vì đang chọn Division khác. Nếu nhập thiếu tiền tố, ứng dụng gợi ý nhập đủ.",
+        "entry": "danh-sach-rmpo"
+      },
+      {
         "title": "Sample: tự đổi Division và xem file nhanh hơn",
         "body": "Tìm theo Sample Order No. dạng PSG-, PSW- hoặc PSK- giờ tự chuyển sang Division PSSG, Woven hoặc Knit trước khi tìm. Khi xem file đính kèm, nhiều Sample cùng một Style được mở luôn, bạn có thể quay lại danh sách để xem Sample khác mà không phải tìm lại, và lần xem tiếp theo không còn phải chờ thêm khoảng 12 giây khi cửa sổ Style đang mở sẵn.",
         "entry": "don-hang-sample-file"
