@@ -25,6 +25,11 @@ khiển.
 > [!meo]
 > Bạn có thể điền một hoặc cả hai điều kiện. Ô để trống không được dùng để lọc.
 
+> [!meo]
+> RMPO No. dạng `PSG-…`, `PSW-…` hoặc `PSK-…` thuộc Division PSSG, Woven hoặc
+> Knit. Ứng dụng tự chuyển Division trước khi tìm, nên bạn không cần đổi tay.
+> Nếu chỉ nhập phần số cuối, ứng dụng tìm ở Division đang chọn.
+
 > [!luuy]
 > RMPO ở trạng thái Part Received hiện cả `Nhập kho` và `Check Received`: bạn
 > có thể nhập phần còn lại hoặc kiểm tra phần đã nhận.
@@ -33,6 +38,7 @@ khiển.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Không thấy RMPO | Xóa bớt một điều kiện rồi tìm lại để kiểm tra dữ liệu. |
+| Không thấy RMPO | Nhập đủ RMPO No. có tiền tố để ứng dụng tự chuyển đúng Division, hoặc xóa bớt một điều kiện rồi tìm lại. |
 | Dòng hoặc Status đã thay đổi | Bấm `Tìm` lại rồi chọn đúng RMPO mới nhất. |
+| Division đã đổi sau lượt tìm | Bấm `Tìm` lại. Danh sách cũ thuộc Division trước nên không còn dùng được. |
 | Chưa mở được `Revise` | Chờ WFX tải xong cửa sổ RMPO rồi thử lại. |
