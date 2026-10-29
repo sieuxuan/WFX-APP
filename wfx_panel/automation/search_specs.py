@@ -196,51 +196,43 @@ ADVANCE_PR_SEARCH_SPEC = ModuleSearchSpec(
     ),
 )
 
+# Đo trên WFX thật (WFXAPInvoiceList.aspx, 29/10/2026): ô lọc nằm trong ô
+# `..._trSearch_td_col<Cột>` và id KHÔNG theo tên cột (`txtSearchInvoiceNum`,
+# `txtPoNumber`). Bản cũ đoán `#txtPONo`/`#txtASNGRNNo` nên context không bao
+# giờ đủ bộ cột và Search luôn dừng ở bước context. Cột `ASN No.` (`#txtASN`)
+# khác cột `ASN/GRN No.` (`#txtASNGRN`): tuyệt đối không dùng selector chứa
+# chuỗi `ASN`.
+_AP_INVOICE_SEARCH_CELL = "#gridAPInvoiceList_tblGridHeader_trSearch_td_"
+
 SUPPLIER_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
     module_name="Supplier Inv List",
     fields={
         "supplier": SearchFieldSpec(
             "Supplier",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier "
-                "input#txtSupplier",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colSupplier "
-                "input#txtSupplier",
-                "#txtSupplier",
+                f"{_AP_INVOICE_SEARCH_CELL}colSupplier input#txtSearchSupplier",
+                "#txtSearchSupplier",
             ),
         ),
         "invoice_no": SearchFieldSpec(
             "Invoice No.",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo "
-                "input#txtInvoiceNo",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colInvoiceNo "
-                "input#txtInvoiceNo",
-                "#txtInvoiceNo",
-                "#txtAPInvoiceNo",
+                f"{_AP_INVOICE_SEARCH_CELL}colInvoiceNo input#txtSearchInvoiceNum",
+                "#txtSearchInvoiceNum",
             ),
         ),
         "po_no": SearchFieldSpec(
             "PO No.",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColPONo "
-                "input#txtPONo",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colPONo "
-                "input#txtPONo",
-                "#txtPONo",
-                "#txtPONumber",
+                f"{_AP_INVOICE_SEARCH_CELL}colPoNumber input#txtPoNumber",
+                "#txtPoNumber",
             ),
         ),
         "asn_grn_no": SearchFieldSpec(
             "ASN/GRN No.",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColASNGRNNo "
-                "input#txtASNGRNNo",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colASNGRNNo "
-                "input#txtASNGRNNo",
-                "#txtASNGRNNo",
-                "#txtASNNo",
-                "#txtGRNNo",
+                f"{_AP_INVOICE_SEARCH_CELL}colASNGRN input#txtASNGRN",
+                "#txtASNGRN",
             ),
         ),
     },
@@ -251,10 +243,18 @@ SUPPLIER_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
             "#gridAPInvoiceList_tblGridHeader",
         ),
     ),
-    # Expense Inv List dùng đúng #titlebarAPInvoiceList và #gridAPInvoiceList;
-    # Cancel là thao tác phá hủy nên phải loại hẳn frame Expense.
+    # Expense Inv List (WFXExpenseInvoiceList.aspx) có chung id ô
+    # `#txtSearchSupplier`/`#txtSearchCreatedBy`; Cancel là thao tác phá hủy
+    # nên ngoài bộ cột PO/ASN-GRN còn phải loại hẳn frame Expense theo marker.
     foreign_markers=("expense",),
 )
+
+# Đo trên WFXExpenseInvoiceList.aspx thật (29/10/2026): trang riêng, grid
+# `gridExpenseInvoiceList`, titlebar `#titlebarExpenseInvoiceList`, ô cột viết
+# hoa `Col…`. Bản cũ chép id của AP Invoice List nên Expense chưa bao giờ nhận
+# được context. Hai màn có chung id `#txtSearchSupplier`/`#txtSearchCreatedBy`,
+# nên selector ô luôn neo trong header grid Expense.
+_EXPENSE_INVOICE_SEARCH_CELL = "#gridExpenseInvoiceList_tblGridHeader_trSearch_td_"
 
 EXPENSE_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
     module_name="Expense Inv List",
@@ -262,57 +262,40 @@ EXPENSE_INVOICE_SEARCH_SPEC = ModuleSearchSpec(
         "supplier": SearchFieldSpec(
             "Supplier",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier "
-                "input#txtSupplier",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colSupplier "
-                "input#txtSupplier",
-                "#txtSupplier",
+                f"{_EXPENSE_INVOICE_SEARCH_CELL}ColSupplier input#txtSearchSupplier",
+                "#gridExpenseInvoiceList_tblGridHeader #txtSearchSupplier",
             ),
         ),
         "invoice_no": SearchFieldSpec(
             "Invoice No.",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo "
-                "input#txtInvoiceNo",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colInvoiceNo "
-                "input#txtInvoiceNo",
-                "#txtInvoiceNo",
-                "#txtAPInvoiceNo",
+                f"{_EXPENSE_INVOICE_SEARCH_CELL}ColInvoiceNo input#txtSearchInvoiceNo",
+                "#gridExpenseInvoiceList_tblGridHeader #txtSearchInvoiceNo",
             ),
         ),
         "created_by": SearchFieldSpec(
             "Created By",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColCreatedBy "
-                "input#txtCreatedBy",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colCreatedBy "
-                "input#txtCreatedBy",
-                "#txtCreatedBy",
+                f"{_EXPENSE_INVOICE_SEARCH_CELL}ColCreatedBy input#txtSearchCreatedBy",
+                "#gridExpenseInvoiceList_tblGridHeader #txtSearchCreatedBy",
             ),
         ),
         "status": SearchFieldSpec(
             "Status",
             (
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColStatus "
-                "input#txtStatus",
-                "#gridAPInvoiceList_tblGridHeader_trSearch_td_colStatus "
-                "input#txtStatus",
-                "#txtStatus",
-                "select#ddlStatus",
-                'select[id*="Status" i]',
+                f"{_EXPENSE_INVOICE_SEARCH_CELL}ColStatus input#txtSearchStatus",
+                "#gridExpenseInvoiceList_tblGridHeader #txtSearchStatus",
             ),
         ),
     },
     context_field=SearchFieldSpec(
         "Expense Inv List",
         (
-            "#titlebarAPInvoiceList",
-            "#gridAPInvoiceList_tblGridHeader",
+            "#titlebarExpenseInvoiceList",
+            "#gridExpenseInvoiceList_tblGridHeader",
         ),
     ),
-    # Đối xứng với Supplier Inv: bộ cột filter là dấu hiệu chính, nhưng nếu WFX
-    # render thêm Created By/Status trên màn Supplier thì chỉ marker mới chặn
-    # được việc lọc nhầm trên grid của module kia.
+    # Lớp chặn thứ hai: trang Supplier có title "Supplier Invoices".
     foreign_markers=("supplier invoice", "supplier inv"),
 )
 

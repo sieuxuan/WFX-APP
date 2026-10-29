@@ -66,6 +66,8 @@ def _stub_search(monkeypatch, rows: list[dict]) -> None:
     )
     patch_automation(monkeypatch, modules, "_submit_multi_search", lambda *_a, **_k: None)
     patch_automation(monkeypatch, modules, "_wait_module_search_settled", lambda *_a, **_k: None)
+    patch_automation(monkeypatch, modules, "_ap_invoice_grid_signature", lambda _frame: "bảng")
+    patch_automation(monkeypatch, modules, "_wait_grid_reflects_search", lambda *_a, **_k: True)
     patch_automation(monkeypatch, modules, "_supplier_invoice_rows", lambda _frame: list(rows))
 
 

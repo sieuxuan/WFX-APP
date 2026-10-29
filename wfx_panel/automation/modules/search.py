@@ -22,6 +22,12 @@ from wfx_panel.automation._common import (
     _write_log,
     sync_playwright,
 )
+from wfx_panel.automation.modules.ap_invoice_grid import (
+    _ap_invoice_grid_signature,
+    _ap_invoice_result_count,
+    _expense_invoice_grid_signature,
+    _expense_invoice_result_count,
+)
 from wfx_panel.automation.modules.constants import (
     MODULE_CONTEXT_PROBE_SECONDS,
     MODULE_GRID_POLL_MS,
@@ -253,8 +259,17 @@ def _search_module_fields(
     xpath: str,
     values: dict[str, str],
     log: Callable[[str], None],
+    *,
+    result_signature: Callable[[Frame], str] | None = None,
+    count_results: Callable[[Frame], int | None] | None = None,
 ) -> dict[str, Any]:
-    """Xóa và điền một nhóm filter trong cùng frame để hỗ trợ lọc kết hợp."""
+    """Xóa và điền một nhóm filter trong cùng frame để hỗ trợ lọc kết hợp.
+
+    Bảng ASP.NET cổ điển không có overlay no-rows như AG Grid. Màn nào đọc
+    được bảng của mình thì truyền `result_signature` (chờ bảng vẽ lại kết quả
+    mới thay vì đọc dòng của lượt trước) và `count_results` (tổng số dòng khớp;
+    None là chưa chắc, không được kết luận "không có kết quả").
+    """
     cleaned = {
         key: str(values.get(key) or "").strip()
         for key in search_spec.fields
@@ -295,9 +310,19 @@ def _search_module_fields(
             log,
         )
         stage = "settle"
+        before = result_signature(frame) if result_signature else ""
         _submit_multi_search(last_field)
         _wait_module_search_settled(page, active_labels)
-        if _grid_reports_no_rows(page, frame):
+        if result_signature is not None:
+            # Lớp loading có thể bật trễ hơn nhịp đọc của bước trên; bảng đổi
+            # rồi đứng yên mới là kết quả của lượt này.
+            _wait_grid_reflects_search(
+                page, frame, before, signature=result_signature
+            )
+        count = count_results(frame) if count_results is not None else None
+        if count == 0 or (
+            count_results is None and _grid_reports_no_rows(page, frame)
+        ):
             return _result(
                 False,
                 "MODULE_SEARCH_NO_RESULTS",
@@ -305,6 +330,16 @@ def _search_module_fields(
                 f"{active_text.rstrip('.')}.",
                 module=search_spec.module_name,
                 filter_kinds=active,
+            )
+        if count:
+            return _result(
+                True,
+                "MODULE_SEARCH_APPLIED",
+                f"Tìm thấy {count} dòng trong {search_spec.module_name} theo "
+                f"{', '.join(active_labels).rstrip('.')}.",
+                module=search_spec.module_name,
+                filter_kinds=active,
+                result_count=count,
             )
         return _result(
             True,
@@ -774,6 +809,8 @@ def search_supplier_invoice_list(
             "asn_grn_no": asn_grn_no,
         },
         log,
+        result_signature=_ap_invoice_grid_signature,
+        count_results=_ap_invoice_result_count,
     )
 
 
@@ -795,4 +832,6 @@ def search_expense_invoice_list(
             "status": status,
         },
         log,
+        result_signature=_expense_invoice_grid_signature,
+        count_results=_expense_invoice_result_count,
     )

@@ -394,6 +394,59 @@ def test_an_empty_grid_after_the_search_is_reported_as_no_results(
     assert result["filter_kinds"] == [first]
 
 
+def _counted(monkeypatch, clock, count, *, signatures=("bảng cũ", "bảng mới")):
+    """Màn đọc được bảng của mình (Supplier Inv List): đếm thay vì đoán rỗng."""
+    spec = SUPPLIER_INVOICE_SEARCH_SPEC
+    waits: list[tuple] = []
+    _wire(
+        monkeypatch,
+        clock,
+        _fields(spec),
+        # Bảng ASP.NET không có overlay AG Grid: luật cũ không được chạy.
+        _grid_reports_no_rows=lambda *_a, **_k: pytest.fail("không được đoán"),
+        _wait_grid_reflects_search=lambda page, frame, before, **kwargs: (
+            waits.append((before, kwargs.get("signature"))) or True
+        ),
+    )
+    reads = iter(signatures)
+    signature = lambda _frame: next(reads)  # noqa: E731
+    result = module_search._search_module_fields(
+        spec,
+        XPATH,
+        {"po_no": "PSW-TRM-26-7105"},
+        lambda _line: None,
+        result_signature=signature,
+        count_results=lambda _frame: count,
+    )
+    return result, waits, signature
+
+
+def test_a_counted_list_reports_how_many_rows_matched(monkeypatch, clock):
+    result, waits, signature = _counted(monkeypatch, clock, 3)
+
+    assert result["code"] == "MODULE_SEARCH_APPLIED"
+    assert result["result_count"] == 3
+    assert "Tìm thấy 3 dòng" in result["message"]
+    assert "PO No." in result["message"]
+    # Chữ ký chụp TRƯỚC lúc Enter, rồi chờ bảng vẽ lại bằng đúng chữ ký đó.
+    assert waits == [("bảng cũ", signature)]
+
+
+def test_a_counted_list_with_zero_rows_is_no_results(monkeypatch, clock):
+    result, _waits, _signature = _counted(monkeypatch, clock, 0)
+
+    assert result["ok"] is False
+    assert result["code"] == "MODULE_SEARCH_NO_RESULTS"
+    assert result["filter_kinds"] == ["po_no"]
+
+
+def test_an_unsure_count_never_claims_no_results(monkeypatch, clock):
+    result, _waits, _signature = _counted(monkeypatch, clock, None)
+
+    assert result["code"] == "MODULE_SEARCH_APPLIED"
+    assert "result_count" not in result
+
+
 def test_a_timeout_after_the_fields_were_found_is_a_confirmation_problem(
     monkeypatch, clock
 ):
@@ -493,8 +546,8 @@ def _capture(monkeypatch):
         monkeypatch,
         module_search,
         "_search_module_fields",
-        lambda spec, xpath, values, _log: (
-            seen.append((spec, xpath, dict(values))) or {"ok": True}
+        lambda spec, xpath, values, _log, **kwargs: (
+            seen.append((spec, xpath, dict(values), kwargs)) or {"ok": True}
         ),
     )
     return seen
@@ -548,6 +601,15 @@ def test_supplier_and_expense_invoice_never_share_a_spec(monkeypatch):
     assert seen[0][0] is SUPPLIER_INVOICE_SEARCH_SPEC
     assert seen[1][0] is EXPENSE_INVOICE_SEARCH_SPEC
     assert set(seen[0][2]) != set(seen[1][2])
+    # Hai trang, hai grid: mỗi màn đếm đúng bảng của mình.
+    assert seen[0][3] == {
+        "result_signature": module_search._ap_invoice_grid_signature,
+        "count_results": module_search._ap_invoice_result_count,
+    }
+    assert seen[1][3] == {
+        "result_signature": module_search._expense_invoice_grid_signature,
+        "count_results": module_search._expense_invoice_result_count,
+    }
 
 
 def test_the_oc_and_sale_asn_entry_points_use_the_single_field_search(

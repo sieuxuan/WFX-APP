@@ -4,9 +4,8 @@
 Delete/Cancel trên chứng từ thật, nên CLAUDE.md đặt hai rào chắn nằm đúng trong
 phần chưa chạy:
 
-* "Supplier Inv List và Expense Inv List còn dùng chung cả `#titlebarAPInvoiceList`,
-  `#gridAPInvoiceList` lẫn `#txtSupplier`/`#txtInvoiceNo`, nên context chỉ được
-  nhận khi frame có đủ bộ cột filter riêng của đúng module."
+* Context chỉ được nhận khi frame có đủ bộ cột filter riêng của đúng module
+  (Supplier cần PO No. và ASN/GRN No.) và marker trang không phải Expense.
 * Search của WFX là tìm chứa chuỗi, nên chỉ exact Invoice No. mới được tự chạy;
   mọi dòng gần đúng phải để người dùng chọn.
 """
@@ -294,10 +293,45 @@ def _wire_prepare(monkeypatch, clock, frame, *, chrome_ready=True):
     monkeypatch.setattr(
         invoices, "_fill_multi_search_fields", lambda *a, **kw: ([], object())
     )
-    monkeypatch.setattr(invoices, "_submit_multi_search", lambda *a: None)
+    page.steps = []
+    monkeypatch.setattr(
+        invoices,
+        "_ap_invoice_grid_signature",
+        lambda _frame: page.steps.append("signature") or "bảng cũ",
+    )
+    monkeypatch.setattr(
+        invoices,
+        "_submit_multi_search",
+        lambda *a: page.steps.append("submit"),
+    )
     monkeypatch.setattr(invoices, "_wait_module_search_settled", lambda *a: None)
+    monkeypatch.setattr(
+        invoices,
+        "_wait_grid_reflects_search",
+        lambda _page, _frame, before, **kw: page.steps.append(
+            ("reflects", before, kw.get("signature"))
+        )
+        or True,
+    )
     monkeypatch.setattr(invoices, "_attach_dialog_handler", lambda *a: None)
     return world, page
+
+
+def test_rows_are_read_only_after_the_table_redraws_for_this_search(
+    clock, monkeypatch
+):
+    """Đọc ngay khi hết loading có thể còn là bảng của lượt trước; nhánh này
+    dẫn tới Delete/Cancel nên phải chụp chữ ký trước Enter rồi chờ bảng đổi."""
+    frame = _list_frame(clock, rows=[_row()])
+    _world, page = _wire_prepare(monkeypatch, clock, frame)
+
+    invoices.prepare_supplier_invoice_cancel('//*[@id="x"]/a', "SI-102", _quiet())
+
+    assert page.steps == [
+        "signature",
+        "submit",
+        ("reflects", "bảng cũ", invoices._ap_invoice_grid_signature),
+    ]
 
 
 def test_a_prepare_without_an_invoice_number_is_refused(clock):

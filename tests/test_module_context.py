@@ -1,8 +1,8 @@
 """Nhận diện frame đang phục vụ đúng module List.
 
 CLAUDE.md: OC/Sample/Sale ASN và Buyer/Supplier dùng selector trùng nhau;
-Supplier Inv List và Expense Inv List còn dùng chung cả `#titlebarAPInvoiceList`
-lẫn `#gridAPInvoiceList`. Frame chỉ được nhận khi có ĐỦ bộ cột filter riêng của
+Supplier Inv List và Expense Inv List còn chung id ô lọc
+(`#txtSearchSupplier`). Frame chỉ được nhận khi có ĐỦ bộ cột filter riêng của
 đúng module — thiếu thì phải tự mở lại List, tuyệt đối không Search nhầm màn.
 """
 
