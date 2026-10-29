@@ -24,7 +24,12 @@
         "entry": "hang-ngay-tim-module"
       },
       {
-        "title": "Cửa sổ Hướng dẫn không che trình duyệt",
+        "title": "Kiểm tra cập nhật ổn định hơn",
+      "body": "Khi nhiều máy dùng chung mạng làm GitHub tạm giới hạn lượt kiểm tra, ứng dụng tự chuyển sang cách kiểm tra dự phòng thay vì báo Chưa thể kiểm tra. Nếu vẫn chưa kiểm tra được, thông báo nêu rõ lý do như bị giới hạn lượt hay không kết nối được GitHub.",
+      "entry": "su-co-cap-nhat"
+    },
+    {
+      "title": "Cửa sổ Hướng dẫn không che trình duyệt",
         "body": "Cửa sổ Hướng dẫn sử dụng giờ là cửa sổ thường, không còn luôn nằm trên cùng, để bạn đọc song song với trình duyệt làm việc.",
         "entry": "bat-dau-mo-panel"
       }

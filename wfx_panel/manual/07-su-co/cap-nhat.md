@@ -34,5 +34,7 @@ Cập nhật WFX Smart lên bản mới để nhận tính năng và sửa lỗi
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Tải bản mới bị gián đoạn | Kiểm tra mạng rồi bấm cập nhật lại. |
+| Báo “GitHub đang giới hạn lượt kiểm tra” | Nhiều máy dùng chung mạng đã kiểm tra liên tục. Ứng dụng tự chuyển sang cách kiểm tra dự phòng; nếu vẫn báo, đợi khoảng 1 giờ rồi bấm `Kiểm tra ngay`. |
+| Báo “không kết nối được GitHub” | Kiểm tra mạng, proxy hoặc tường lửa có chặn github.com không, rồi bấm `Kiểm tra ngay`. |
 | Ứng dụng chưa tự mở lại | Mở WFX Smart từ Desktop hoặc Start Menu. |
 | Phiên bản vẫn chưa đổi | Đóng hẳn WFX Smart, mở lại và kiểm tra dải cập nhật. |
