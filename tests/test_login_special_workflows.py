@@ -270,11 +270,14 @@ def test_grn_search_unchecks_date_and_opens_first_result_number():
 
 def test_supplier_and_expense_invoice_support_combined_filters_and_safe_cancel():
     for selector in (
-        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier",
-        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo",
-        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColPONo",
-        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColCreatedBy",
-        "#gridAPInvoiceList_tblGridHeader_trSearch_td_ColStatus",
+        "#txtSearchSupplier",
+        "#txtSearchInvoiceNum",
+        "#txtPoNumber",
+        "#txtASNGRN",
+        "#titlebarExpenseInvoiceList",
+        "#txtSearchInvoiceNo",
+        "#txtSearchCreatedBy",
+        "#txtSearchStatus",
         "#ddlInvoiceType",
     ):
         assert selector in SOURCE
@@ -405,25 +408,40 @@ def test_buyer_search_auto_opens_list_and_resolves_first_edit_link():
     assert '"BUYER_EDIT_NOT_CONFIRMED"' in SOURCE
 
 
-_AP_INVOICE_SHARED_IDS = (
+# Id đo trên WFX thật (29/10/2026). Hai màn là hai trang riêng, chung id ô
+# `txtSearchSupplier`/`txtSearchCreatedBy`; Supplier cũng có Status và Created
+# By, nên chỉ grid riêng + marker mới chặn được nhận nhầm.
+_SUPPLIER_INVOICE_IDS = (
     "titlebarAPInvoiceList",
     "gridAPInvoiceList_tblGridHeader",
-    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColSupplier",
-    "txtSupplier",
-    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo",
-    "txtInvoiceNo",
-)
-_SUPPLIER_INVOICE_IDS = _AP_INVOICE_SHARED_IDS + (
-    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColPONo",
-    "txtPONo",
-    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColASNGRNNo",
-    "txtASNGRNNo",
-)
-_EXPENSE_INVOICE_IDS = _AP_INVOICE_SHARED_IDS + (
-    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColCreatedBy",
-    "txtCreatedBy",
-    "gridAPInvoiceList_tblGridHeader_trSearch_td_ColStatus",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_colSupplier",
+    "txtSearchSupplier",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_colInvoiceNo",
+    "txtSearchInvoiceNum",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_colPoNumber",
+    "txtPoNumber",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_colASNGRN",
+    "txtASNGRN",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_colASN",
+    "txtASN",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_colStatus",
     "txtStatus",
+    "gridAPInvoiceList_tblGridHeader_trSearch_td_colCreatedBy",
+    "txtSearchCreatedBy",
+)
+_EXPENSE_INVOICE_IDS = (
+    "titlebarExpenseInvoiceList",
+    "gridExpenseInvoiceList_tblGridHeader",
+    "gridExpenseInvoiceList_tblGridHeader_trSearch_td_ColSupplier",
+    "txtSearchSupplier",
+    "gridExpenseInvoiceList_tblGridHeader_trSearch_td_ColInvoiceNo",
+    "txtSearchInvoiceNo",
+    "gridExpenseInvoiceList_tblGridHeader_trSearch_td_ColCreatedBy",
+    "txtSearchCreatedBy",
+    "gridExpenseInvoiceList_tblGridHeader_trSearch_td_ColStatus",
+    "txtSearchStatus",
+    "gridExpenseInvoiceList_tblGridHeader_trSearch_td_ColASNno",
+    "txtASNno",
 )
 
 
@@ -455,11 +473,11 @@ class _APInvoiceFrame:
         return self.marker
 
 
-def _supplier_invoice_frame(marker="wfxapinvoicelist.aspx supplier invoice list"):
+def _supplier_invoice_frame(marker="wfxapinvoicelist.aspx supplier invoices"):
     return _APInvoiceFrame(_SUPPLIER_INVOICE_IDS, marker)
 
 
-def _expense_invoice_frame(marker="wfxapinvoicelist.aspx expense invoice list"):
+def _expense_invoice_frame(marker="wfxexpenseinvoicelist.aspx expense invoices"):
     return _APInvoiceFrame(_EXPENSE_INVOICE_IDS, marker)
 
 

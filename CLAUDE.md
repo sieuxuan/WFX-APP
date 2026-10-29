@@ -280,11 +280,28 @@ Mỗi nút trong module là một flow riêng:
 4. Trước khi điền, automation phải xác nhận context riêng của module trong cùng
    frame. Không được dùng chỉ `#txtArticle` hoặc `#txtCompanyName`, vì OC/Sample/
    Sale ASN và Buyer/Supplier có selector trùng nhau. Supplier Inv List và
-   Expense Inv List còn dùng chung cả `#titlebarAPInvoiceList`,
-   `#gridAPInvoiceList` lẫn `#txtSupplier`/`#txtInvoiceNo`, nên context chỉ được
-   nhận khi frame có đủ bộ cột filter riêng của đúng module (Supplier cần PO No.
-   và ASN/GRN No.; Expense cần Created By và Status); thiếu thì phải tự mở lại
+   Expense Inv List là hai trang riêng nhưng chung id ô `#txtSearchSupplier`/
+   `#txtSearchCreatedBy`, nên context chỉ được nhận khi frame có grid/titlebar
+   và đủ bộ cột filter riêng của đúng module (Supplier cần PO No. và ASN/GRN
+   No.; Expense cần Created By và Status) và marker trang không thuộc module
+   kia; thiếu thì phải tự mở lại
    đúng List, tuyệt đối không Search hay Cancel trên màn của module kia.
+   Đo trên WFX thật (29/10/2026):
+   - Supplier Inv: `WFXAPInvoiceList.aspx`, title `Supplier Invoices`,
+     `#titlebarAPInvoiceList` + `gridAPInvoiceList`; ô lọc
+     `#txtSearchSupplier`, `#txtSearchInvoiceNum`, `#txtPoNumber`, `#txtASNGRN`
+     (cột `ASN No.`/`#txtASN` là cột khác); ô dòng có id
+     `colInvoiceNo`/`colPoNumber`/`colASNGRN`/`colStatus`.
+   - Expense Inv: `WFXExpenseInvoiceList.aspx`, title `Expense Invoices`,
+     `#titlebarExpenseInvoiceList` + `gridExpenseInvoiceList`; ô lọc
+     `#txtSearchSupplier`, `#txtSearchInvoiceNo`, `#txtSearchCreatedBy`,
+     `#txtSearchStatus` trong ô `..._trSearch_td_Col<Cột>` (C hoa).
+   Cả hai là bảng ASP.NET cổ điển (dòng `tr.trContent`, pager
+   `View a - b of N`), không phải AG Grid, nên Search tự đếm
+   (`modules/ap_invoice_grid.py`): chụp chữ ký pager + id dòng trước Enter, chờ
+   bảng vẽ lại, 0 dòng → `MODULE_SEARCH_NO_RESULTS`, có dòng → báo số dòng. Chọn
+   dòng để Delete/Cancel Supplier Invoice phải bỏ tick mọi dòng khác vì WFX áp
+   nút lên mọi dòng đang tick.
    Với AG Grid có Floating Filter, automation phải quét toàn bộ scroll ngang để
    tìm cột dù user đã kéo đổi thứ tự; đồng thời xóa các filter cũ ở cả cột đang
    bị virtualize trước khi điền điều kiện mới. Sau cùng giữ cột đích trong

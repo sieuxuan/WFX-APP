@@ -22,8 +22,12 @@ from wfx_panel.automation._common import (
     sync_playwright,
 )
 from wfx_panel.automation.browser import _attach_dialog_handler
+from wfx_panel.automation.modules.ap_invoice_grid import (
+    _ap_invoice_grid_signature,
+)
 from wfx_panel.automation.modules.context import (
     _frame_with_visible_context,
+    _wait_grid_reflects_search,
     _wait_module_search_settled,
 )
 from wfx_panel.automation.modules.menu import _active_wfx_page
@@ -40,6 +44,13 @@ from wfx_panel.automation.search_specs import SUPPLIER_INVOICE_SEARCH_SPEC
 # chỉ là chỉ số dòng khi WFX không gắn id, nên hai script lọc khác nhau là đủ để
 # lệch chỉ số và bấm Delete/Cancel lên dòng khác. Vì vậy cả hai dùng chung đúng
 # một hàm quét.
+#
+# Đo trên WFXAPInvoiceList.aspx thật (29/10/2026): dòng dữ liệu là
+# `tr.trContent` (id = mã nội bộ của invoice), ô mang id cột cố định
+# (`colInvoiceNo`, `colPoNumber`…). Bản cũ đoán cột bằng regex trên tiêu đề:
+# `/asn/` khớp cột `ASN No.` trước cột `ASN/GRN No.` và `\bpo` không bao giờ
+# khớp `colPoNumber`. Một invoice có thể gộp nhiều PO/GRN, mỗi giá trị là một
+# link riêng nên phải nối từng link, không lấy textContent dính liền.
 _SUPPLIER_INVOICE_SCAN_JS = r"""
     const norm = value => String(value || '').replace(/\s+/g, ' ').trim();
     const shown = element => {
@@ -49,43 +60,49 @@ _SUPPLIER_INVOICE_SCAN_JS = r"""
         return style.display !== 'none' && style.visibility !== 'hidden'
             && rect.width > 0 && rect.height > 0;
     };
-    const headers = [...document.querySelectorAll(
-        '#gridAPInvoiceList_tblGridHeader th, '
-        + '#gridAPInvoiceList_tblGridHeader td, '
-        + '#gridAPInvoiceList_tblGridHeader [id*="Header"]'
-    )].map(cell => norm([
-        cell.id || '', cell.getAttribute('title') || '',
-        cell.getAttribute('aria-label') || '', cell.textContent || ''
-    ].join(' ')).toLowerCase());
-    const metadata = cell => {
-        const index = Number(cell.cellIndex);
-        return norm([
-            cell.id || '', cell.getAttribute('title') || '',
-            cell.getAttribute('aria-label') || '', headers[index] || ''
-        ].join(' ')).toLowerCase();
+    const COLUMNS = {
+        invoice_no: ['colinvoiceno', 'invoice no.'],
+        supplier: ['colsupplier', 'supplier'],
+        po_no: ['colponumber', 'po no.'],
+        asn_grn_no: ['colasngrn', 'asn/grn no.'],
+        status: ['colstatus', 'status'],
     };
-    const field = (cells, patterns) => {
-        const cell = cells.find(candidate =>
-            patterns.some(pattern => pattern.test(metadata(candidate)))
-        );
-        return norm(cell?.querySelector('input[value], a, button')?.value
-            || cell?.querySelector('input[value], a, button')?.textContent
-            || cell?.textContent || '');
+    // Dự phòng khi ô mất id: nhãn tiêu đề exact ở cùng chỉ số cột.
+    const headerRow = document.querySelector('#gridAPInvoiceList_trHeader');
+    const headerLabels = headerRow && headerRow.cells
+        ? [...headerRow.cells].map(cell => norm(cell.textContent).toLowerCase())
+        : [];
+    const cellsOf = row => [...(row.cells || row.querySelectorAll('td'))];
+    const cellFor = (cells, [columnId, label]) =>
+        cells.find(cell => String(cell.id || '').toLowerCase() === columnId)
+        || cells.find(cell => headerLabels[cell.cellIndex] === label)
+        || null;
+    const valueOf = cell => {
+        if (!cell) return '';
+        const links = [...new Set(
+            [...cell.querySelectorAll('a')]
+                .map(link => norm(link.textContent))
+                .filter(Boolean)
+        )];
+        return links.length ? links.join(', ') : norm(cell.textContent);
     };
-    const scanRows = root => [...root.querySelectorAll('tbody tr, tr')]
+    const contentRows = root => {
+        const marked = [...root.querySelectorAll('tr.trContent')];
+        return marked.length ? marked : [...root.querySelectorAll('tr')];
+    };
+    const scanRows = root => contentRows(root)
         .filter(row => shown(row) && row.querySelector('td'))
         .map((row, index) => {
-            const cells = [...row.querySelectorAll('td')];
-            return {
+            const cells = cellsOf(row);
+            const scanned = {
                 element: row,
                 row_key: row.id || row.getAttribute('data-key')
                     || row.getAttribute('data-row-key') || String(index),
-                invoice_no: field(cells, [/invoice\s*(no|number)?/, /apinvoice/]),
-                supplier: field(cells, [/supplier/, /vendor/]),
-                po_no: field(cells, [/\bpo\s*(no|number)?\b/, /purchase\s*order/]),
-                asn_grn_no: field(cells, [/asn/, /grn/]),
-                status: field(cells, [/status/]),
             };
+            for (const [key, column] of Object.entries(COLUMNS)) {
+                scanned[key] = valueOf(cellFor(cells, column));
+            }
+            return scanned;
         })
         .filter(row => row.invoice_no || row.status || row.supplier);
 """
@@ -106,6 +123,11 @@ _SUPPLIER_INVOICE_ROWS_JS = (
 # Dòng đích phải khớp cả row_key lẫn exact Invoice No. Trước đây fallback dùng
 # `row.textContent.includes(invoice)`, nên một dòng khác chỉ cần *chứa* số
 # invoice ở bất kỳ cột nào cũng bị chọn rồi Delete/Cancel.
+#
+# Delete/Cancel của WFX áp lên MỌI dòng đang tick, và click checkbox là đảo
+# trạng thái. Bản cũ chỉ click checkbox đích: dòng đã tick từ trước bị bỏ tick,
+# dòng khác user đang tick vẫn bị xử lý theo. Vì vậy bỏ tick mọi dòng khác,
+# chỉ tick dòng đích khi nó chưa tick, rồi xác nhận lại đúng một dòng được chọn.
 _CLICK_SUPPLIER_INVOICE_ROW_JS = (
     "(root, expected) => {"
     + _SUPPLIER_INVOICE_SCAN_JS
@@ -120,11 +142,18 @@ _CLICK_SUPPLIER_INVOICE_ROW_JS = (
         || rows.find(row => wantedInvoice && sameInvoice(row));
     if (!match) return false;
     const row = match.element;
-    const control = row.querySelector(
-        'input[type="radio"], input[type="checkbox"], input[type="button"]'
-    );
-    (control || row.cells?.[0] || row).click();
-    return true;
+    const box = row.querySelector('input[type="checkbox"], input[type="radio"]');
+    if (!box) {
+        (row.cells?.[0] || row).click();
+        return true;
+    }
+    const boxes = [...root.querySelectorAll('input[type="checkbox"]')];
+    for (const other of boxes) {
+        if (other !== box && other.checked) other.click();
+    }
+    if (!box.checked) box.click();
+    return Boolean(box.checked)
+        && !boxes.some(other => other !== box && other.checked);
 }"""
 )
 
@@ -296,8 +325,14 @@ def prepare_supplier_invoice_cancel(
             SUPPLIER_INVOICE_SEARCH_SPEC,
             log,
         )
+        before = _ap_invoice_grid_signature(frame)
         _submit_multi_search(fields["invoice_no"])
         _wait_module_search_settled(page, ["Invoice No."])
+        # Đọc dòng ngay khi hết loading có thể còn là bảng của lượt trước; đây
+        # là nhánh dẫn tới Delete/Cancel nên phải chờ bảng vẽ lại thật.
+        _wait_grid_reflects_search(
+            page, frame, before, signature=_ap_invoice_grid_signature
+        )
         rows = _supplier_invoice_rows(frame)
         if not rows:
             return _result(

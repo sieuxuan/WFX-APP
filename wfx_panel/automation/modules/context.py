@@ -1,13 +1,14 @@
 """Nhận diện frame đang phục vụ đúng module.
 
 OC/Sample/Sale ASN và Buyer/Supplier dùng selector trùng nhau, Supplier Inv và
-Expense Inv còn dùng chung cả id grid. Frame chỉ được nhận khi có đủ bộ cột
+Expense Inv còn chung id ô lọc. Frame chỉ được nhận khi có đủ bộ cột
 filter riêng của đúng module — nếu không, automation sẽ Search nhầm màn."""
 
 from __future__ import annotations
 
 from wfx_panel.automation._common import (
     Any,
+    Callable,
     Frame,
     Page,
     PlaywrightError,
@@ -44,8 +45,8 @@ def _frame_has_every_search_field(
 ) -> bool:
     """Bộ cột filter riêng là cách phân biệt hai màn dùng chung id DOM.
 
-    Supplier Inv List và Expense Inv List cùng dùng #titlebarAPInvoiceList và
-    #gridAPInvoiceList, nên context selector một mình sẽ nhận nhầm màn đang mở.
+    OC/Sample/Sale ASN và Buyer/Supplier dùng chung selector, nên context
+    selector một mình sẽ nhận nhầm màn đang mở.
     """
     for field_spec in search_spec.fields.values():
         try:
@@ -286,6 +287,7 @@ def _wait_grid_reflects_search(
     change_timeout_s: float = 4.0,
     stable_s: float = 0.6,
     timeout_s: float = 8.0,
+    signature: Callable[[Frame], str] | None = None,
 ) -> bool:
     """Chờ AG Grid vẽ kết quả của lượt lọc vừa gõ; False nếu hết giờ khi chưa chắc.
 
@@ -298,7 +300,11 @@ def _wait_grid_reflects_search(
     Không theo dõi được request thì dùng luật chữ ký cũ: bảng đổi rồi đứng yên
     `stable_s`, hoặc không đổi sau `change_timeout_s` (chờ lâu hơn khi bảng đang
     rỗng từ lượt trước).
+
+    `signature` thay chữ ký AG Grid cho bảng không phải AG Grid (Supplier Inv
+    List là bảng ASP.NET cổ điển).
     """
+    read_signature = signature or _grid_signature
     if not before:
         return True
     tracked = requests is not None and requests.active
@@ -311,7 +317,7 @@ def _wait_grid_reflects_search(
     last_change = started
     changed = False
     while time.monotonic() - started < timeout_s:
-        current = _grid_signature(frame)
+        current = read_signature(frame)
         if not current:
             return True
         now = time.monotonic()

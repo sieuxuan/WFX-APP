@@ -255,7 +255,7 @@ def test_supplier_and_expense_invoice_lists_never_borrow_each_other():
     # Đang mở Expense Inv List mà Search Supplier Inv thì app phải tự mở đúng
     # Supplier Inv List, không lọc trên grid Expense đang mở.
     assert _open("0065_0880_0030_0020")["ok"]
-    assert _ap_invoice_column_visible("#txtCreatedBy")
+    assert _ap_invoice_column_visible("#txtSearchStatus")
     from_expense = login.search_supplier_invoice_list(
         supplier["xpath"],
         "",
@@ -264,13 +264,17 @@ def test_supplier_and_expense_invoice_lists_never_borrow_each_other():
         "",
         lambda _line: None,
     )
-    assert from_expense["code"] == "MODULE_SEARCH_APPLIED", from_expense
-    assert _ap_invoice_column_visible("#txtPONo")
-    _clear_visible_filter(("#txtInvoiceNo",))
+    # Supplier Inv đọc được bảng nên chuỗi smoke không khớp là "không có dòng".
+    assert from_expense["code"] in {
+        "MODULE_SEARCH_APPLIED",
+        "MODULE_SEARCH_NO_RESULTS",
+    }, from_expense
+    assert _ap_invoice_column_visible("#txtPoNumber")
+    _clear_visible_filter(("#txtSearchInvoiceNum",))
 
     # Và chiều ngược lại.
     assert _open("0065_0880_0020_0020")["ok"]
-    assert _ap_invoice_column_visible("#txtPONo")
+    assert _ap_invoice_column_visible("#txtPoNumber")
     from_supplier = login.search_expense_invoice_list(
         expense["xpath"],
         "",
@@ -279,6 +283,9 @@ def test_supplier_and_expense_invoice_lists_never_borrow_each_other():
         "",
         lambda _line: None,
     )
-    assert from_supplier["code"] == "MODULE_SEARCH_APPLIED", from_supplier
-    assert _ap_invoice_column_visible("#txtCreatedBy")
-    _clear_visible_filter(("#txtInvoiceNo",))
+    assert from_supplier["code"] in {
+        "MODULE_SEARCH_APPLIED",
+        "MODULE_SEARCH_NO_RESULTS",
+    }, from_supplier
+    assert _ap_invoice_column_visible("#txtSearchStatus")
+    _clear_visible_filter(("#txtSearchInvoiceNo",))

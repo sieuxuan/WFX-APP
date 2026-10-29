@@ -5,14 +5,19 @@ Bạn cũng có thể mở Org Structure và System Coding trên WFX.
 
 ## Các bước
 
-1. Mở Supplier Inv List trong nhóm Finance và bấm `List`.
+1. Mở Supplier Inv trong nhóm Finance. Không cần bấm `List` trước: khi tìm,
+   ứng dụng tự mở Supplier Inv List nếu WFX đang ở màn khác.
 2. Nhập một hoặc nhiều điều kiện: Supplier, Invoice No., PO No. và ASN/GRN No.
-3. Bấm `Tìm`.
+   Một invoice gộp nhiều PO hoặc nhiều GRN vẫn tìm ra được bằng bất kỳ PO hay
+   GRN nào trong đó.
+3. Bấm `Tìm`. Thanh trạng thái báo số invoice tìm thấy, hoặc báo không có dòng
+   nào khớp để bạn biết ngay mà không phải nhìn sang Chrome.
 4. Để Cancel, nhập đúng Invoice No. vào phần `Cancel Supplier Invoice` rồi bấm
    nút Cancel.
 5. Nếu có đúng một invoice trùng khớp hoàn toàn Invoice No. bạn gõ, ứng dụng
-   chọn dòng đó rồi bấm `Delete` khi Status là `Save`, hoặc `Cancel` khi Status
-   là `Confirm`.
+   chọn dòng đó rồi bấm `Delete` khi Status là `Saved`, hoặc `Cancel` khi Status
+   là `Confirmed`. Trước khi bấm, ứng dụng bỏ tick mọi dòng khác đang được
+   chọn trên WFX, vì nút Delete/Cancel của WFX áp lên tất cả dòng đang tick.
 6. Nếu không có dòng nào trùng khớp hoàn toàn, ứng dụng dừng lại và hiện danh
    sách gần đúng với tiêu đề `Không có Invoice No. trùng khớp — chọn thủ công`.
    Tìm kiếm của WFX là tìm chứa chuỗi, nên gõ `SI-102` vẫn ra `SI-1024`.
@@ -39,6 +44,7 @@ module trong danh sách; ứng dụng mở ngay trên WFX, không có màn trung
 | Không thấy module Admin | Mở Cài đặt, thẻ Giao diện và bật Chế độ quản trị. |
 | WFX báo không có quyền | Nhờ quản trị WFX kiểm tra quyền của tài khoản hiện tại. |
 | Màn hình không đổi | Chờ WFX tải xong rồi bấm lại thẻ module. |
-| Status không phải Save/Confirm | Ứng dụng dừng, không bấm nút thay đổi hóa đơn. Kiểm tra lại invoice và Status trên WFX. |
+| Ứng dụng báo không có dòng nào khớp | Không có invoice nào chứa giá trị bạn nhập. Kiểm tra lại PO No., Invoice No. hoặc bớt một điều kiện rồi tìm lại. |
+| Status không phải Saved/Confirmed | Ứng dụng dừng, không bấm nút thay đổi hóa đơn. Kiểm tra lại invoice và Status trên WFX. |
 | Có nhiều invoice | Chọn một dòng trong danh sách ứng dụng rồi Cancel; không thao tác trực tiếp từ kết quả mơ hồ. |
 | Ứng dụng báo không có Invoice No. trùng khớp | Bạn gõ thiếu hoặc thừa ký tự. Đối chiếu lại Invoice No. trên WFX, hoặc chọn đúng dòng trong danh sách gần đúng. |

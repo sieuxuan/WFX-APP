@@ -13,7 +13,9 @@ Invoice.
 6. Trong Advance PR List, nhập một hoặc nhiều điều kiện Buyer Name, Supplier,
    Invoice Number và Order No. rồi bấm `Tìm`.
 7. Trong Expense Inv List, nhập một hoặc nhiều điều kiện Supplier, Invoice No.,
-   Created By và Status rồi bấm `Tìm`.
+   Created By và Status rồi bấm `Tìm`. Không cần mở List trước: ứng dụng tự mở
+   Expense Inv List khi WFX đang ở màn khác, rồi báo số hóa đơn tìm thấy hoặc
+   báo không có dòng nào khớp.
 8. Chờ WFX mở đúng màn hình rồi nhập dữ liệu nghiệp vụ.
 
 ## Nhập nhanh Expense Invoice từ Excel
