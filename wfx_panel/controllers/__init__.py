@@ -23,6 +23,7 @@ from wfx_panel.controllers.modules import ModulesController
 from wfx_panel.controllers.oc import OCController
 from wfx_panel.controllers.reports import ReportsController
 from wfx_panel.controllers.sale_asn import SaleASNController
+from wfx_panel.controllers.search_recent import SearchRecentController
 from wfx_panel.controllers.session import SessionController
 from wfx_panel.controllers.settings import SettingsController
 
@@ -40,6 +41,7 @@ __all__ = [
     "OCController",
     "ReportsController",
     "SaleASNController",
+    "SearchRecentController",
     "SessionController",
     "SettingsController",
 ]

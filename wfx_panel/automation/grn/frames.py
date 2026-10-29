@@ -25,6 +25,28 @@ def _fold(value: object) -> str:
     return " ".join(str(value or "").casefold().split())
 
 
+def rmpo_receipt_refusal(order_no: str, status: object) -> dict[str, Any] | None:
+    """Status RMPO nào không được bắt đầu nhập kho.
+
+    ``Received`` đã nhập hết; ``Waiting…`` chưa được duyệt nên WFX chưa cho
+    nhận hàng. ``Part Received`` vẫn nhập tiếp phần còn lại."""
+    folded = _fold(status)
+    if folded == "received":
+        return _result(
+            False,
+            "GRN_ALREADY_RECEIVED",
+            f"RMPO {order_no} đã nhập kho hết, không thể nhập thêm.",
+        )
+    if folded.startswith("waiting"):
+        label = " ".join(str(status or "").split())
+        return _result(
+            False,
+            "GRN_RMPO_WAITING",
+            f"RMPO {order_no} đang ở trạng thái {label}, chưa nhập kho được.",
+        )
+    return None
+
+
 def _resolve_rmpo(
     rmpo_xpath: str,
     rmpo_no: str,
@@ -72,13 +94,9 @@ def _resolve_rmpo(
             "GRN_RMPO_SUPPLIER_NOT_FOUND",
             f"Đã tìm thấy RMPO {canonical_rmpo}, nhưng chưa đọc được Supplier.",
         )
-    status = _fold(selected.get("status"))
-    if status == "received":
-        return None, None, _result(
-            False,
-            "GRN_ALREADY_RECEIVED",
-            f"RMPO {canonical_rmpo} đã nhập kho hết, không thể nhập thêm.",
-        )
+    refusal = rmpo_receipt_refusal(canonical_rmpo, selected.get("status"))
+    if refusal is not None:
+        return None, None, refusal
     _write_log(
         log,
         "[GRN] Đã xác định RMPO đầy đủ và Supplier từ kết quả duy nhất.",

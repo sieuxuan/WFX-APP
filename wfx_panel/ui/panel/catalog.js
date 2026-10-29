@@ -559,6 +559,37 @@ async function browseCatalog() {
   );
 }
 
+// Khi người dùng bật công tắc, vào module là chuẩn bị Catalog > Master luôn
+// để lượt Tìm đầu không phải chờ mở Catalog. Backend bỏ qua khi chưa có phiên, Master đã sẵn sàng hoặc
+// tab WFX đang có màn nhập dở; lượt này không mở lại Chrome, không đăng nhập
+// hộ, không đưa Chrome lên trước và không ghi lịch sử tác vụ.
+function autoPrepareCatalog() {
+  const category = $(".catalog-category")?.value || "";
+  if (!catalogAutoPrepareEnabled || !category || busy || catalogAutoPrepare) {
+    return catalogAutoPrepare;
+  }
+  // Lượt bỏ qua ngay (không chạm Chrome) không được làm footer chớp chữ.
+  const notice = window.setTimeout(
+    () => setStatus("neutral", "Đang tự mở Catalog…"), 300,
+  );
+  catalogAutoPrepare = (async () => {
+    const result = await callQuiet("auto_prepare_catalog", category);
+    window.clearTimeout(notice);
+    if (!result?.run_id || busy) return result;
+    if (result.code === "CATEGORY_SELECTED") {
+      setStatus("success", `${category} đã sẵn sàng để tìm.`);
+    } else if (result.code === "CATALOG_AUTO_PREPARE_SKIPPED") {
+      setStatus("neutral", result.message || "");
+    } else if (result.code !== "ACTION_CANCELLED") {
+      setStatus("neutral", "Chưa tự mở được Catalog; bấm Tìm để mở lại.");
+    }
+    return result;
+  })().finally(() => {
+    catalogAutoPrepare = null;
+  });
+  return catalogAutoPrepare;
+}
+
 async function runCatalogAction(filterKind, query, destination = null) {
   // Lượt thứ hai (Enter, click dòng) giữa lúc đang chạy chỉ nhận
   // ACTION_IN_PROGRESS nhưng `finally` của nó vẫn nhả busy của lượt đầu.
@@ -588,29 +619,13 @@ async function runCatalogAction(filterKind, query, destination = null) {
 
 function syncCatalogKind() {
   const category = $(".catalog-category")?.value || "";
-  const secondaryKind = category === "Apparel"
-    ? "buyer_reference"
-    : "article_name";
-  const secondaryButton = $(".catalog-secondary-kind");
-  if (secondaryButton) {
-    secondaryButton.dataset.catalogKind = secondaryKind;
-    secondaryButton.textContent = secondaryKind === "buyer_reference"
-      ? "Buyer Reference"
-      : "Article Name";
-  }
-  if (catalogKind !== "code") catalogKind = secondaryKind;
-  $$(".catalog-kind-button").forEach((button) =>
-    button.setAttribute(
-      "aria-pressed",
-      String(button.dataset.catalogKind === catalogKind),
-    ));
   const input = $(".catalog-query");
   if (input) {
-    input.placeholder = {
-      buyer_reference: "Nhập Buyer Reference",
-      article_name: "Nhập Article Name",
-      code: "Ví dụ: F0000001",
-    }[catalogKind];
+    const label = category === "Apparel"
+      ? "Article Code hoặc Buyer Reference"
+      : "Article Code hoặc Article Name";
+    input.placeholder = label;
+    input.setAttribute("aria-label", label);
   }
   hideArticleSuggestions();
 }
@@ -773,8 +788,6 @@ async function openCatalogRecent(chip) {
   if (!code || busy) return;
   hideArticleSuggestions();
   $(".catalog-query").value = code;
-  catalogKind = "code";
-  syncCatalogKind();
   await withButtonLoading(chip, () => runCatalogAction("code", code));
 }
 
@@ -869,8 +882,6 @@ async function openCatalogResultCode(row) {
   const code = String(row?.dataset.resultCode || "");
   if (!code) return;
   $(".catalog-query").value = code;
-  catalogKind = "code";
-  syncCatalogKind();
   // Mở đúng Code đã chọn: lọc lại grid Master đã chuẩn bị bằng chính Code này.
   const destination = catalogPendingDestination;
   const choices = catalogResultChoices;

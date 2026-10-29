@@ -203,6 +203,10 @@ function trapOverlayFocus(event) {
 
 let overlayReturnFocus = null;
 let moduleReturnFocus = null;
+// Ô nhập người dùng đang gõ dở trong màn module. Panel tự thu khi automation
+// đưa Chrome lên trước; mở lại thì trả focus về đúng ô này thay vì nhảy về ô
+// đầu tiên của module.
+let moduleLastField = null;
 
 function focusModuleSearch() {
   if (settingsOverlay().classList.contains("credentials-required")) {
@@ -214,6 +218,14 @@ function focusModuleSearch() {
   $(".log-overlay").classList.remove("log-open");
   feedbackOverlay().classList.remove("feedback-open");
   if (!$(".module-page").hidden) {
+    const last = moduleLastField;
+    if (
+      last?.isConnected && !last.disabled && last.getClientRects().length
+      && $(".module-page").contains(last)
+    ) {
+      last.focus();
+      return;
+    }
     const focusTarget =
       MODULE_FOCUS_TARGETS[selectedModule?.kind] || ".module-back-button";
     $(focusTarget)?.focus();

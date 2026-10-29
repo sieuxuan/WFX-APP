@@ -44,6 +44,8 @@ Khi muốn thoát hẳn, bấm chuột phải biểu tượng ở khay hệ th�
 > [!meo]
 > Bật `Luôn trên cùng` trong Cài đặt, thẻ Giao diện, nếu bạn muốn bảng điều
 > khiển không bị cửa sổ khác che mất.
+> Cửa sổ Hướng dẫn sử dụng không theo công tắc này: nó là cửa sổ thường để
+> bạn vừa đọc vừa làm trên trình duyệt làm việc mà không bị che.
 
 ## Gặp lỗi thì sao
 

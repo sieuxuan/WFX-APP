@@ -395,6 +395,9 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "costing_special_options_rescan": data.get(
             "costing_special_options_rescan", False
         ) is True,
+        # Tự chuẩn bị Catalog > Master khi vào module. Mặc định TẮT: đây là
+        # điều hướng tab WFX mà người dùng chưa bấm.
+        "catalog_auto_prepare": data.get("catalog_auto_prepare", False) is True,
         # User ID của lần đăng nhập WFX gần nhất do chính app thực hiện.
         # Phiên WFX trong Chrome sống lâu hơn app, nên phải nhớ xuyên phiên
         # thì lần mở app sau mới biết phiên đang mở là của ai. Không phải bí
@@ -492,6 +495,7 @@ def save_prefs(
     open_excel_file_after_download: bool | None = None,
     open_costing_folder_after_export: bool | None = None,
     costing_special_options_rescan: bool | None = None,
+    catalog_auto_prepare: bool | None = None,
     session_user_id: str | None = None,
 ) -> dict:
     base_dir = DATA_DIR if base_dir is None else base_dir
@@ -523,6 +527,7 @@ def save_prefs(
             open_excel_file_after_download=open_excel_file_after_download,
             open_costing_folder_after_export=open_costing_folder_after_export,
             costing_special_options_rescan=costing_special_options_rescan,
+            catalog_auto_prepare=catalog_auto_prepare,
             session_user_id=session_user_id,
             hotkey_label=hotkey_label,
         )
@@ -556,6 +561,7 @@ def _save_prefs_locked(
     open_excel_file_after_download: bool | None,
     open_costing_folder_after_export: bool | None,
     costing_special_options_rescan: bool | None,
+    catalog_auto_prepare: bool | None,
     session_user_id: str | None,
     hotkey_label: str | None,
 ) -> dict:
@@ -572,6 +578,7 @@ def _save_prefs_locked(
             "open_excel_file_after_download": open_excel_file_after_download,
             "open_costing_folder_after_export": open_costing_folder_after_export,
             "costing_special_options_rescan": costing_special_options_rescan,
+            "catalog_auto_prepare": catalog_auto_prepare,
         },
         integer_values={
             "compact_offset_x": compact_offset_x,

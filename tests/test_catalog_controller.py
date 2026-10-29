@@ -826,3 +826,124 @@ def test_a_popup_that_never_opened_is_not_searched_again(api):
 
     assert second["code"] == "CATALOG_DESTINATION_OPENED"
     assert api._login.calls == [("destination", "F0001", "costsheet")]
+
+
+# --- ô tìm gộp: tự nhận Code hay Buyer Reference/Article Name -------------
+
+
+@pytest.mark.parametrize(
+    ("category", "query", "expected"),
+    [
+        (APPAREL, "SWV0001649", ("code", "SWV0001649")),
+        (APPAREL, "skn00021", ("code", "skn00021")),
+        (APPAREL, "1649", ("code", "1649")),
+        # Buyer Reference Apparel có dạng chữ + số: không được nhận là Code.
+        (APPAREL, "GMPA08941", ("buyer_reference", "GMPA08941")),
+        (APPAREL, "7012-ABC", ("buyer_reference", "7012-ABC")),
+        (TRIMS, "T0000001", ("code", "T0000001")),
+        (TRIMS, "LYCRA TAPE", ("article_name", "LYCRA TAPE")),
+    ],
+)
+def test_the_merged_box_routes_by_code_pattern(api, category, query, expected):
+    _prepared(api, category)
+
+    api._catalog.action(category, "auto", query)
+
+    assert api._login.calls[-1] == ("find", category, *expected)
+
+
+def test_a_buyer_reference_owned_by_one_code_searches_that_code(api):
+    _library(
+        api,
+        [_row("SWV0000909", "JLD-ELLOTT", "GMPA08941"), _row("SWV1", "X", "OTHER")],
+    )
+    _prepared(api)
+
+    api._catalog.action(APPAREL, "auto", "gmpa08941")
+
+    assert api._login.calls[-1] == ("find", APPAREL, "code", "SWV0000909")
+
+
+def test_a_shared_buyer_reference_still_lets_wfx_list_the_codes(api):
+    _library(
+        api,
+        [_row("SWV0000001", "A", "PO-1"), _row("SWV0000002", "B", "PO-1")],
+    )
+    _prepared(api)
+
+    api._catalog.action(APPAREL, "auto", "PO-1")
+
+    assert api._login.calls[-1] == ("find", APPAREL, "buyer_reference", "PO-1")
+
+
+def test_an_explicit_kind_is_never_rewritten(api):
+    _prepared(api)
+
+    api._catalog.action(APPAREL, "buyer_reference", "1649")
+
+    assert api._login.calls[-1] == ("find", APPAREL, "buyer_reference", "1649")
+
+
+def test_auto_suggestions_follow_the_same_routing(api):
+    _library(api, [_row("SWV0001649", "JACKET", "GMPA08941")])
+
+    by_code = api._catalog.suggest_articles(APPAREL, "auto", "SWV00016")
+    by_reference = api._catalog.suggest_articles(APPAREL, "auto", "GMPA")
+
+    assert [item["value"] for item in by_code["suggestions"]] == ["SWV0001649"]
+    assert [item["value"] for item in by_reference["suggestions"]] == ["GMPA08941"]
+
+
+# --- tự mở Catalog khi vào module ---------------------------------------
+
+
+def _auto_ready(api):
+    calls = api._login.calls
+
+    def auto_prepare(category_name, value, log=print):
+        calls.append(("auto_prepare", category_name, value))
+        return {"ok": True, "code": "CATEGORY_SELECTED", "message": "ok"}
+
+    api._login.auto_prepare_catalog_master = auto_prepare
+    api._session_active = True
+    return api
+
+
+def test_auto_prepare_stays_off_until_the_user_turns_it_on(api):
+    _auto_ready(api)
+
+    result = api.auto_prepare_catalog(APPAREL)
+
+    assert result["code"] == "CATALOG_AUTO_PREPARE_SKIPPED"
+    assert api._login.calls == []
+    assert prefs.load_prefs(api._base_dir)["catalog_auto_prepare"] is False
+
+
+def test_auto_prepare_never_launches_chrome_or_logs_in(api):
+    _auto_ready(api)
+    api.set_catalog_auto_prepare(True)
+    api._session_active = False
+
+    result = api.auto_prepare_catalog(APPAREL)
+
+    assert result["code"] == "CATALOG_AUTO_PREPARE_SKIPPED"
+    assert api._login.calls == []
+
+
+def test_auto_prepare_remembers_the_master_for_the_first_search(api):
+    _auto_ready(api)
+    api.set_catalog_auto_prepare(True)
+
+    result = api.auto_prepare_catalog(APPAREL)
+    again = api.auto_prepare_catalog(APPAREL)
+
+    assert result["code"] == "CATEGORY_SELECTED"
+    assert api._catalog.prepared_category == APPAREL
+    assert again["code"] == "CATALOG_AUTO_PREPARE_SKIPPED"
+    assert api._login.calls == [("auto_prepare", APPAREL, "01")]
+
+
+def test_auto_prepare_is_excluded_from_auto_relogin():
+    from wfx_panel.run_policy import AUTO_RELOGIN_EXCLUDED_METHODS
+
+    assert "auto_prepare_catalog" in AUTO_RELOGIN_EXCLUDED_METHODS

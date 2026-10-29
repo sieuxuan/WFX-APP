@@ -188,8 +188,7 @@ def test_index_html_has_contract_hooks():
         'class="catalog-style-group-summary"',
         'class="catalog-style-group-search"',
         'class="catalog-article-suggestions"',
-        'data-catalog-kind="code"',
-        'data-catalog-kind="buyer_reference"',
+        'class="catalog-auto-prepare-input"',
         'class="catalog-folder-search"',
         'class="catalog-folder-list"',
         'class="catalog-query"',
@@ -1244,3 +1243,10 @@ def test_only_the_list_that_enables_a_filter_row_advertises_it():
     ) in html
     assert html.count("Mở danh sách trên WFX") == 7
     assert 'data-module-action="expense-invoice-list">Mở Expense Inv List</button>' in html
+
+
+def test_rmpo_search_puts_rmpo_no_before_supplier():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    view = html[html.index('data-module-view="rmpo"'):]
+
+    assert view.index("rmpo-order-query") < view.index("rmpo-supplier-query")

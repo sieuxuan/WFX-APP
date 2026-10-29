@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 from wfx_panel.automation._common import (
+    Frame,
     Page,
     Playwright,
     PlaywrightError,
@@ -99,13 +100,57 @@ def _prepare_sourcing_asn(
     _write_log(log, "[GRN] Đã Add RMPO vào Sourcing ASN.")
 
 
+_SITE_SELECTOR = (
+    "#CellID11 > div:nth-child(2) > span, #CellID11 > div:nth-child(2), #CellID11"
+)
+_SEARCH_SELECTOR = 'xpath=//*[@id="CellID13"]/div'
+
+
+def _search_grn_pending(context: Any, frame: Frame) -> Frame:
+    _click_action(frame, _SEARCH_SELECTOR, "Search")
+    _wait_loading_finished(frame)
+    # Search là postback: resolve lại document trước khi đọc Site/bảng PO.
+    return _find_context_frame(context, _GRN_CONTEXT, timeout_s=20)
+
+
+def _open_new_grn(
+    context: Any,
+    frame: Frame,
+    rmpo_no: str,
+    site: str,
+    log: Callable[[str], None],
+) -> None:
+    """Chọn Site, Search lại theo Site rồi chọn đúng PO No. và click New.
+
+    Search lại là bắt buộc: bảng PO của lượt Search trước chưa lọc theo Site,
+    và đổi Site không tự làm WFX tải lại kết quả."""
+    _set_exact(frame, _SITE_SELECTOR, site, "Site", log)
+    frame = _search_grn_pending(context, frame)
+    _write_log(log, "[GRN] Đã Search lại GRN Pending theo Site.")
+    _select_po_row(frame, "#sectionOrderShipment", rmpo_no, timeout_s=20)
+    _click_action(
+        frame,
+        'xpath=//*[@id="titlebarGRNPending"]/tbody/tr/td[2]/span/div[1]',
+        "New",
+    )
+    _wait(frame, 300)
+    _write_log(log, "[GRN] Đã chọn đúng PO No. và click New.")
+
+
 def _prepare_grn_pending(
     context: Any,
     page: Page,
     supplier: str,
     mode: str,
     log: Callable[[str], None],
+    *,
+    rmpo_no: str = "",
+    site: str = "",
 ) -> list[str]:
+    """Mở GRN Pending, điền Receipt Type/From/Imported và Search.
+
+    Có ``site`` (user đã chọn trong app) thì đi tiếp tới New và trả ``[]``;
+    chưa có thì đọc danh sách Site để user chọn."""
     frame = _open_menu_form(
         context,
         page,
@@ -137,21 +182,30 @@ def _prepare_grn_pending(
     )
     if mode == "foreign":
         _select_imported(frame, log)
-    _click_action(
-        frame,
-        'xpath=//*[@id="CellID13"]/div',
-        "Search",
-    )
-    _wait_loading_finished(frame)
-    frame = _find_context_frame(context, _GRN_CONTEXT, timeout_s=20)
-    sites = _read_control_options(
-        frame,
-        "#CellID11 > div:nth-child(2) > span, #CellID11 > div:nth-child(2), #CellID11",
-    )
+    frame = _search_grn_pending(context, frame)
+    if site and rmpo_no:
+        _open_new_grn(context, frame, rmpo_no, site, log)
+        return []
+    sites = _read_control_options(frame, _SITE_SELECTOR)
     if not sites:
         raise PlaywrightTimeoutError("Không đọc được danh sách Site trên GRN.")
     _write_log(log, f"[GRN] Đã đọc {len(sites)} Site.")
     return sites
+
+
+def _site_ready_result(
+    message: str,
+    sites: list[str],
+    **data: Any,
+) -> dict[str, Any]:
+    if not sites:
+        return _result(
+            True,
+            "GRN_NEW_READY",
+            "Đã chọn RMPO và mở New GRN. Hãy tiếp tục kiểm tra trên WFX.",
+            **data,
+        )
+    return _result(True, "GRN_SITE_SELECTION_REQUIRED", message, sites=sites, **data)
 
 
 def prepare_grn_receipt(
@@ -160,10 +214,16 @@ def prepare_grn_receipt(
     supplier: str,
     mode: str,
     log: Callable[[str], None] = print,
+    *,
+    site: str = "",
 ) -> dict[str, Any]:
-    """Chuẩn bị Sourcing ASN hoặc đi thẳng tới màn chọn Site GRN."""
+    """Chuẩn bị Sourcing ASN, hoặc với hàng trong nước đi thẳng tới GRN.
+
+    Trong nước đã có ``site`` thì mở luôn New GRN; chưa có thì dừng ở bước chọn
+    Site. Nước ngoài luôn dừng ở checkpoint Sourcing ASN."""
     rmpo_no = " ".join(str(rmpo_no or "").split())
     supplier = " ".join(str(supplier or "").split())
+    site = " ".join(str(site or "").split())
     mode = str(mode or "").strip().casefold()
     if not rmpo_no:
         return _result(False, "GRN_RMPO_REQUIRED", "Vui lòng nhập RMPO No.")
@@ -193,15 +253,16 @@ def prepare_grn_receipt(
                 supplier=supplier,
                 mode=mode,
             )
-        sites = _prepare_grn_pending(context, page, supplier, mode, log)
-        return _result(
-            True,
-            "GRN_SITE_SELECTION_REQUIRED",
+        sites = _prepare_grn_pending(
+            context, page, supplier, mode, log, rmpo_no=rmpo_no, site=site
+        )
+        return _site_ready_result(
             "Đã chuẩn bị GRN. Hãy chọn Site trong ứng dụng.",
+            sites,
             rmpo_no=rmpo_no,
             supplier=supplier,
             mode=mode,
-            sites=sites,
+            site=site,
         )
     except (PlaywrightError, PlaywrightTimeoutError) as exc:
         message = f"Chưa chuẩn bị được nhập kho: {_first_line(exc)}"
@@ -222,9 +283,16 @@ def prepare_grn_receipt(
 def continue_grn_receipt(
     supplier: str,
     log: Callable[[str], None] = print,
+    *,
+    rmpo_no: str = "",
+    site: str = "",
 ) -> dict[str, Any]:
-    """Sau khi user Confirm Sourcing ASN, mở và chuẩn bị GRN Against ASN."""
+    """Sau khi user Confirm Sourcing ASN, mở GRN Against ASN.
+
+    Đã có ``site`` + ``rmpo_no`` thì mở luôn New GRN; chưa thì trả Site."""
     supplier = " ".join(str(supplier or "").split())
+    rmpo_no = " ".join(str(rmpo_no or "").split())
+    site = " ".join(str(site or "").split())
     if not supplier:
         return _result(False, "GRN_SESSION_EXPIRED", "Phiên nhập kho đã hết hiệu lực.")
     playwright: Playwright | None = None
@@ -237,14 +305,16 @@ def continue_grn_receipt(
             supplier,
             "foreign",
             log,
+            rmpo_no=rmpo_no,
+            site=site,
         )
-        return _result(
-            True,
-            "GRN_SITE_SELECTION_REQUIRED",
+        return _site_ready_result(
             "Đã chuẩn bị GRN từ Sourcing ASN. Hãy chọn Site trong ứng dụng.",
+            sites,
             supplier=supplier,
             mode="foreign",
-            sites=sites,
+            rmpo_no=rmpo_no,
+            site=site,
         )
     except Exception as exc:
         boundary = _browser_boundary_result(exc, module="(GRN) Nhập kho")
@@ -263,7 +333,7 @@ def finalize_grn_receipt(
     site: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    """Chọn Site, đúng PO No. và click New trên GRN Pending."""
+    """Chọn Site, Search lại, chọn đúng PO No. và click New trên GRN Pending."""
     rmpo_no = " ".join(str(rmpo_no or "").split())
     site = " ".join(str(site or "").split())
     if not rmpo_no or not site:
@@ -274,23 +344,7 @@ def finalize_grn_receipt(
         browser, _page = _active_wfx_page(playwright, log)
         context = browser.contexts[0]
         frame = _find_context_frame(context, _GRN_CONTEXT, timeout_s=12)
-        _set_exact(
-            frame,
-            "#CellID11 > div:nth-child(2) > span, #CellID11 > div:nth-child(2), #CellID11",
-            site,
-            "Site",
-            log,
-        )
-        _wait_loading_finished(frame)
-        frame = _find_context_frame(context, _GRN_CONTEXT, timeout_s=20)
-        _select_po_row(frame, "#sectionOrderShipment", rmpo_no)
-        _click_action(
-            frame,
-            'xpath=//*[@id="titlebarGRNPending"]/tbody/tr/td[2]/span/div[1]',
-            "New",
-        )
-        _wait(frame, 300)
-        _write_log(log, "[GRN] Đã chọn đúng PO No. và click New.")
+        _open_new_grn(context, frame, rmpo_no, site, log)
         return _result(
             True,
             "GRN_NEW_READY",

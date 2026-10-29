@@ -19,6 +19,7 @@ SESSION_OK = frozenset(
         "CATEGORY_SELECTED",
         "MASTER_OPENED",
         "CATALOG_PREPARED",
+        "CATALOG_AUTO_PREPARE_SKIPPED",
         "RESULT_OPENED",
         "MULTIPLE_RESULTS",
         "NO_RESULTS",
@@ -91,8 +92,10 @@ LOGIN_CODES = frozenset(
     {"LOGGED_IN", "LOGGED_IN_AFTER_DELAY", "SESSION_REUSED", "SESSION_ACTIVE"}
 )
 
+# Lượt tự chạy khi người dùng chỉ vừa vào module: mất phiên thì báo, không tự
+# mở lại Chrome hay đăng nhập hộ.
 AUTO_RELOGIN_EXCLUDED_METHODS = frozenset(
-    {"login", "open_chrome", "maintain_session"}
+    {"login", "open_chrome", "maintain_session", "auto_prepare_catalog"}
 )
 
 NON_REPORTABLE_FAILURES = frozenset(
@@ -133,6 +136,7 @@ NON_REPORTABLE_FAILURES = frozenset(
         "GRN_RMPO_SUPPLIER_NOT_FOUND",
         "GRN_RMPO_AMBIGUOUS",
         "GRN_ALREADY_RECEIVED",
+        "GRN_RMPO_WAITING",
         "GRN_SUPPLIER_AMBIGUOUS",
         "GRN_RMPO_SELECTION_EXPIRED",
         "GRN_SESSION_EXPIRED",

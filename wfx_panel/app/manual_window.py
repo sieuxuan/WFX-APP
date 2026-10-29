@@ -172,7 +172,10 @@ class ManualWindowController:
                     height=MANUAL_WINDOW_HEIGHT,
                     min_size=MANUAL_WINDOW_MIN,
                     resizable=True,
-                    on_top=app._always_on_top,
+                    # Hướng dẫn là cửa sổ đọc song song với WFX: không ghim
+                    # trên cùng theo panel, nếu không nó che luôn Chrome mà
+                    # người dùng đang làm theo từng bước.
+                    on_top=False,
                 )
                 created.append(window)
             except Exception as error:

@@ -25,6 +25,12 @@ Tìm nhanh đúng module bạn cần mà không phải đọc từng thẻ trên
 > lượt mới. Nhấn Esc trong một ô đang có chữ để xóa riêng ô đó; nhấn Esc thêm
 > lần nữa để quay lại danh sách module.
 
+> [!meo]
+> Dưới mỗi form tìm có hàng `Gần đây` giữ tối đa 6 lượt tìm thành công gần
+> nhất của tài khoản đang đăng nhập, giống Catalog. Bấm một mục để điền lại
+> đúng các điều kiện và kiểu tìm (OC No./Style, Category Supplier...) rồi tìm
+> ngay. Ở Sample, mục ghi `File` mở lại đúng Xem file đính kèm.
+
 ## Gặp lỗi thì sao
 
 | Hiện tượng | Cách xử lý |

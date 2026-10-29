@@ -199,8 +199,15 @@ let bootstrapReceived = false;
 let toastEnabled = true;
 let lastCatalogResult = null;
 let currentCostingStatus = "";
-let catalogKind = "code";
+// Một ô tìm duy nhất: backend tự nhận Code (SWV/SKN…, 4 số) hay Buyer
+// Reference/Article Name (`controllers/catalog_query.py`).
+let catalogKind = "auto";
 let catalogSpace = "search";
+// Lượt tự mở Catalog khi vào module (Promise) hoặc null. call() chờ nó xong
+// trước khi gọi bridge, nếu không lượt người dùng bấm sẽ nhận ACTION_IN_PROGRESS.
+let catalogAutoPrepare = null;
+// Công tắc `Tự mở Catalog khi vào màn này` (prefs.catalog_auto_prepare).
+let catalogAutoPrepareEnabled = false;
 let catalogPendingDestination = null;
 let costingPlanToken = "";
 let costingPlanDeleteCount = 0;
@@ -254,7 +261,7 @@ const MODULE_FOCUS_TARGETS = {
   supplier_invoice: ".supplier-invoice-supplier-query",
   expense_invoice: '[data-module-action="expense-invoice-template"]',
   sale_asn: ".sale-asn-buyer",
-  rmpo: ".rmpo-supplier-query",
+  rmpo: ".rmpo-order-query",
   indent: ".indent-supplier-query",
   list_new: '[data-module-action="list-new-list"]',
   supplier: ".supplier-query",

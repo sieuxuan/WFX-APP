@@ -160,7 +160,7 @@ def test_a_partial_rmpo_resolves_only_when_exactly_one_row_matches(
     patch_automation(
         monkeypatch, grn,
         "_prepare_grn_pending",
-        lambda _ctx, _page, supplier, mode, _log: prepared.update(
+        lambda _ctx, _page, supplier, mode, _log, **_k: prepared.update(
             supplier=supplier, mode=mode
         )
         or ["HANOI"],

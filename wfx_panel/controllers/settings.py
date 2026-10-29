@@ -110,6 +110,23 @@ class SettingsController:
             ],
         }
 
+    def set_catalog_auto_prepare(self, enabled: bool) -> dict:
+        panel = self._panel
+        saved = panel._prefs.save_prefs(
+            base_dir=panel._base_dir,
+            catalog_auto_prepare=boolean(enabled),
+        )
+        return {
+            "ok": True,
+            "code": "PREF_SAVED",
+            "message": (
+                "Catalog sẽ tự mở khi vào màn này."
+                if saved["catalog_auto_prepare"]
+                else "Đã tắt tự mở Catalog."
+            ),
+            "catalog_auto_prepare": saved["catalog_auto_prepare"],
+        }
+
     def set_module_favorite(self, module_id: str, favorite: bool) -> dict:
         panel = self._panel
         module_id = str(module_id or "").strip()

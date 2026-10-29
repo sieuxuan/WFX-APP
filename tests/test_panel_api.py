@@ -3,6 +3,7 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
 from openpyxl import Workbook, load_workbook
 
 from wfx_panel import (
@@ -245,9 +246,18 @@ class FakeLogin:
         }
 
     def prepare_grn_receipt(
-        self, xpath, rmpo_no, supplier, mode, log=print
+        self, xpath, rmpo_no, supplier, mode, log=print, *, site=""
     ):
         self.calls.append(("prepare_grn_receipt", xpath, rmpo_no, supplier, mode))
+        self.calls.append(("grn_site", "prepare", site))
+        if site:
+            return {
+                "ok": True,
+                "code": "GRN_NEW_READY",
+                "message": "ready",
+                "rmpo_no": rmpo_no,
+                "site": site,
+            }
         if mode == "foreign":
             return {
                 "ok": True,
@@ -267,8 +277,17 @@ class FakeLogin:
             "sites": [" Hanoi ", "HCM"],
         }
 
-    def continue_grn_receipt(self, supplier, log=print):
+    def continue_grn_receipt(self, supplier, log=print, *, rmpo_no="", site=""):
         self.calls.append(("continue_grn_receipt", supplier))
+        self.calls.append(("grn_site", "continue", rmpo_no, site))
+        if site:
+            return {
+                "ok": True,
+                "code": "GRN_NEW_READY",
+                "message": "ready",
+                "rmpo_no": rmpo_no,
+                "site": site,
+            }
         return {
             "ok": True,
             "code": "GRN_SITE_SELECTION_REQUIRED",
@@ -2980,6 +2999,63 @@ def test_grn_domestic_direct_input_and_search_delegate(tmp_path):
     assert ("search_grn_receipt", "invoice", "INV-9") in fake.calls
 
 
+def test_grn_sites_read_from_wfx_are_remembered_per_account(tmp_path):
+    api, _fake = make_api(tmp_path)
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api._current_division = "WOVEN"
+
+    assert api.grn_sites()["sites"] == []
+    api.prepare_grn_receipt("RM-77", "domestic")
+
+    assert api.grn_sites()["sites"] == ["Hanoi", "HCM"]
+    prefs.save_account("other", "p", base_dir=tmp_path)
+    assert api.grn_sites()["sites"] == [], "Tài khoản khác không thấy Site"
+
+
+def test_a_chosen_site_runs_domestic_grn_straight_to_new(tmp_path):
+    api, fake = make_api(tmp_path)
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api._current_division = "WOVEN"
+    api.prepare_grn_receipt("RM-77", "domestic")
+
+    result = api.prepare_grn_receipt("RM-77", "domestic", "", " hcm ")
+
+    assert result["code"] == "GRN_NEW_READY"
+    assert ("grn_site", "prepare", "HCM") in fake.calls
+
+
+def test_a_site_outside_the_remembered_list_is_refused_before_chrome(tmp_path):
+    api, fake = make_api(tmp_path)
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api._current_division = "WOVEN"
+    api.prepare_grn_receipt("RM-77", "domestic")
+    calls = len(fake.calls)
+
+    result = api.prepare_grn_receipt("RM-77", "domestic", "", "Da Nang")
+
+    assert result["code"] == "GRN_SITE_INVALID"
+    assert len(fake.calls) == calls
+
+
+def test_foreign_grn_keeps_the_site_for_after_the_sourcing_checkpoint(tmp_path):
+    api, fake = make_api(tmp_path)
+    prefs.save_account("u", "p", base_dir=tmp_path)
+    api._current_division = "WOVEN"
+    api.prepare_grn_receipt("RM-77", "domestic")
+
+    prepared = api.prepare_grn_receipt("RM-42", "foreign", "", "Hanoi")
+    assert prepared["code"] == "GRN_SOURCING_ASN_READY"
+    assert ("grn_site", "prepare", "") in fake.calls
+
+    continued = api.continue_grn_receipt(prepared["receipt_token"], True)
+
+    assert continued["code"] == "GRN_NEW_READY"
+    assert ("grn_site", "continue", "RM-42", "Hanoi") in fake.calls
+    assert api.continue_grn_receipt(
+        prepared["receipt_token"], True
+    )["code"] == "GRN_SESSION_EXPIRED"
+
+
 def test_grn_handoff_rejects_a_received_rmpo_before_automation(tmp_path):
     api, fake = make_api(tmp_path)
     found = api.search_rmpo("", "RM-42")
@@ -2990,6 +3066,20 @@ def test_grn_handoff_rejects_a_received_rmpo_before_automation(tmp_path):
 
     assert result["code"] == "GRN_ALREADY_RECEIVED"
     assert "không thể nhập thêm" in result["message"]
+    assert not any(call[0] == "prepare_grn_receipt" for call in fake.calls)
+
+
+@pytest.mark.parametrize("status", ["Waiting", " waiting for approval "])
+def test_grn_handoff_rejects_a_waiting_rmpo_before_automation(tmp_path, status):
+    api, fake = make_api(tmp_path)
+    found = api.search_rmpo("", "RM-42")
+    choice_id = found["rmpos"][0]["choice_id"]
+    api._inventory.rmpo_choices[choice_id]["status"] = status
+
+    result = api.prepare_grn_receipt("RM-42", "domestic", choice_id)
+
+    assert result["code"] == "GRN_RMPO_WAITING"
+    assert "chưa nhập kho được" in result["message"]
     assert not any(call[0] == "prepare_grn_receipt" for call in fake.calls)
 
 

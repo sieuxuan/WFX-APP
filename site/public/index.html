@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WFX Smart</title>
+<meta name="description" content="Tải WFX Smart, xem có gì mới, hướng dẫn sử dụng và gửi đề xuất tính năng.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="topbar" id="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/" data-link>
+      <span class="brand-mark" aria-hidden="true">WX</span>
+      <span class="brand-text"><b>WFX Smart</b><small id="brand-version">Trợ lý thao tác WFX</small></span>
+    </a>
+    <nav class="nav" aria-label="Mục chính">
+      <a href="/" data-link data-nav="tai-ve">Tải về</a>
+      <a href="/co-gi-moi" data-link data-nav="co-gi-moi">Có gì mới</a>
+      <a href="/huong-dan" data-link data-nav="huong-dan">Hướng dẫn</a>
+      <a href="/de-xuat" data-link data-nav="de-xuat">Đề xuất tính năng</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="main" tabindex="-1">
+  <section class="view" id="view-tai-ve" data-view="tai-ve" hidden>
+    <div class="download-hero">
+      <div class="dl-copy">
+        <span class="eyebrow">Bản mới nhất</span>
+        <h1 id="dl-title">WFX Smart</h1>
+        <p class="lead">Bảng điều khiển tự động hóa các thao tác lặp lại trên WFX: tìm Style, Costing, OC, Sale ASN, nhập kho và nhiều màn khác. Cài cho riêng tài khoản Windows của bạn, không cần quyền quản trị.</p>
+        <div class="dl-actions" id="dl-actions">
+          <span class="btn btn-primary is-loading">Đang lấy bản phát hành…</span>
+        </div>
+        <p class="hint" id="dl-meta"></p>
+      </div>
+      <aside class="dl-side" id="dl-whatsnew" aria-label="Điểm mới của bản này"></aside>
+    </div>
+
+    <div class="cols-3">
+      <div class="fact"><b>Windows 10 / 11, 64-bit</b><span>Cài per-user, không cần Admin.</span></div>
+      <div class="fact"><b>Tự cập nhật</b><span>App tự kiểm tra bản mới mỗi 4 giờ. Dữ liệu và cài đặt được giữ nguyên.</span></div>
+      <div class="fact"><b>Chrome hoặc Edge</b><span>App dùng một cửa sổ trình duyệt làm việc riêng để thao tác trên WFX.</span></div>
+    </div>
+
+    <article class="prose card" id="dl-install"></article>
+  </section>
+
+  <section class="view" id="view-co-gi-moi" data-view="co-gi-moi" hidden>
+    <div class="page-head">
+      <span class="eyebrow">Change log</span>
+      <h1>Có gì mới</h1>
+      <p class="lead">Những thay đổi người dùng nhìn thấy ở từng phiên bản. App tự cập nhật, nên bạn thường đã có sẵn các điểm mới này.</p>
+    </div>
+    <ol class="timeline" id="changelog"></ol>
+  </section>
+
+  <section class="view" id="view-huong-dan" data-view="huong-dan" hidden>
+    <div class="manual">
+      <aside class="manual-nav">
+        <label class="search">
+          <span class="sr-only">Tìm trong hướng dẫn</span>
+          <input id="manual-search" type="search" placeholder="Tìm: costing, sale asn, mã lỗi…" autocomplete="off">
+        </label>
+        <div id="manual-results" class="manual-results" hidden></div>
+        <nav id="manual-toc" class="toc" aria-label="Mục lục hướng dẫn"></nav>
+      </aside>
+      <article class="manual-body" id="manual-body"></article>
+    </div>
+  </section>
+
+  <section class="view" id="view-de-xuat" data-view="de-xuat" hidden>
+    <div class="page-head row-between">
+      <div>
+        <span class="eyebrow">Góp ý cho đội phát triển</span>
+        <h1>Đề xuất tính năng</h1>
+        <p class="lead">Xem đồng nghiệp đã đề xuất gì theo từng module. Bấm <b>Cần</b> nếu bạn gặp đúng việc đó, mở đề xuất để trao đổi thêm, hoặc gửi đề xuất mới kèm ảnh chụp màn hình.</p>
+      </div>
+      <button class="btn btn-primary" type="button" id="open-form">+ Gửi đề xuất mới</button>
+    </div>
+
+    <div class="stats" id="req-stats"></div>
+
+    <div class="filters card">
+      <div class="filter-row">
+        <label class="search grow">
+          <span class="sr-only">Tìm đề xuất</span>
+          <input id="req-search" type="search" placeholder="Tìm theo tên, nội dung, mã FR…" autocomplete="off">
+        </label>
+        <label class="inline-select">
+          <span>Sắp xếp</span>
+          <select id="req-sort">
+            <option value="votes">Nhiều người cần nhất</option>
+            <option value="new">Mới gửi</option>
+            <option value="active">Mới trao đổi</option>
+          </select>
+        </label>
+      </div>
+      <div class="chip-row" id="status-chips" role="group" aria-label="Lọc theo trạng thái"></div>
+      <div class="chip-row" id="module-chips" role="group" aria-label="Lọc theo module"></div>
+    </div>
+
+    <div id="req-list" class="req-list">
+      <div class="empty">Đang tải danh sách đề xuất…</div>
+    </div>
+
+    <p class="admin-link"><button type="button" class="link-btn" id="admin-toggle">Quản trị</button></p>
+  </section>
+</main>
+
+<dialog class="sheet" id="form-dialog" aria-labelledby="form-title">
+  <form id="req-form" class="sheet-inner" novalidate>
+    <div class="sheet-head">
+      <h2 id="form-title">Gửi đề xuất tính năng</h2>
+      <button type="button" class="icon-btn" id="close-form" aria-label="Đóng">×</button>
+    </div>
+    <div class="sheet-body">
+      <div class="grid-2">
+        <label class="field">
+          <span>Tên của bạn<i class="req">*</i></span>
+          <input id="f-name" name="name" type="text" maxlength="80" autocomplete="name" required>
+        </label>
+        <label class="field">
+          <span>Bộ phận / Team</span>
+          <input id="f-team" name="team" type="text" maxlength="60" placeholder="Ví dụ: Sale Woven">
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Tính năng bạn cần<i class="req">*</i></span>
+        <input id="f-title" name="title" type="text" maxlength="140" placeholder="Ví dụ: Tự điền Buyer khi tạo Sale ASN từ Excel" required>
+      </label>
+
+      <label class="field">
+        <span>Module liên quan<i class="req">*</i></span>
+        <select id="f-module" name="module" required></select>
+      </label>
+
+      <fieldset class="segmented" id="f-priority">
+        <legend>Mức độ cần thiết<i class="req">*</i></legend>
+      </fieldset>
+
+      <label class="field">
+        <span>Bạn muốn app làm gì?<i class="req">*</i></span>
+        <textarea id="f-wish" name="wish" maxlength="3000" rows="4" placeholder="Mô tả kết quả mong muốn. Ví dụ: chọn file PO là app tự tìm Buyer và điền sẵn, tôi chỉ kiểm tra rồi Save."></textarea>
+        <small class="counter" id="wish-count">0 / 3.000</small>
+      </label>
+
+      <label class="field">
+        <span>Hiện tại bạn đang làm thế nào?</span>
+        <textarea id="f-current" name="current_flow" maxlength="3000" rows="3" placeholder="Các bước bạn đang làm tay trên WFX hoặc Excel."></textarea>
+      </label>
+
+      <div class="grid-2">
+        <label class="field">
+          <span>Bao lâu làm một lần?</span>
+          <select id="f-frequency" name="frequency">
+            <option value="">Chọn tần suất</option>
+            <option value="daily">Hằng ngày</option>
+            <option value="weekly">Hằng tuần</option>
+            <option value="monthly">Hằng tháng</option>
+            <option value="rare">Thỉnh thoảng</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Mỗi lần mất khoảng (phút)</span>
+          <input id="f-minutes" name="minutes" type="number" min="0" max="600" inputmode="numeric" placeholder="Ví dụ: 20">
+        </label>
+      </div>
+
+      <div class="field">
+        <span>Ảnh minh họa</span>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="drop-hint">
+          <strong>Kéo thả ảnh vào đây hoặc bấm để chọn</strong>
+          <span id="drop-hint">Chụp màn hình bằng <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> rồi nhấn <kbd>Ctrl</kbd>+<kbd>V</kbd>. Tối đa 6 ảnh.</span>
+        </div>
+        <input id="f-files" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+        <div class="thumbs" id="pending"></div>
+      </div>
+
+      <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    </div>
+    <div class="sheet-foot">
+      <span class="form-msg" id="form-msg" role="status" aria-live="polite"></span>
+      <button class="btn btn-primary" type="submit" id="submit">Gửi đề xuất</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="sheet small" id="admin-dialog" aria-labelledby="admin-title">
+  <form id="admin-form" class="sheet-inner">
+    <div class="sheet-head">
+      <h2 id="admin-title">Chế độ quản trị</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Đóng">×</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field">
+        <span>Mã quản trị</span>
+        <input id="admin-key" type="password" autocomplete="current-password" required>
+      </label>
+      <p class="hint">Mã chỉ lưu trong tab trình duyệt này và tự xóa khi bạn đóng tab.</p>
+    </div>
+    <div class="sheet-foot">
+      <span class="form-msg" id="admin-msg" role="status"></span>
+      <button class="btn btn-primary" type="submit">Mở quản trị</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="sheet wide" id="detail-dialog" aria-labelledby="detail-title">
+  <div class="sheet-inner">
+    <div class="sheet-head">
+      <div class="detail-head-meta" id="detail-badges"></div>
+      <button type="button" class="icon-btn" id="close-detail" aria-label="Đóng">×</button>
+    </div>
+    <div class="sheet-body" id="detail-body"></div>
+  </div>
+</dialog>
+
+<div class="lightbox" id="lightbox" hidden><img id="lightbox-img" alt=""></div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/app.js" defer></script>
+</body>
+</html>

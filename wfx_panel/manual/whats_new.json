@@ -1,5 +1,36 @@
 [
   {
+    "version": "1.1.3",
+    "date": "2026-10-29",
+    "highlights": [
+      {
+        "title": "Nhập kho GRN: chọn Site ngay trong ứng dụng",
+        "body": "Ô Site nằm cạnh ô RMPO No. Lần đầu để Tự đọc từ WFX: ứng dụng đọc danh sách Site trên GRN Pending và nhớ theo tài khoản, Division. Từ lần sau chọn sẵn Site thì một lần bấm là tới New GRN. Sau khi chọn Site, ứng dụng tự Search lại và chọn đúng dòng PO, không còn báo Không đọc được danh sách Site.",
+        "entry": "danh-sach-grn-nhap-kho"
+      },
+      {
+        "title": "RMPO List rõ ràng hơn",
+        "body": "Ô RMPO No. đứng trước Supplier và con trỏ không còn nhảy về Supplier khi mở lại bảng điều khiển. Chỉ có một kết quả thì ứng dụng chọn sẵn và hiện ngay thẻ RMPO với Status, Supplier, Qty, Last Created. Nút Nhập kho chỉ hiện khi RMPO nhập được: Received và Waiting không nhập kho, Part Received vẫn nhập tiếp phần còn lại.",
+        "entry": "danh-sach-rmpo"
+      },
+      {
+        "title": "Catalog: một ô tìm cho cả Code và Buyer Reference",
+      "body": "Không còn phải chọn Article Code hay Buyer Reference trước khi tìm. Gõ Code (kể cả 4 số cuối), Buyer Reference hoặc Article Name vào cùng một ô; ứng dụng tự nhận ra và nếu giá trị khớp đúng một Style trong thư viện Article thì mở thẳng Style đó. Bật Tự mở Catalog khi vào màn này để Catalog và Master được chuẩn bị sẵn ngay khi bạn mở module; ứng dụng bỏ qua nếu tab WFX đang có màn nhập dở.",
+      "entry": "catalog-tim-style"
+    },
+    {
+      "title": "Hàng Gần đây cho các ô tìm",
+        "body": "OC, Sample, Sale ASN, RMPO, Tìm GRN, Indent, Advance PR, Supplier Inv, Expense Inv, Supplier và Buyer có hàng Gần đây giống Catalog. Bấm một lượt tìm cũ để điền lại đủ điều kiện và chạy lại ngay.",
+        "entry": "hang-ngay-tim-module"
+      },
+      {
+        "title": "Cửa sổ Hướng dẫn không che trình duyệt",
+        "body": "Cửa sổ Hướng dẫn sử dụng giờ là cửa sổ thường, không còn luôn nằm trên cùng, để bạn đọc song song với trình duyệt làm việc.",
+        "entry": "bat-dau-mo-panel"
+      }
+    ]
+  },
+  {
     "version": "1.1.2",
     "date": "2026-10-27",
     "highlights": [

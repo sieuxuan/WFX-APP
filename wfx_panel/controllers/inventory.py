@@ -4,6 +4,10 @@ Lựa chọn RMPO chỉ sống tới lần Search kế tiếp; mọi action ph�
 row/status trên WFX trước khi click. Phiên nhập kho giữ RMPO/Supplier đã xác
 thực và danh sách Site giữa các checkpoint user tự Confirm trên WFX.
 
+Site nhận kho được nhớ theo User ID + Division (``stores/grn_sites``) để user
+chọn ngay trong app: có Site thì một lượt đi thẳng tới New GRN, chưa có thì app
+đọc dropdown Site của GRN Pending rồi dừng cho user chọn.
+
 RMPO No. mang Division trong tiền tố (``PSW-JLD-26-6242`` thuộc Woven), mà
 RMPO List/GRN chỉ thấy chứng từ của Division đang chọn: tìm và chuẩn bị nhập kho
 đổi Division trước, còn bước nối tiếp quay về đúng Division lúc bắt đầu."""
@@ -17,6 +21,7 @@ if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
 from wfx_panel import constants
+from wfx_panel.automation.grn.frames import rmpo_receipt_refusal
 from wfx_panel.coercion import boolean
 from wfx_panel.controllers.document_division import (
     align_division,
@@ -24,6 +29,7 @@ from wfx_panel.controllers.document_division import (
     document_no_division,
     with_document_division_state,
 )
+from wfx_panel.stores.grn_sites import GrnSiteStore, clean_sites
 
 _RMPO_LABEL = "RMPO No."
 _GRN_MODULE = "(GRN) Nhập kho"
@@ -66,6 +72,67 @@ class InventoryController:
     def _division_after(self, state: dict[str, Any]) -> str | None:
         division = state.get("current_division") or self._panel._current_division
         return str(division) if division else None
+
+    @property
+    def site_store(self) -> GrnSiteStore | None:
+        # Danh sách Site chỉ là tiện ích: panel không có data dir (panel giả
+        # trong test của module khác) thì coi như chưa nhớ Site nào.
+        base_dir = getattr(self._panel, "_base_dir", None)
+        return GrnSiteStore(base_dir) if base_dir is not None else None
+
+    def _user_id(self) -> str:
+        account = getattr(self._panel, "_account", None)
+        return str(account().get("user_id") or "") if callable(account) else ""
+
+    def _cached_sites(self, division: str | None) -> list[str]:
+        store = self.site_store
+        return store.load(self._user_id(), str(division or "")) if store else []
+
+    def _remember_sites(self, division: str | None, sites: list[str]) -> None:
+        store = self.site_store
+        if store is None:
+            return
+        try:
+            store.remember(self._user_id(), str(division or ""), sites)
+        except OSError:
+            pass
+
+    def _canonical_site(
+        self,
+        requested: str,
+        division: str | None,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Site chọn sẵn phải nằm trong danh sách đã đọc của đúng Division."""
+        if not requested:
+            return "", None
+        canonical = next(
+            (
+                item
+                for item in self._cached_sites(division)
+                if item.casefold() == requested.casefold()
+            ),
+            None,
+        )
+        if canonical is None:
+            return "", {
+                "ok": False,
+                "code": "GRN_SITE_INVALID",
+                "message": (
+                    f"Site {requested} không có trong danh sách của Division "
+                    "hiện tại. Hãy chọn lại Site, hoặc để trống để app đọc lại "
+                    "danh sách Site từ WFX."
+                ),
+            }
+        return canonical, None
+
+    def grn_sites(self) -> dict:
+        division = self._panel._current_division
+        return {
+            "ok": True,
+            "code": "GRN_SITES",
+            "division": str(division or ""),
+            "sites": self._cached_sites(division),
+        }
 
     def _align_grn_session(
         self,
@@ -212,11 +279,13 @@ class InventoryController:
         rmpo_no: str,
         mode: str,
         rmpo_choice_id: str = "",
+        site: str = "",
     ) -> dict:
         panel = self._panel
         cleaned_rmpo = " ".join(str(rmpo_no or "").split())
         cleaned_mode = str(mode or "").strip().casefold()
         choice_token = str(rmpo_choice_id or "").strip()
+        requested_site = " ".join(str(site or "").split())
 
         def action() -> dict:
             supplier = ""
@@ -231,15 +300,9 @@ class InventoryController:
                         "code": "GRN_RMPO_SELECTION_EXPIRED",
                         "message": "Lựa chọn RMPO đã hết hiệu lực. Hãy chọn lại.",
                     }
-                if " ".join(choice["status"].casefold().split()) == "received":
-                    return {
-                        "ok": False,
-                        "code": "GRN_ALREADY_RECEIVED",
-                        "message": (
-                            f"RMPO {choice['order_no']} đã nhập kho hết, "
-                            "không thể nhập thêm."
-                        ),
-                    }
+                refusal = rmpo_receipt_refusal(choice["order_no"], choice["status"])
+                if refusal is not None:
+                    return refusal
                 supplier = choice["supplier"]
             division: dict[str, Any] = {}
             if cleaned_mode in _GRN_MODES:
@@ -248,6 +311,13 @@ class InventoryController:
                 )
                 if failed is not None:
                     return failed
+            receipt_division = self._division_after(division)
+            # Đối chiếu sau khi đổi Division: RMPO PSW-… dùng Site của Woven.
+            chosen_site, invalid = self._canonical_site(
+                requested_site, receipt_division
+            )
+            if invalid is not None:
+                return invalid
             result = with_document_division_state(
                 _hint_other_division(
                     panel._login.prepare_grn_receipt(
@@ -256,6 +326,8 @@ class InventoryController:
                         supplier,
                         cleaned_mode,
                         panel._log,
+                        # Nước ngoài chỉ dùng Site sau checkpoint Sourcing ASN.
+                        site=chosen_site if cleaned_mode == "domestic" else "",
                     ),
                     cleaned_rmpo,
                 ),
@@ -268,11 +340,9 @@ class InventoryController:
             }:
                 return result
             receipt_token = secrets.token_urlsafe(24)
-            sites = [
-                " ".join(str(item or "").split())
-                for item in result.get("sites") or []
-                if str(item or "").strip()
-            ]
+            sites = clean_sites(result.get("sites") or [])
+            if sites:
+                self._remember_sites(receipt_division, sites)
             self.grn_sessions.clear()
             self.grn_sessions[receipt_token] = {
                 "rmpo_no": str(result.get("rmpo_no") or cleaned_rmpo),
@@ -284,9 +354,10 @@ class InventoryController:
                     else "site"
                 ),
                 "sites": sites,
+                "site": chosen_site,
                 # Bước nối tiếp quay về đúng Division này, kể cả khi user đổi
                 # Division trong lúc tự Confirm Sourcing ASN trên WFX.
-                "division": self._division_after(division),
+                "division": receipt_division,
             }
             return {**result, "receipt_token": receipt_token, "sites": sites}
 
@@ -297,6 +368,7 @@ class InventoryController:
                 "module_id": "grn_receipt",
                 "mode": cleaned_mode,
                 "from_rmpo_choice": bool(choice_token),
+                "site_preselected": bool(requested_site),
             },
         )
 
@@ -304,10 +376,12 @@ class InventoryController:
         self,
         receipt_token: str,
         sourcing_confirmed: bool,
+        site: str = "",
     ) -> dict:
         panel = self._panel
         token = str(receipt_token or "").strip()
         confirmed = boolean(sourcing_confirmed)
+        requested_site = " ".join(str(site or "").split())
 
         def action() -> dict:
             session = self.grn_sessions.get(token)
@@ -323,6 +397,13 @@ class InventoryController:
                     "code": "GRN_SOURCING_CONFIRM_REQUIRED",
                     "message": "Chỉ tiếp tục sau khi đã Confirm Sourcing ASN trên WFX.",
                 }
+            # Site chọn ở checkpoint thắng Site chọn lúc bắt đầu.
+            chosen_site, invalid = self._canonical_site(
+                requested_site or str(session.get("site") or ""),
+                session.get("division"),
+            )
+            if invalid is not None:
+                return invalid
             failed, division = self._align_grn_session(session)
             if failed is not None:
                 return failed
@@ -330,16 +411,17 @@ class InventoryController:
                 panel._login.continue_grn_receipt(
                     session["supplier"],
                     panel._log,
+                    rmpo_no=session["rmpo_no"],
+                    site=chosen_site,
                 ),
                 division,
                 label=_RMPO_LABEL,
             )
+            if result.get("code") == "GRN_NEW_READY":
+                self.grn_sessions.pop(token, None)
             if result.get("code") == "GRN_SITE_SELECTION_REQUIRED":
-                sites = [
-                    " ".join(str(item or "").split())
-                    for item in result.get("sites") or []
-                    if str(item or "").strip()
-                ]
+                sites = clean_sites(result.get("sites") or [])
+                self._remember_sites(session.get("division"), sites)
                 session["stage"] = "site"
                 session["sites"] = sites
                 result = {

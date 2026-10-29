@@ -107,8 +107,9 @@ def test_wires_all_catalog_actions():
         "files",
     ]:
         assert f'"{action}"' in JS
-    assert "catalogKind" in JS
-    assert "catalog-kind-button" in JS
+    # Một ô tìm gộp: không còn nút chọn kiểu, backend tự nhận Code/Buyer Ref.
+    assert 'let catalogKind = "auto"' in JS
+    assert "catalog-kind-button" not in JS
     assert '"catalog_action"' in JS
     assert '"browse_catalog"' in JS
     assert '"scan_catalog_folders"' in JS
@@ -121,7 +122,7 @@ def test_rmpo_results_and_status_actions_are_wired():
     assert 'runRmpoAction("edit_po")' in JS
     assert 'runRmpoAction("check_received")' in JS
     assert 'status === "received"' in JS
-    assert '["received", "part received"]' in JS
+    assert '["received", "part-received"]' in JS
 
 
 def test_grn_handoff_checkpoint_site_and_search_are_wired():
@@ -139,6 +140,25 @@ def test_grn_handoff_checkpoint_site_and_search_are_wired():
     assert "GRN_SITE_SELECTION_REQUIRED" in JS
     assert "Bạn xác nhận đã nhập đủ thông tin" in JS
     assert "moduleFilterKinds.grn" in JS
+    # Site chọn sẵn trong app, nhớ theo tài khoản + Division.
+    assert 'callQuiet("grn_sites")' in JS
+    assert "selectedGrnSite()," in JS
+
+
+def test_receiving_is_offered_only_when_the_rmpo_status_allows_it():
+    assert 'return !["received", "waiting"].includes(rmpoStatusTone(value));' in JS
+    assert "$('[data-module-action=\"rmpo-receive\"]').hidden = !receivable;" in JS
+    assert "if (!rmpoCanReceive(selectedRmpoChoice.status))" in JS
+
+
+def test_reopening_the_panel_keeps_the_field_the_user_was_typing_in():
+    assert "moduleLastField = event.target;" in JS
+    assert 'rmpo: ".rmpo-order-query",' in JS
+
+
+def test_a_single_rmpo_result_is_selected_without_a_click():
+    assert "selectRmpoChoice(rmpoRows[0].choice_id)" in JS
+    assert '$(".rmpo-table").hidden = single;' in JS
 
 
 def test_wires_bulk_style_review_and_manual_save_flow():
@@ -766,7 +786,6 @@ def test_catalog_costing_export_can_scan_current_tab_without_query():
     assert 'catalogKind,\n    "",' in export_block
     assert "catalog-costing-article-scan-input" not in export_block
     assert "suggest_articles" in JS
-    assert '"article_name"' in JS
     assert '"suggest_articles",\n      $(".catalog-category")' in JS
     assert "wfxSetArticleLibraryStatus" in JS
     assert "Có thể Export/Import tab Costing hiện tại" not in JS
@@ -797,8 +816,27 @@ def test_article_suggestion_selection_switches_to_exact_code():
         )
     ]
     assert "row.dataset.articleCode" in click_block
-    assert 'catalogKind = "code"' in click_block
-    assert "syncCatalogKind()" in click_block
+    # Ô gộp tự nhận exact Code khớp thư viện; không được khóa kiểu tìm về
+    # "code" vì user sửa lại ô thành Buyer Reference sẽ tìm sai cột.
+    assert 'catalogKind = "code"' not in click_block
+
+
+def test_catalog_auto_prepare_is_opt_in_and_yields_to_user_actions():
+    assert "let catalogAutoPrepareEnabled = false;" in JS
+    auto_block = JS[
+        JS.index("function autoPrepareCatalog()")
+        : JS.index("async function runCatalogAction(")
+    ]
+    assert "!catalogAutoPrepareEnabled" in auto_block
+    assert '"auto_prepare_catalog"' in auto_block
+    call_block = JS[
+        JS.index("async function call(method, ...args)")
+        : JS.index("async function callQuiet(")
+    ]
+    # Việc khác Catalog dừng lượt tự mở; mọi lượt bấm đều chờ nó nhả worker.
+    assert '"cancel_current_action"' in call_block
+    assert "await catalogAutoPrepare;" in call_block
+    assert '"set_catalog_auto_prepare"' in JS
 
 
 def test_action_buttons_show_inline_spinner():
