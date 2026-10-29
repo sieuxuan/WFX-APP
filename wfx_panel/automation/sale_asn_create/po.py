@@ -432,6 +432,17 @@ def _recover_submitted_po_results(
     return None
 
 
+def _recovery_window(deadline: float) -> float:
+    """Thời gian còn lại để nhận lại popup, không vượt timeout cấu hình.
+
+    ``deadline - now`` với ``deadline = now0 + 40`` có thể làm tròn thành
+    40.000000000000014 khi đồng hồ chưa nhích giữa hai lần đọc."""
+    return min(
+        PO_POPUP_RECOVERY_TIMEOUT_SECONDS,
+        max(0.1, deadline - time.monotonic()),
+    )
+
+
 def _auto_add_po_with_frame_retry(
     context: Any,
     popup_frame: Frame,
@@ -465,7 +476,7 @@ def _auto_add_po_with_frame_retry(
                     f"[SALE ASN] Dòng {row.get('source_row')}: popup Add PO vừa tải lại; đang nhận kết quả từ frame mới.",
                 )
                 reported_reload = True
-            remaining = max(0.1, deadline - time.monotonic())
+            remaining = _recovery_window(deadline)
             if changed.search_submitted:
                 recovered = _recover_submitted_po_results(
                     context,
@@ -480,7 +491,7 @@ def _auto_add_po_with_frame_retry(
                     )
                     continue
             recovered_search = None
-            remaining = max(0.1, deadline - time.monotonic())
+            remaining = _recovery_window(deadline)
             _popup_page, popup_frame = _frame_with_selector(
                 context,
                 f"{PO_POPUP_SELECTOR} #txtOCNo",
