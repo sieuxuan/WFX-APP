@@ -59,6 +59,9 @@ def _flush_telemetry_quietly(base_dir, endpoint: str) -> None:
 class AutomationRunEngine:
     def __init__(self, panel: PanelAPI) -> None:
         self._panel = panel
+        # Progress cuối cùng của lượt đang chạy: khi flow hỏng mà không tự trả
+        # bước hỏng, đây là manh mối "đang ở bước nào" cho báo lỗi.
+        self._last_progress: dict | None = None
 
 
     def _run(
@@ -108,6 +111,7 @@ class AutomationRunEngine:
         started = time.monotonic()
         started_at = time.strftime("%Y-%m-%dT%H:%M:%S")
         panel._current_run_id = run_id
+        self._last_progress = None
         if announce:
             panel._log(f"[RUN] Bắt đầu {method_name}")
 
@@ -143,7 +147,14 @@ class AutomationRunEngine:
         if failed and code not in NON_REPORTABLE_FAILURES:
             try:
                 self._report_automation_error(
-                    method_name, result, request, code, run_id, elapsed
+                    method_name,
+                    result,
+                    request,
+                    code,
+                    run_id,
+                    elapsed,
+                    started_at=started_at,
+                    screenshot=screenshot,
                 )
             except Exception as error:
                 panel._log(f"[RUN] Không xếp được báo lỗi: {type(error).__name__}")
@@ -163,6 +174,9 @@ class AutomationRunEngine:
                 "message": "Đã dừng tác vụ tại checkpoint an toàn.",
             }
         except Exception as error:
+            # Message chỉ còn "KeyError: 'x'"; vị trí exception đi vào log của
+            # Run ID nên lỗi tự động lẫn Báo lỗi một chạm đều mang theo nó.
+            panel._log(f"[RUN] Vị trí lỗi: {telemetry.exception_frames(error)}")
             return {
                 "ok": False,
                 "code": "PANEL_ERROR",
@@ -230,6 +244,11 @@ class AutomationRunEngine:
                         if result.get("ok")
                         else panel._run_log_lines(run_id)
                     ),
+                    **(
+                        {}
+                        if result.get("ok")
+                        else telemetry.failure_stage(result, self._last_progress)
+                    ),
                 },
             )
         except Exception as error:
@@ -255,13 +274,26 @@ class AutomationRunEngine:
         code: str,
         run_id: str,
         elapsed: float,
+        *,
+        started_at: str = "",
+        screenshot: str | None = None,
     ) -> None:
+        """Xếp lỗi tự động với ĐỦ context như Báo lỗi một chạm.
+
+        Câu lỗi cho người dùng cố ý bỏ selector/lỗi Playwright gốc; chúng chỉ
+        nằm trong log của Run ID. Thiếu ``log_tail`` thì người hỗ trợ chỉ thấy
+        "Ô tìm kiếm chưa sẵn sàng" mà không biết automation kẹt ở đâu.
+        """
         panel = self._panel
         error_context = telemetry.automation_error_context(
             method_name,
             result,
             request,
         )
+        try:
+            status = panel.get_status()
+        except Exception:
+            status = {**panel._session_status(), **panel._division_state()}
         telemetry.enqueue(
             panel._base_dir,
             {
@@ -270,10 +302,21 @@ class AutomationRunEngine:
                 "method": method_name,
                 "code": code,
                 "run_id": run_id,
+                "started_at": started_at,
                 "elapsed_ms": int(elapsed * 1000),
+                "has_screenshot": bool(screenshot),
+                **telemetry.failure_stage(result, self._last_progress),
                 **error_context,
                 "account": panel._telemetry_account_context(),
+                # Giữ ở top-level cho n8n/bản cũ đọc os/os_release/python.
                 **telemetry.system_summary(),
+                "log_tail": telemetry.redact_log_lines(
+                    panel._run_log_lines(run_id)
+                ),
+                "diagnostics": telemetry.diagnostics(
+                    status,
+                    job_history.list_jobs(panel._base_dir, 5),
+                ),
             },
         )
         # Chốt endpoint trước khi tạo thread. Nếu test/cấu hình hiện tại
@@ -375,6 +418,11 @@ class AutomationRunEngine:
         state: str = "active",
     ) -> None:
         panel = self._panel
+        self._last_progress = {
+            "stage": str(stage),
+            "step": step,
+            "total": total,
+        }
         if panel._progress_sink is None:
             return
         try:

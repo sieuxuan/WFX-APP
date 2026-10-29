@@ -995,7 +995,17 @@ Các workflow riêng hiện có:
 
 - Lỗi automation gửi `method_label`, `error_title`, `error_detail`,
   `suggestion`, mã kỹ thuật, Run ID và context tài khoản gồm User ID, Company,
-  Division.
+  Division. Câu lỗi cho người dùng cố ý bỏ selector/lỗi Playwright gốc, nên lỗi
+  TỰ ĐỘNG cũng phải mang đủ chẩn đoán như Báo lỗi một chạm: `log_tail` của đúng
+  Run ID qua `redact_log_lines` (40 dòng × 500 ký tự), `started_at`,
+  `has_screenshot`, bước hỏng `failed_stage`/`failed_step`/`progress_total` và
+  `diagnostics` từ `telemetry.diagnostics()` (whitelist trạng thái trình duyệt,
+  phiên, Division, máy + 5 job gần nhất; hai loại tin dùng chung hàm này). Bước
+  hỏng lấy từ `failed_stage` flow trả về, không có thì từ progress cuối mà
+  `AutomationRunEngine` thấy; chỉ nhận định danh `[a-z][a-z0-9_]*`, tuyệt đối
+  không gửi câu progress (có số PO/Invoice). Bước hỏng cũng được lưu trong
+  `jobs.json` để Báo lỗi một chạm gửi lại được. `PANEL_ERROR` ghi vị trí
+  exception (`file.py:dòng in hàm`, không đường dẫn) vào log của Run ID.
 - Nếu `result.message`, `module` hoặc `filter_kind` bị trống, telemetry phải suy
   ra mô tả cụ thể từ `method` và metadata request đã whitelist (`module_id`,
   `filter_kind`, `division_key`); không dùng fallback chung chung kiểu
@@ -1013,7 +1023,15 @@ Các workflow riêng hiện có:
   `http://` đủ để đẩy chúng qua mạng dưới dạng rõ, còn `file://` biến chính hàm
   đọc JSON thành trình đọc file cục bộ.
 - Không gửi password, cookie, SessionID, LoginID, URL WFX đầy đủ hoặc nội dung
-  tìm kiếm. Mọi mô tả lỗi phải qua `redact_telemetry_text`.
+  tìm kiếm. Mọi mô tả lỗi phải qua `redact_telemetry_text`. URL chỉ được giữ
+  tên trang dạng `[URL đã ẩn: WFXSalesASN.aspx]` (đoạn cuối có đuôi `.aspx`,
+  `.ashx`…); host, thư mục, query, fragment luôn bỏ, và đoạn cuối không phải
+  tên trang (REST path có thể mang mã Style) thì ẩn cả URL. Node n8n phải dùng
+  đúng luật này.
+- `notification_text` của n8n tối đa 4.000 ký tự nhưng KHÔNG được cắt từ đầu
+  cả tin: phần đầu giữ nguyên, log được thêm từ dòng mới nhất ngược lên tới
+  khi hết chỗ, vì lỗi gốc nằm ở các dòng cuối. Đủ log vẫn nằm trong trường
+  `log_tail` của output.
 - Lỗi nhập liệu/trình tự như thiếu query, chưa mở List, không có kết quả hoặc
   filter không hợp lệ phải nằm trong `NON_REPORTABLE_FAILURES`.
 - Mỗi error code có khả năng gửi phải có mô tả và hướng xử lý trong

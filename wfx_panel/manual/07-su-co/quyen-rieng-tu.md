@@ -15,15 +15,18 @@ giữ riêng trên máy.
 
 > [!meo]
 > Báo lỗi có thể gồm tên thao tác, mã lỗi, Run ID, User ID, Company, Division,
-> phiên bản Windows và trạng thái kết nối.
+> bước đang chạy khi lỗi, phiên bản Windows, trạng thái trình duyệt làm việc và
+> phiên WFX, cùng mã kết quả của vài tác vụ gần nhất.
 
 > [!meo]
-> Nút `Báo lỗi` một chạm gửi thêm tối đa 40 dòng nhật ký cuối của đúng lần chạy
-> lỗi. Địa chỉ web và thông tin đăng nhập trong nhật ký đã được ẩn trước khi gửi.
+> Cả báo lỗi tự động lẫn nút `Báo lỗi` một chạm đều gửi kèm tối đa 40 dòng nhật
+> ký cuối của đúng lần chạy lỗi. Thông tin đăng nhập trong nhật ký đã được ẩn;
+> địa chỉ web chỉ còn tên trang WFX (ví dụ `WFXSalesASN.aspx`), không còn tên
+> máy chủ hay tham số phía sau.
 
 > [!luuy]
 > Ứng dụng không gửi mật khẩu, cookie, Session ID, nội dung tìm kiếm hoặc địa
-> chỉ WFX đầy đủ. Ứng dụng cũng không tự chụp màn hình.
+> chỉ WFX đầy đủ. Ảnh lỗi chỉ lưu trên máy, không gửi đi.
 
 ## Gặp lỗi thì sao
 

@@ -16,10 +16,11 @@ from wfx_panel.telemetry_labels import ERROR_CODE_INFO, METHOD_LABELS
 
 MAX_JOBS = 200
 # Chỉ lần chạy HỎNG mới giữ đuôi log, để người dùng báo lỗi được cả sau khi
-# mở lại app. 40 dòng × 300 ký tự đủ thấy bước cuối mà jobs.json (ghi lại
-# toàn bộ sau mỗi job) không phình theo số lần chạy thành công.
+# mở lại app. 40 dòng × 500 ký tự đủ thấy bước cuối kèm "Call log" của lỗi
+# Playwright gốc, mà jobs.json (ghi lại toàn bộ sau mỗi job) không phình theo
+# số lần chạy thành công.
 MAX_LOG_TAIL_LINES = 40
-_LOG_TAIL_LINE_CHARS = 300
+_LOG_TAIL_LINE_CHARS = 500
 RETENTION_DAYS = 7
 _LOCK = threading.Lock()
 _SENSITIVE_REQUEST_KEYS = frozenset(
@@ -106,6 +107,9 @@ _PERSISTED_JOB_KEYS = frozenset(
         "acknowledged",
         "log_tail",
         "reported",
+        "failed_stage",
+        "failed_step",
+        "progress_total",
     }
 )
 
