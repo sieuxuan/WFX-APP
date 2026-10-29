@@ -733,3 +733,105 @@ def test_an_impossible_process_id_stops_the_update(monkeypatch, tmp_path):
         updater.schedule_update(
             update_state(), current_pid=-1, executable=executable
         )
+
+
+# --- Dự phòng khi GitHub API hết lượt / bị chặn ----------------------------
+
+from email.message import Message  # noqa: E402
+from urllib.error import HTTPError, URLError  # noqa: E402
+
+
+def _http_error(code, location=""):
+    headers = Message()
+    if location:
+        headers["Location"] = location
+    return HTTPError(updater.LATEST_RELEASE_API, code, "err", headers, None)
+
+
+class _RedirectOpener:
+    def __init__(self, outcome):
+        self.outcome = outcome
+        self.requests = []
+
+    def open(self, request, timeout=None):
+        self.requests.append(request)
+        raise self.outcome
+
+
+def test_a_rate_limited_api_falls_back_to_the_release_page(monkeypatch):
+    def limited():
+        raise _http_error(403)
+
+    monkeypatch.setattr(updater, "_load_latest_release", limited)
+    monkeypatch.setattr(
+        updater, "_latest_release_from_page", lambda: release_payload(NEXT_VERSION)
+    )
+
+    result = updater.check_for_updates()
+
+    assert result["code"] == "UPDATE_AVAILABLE"
+    assert result["version"] == NEXT_VERSION
+
+
+def test_the_release_page_redirect_gives_the_tag_and_signed_asset_urls(monkeypatch):
+    tag = f"v{NEXT_VERSION}"
+    opener = _RedirectOpener(
+        _http_error(
+            302, f"https://github.com/{updater.REPOSITORY}/releases/tag/{tag}"
+        )
+    )
+    monkeypatch.setattr(updater, "build_opener", lambda *_handlers: opener)
+
+    release = updater._latest_release_from_page()
+
+    assert opener.requests[0].full_url == updater.LATEST_RELEASE_PAGE
+    assert opener.requests[0].get_method() == "HEAD"
+    for mode in (updater.UPDATE_MODE_INSTALLER, updater.UPDATE_MODE_PORTABLE):
+        version, package, checksum, signature = updater._release_assets(release, mode)
+        assert version == NEXT_VERSION
+        assert package.endswith(f"/releases/download/{tag}/{updater._asset_name(version, mode)}")
+        assert checksum == package + ".sha256"
+        assert signature == checksum + ".p7s"
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "",
+        "https://github.com/someone-else/repo/releases/tag/v9.9.9",
+        "http://github.com/sieuxuan/WFX-APP/releases/tag/v9.9.9",
+        "https://github.com/sieuxuan/WFX-APP/releases",
+    ],
+)
+def test_a_redirect_that_is_not_our_release_tag_is_refused(monkeypatch, location):
+    opener = _RedirectOpener(_http_error(302, location))
+    monkeypatch.setattr(updater, "build_opener", lambda *_handlers: opener)
+
+    with pytest.raises(ValueError):
+        updater._latest_release_from_page()
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (_http_error(403), "giới hạn lượt kiểm tra"),
+        (_http_error(429), "giới hạn lượt kiểm tra"),
+        (URLError("no route"), "không kết nối được GitHub"),
+        (TimeoutError("timed out"), "không kết nối được GitHub"),
+        (_http_error(500), "GitHub trả lỗi 500"),
+    ],
+)
+def test_a_failed_check_says_why_instead_of_a_generic_message(
+    monkeypatch, error, reason
+):
+    def fail():
+        raise error
+
+    monkeypatch.setattr(updater, "_load_latest_release", fail)
+    monkeypatch.setattr(updater, "_latest_release_from_page", fail)
+
+    result = updater.check_for_updates()
+
+    assert result["code"] == "UPDATE_CHECK_FAILED"
+    assert reason in result["message"]
+    assert "tự thử lại" in result["message"]

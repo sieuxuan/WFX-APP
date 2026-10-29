@@ -18,13 +18,21 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 from wfx_panel._signing_identity import EXPECTED_SIGNER_THUMBPRINT
 from wfx_panel.version import APP_VERSION
 
 REPOSITORY = "sieuxuan/WFX-APP"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+# Trang web (không phải API) chỉ redirect 302 sang tag mới nhất. API không xác
+# thực bị GitHub giới hạn 60 lượt/giờ/IP: cả văn phòng dùng chung một IP là hết
+# lượt, nên trang này là đường dự phòng không phụ thuộc giới hạn đó.
+LATEST_RELEASE_PAGE = f"https://github.com/{REPOSITORY}/releases/latest"
+_RELEASE_TAG_PATH = re.compile(
+    rf"^/{re.escape(REPOSITORY)}/releases/tag/(v\d+(?:\.\d+)*)/?$",
+    re.IGNORECASE,
+)
 REQUEST_TIMEOUT_SECONDS = 20
 PORTABLE_ASSET_PATTERN = re.compile(
     r"^WFX-Smart-v(?P<version>\d+\.\d+\.\d+)-win64\.zip$",
@@ -63,6 +71,77 @@ def _load_latest_release() -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Phản hồi bản phát hành không hợp lệ.")
     return payload
+
+
+class _KeepRedirect(HTTPRedirectHandler):
+    """Không đi theo redirect: chỉ cần header Location, không tải trang tag."""
+
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+
+def _latest_release_from_page() -> dict[str, Any]:
+    """Dựng thông tin release từ redirect ``/releases/latest``.
+
+    Tên gói đã cố định theo phiên bản (``_asset_name``) nên dựng được URL tải;
+    checksum + chữ ký vẫn được xác minh trước khi cài như luồng API.
+    """
+    request = Request(
+        LATEST_RELEASE_PAGE,
+        method="HEAD",
+        headers={"User-Agent": f"WFX-Smart/{APP_VERSION}"},
+    )
+    try:
+        with build_opener(_KeepRedirect).open(
+            request, timeout=REQUEST_TIMEOUT_SECONDS
+        ) as response:
+            location = response.geturl()
+    except HTTPError as error:
+        if error.code not in {301, 302, 303, 307, 308}:
+            raise
+        location = str(error.headers.get("Location") or "")
+    parsed = urlparse(location)
+    match = _RELEASE_TAG_PATH.match(parsed.path)
+    if parsed.scheme != "https" or parsed.hostname != "github.com" or not match:
+        raise ValueError("Không đọc được bản phát hành mới nhất trên GitHub.")
+    tag = match.group(1)
+    version = tag.removeprefix("v")
+    download = f"https://github.com/{REPOSITORY}/releases/download/{tag}/"
+    names = [
+        name + suffix
+        for mode in (UPDATE_MODE_INSTALLER, UPDATE_MODE_PORTABLE)
+        for name in (_asset_name(version, mode),)
+        for suffix in ("", ".sha256", ".sha256.p7s")
+    ]
+    return {
+        "tag_name": tag,
+        "id": tag,
+        "html_url": f"https://github.com/{REPOSITORY}/releases/tag/{tag}",
+        "assets": [
+            {"name": name, "browser_download_url": download + name}
+            for name in names
+        ],
+    }
+
+
+def _fetch_latest_release() -> dict[str, Any]:
+    """API trước; hết lượt/bị chặn thì dự phòng bằng trang release."""
+    try:
+        return _load_latest_release()
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError):
+        return _latest_release_from_page()
+
+
+def _check_failure_reason(error: BaseException) -> str:
+    if isinstance(error, HTTPError) and error.code in {403, 429}:
+        return "GitHub đang giới hạn lượt kiểm tra từ mạng này"
+    if isinstance(error, (URLError, TimeoutError, OSError)) and not isinstance(
+        error, HTTPError
+    ):
+        return "không kết nối được GitHub (kiểm tra mạng, proxy hoặc tường lửa)"
+    if isinstance(error, HTTPError):
+        return f"GitHub trả lỗi {error.code}"
+    return "bản phát hành trên GitHub chưa đủ tệp cập nhật"
 
 
 def _safe_release_url(value: str) -> str:
@@ -204,7 +283,7 @@ def check_for_updates(
     _ = root, channel
     update_mode = detect_update_mode(executable)
     try:
-        release = _load_latest_release()
+        release = _fetch_latest_release()
         version, package_url, checksum_url, signature_url = _release_assets(
             release,
             update_mode,
@@ -245,11 +324,14 @@ def check_for_updates(
         OSError,
         ValueError,
         json.JSONDecodeError,
-    ):
+    ) as error:
         return {
             "ok": False,
             "code": "UPDATE_CHECK_FAILED",
-            "message": ("Chưa thể kiểm tra bản cập nhật. Ứng dụng sẽ tự thử lại sau."),
+            "message": (
+                f"Chưa thể kiểm tra bản cập nhật: {_check_failure_reason(error)}. "
+                "Ứng dụng sẽ tự thử lại sau."
+            ),
             "can_update": False,
             "channel": "stable",
             "version": APP_VERSION,
