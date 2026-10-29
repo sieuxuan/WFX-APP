@@ -93,6 +93,8 @@ def main() -> None:
         json.dumps(content, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
+    # Console Windows cp1252 không in được tiếng Việt và làm `npm run deploy` dừng.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     print(
         f"Đã ghi {OUTPUT.relative_to(ROOT)}: {len(content['entries'])} mục, "
         f"{len(content['whats_new'])} phiên bản"
