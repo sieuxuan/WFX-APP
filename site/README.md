@@ -26,6 +26,7 @@ Deploy lại sau mỗi lần phát hành app để Hướng dẫn và Có gì m�
 ## Nhúng vào Google Sites
 
 Chèn → Nhúng → theo URL. Thêm `?embed=1` để ẩn thanh điều hướng của site, ví dụ
-`https://wfx-smart.itps.workers.dev/de-xuat?embed=1`. Trang cho phép nhúng từ
-`sites.google.com`, `*.googleusercontent.com` và `wfx.pro-sports.com.vn`
-(xem `public/_headers`).
+`https://wfx-smart.itps.workers.dev/de-xuat?embed=1`. Trang không gửi
+`frame-ancestors`/`X-Frame-Options`: Google Sites kiểm tra URL nhúng từ máy chủ
+riêng của nó và từ chối mọi trang có giới hạn nguồn nhúng, kể cả khi đã liệt kê
+`sites.google.com` (xem `public/_headers`).
