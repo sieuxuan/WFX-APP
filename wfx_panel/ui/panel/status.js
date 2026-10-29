@@ -7,6 +7,11 @@ function setStatus(tone, label) {
   const status = $(".footer-status");
   status.dataset.tone = tone || "neutral";
   $(".footer-status-text").textContent = label || "";
+  // Panel chỉ rộng 440px nên câu dài bị cắt "…": hover phải đọc được nguyên
+  // câu. Tooltip chỉ hiện khi chữ thật sự bị cắt (data-tooltip-clipped).
+  if (label) status.dataset.tooltip = label;
+  else delete status.dataset.tooltip;
+  refreshTooltip(status);
 }
 window.wfxSetStatus = setStatus;
 
@@ -17,6 +22,7 @@ function setBrowserStatus(alive, available = true, name = null) {
     health.dataset.tooltip = alive
       ? `${name || "Chromium"} · trình duyệt làm việc`
       : "Chưa kết nối trình duyệt";
+    health.setAttribute("aria-label", health.dataset.tooltip);
   }
   const banner = $(".browser-banner");
   if (banner) {
@@ -68,6 +74,7 @@ function setSessionStatus(active, lastLoginAt) {
     node.dataset.tooltip = active === true && lastLoginTime
       ? `Phiên WFX · đăng nhập lúc ${lastLoginTime}`
       : "Phiên WFX";
+    node.setAttribute("aria-label", node.dataset.tooltip);
   }
   $$(".division-button").forEach((button) => {
     button.disabled = active !== true;

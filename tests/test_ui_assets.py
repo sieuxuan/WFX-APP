@@ -598,6 +598,32 @@ def test_footer_has_health_indicators():
     assert "checkpoint an toàn" in html
 
 
+def test_footer_health_shows_only_dots_with_tooltips():
+    import re
+
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    for hook, label in (("health-chrome", "Trình duyệt làm việc"), ("health-session", "Phiên WFX")):
+        match = re.search(rf'<span class="{hook}"[^>]*>(.*?)</span>', html)
+        assert match, hook
+        assert match.group(1) == "<i></i>", "chỉ giữ chấm trạng thái, không in chữ"
+        assert f'data-tooltip="{label}"' in match.group(0)
+        assert f'aria-label="{label}"' in match.group(0)
+
+
+def test_clipped_footer_status_shows_full_text_on_hover():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    status_js = (UI / "panel" / "status.js").read_text(encoding="utf-8")
+    core_js = (UI / "panel" / "core.js").read_text(encoding="utf-8")
+    css = (UI / "style.css").read_text(encoding="utf-8")
+
+    assert 'data-tooltip-clipped=".footer-status-text"' in html
+    assert "data-tooltip-wide" in html
+    assert "status.dataset.tooltip = label" in status_js
+    assert "refreshTooltip(status)" in status_js
+    assert "node.scrollWidth > node.clientWidth" in core_js
+    assert ".app-tooltip[data-wide]" in css
+
+
 def test_settings_has_new_toggles_and_enabled_hotkey_button():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [

@@ -10,7 +10,7 @@ trong cửa sổ này như Chrome thông thường.
 2. Bấm `Mở trình duyệt`.
 3. Chờ Chrome, Edge, Brave hoặc Chromium mở ra.
 4. Đăng nhập WFX nếu trình duyệt yêu cầu.
-5. Chờ hai đèn Chrome và WFX ở thanh dưới cùng chuyển sang trạng thái đã kết nối.
+5. Chờ hai chấm trạng thái ở góc phải thanh dưới cùng chuyển sang màu xanh.
 
 ## Mẹo
 
@@ -43,5 +43,5 @@ trong cửa sổ này như Chrome thông thường.
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Bấm mở nhưng chưa thấy trình duyệt | Chờ vài giây rồi bấm `Kiểm tra lại` trên dải thông báo. |
-| Đèn Chrome sáng nhưng đèn WFX chưa sáng | Mở cửa sổ trình duyệt và đăng nhập WFX, sau đó bấm nút kiểm tra lại ở góc dưới. |
+| Chấm trình duyệt đã xanh nhưng chấm phiên WFX chưa xanh | Mở cửa sổ trình duyệt và đăng nhập WFX, sau đó bấm nút kiểm tra lại ở góc dưới. |
 | File tải về bình thường nhưng bấm `Mở file` hoặc `Hiện trong thư mục` trong Chrome không phản ứng, và Chrome không còn hiện cảnh báo tải xuống | Lưu công việc, bấm chuột phải biểu tượng WFX Smart ở khay hệ thống, chọn `Thoát và đóng trình duyệt`, rồi mở lại WFX Smart. Chrome chỉ hết lỗi này sau khi được đóng hẳn và mở lại; các file đã tải trước đó vẫn nằm trong thư mục `Downloads`. |

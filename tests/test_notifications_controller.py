@@ -191,3 +191,80 @@ def test_the_settings_test_button_reports_a_toast_that_did_not_appear(app):
 
     assert result["code"] == "TOAST_DISPLAY_FAILED"
     assert result["ok"] is False
+
+
+# --- phủ mọi flow ------------------------------------------------------
+
+
+def _run_method_names() -> set[str]:
+    """Mọi tên method truyền vào ``_run()`` trong mã nguồn wfx_panel."""
+    import ast
+    from pathlib import Path
+
+    names: set[str] = set()
+    root = Path(panel_app.__file__).parent
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            literals: dict[str, set[str]] = {}
+            for node in ast.walk(function):
+                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and isinstance(node.value.value, str):
+                            literals.setdefault(target.id, set()).add(node.value.value)
+            for node in ast.walk(function):
+                if not (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "_run"
+                    and node.args
+                ):
+                    continue
+                first = node.args[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    names.add(first.value)
+                elif isinstance(first, ast.Name):
+                    names.update(literals.get(first.id, ()))
+    return names
+
+
+def test_every_automation_flow_either_toasts_with_a_label_or_is_explicitly_silent():
+    from wfx_panel.app.layout import SILENT_RESULT_METHODS
+
+    methods = _run_method_names()
+    # Bảo đảm bộ quét thật sự tìm thấy các flow, không xanh vì rỗng.
+    assert {"search_grn", "run_color_report_batch", "login"} <= methods
+
+    unlabelled = sorted(
+        method
+        for method in methods
+        if method not in SILENT_RESULT_METHODS
+        and method not in NOTIFICATION_ACTION_LABELS
+    )
+    assert unlabelled == []
+
+
+def test_background_session_checks_never_toast():
+    from wfx_panel.app.layout import SILENT_RESULT_METHODS
+
+    assert {"maintain_session", "check_session", "auto_prepare_catalog"} <= (
+        SILENT_RESULT_METHODS
+    )
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["search_grn", "finalize_grn_receipt", "run_color_report_batch", "search_rmpo"],
+)
+def test_flows_outside_the_old_whitelist_now_toast_when_wfx_is_in_front(
+    app, monkeypatch, method
+):
+    sent = []
+    app.window = None
+    app._show_notification = lambda result, **context: sent.append(context["method"])
+
+    app._on_result(method, {"ok": True, "message": "xong"}, 1.0)
+
+    assert sent == [method]

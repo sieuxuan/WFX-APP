@@ -810,7 +810,7 @@ body.compact-mode .compact-launcher .compact-mark {
     .hotkey-button.capturing { color: var(--warn); border-color: var(--warn); animation: capture 1s ease infinite alternate; }
     @keyframes capture { to { box-shadow: 0 0 0 3px var(--warn-soft); } }
     .footer-health { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--text-3); }
-    .footer-health > span { display: inline-flex; align-items: center; gap: 4px; }
+    .footer-health > span { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; }
     .footer-health i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
     .footer-health [data-state="ok"] i { background: #16a34a; }
     .footer-health [data-state="bad"] i { background: #dc2626; }
@@ -2880,6 +2880,7 @@ body.compact-mode .compact-launcher .compact-mark {
       animation: tooltip-enter .12s ease-out both;
     }
     .app-tooltip[hidden] { display: none !important; }
+    .app-tooltip[data-wide] { max-width: calc(100vw - 16px); text-align: left; }
     .app-tooltip::after {
       content: "";
       position: absolute;
