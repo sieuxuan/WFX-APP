@@ -147,8 +147,19 @@ const mappedError = errorCodes[code] || {};
 const methodContext = methodContexts[method] || {};
 const moduleName = String(source.module || methodContext.module || '');
 const filterKind = String(source.filter_kind || methodContext.filter || '');
+// Giống redact_telemetry_text của app: chỉ giữ tên trang WFX (.aspx…), bỏ
+// host, thư mục, query và fragment.
+const redactUrl = (url) => {
+  const address = url.split(/[?#]/)[0];
+  const segments = address.split('://').pop().split('/').slice(1);
+  const name = (segments.length ? segments[segments.length - 1] : '')
+    .replace(/[.,;:)\]}]+$/, '');
+  return /^[\w-]{1,80}\.(aspx|ashx|asmx|axd|html?|svc)$/i.test(name)
+    ? `[URL đã ẩn: ${name}]`
+    : '[URL đã ẩn]';
+};
 const redactAutomationText = (value) => String(value || '')
-  .replace(/https?:\/\/[^\s<>'"]+/gi, '[URL đã ẩn]')
+  .replace(/https?:\/\/[^\s<>'"]+/gi, redactUrl)
   .replace(
     /\b(password|passwd|pwd|cookie|session[_\s-]?id|login[_\s-]?id|query|article[_\s-]?code|buyer[_\s-]?reference|style[_\s-]?code)\b\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;]+)/gi,
     '$1=[đã ẩn]',
@@ -206,6 +217,33 @@ const suggestion = String(
     || mappedError.suggestion
     || 'Mở Log kỹ thuật và dùng Run ID để đối chiếu bước bị lỗi.',
 );
+const failedStage = String(source.failed_stage || '');
+const failedStep = Number(source.failed_step || 0);
+const progressTotal = Number(source.progress_total || 0);
+const stepText = failedStep
+  ? ` (bước ${failedStep}${progressTotal ? `/${progressTotal}` : ''})`
+  : '';
+const stageText = failedStage ? `${failedStage}${stepText}` : '';
+const chromeAlive = diagnostics.chrome_alive;
+const browserName = String(diagnostics.browser_name || '');
+const lastLoginAt = String(diagnostics.last_login_at || '');
+const osName = diagnostics.os || source.os || '';
+const osRelease = diagnostics.os_release || source.os_release || '';
+const pythonVersion = diagnostics.python || source.python || '';
+const machine = [
+  [osName, osRelease].filter(Boolean).join(' '),
+  pythonVersion ? `Python ${pythonVersion}` : '',
+].filter(Boolean).join(' · ');
+const recentJobs = Array.isArray(diagnostics.recent_jobs)
+  ? diagnostics.recent_jobs
+  : [];
+// Các lần chạy ngay trước lần hỏng: thấy được lỗi dây chuyền (mất phiên rồi
+// mọi flow sau cùng hỏng) mà không phải hỏi người dùng đã làm gì trước đó.
+const recentText = recentJobs
+  .filter((job) => job && typeof job === 'object' && job.run_id !== source.run_id)
+  .slice(0, 4)
+  .map((job) => `${job.method || '?'} ${job.ok ? '✓' : `✗ ${job.code || ''}`.trim()}`)
+  .join(' · ');
 const division = [
   account.division_label || diagnostics.division_label,
   account.division_name || diagnostics.division_name,
@@ -233,30 +271,55 @@ if (hasRunContext) {
     `💡 Xử lý: ${suggestion}`,
     code ? `🔧 Mã kỹ thuật: ${code}` : '',
     source.run_id ? `🔎 Run ID: ${source.run_id}` : '',
+    stageText ? `🧭 Bước hỏng: ${stageText}` : '',
     source.elapsed_ms !== undefined && source.elapsed_ms !== ''
-      ? `⏱️ Thời gian chạy: ${source.elapsed_ms} ms`
+      ? `⏱️ Thời gian chạy: ${source.elapsed_ms} ms${source.started_at ? ` (bắt đầu ${source.started_at})` : ''}`
       : '',
     repeatCount > 1
       ? `🔁 Lặp lại: ${repeatCount} lần (Run ID cuối: ${source.last_run_id || '?'})`
       : '',
-    diagnostics.chrome_alive !== undefined
-      ? `🌐 Chrome: ${diagnostics.chrome_alive ? 'đang chạy' : 'không chạy'}`
+    chromeAlive !== undefined
+      ? `🌐 Trình duyệt: ${chromeAlive ? 'đang chạy' : 'không chạy'}${browserName ? ` (${browserName})` : ''}`
       : '',
     diagnostics.session_active !== undefined
-      ? `🔑 Phiên WFX: ${diagnostics.session_active ? 'còn' : 'mất'}`
+      ? `🔑 Phiên WFX: ${diagnostics.session_active ? 'còn' : 'mất'}${lastLoginAt ? ` (đăng nhập lúc ${lastLoginAt})` : ''}`
       : '',
+    machine ? `💻 Máy: ${machine}` : '',
     source.has_screenshot ? '🖼️ Có ảnh lỗi trên máy người dùng' : '',
+    recentText ? `🗂️ Tác vụ trước đó: ${recentText}` : '',
   );
-  if (logTail.length) {
-    // Telegram giới hạn 4.096 ký tự: tin nhắn chỉ in 15 dòng cuối, đủ dòng
-    // nằm trong trường log_tail của output.
-    notificationLines.push('📜 Log cuối:', ...logTail.slice(-15));
-  }
 } else {
   notificationLines.push(
     `📝 Nội dung: ${source.message || 'Không có mô tả'}`,
   );
 }
+
+// Telegram giới hạn 4.096 ký tự. Lỗi gốc nằm ở các dòng log CUỐI, nên phần
+// đầu tin giữ nguyên còn log được thêm từ dòng mới nhất ngược lên tới khi hết
+// chỗ; cắt cả tin từ đầu như trước làm mất đúng các dòng quan trọng nhất.
+// Đủ log_tail vẫn nằm trong trường log_tail của output.
+const NOTIFICATION_LIMIT = 4000;
+const headText = notificationLines.filter(Boolean).join('\n');
+const notificationText = (() => {
+  if (!hasRunContext || !logTail.length) {
+    return headText.slice(0, NOTIFICATION_LIMIT);
+  }
+  const header = '\n📜 Log cuối:';
+  let budget = NOTIFICATION_LIMIT - headText.length - header.length;
+  if (budget <= 1) return headText.slice(0, NOTIFICATION_LIMIT);
+  const kept = [];
+  for (let index = logTail.length - 1; index >= 0; index -= 1) {
+    const line = logTail[index];
+    if (line.length + 1 > budget) {
+      // Dòng mới nhất dài hơn chỗ còn lại: giữ phần cuối của nó.
+      if (!kept.length) kept.unshift(`…${line.slice(line.length - (budget - 2))}`);
+      break;
+    }
+    kept.unshift(line);
+    budget -= line.length + 1;
+  }
+  return `${headText}${header}\n${kept.join('\n')}`;
+})();
 
 return [{
   json: {
@@ -283,17 +346,19 @@ return [{
     user_id: account.user_id || '',
     company_id: account.company_id || '',
     division,
-    os: diagnostics.os || source.os || '',
-    os_release: diagnostics.os_release || source.os_release || '',
-    python: diagnostics.python || source.python || '',
-    chrome_alive: diagnostics.chrome_alive ?? '',
+    started_at: source.started_at || '',
+    failed_stage: failedStage,
+    failed_step: failedStep || '',
+    progress_total: progressTotal || '',
+    has_screenshot: Boolean(source.has_screenshot),
+    os: osName,
+    os_release: osRelease,
+    python: pythonVersion,
+    chrome_alive: chromeAlive ?? '',
+    browser_name: browserName,
     session_active: diagnostics.session_active ?? '',
-    recent_jobs: Array.isArray(diagnostics.recent_jobs)
-      ? diagnostics.recent_jobs
-      : [],
-    notification_text: notificationLines
-      .filter(Boolean)
-      .join('\n')
-      .slice(0, 4000),
+    last_login_at: lastLoginAt,
+    recent_jobs: recentJobs,
+    notification_text: notificationText,
   },
 }];

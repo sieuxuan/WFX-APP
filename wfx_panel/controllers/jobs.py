@@ -176,21 +176,10 @@ class JobsController:
             "account": panel._telemetry_account_context(),
         }
         if include_diagnostics:
-            recent = job_history.list_jobs(panel._base_dir, 5)
-            event["diagnostics"] = {
-                **telemetry.system_summary(),
-                **panel.get_status(),
-                "recent_jobs": [
-                    {
-                        "run_id": row.get("run_id"),
-                        "method": row.get("method"),
-                        "ok": row.get("ok"),
-                        "code": row.get("code"),
-                        "elapsed_ms": row.get("elapsed_ms"),
-                    }
-                    for row in recent
-                ],
-            }
+            event["diagnostics"] = telemetry.diagnostics(
+                panel.get_status(),
+                job_history.list_jobs(panel._base_dir, 5),
+            )
         delivery = telemetry.submit(panel._base_dir, event)
         sent = delivery.get("delivery") == "sent"
         return {
@@ -239,7 +228,6 @@ class JobsController:
         request = job.get("request") if isinstance(job.get("request"), dict) else {}
         context = telemetry.automation_error_context(method, job, request)
         log_tail = job.get("log_tail") or panel._run_log_lines(run_id)
-        recent = job_history.list_jobs(panel._base_dir, 5)
         event = {
             "event_type": "user_feedback",
             "kind": "bug",
@@ -251,24 +239,22 @@ class JobsController:
             "started_at": job.get("started_at"),
             "elapsed_ms": job.get("elapsed_ms"),
             "has_screenshot": bool(job.get("screenshot")),
+            **telemetry.failure_stage(
+                job,
+                {
+                    "stage": job.get("failed_stage"),
+                    "step": job.get("failed_step"),
+                    "total": job.get("progress_total"),
+                },
+            ),
             **context,
             "message": f"Người dùng bấm Báo lỗi: {context['message']}"[:4_000],
             "account": panel._telemetry_account_context(),
             "log_tail": telemetry.redact_log_lines(log_tail),
-            "diagnostics": {
-                **telemetry.system_summary(),
-                **panel.get_status(),
-                "recent_jobs": [
-                    {
-                        "run_id": row.get("run_id"),
-                        "method": row.get("method"),
-                        "ok": row.get("ok"),
-                        "code": row.get("code"),
-                        "elapsed_ms": row.get("elapsed_ms"),
-                    }
-                    for row in recent
-                ],
-            },
+            "diagnostics": telemetry.diagnostics(
+                panel.get_status(),
+                job_history.list_jobs(panel._base_dir, 5),
+            ),
         }
         delivery = telemetry.submit(panel._base_dir, event)
         job_history.mark_reported(panel._base_dir, run_id)

@@ -14,6 +14,7 @@ import platform
 import re
 import threading
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -53,12 +54,28 @@ _SECRET_PATTERN = re.compile(
 _EXACT_CODE_PATTERN = re.compile(
     r"(?i)\bcode\s+(?:chính\s+xác|cần\s+tìm)\s*:\s*[^\s,;]+"
 )
+# Chỉ tên trang WFX (``WFXSalesASN.aspx``) được giữ lại: biết frame đang ở
+# trang nào là manh mối chẩn đoán chính, còn host, thư mục, query và fragment
+# vẫn bị bỏ hẳn. Đoạn cuối không có dạng tên trang (REST path có thể mang mã
+# Style) thì ẩn cả URL như cũ.
+_PAGE_NAME_PATTERN = re.compile(
+    r"(?i)^[\w-]{1,80}\.(?:aspx|ashx|asmx|axd|html?|svc)$"
+)
+
+
+def _redact_url(match: re.Match[str]) -> str:
+    address = re.split(r"[?#]", match.group(0), maxsplit=1)[0]
+    segments = address.split("://", 1)[-1].split("/")[1:]
+    name = segments[-1].rstrip(".,;:)]}") if segments else ""
+    if _PAGE_NAME_PATTERN.match(name):
+        return f"[URL đã ẩn: {name}]"
+    return "[URL đã ẩn]"
 
 
 def redact_telemetry_text(value: object) -> str:
     """Loại URL, secret và query nghiệp vụ khỏi mô tả gửi ra ngoài."""
     text = str(value or "").strip()
-    text = _URL_PATTERN.sub("[URL đã ẩn]", text)
+    text = _URL_PATTERN.sub(_redact_url, text)
     text = _SECRET_PATTERN.sub(
         lambda match: f"{match.group(1)}=[đã ẩn]",
         text,
@@ -67,7 +84,9 @@ def redact_telemetry_text(value: object) -> str:
 
 
 MAX_REPORT_LOG_LINES = 40
-_REPORT_LOG_LINE_CHARS = 300
+# Lỗi Playwright gốc kèm "Call log" (selector đang chờ) thường dài hơn 300
+# ký tự; cắt ở đó là mất đúng phần cho biết automation kẹt ở đâu.
+_REPORT_LOG_LINE_CHARS = 500
 
 
 def redact_log_lines(lines: object) -> list[str]:
@@ -84,6 +103,95 @@ def redact_log_lines(lines: object) -> list[str]:
         if isinstance(line, str) and line.strip()
     ]
     return redacted[-MAX_REPORT_LOG_LINES:]
+
+
+_STAGE_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+_DIAGNOSTIC_STATUS_KEYS = (
+    "chrome_alive",
+    "browser_available",
+    "browser_name",
+    "session_active",
+    "last_login_at",
+    "current_division",
+    "division_label",
+    "division_name",
+)
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        number = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def failure_stage(
+    result: dict[str, Any],
+    progress: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Bước hỏng của flow, chỉ lấy định danh bước, không lấy câu progress.
+
+    Ưu tiên ``failed_stage``/``failed_step`` do chính flow trả (GDN), rồi
+    progress cuối cùng mà engine thấy trong lượt chạy. Câu progress có thể
+    chứa số PO/Invoice nên không bao giờ đi ra webhook; tên bước là hằng số
+    trong code (``report``, ``po``…) nên an toàn.
+    """
+    progress = progress if isinstance(progress, dict) else {}
+    stage = str(result.get("failed_stage") or progress.get("stage") or "")
+    if not _STAGE_PATTERN.match(stage):
+        return {}
+    context: dict[str, Any] = {"failed_stage": stage}
+    step = _positive_int(result.get("failed_step") or progress.get("step"))
+    total = _positive_int(progress.get("total"))
+    if step is not None:
+        context["failed_step"] = step
+    if total is not None and stage == progress.get("stage"):
+        context["progress_total"] = total
+    return context
+
+
+def diagnostics(
+    status: dict[str, Any],
+    recent_jobs: list[dict[str, Any]],
+    *,
+    include_system: bool = True,
+) -> dict[str, Any]:
+    """Trạng thái máy/trình duyệt/phiên cho người hỗ trợ, theo whitelist.
+
+    Dùng chung cho lỗi tự động và Báo lỗi một chạm để hai loại tin mang cùng
+    một bộ trường; ``get_status()`` có thêm khóa mới cũng không tự lọt ra.
+    """
+    status = status if isinstance(status, dict) else {}
+    return {
+        **(system_summary() if include_system else {}),
+        **{key: status[key] for key in _DIAGNOSTIC_STATUS_KEYS if key in status},
+        "recent_jobs": [
+            {
+                "run_id": row.get("run_id"),
+                "method": row.get("method"),
+                "ok": row.get("ok"),
+                "code": row.get("code"),
+                "elapsed_ms": row.get("elapsed_ms"),
+            }
+            for row in recent_jobs
+            if isinstance(row, dict)
+        ],
+    }
+
+
+def exception_frames(error: BaseException, limit: int = 8) -> str:
+    """Vị trí lỗi dạng ``file.py:12 in hàm``, frame trong cùng đứng trước.
+
+    Chỉ tên file + số dòng + tên hàm: không đường dẫn (lộ tên tài khoản
+    Windows), không giá trị biến. Đủ để biết exception bật ra ở đâu khi một
+    flow trả ``PANEL_ERROR`` mà message chỉ còn ``KeyError: 'x'``.
+    """
+    frames = traceback.extract_tb(error.__traceback__)[-limit:]
+    return " ← ".join(
+        f"{Path(frame.filename).name}:{frame.lineno} in {frame.name}"
+        for frame in reversed(frames)
+    )
 
 
 
@@ -330,6 +438,7 @@ def _discord_payload(event: dict[str, Any]) -> dict[str, Any]:
         "run_id",
         "repeat_count",
         "elapsed_ms",
+        "failed_stage",
         "app_version",
     ):
         value = event.get(key)
@@ -360,6 +469,23 @@ def _discord_payload(event: dict[str, Any]) -> dict[str, Any]:
                     "inline": key != "division_name",
                 }
             )
+    log_tail = [
+        line for line in event.get("log_tail") or () if isinstance(line, str)
+    ]
+    if log_tail:
+        # Embed field tối đa 1.024 ký tự: giữ các dòng CUỐI, nơi có lỗi gốc.
+        kept: list[str] = []
+        for line in reversed(log_tail):
+            if sum(len(item) + 1 for item in kept) + len(line) > 1000:
+                break
+            kept.insert(0, line)
+        fields.append(
+            {
+                "name": "Log cuối",
+                "value": "\n".join(kept) or log_tail[-1][-1000:],
+                "inline": False,
+            }
+        )
     description = str(event.get("message") or "Báo lỗi tự động (không kèm dữ liệu nghiệp vụ).")
     return {
         "username": "WFX Smart Reporter",
