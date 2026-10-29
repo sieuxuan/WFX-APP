@@ -140,6 +140,33 @@ def test_an_already_received_rmpo_never_reaches_sourcing_asn(monkeypatch):
     assert "đã nhập kho hết" in error["message"]
 
 
+def test_a_waiting_rmpo_never_reaches_sourcing_asn(monkeypatch):
+    (_rmpo, _supplier, error), _lines = _resolve(
+        monkeypatch, _search_result(_rmpo_row(status="Waiting"))
+    )
+
+    assert error["code"] == "GRN_RMPO_WAITING"
+    assert "Waiting" in error["message"]
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        ("Received", "GRN_ALREADY_RECEIVED"),
+        (" RECEIVED ", "GRN_ALREADY_RECEIVED"),
+        ("Waiting", "GRN_RMPO_WAITING"),
+        ("Waiting For Approval", "GRN_RMPO_WAITING"),
+        ("Part Received", None),
+        ("Open", None),
+        ("", None),
+    ],
+)
+def test_only_received_and_waiting_block_a_receipt(status, code):
+    refusal = grn_frames.rmpo_receipt_refusal("RMPO/1", status)
+
+    assert (refusal or {}).get("code") == code
+
+
 def test_a_part_received_rmpo_is_still_allowed_through(monkeypatch):
     (_rmpo, supplier, error), _lines = _resolve(
         monkeypatch, _search_result(_rmpo_row(status="Part Received"))
@@ -603,23 +630,30 @@ def test_finalising_without_an_rmpo_or_a_site_is_refused(
     assert world.driver_starts == 0
 
 
-def test_finalising_selects_the_site_then_the_exact_po_then_clicks_new(
-    monkeypatch, clock
-):
-    steps: list[tuple[str, Any]] = []
-    _wire_receipt(
+def _recording_steps(monkeypatch, clock, steps, **overrides):
+    return _wire_receipt(
         monkeypatch,
         clock,
         _set_exact=lambda _frame, _selector, value, label, _log: steps.append(
             (label, value)
         ),
-        _select_po_row=lambda _frame, section, rmpo: steps.append(
+        _select_po_row=lambda _frame, section, rmpo, **_k: steps.append(
             (section, rmpo)
         ),
         _click_action=lambda _frame, _selector, label: steps.append(
             ("click", label)
         ),
+        **overrides,
     )
+
+
+def test_finalising_selects_the_site_searches_again_then_picks_the_po(
+    monkeypatch, clock
+):
+    # Đổi Site không tự làm WFX tải lại bảng PO: phải Search lại theo Site rồi
+    # mới tìm dòng PO, nếu không bảng vẫn là kết quả cũ chưa lọc.
+    steps: list[tuple[str, Any]] = []
+    _recording_steps(monkeypatch, clock, steps)
     lines: list[str] = []
 
     result = receipt.finalize_grn_receipt("RMPO/2345", "HANOI", lines.append)
@@ -627,10 +661,91 @@ def test_finalising_selects_the_site_then_the_exact_po_then_clicks_new(
     assert result["code"] == "GRN_NEW_READY"
     assert steps == [
         ("Site", "HANOI"),
+        ("click", "Search"),
         ("#sectionOrderShipment", "RMPO/2345"),
         ("click", "New"),
     ]
+    assert any("Search lại GRN Pending theo Site" in line for line in lines)
     assert any("chọn đúng PO No. và click New" in line for line in lines)
+
+
+def test_the_po_row_is_awaited_after_searching_by_site(monkeypatch, clock):
+    waits: list[float] = []
+    _wire_receipt(
+        monkeypatch,
+        clock,
+        _select_po_row=lambda _frame, _section, _rmpo, **kwargs: waits.append(
+            kwargs.get("timeout_s", 0)
+        ),
+    )
+
+    receipt.finalize_grn_receipt("RMPO/2345", "HANOI")
+
+    assert waits and waits[0] > 0
+
+
+def test_a_domestic_receipt_with_a_chosen_site_goes_straight_to_new_grn(
+    monkeypatch, clock
+):
+    steps: list[tuple[str, Any]] = []
+    _recording_steps(
+        monkeypatch,
+        clock,
+        steps,
+        _read_control_options=lambda *_a, **_k: pytest.fail(
+            "Đã có Site thì không được đọc lại dropdown Site"
+        ),
+    )
+
+    result = receipt.prepare_grn_receipt(
+        RMPO_XPATH, "RMPO/2345", "PSHK", "domestic", site=" HANOI "
+    )
+
+    assert result["code"] == "GRN_NEW_READY"
+    assert result["site"] == "HANOI"
+    assert "sites" not in result
+    assert steps == [
+        ("Receipt Type", "ASN from Supplier - Against PO"),
+        ("From", "PSHK"),
+        ("click", "Search"),
+        ("Site", "HANOI"),
+        ("click", "Search"),
+        ("#sectionOrderShipment", "RMPO/2345"),
+        ("click", "New"),
+    ]
+
+
+def test_a_foreign_receipt_never_uses_the_site_before_the_checkpoint(
+    monkeypatch, clock
+):
+    steps: list[tuple[str, Any]] = []
+    _recording_steps(monkeypatch, clock, steps)
+
+    result = receipt.prepare_grn_receipt(
+        RMPO_XPATH, "RMPO/2345", "PSHK", "foreign", site="HANOI"
+    )
+
+    assert result["code"] == "GRN_SOURCING_ASN_READY"
+    assert ("Site", "HANOI") not in steps
+
+
+def test_continuing_with_a_chosen_site_opens_new_grn_in_one_go(
+    monkeypatch, clock
+):
+    steps: list[tuple[str, Any]] = []
+    _recording_steps(monkeypatch, clock, steps)
+
+    result = receipt.continue_grn_receipt(
+        "PSHK", rmpo_no="RMPO/2345", site="HANOI"
+    )
+
+    assert result["code"] == "GRN_NEW_READY"
+    assert steps[0] == ("Receipt Type", "ASN from Supplier - Against ASN")
+    assert steps[-3:] == [
+        ("click", "Search"),
+        ("#sectionOrderShipment", "RMPO/2345"),
+        ("click", "New"),
+    ]
 
 
 def test_a_failure_while_finalising_has_its_own_code(monkeypatch, clock):

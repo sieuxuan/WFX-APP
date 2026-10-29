@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wfx-smart",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-23",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  // Trang tĩnh nằm trong public/ (content/site.json do scripts/export_site_content.py
+  // sinh ra). Chỉ /api/* chạy qua Worker; mọi đường dẫn khác trả index.html.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wfx-smart-db",
+      "database_id": "edf7b37a-470f-46f2-ab7e-1eb375a6a207",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Ảnh đính kèm đề xuất. Tài khoản chưa bật R2 nên dùng KV (tối đa 25 MiB/giá trị).
+  "kv_namespaces": [
+    { "binding": "IMAGES", "id": "9936b92f8d5f44dd8c0d879c8891c13e" }
+  ],
+  "vars": {
+    "GITHUB_REPOSITORY": "sieuxuan/WFX-APP"
+  }
+  // Secret: ADMIN_KEY (mã quản trị để đổi trạng thái đề xuất).
+}

@@ -1,0 +1,8 @@
+/*
+  Content-Security-Policy: frame-ancestors 'self' https://sites.google.com https://*.google.com https://*.googleusercontent.com https://wfx.pro-sports.com.vn
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Robots-Tag: noindex
+
+/content/*
+  Cache-Control: public, max-age=300

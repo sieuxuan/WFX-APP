@@ -17,15 +17,24 @@ Nếu có nhiều dòng chứa phần số đó, ứng dụng yêu cầu nhập 
 > RMPO và khi bấm `Tiếp tục làm GRN` hay `Next — mở New GRN` thì tự quay về
 > Division lúc bắt đầu, kể cả khi bạn đã đổi Division trong lúc làm trên WFX.
 
+> [!meo]
+> Ô `Site` nằm cạnh ô RMPO No. Lần đầu cứ để `Tự đọc từ WFX`: ứng dụng đọc danh
+> sách Site trên GRN Pending, dừng cho bạn chọn và nhớ danh sách đó theo tài
+> khoản và Division. Từ lần sau, chọn sẵn Site trước khi bấm nút luồng thì ứng
+> dụng đi thẳng tới New GRN, không dừng hỏi Site nữa. Chọn `Đọc lại Site từ WFX`
+> khi WFX vừa có thêm Site mới.
+
 > [!luuy]
-> RMPO có Status `Received` đã nhập kho hết. Ứng dụng sẽ báo và không cho bắt
-> đầu thêm Sourcing ASN hoặc GRN mới.
+> RMPO có Status `Received` đã nhập kho hết, còn `Waiting` là chưa được duyệt.
+> Với hai trạng thái này ứng dụng sẽ báo và không cho bắt đầu Sourcing ASN hoặc
+> GRN mới. RMPO `Part Received` vẫn nhập tiếp phần còn lại được.
 
 ## Các bước
 
 ### Nhập đơn hàng nước ngoài
 
-1. Nhập RMPO No., hoặc chuyển RMPO từ RMPO List.
+1. Nhập RMPO No., hoặc chuyển RMPO từ RMPO List. Chọn sẵn `Site` nếu đã có
+   trong danh sách.
 2. Bấm `Đơn hàng nước ngoài`.
 3. Ứng dụng mở Sourcing ASN New, chọn Order Type là RMPO, điền đúng Supplier,
    Add RMPO và bấm Add & Close.
@@ -34,9 +43,11 @@ Nếu có nhiều dòng chứa phần số đó, ứng dụng yêu cầu nhập 
    đã Confirm Sourcing ASN trên WFX.
 6. Ứng dụng mở GRN Pending, chọn Receipt Type `ASN from Supplier - Against
    ASN`, Supplier, Imported và Search.
-7. Chọn Site trong danh sách ứng dụng rồi bấm `Next — mở New GRN`.
-8. Ứng dụng chọn đúng dòng theo cột PO No. và bấm New. Kiểm tra rồi hoàn tất
-   phiếu GRN trên WFX.
+7. Nếu đã chọn Site, ứng dụng chọn Site đó, Search lại, chọn đúng dòng theo
+   cột PO No. và bấm New ngay. Nếu chưa chọn, ô Site hiện danh sách vừa đọc từ
+   WFX: chọn Site rồi bấm `Next — mở New GRN` để ứng dụng làm tiếp đúng các
+   bước đó.
+8. Kiểm tra rồi hoàn tất phiếu GRN trên WFX.
 
 > [!canhbao]
 > Ứng dụng không tự điền số lượng và không tự Confirm Sourcing ASN. Hãy kiểm tra
@@ -49,8 +60,9 @@ Nếu có nhiều dòng chứa phần số đó, ứng dụng yêu cầu nhập 
 3. Nếu chưa có Supplier từ RMPO List, ứng dụng tự tra đúng RMPO để lấy Supplier.
 4. Ứng dụng mở GRN Pending, chọn Receipt Type `ASN from Supplier - Against PO`,
    chọn Supplier và Search. Luồng này không chọn Imported.
-5. Chọn Site rồi bấm `Next — mở New GRN`.
-6. Ứng dụng chọn đúng PO No. và mở New GRN để bạn kiểm tra, hoàn tất trên WFX.
+5. Đã chọn sẵn Site thì ứng dụng chọn Site, Search lại, chọn đúng PO No. và mở
+   New GRN luôn. Chưa chọn thì chọn Site trong ô Site rồi bấm `Next — mở New GRN`.
+6. Kiểm tra và hoàn tất phiếu GRN trên WFX.
 
 ### Tìm GRN
 
@@ -69,6 +81,7 @@ Nếu có nhiều dòng chứa phần số đó, ứng dụng yêu cầu nhập 
 | Đã tìm thấy RMPO nhưng chưa đọc được Supplier | Mở lại RMPO List, tìm lại dòng đó rồi thử lại. |
 | Không thể tiếp tục sau Sourcing ASN | Kiểm tra Sourcing ASN đã được Confirm rồi thử lại. |
 | Không có Site | Kiểm tra Receipt Type, Supplier và kết quả Search trên GRN Pending. |
-| Không mở được New GRN | Kiểm tra Site và dòng có PO No. đúng RMPO trên WFX. |
+| Site không có trong danh sách | Chọn lại Site, hoặc chọn `Đọc lại Site từ WFX` để lấy danh sách mới của Division hiện tại. |
+| Không mở được New GRN | Kiểm tra Site và dòng có PO No. đúng RMPO trên WFX. Nếu Search theo Site không ra dòng RMPO, RMPO có thể thuộc Site khác. |
 | Không tìm thấy GRN | Đổi đúng kiểu Invoice/RMPO, kiểm tra giá trị rồi tìm lại. |
 | Chưa đổi được Division của RMPO | Kiểm tra tài khoản có quyền Division đó, chọn Division bằng tay rồi thử lại. |

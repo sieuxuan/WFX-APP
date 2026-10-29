@@ -134,6 +134,17 @@ function bind() {
       () => prepareCatalogStyleRow(Number(choice.dataset.styleCopyChoice)),
     );
   });
+  $(".catalog-auto-prepare-input")?.addEventListener("change", async (event) => {
+    const result = await callQuiet("set_catalog_auto_prepare", event.target.checked);
+    if (!result) {
+      event.target.checked = !event.target.checked;
+      return;
+    }
+    catalogAutoPrepareEnabled = result.catalog_auto_prepare === true;
+    event.target.checked = catalogAutoPrepareEnabled;
+    setStatus("success", result.message || "");
+    autoPrepareCatalog();
+  });
   $(".catalog-special-rescan-input")?.addEventListener(
     "change",
     async (event) => {
@@ -145,18 +156,6 @@ function bind() {
       else event.target.checked = !event.target.checked;
     },
   );
-  $$(".catalog-kind-button").forEach((button) =>
-    button.addEventListener("click", () => {
-      catalogKind = ["buyer_reference", "article_name"].includes(
-        button.dataset.catalogKind,
-      ) ? button.dataset.catalogKind : "code";
-      syncCatalogKind();
-      clearCatalogResult();
-      catalogPendingDestination = null;
-      discardCostingPlan();
-      hideCatalogResults();
-      $(".catalog-query")?.focus();
-    }));
   $(".catalog-results-list").addEventListener("click", (event) => {
     const row = event.target.closest("[data-result-code]");
     if (row) openCatalogResultCode(row);
@@ -179,15 +178,11 @@ function bind() {
     const row = event.target.closest("[data-suggestion-value]");
     if (!row) return;
     const exactArticleCode = String(row.dataset.articleCode || "").trim();
+    // Buyer Reference/Article Name chỉ là cách tìm gợi ý. Khi user đã chọn
+    // một dòng cụ thể, điền exact Article Code: ô tìm gộp nhận ra Code khớp
+    // thư viện nên WFX không trả lại danh sách gần giống bắt chọn lần hai.
     $(".catalog-query").value =
       exactArticleCode || row.dataset.suggestionValue || "";
-    if (exactArticleCode) {
-      // Buyer Reference/Article Name chỉ là cách tìm gợi ý. Khi user đã
-      // chọn một dòng cụ thể, dùng exact Article Code để WFX không trả lại
-      // danh sách gần giống và bắt chọn lần hai.
-      catalogKind = "code";
-      syncCatalogKind();
-    }
     hideArticleSuggestions();
     clearCatalogResult();
     $(".catalog-query").focus();
@@ -341,7 +336,12 @@ function bind() {
       runModuleActionFromKeyboard("gdn-dispatch-submit");
     }
   });
-  [".rmpo-supplier-query", ".rmpo-order-query"].forEach((selector) =>
+  $(".module-page").addEventListener("focusin", (event) => {
+    if (event.target.matches("input:not([type=checkbox]):not([type=radio]), textarea, select")) {
+      moduleLastField = event.target;
+    }
+  });
+  [".rmpo-order-query", ".rmpo-supplier-query"].forEach((selector) =>
     $(selector).addEventListener("input", hideRmpoResults));
   $(".grn-rmpo-query")?.addEventListener("input", (event) => {
     const linkedRmpo = selectedRmpoChoice?.order_no || "";
@@ -425,6 +425,7 @@ function bind() {
     $(".catalog-folder-search").value = "";
     syncCatalogKind();
     syncCatalogStepButtons();
+    autoPrepareCatalog();
   });
   $(".catalog-folder-summary").addEventListener("click", () => {
     if ($(".catalog-category").value !== CATALOG_DEFAULT_CATEGORY) return;
@@ -915,6 +916,8 @@ window.wfxBootstrap = (state) => {
   $(".toast-input").checked = toastEnabled;
   $(".focus-chrome-input").checked =
     state.focus_chrome_on_module !== false;
+  catalogAutoPrepareEnabled = state.catalog_auto_prepare === true;
+  $(".catalog-auto-prepare-input").checked = catalogAutoPrepareEnabled;
   $(".open-excel-file-input").checked =
     state.open_excel_file_after_download !== false;
   colorReportState.outputDir = String(state.report_export_dir || "");

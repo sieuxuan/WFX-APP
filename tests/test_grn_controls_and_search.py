@@ -178,6 +178,88 @@ def test_select_po_row_reports_what_the_script_refused():
     assert "count=3" in str(error.value)
 
 
+def test_site_options_bind_the_wfx_dropdown_with_mousedown():
+    # Log 1.1.2 (Run 20261029-095147): dropdown Site của WFX chỉ bind option
+    # sau mousedown, script cũ chỉ click nên đọc mãi danh sách rỗng.
+    from wfx_panel.automation.grn.constants import _CONTROL_OPTIONS_JS
+
+    assert "'mousedown'" in _CONTROL_OPTIONS_JS
+    assert "mousedown(select)" in _CONTROL_OPTIONS_JS
+    # Gom mọi select.clsCombo sẽ trộn option Receipt Type/From vào Site.
+    assert "'select:focus, select.clsCombo'" not in _CONTROL_OPTIONS_JS
+
+
+def test_po_row_fallback_matches_an_exact_cell_when_headers_are_detached():
+    from wfx_panel.automation.grn.constants import _SELECT_PO_ROW_JS
+
+    assert "if (!matches.length)" in _SELECT_PO_ROW_JS
+    assert "matches.length !== 1" in _SELECT_PO_ROW_JS
+
+
+def _po_frame(clock, answers):
+    queue = list(answers)
+
+    def evaluate(_rmpo):
+        evaluate.calls += 1
+        return queue[0] if len(queue) == 1 else queue.pop(0)
+
+    evaluate.calls = 0
+    section = Element(
+        "div", id="sectionOrderShipment", scripts={"PO": evaluate}
+    )
+    return MiniFrame(Element("body", children=[section]), clock=clock), evaluate
+
+
+def test_select_po_row_waits_for_the_table_searched_by_site(clock):
+    frame, evaluate = _po_frame(
+        clock,
+        [
+            {"ok": False, "reason": "po-row-ambiguous", "count": 0},
+            {"ok": False, "reason": "po-row-ambiguous", "count": 0},
+            {"ok": True},
+        ],
+    )
+
+    grn_controls._select_po_row(
+        frame, "#sectionOrderShipment", "RMPO-1", timeout_s=5
+    )
+
+    assert evaluate.calls == 3
+
+
+def test_select_po_row_stops_at_once_when_several_rows_match(clock):
+    frame, evaluate = _po_frame(
+        clock, [{"ok": False, "reason": "po-row-ambiguous", "count": 2}]
+    )
+
+    with pytest.raises(PlaywrightTimeoutError, match="count=2"):
+        grn_controls._select_po_row(
+            frame, "#sectionOrderShipment", "RMPO-1", timeout_s=5
+        )
+
+    assert evaluate.calls == 1
+
+
+def test_select_po_row_names_the_missing_po_after_the_wait(clock):
+    frame, _evaluate = _po_frame(
+        clock, [{"ok": False, "reason": "po-row-ambiguous", "count": 0}]
+    )
+
+    with pytest.raises(PlaywrightTimeoutError, match="PO No. RMPO-1"):
+        grn_controls._select_po_row(
+            frame, "#sectionOrderShipment", "RMPO-1", timeout_s=1
+        )
+
+
+def test_loading_wait_recognises_the_wfx_block_ui_overlay():
+    import inspect
+
+    source = inspect.getsource(grn_controls._wait_loading_finished)
+
+    assert ".blockUI" in source
+    assert "UpdateProgress" in source
+
+
 def test_select_po_row_reports_a_missing_section():
     frame = MiniFrame(Element("body"))
 

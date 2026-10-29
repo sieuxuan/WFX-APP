@@ -68,6 +68,9 @@ function handleResult(result) {
   if (Array.isArray(result.recent_styles)) {
     renderCatalogRecent(result.recent_styles);
   }
+  if (result.recent_searches?.group) {
+    renderRecentSearches(result.recent_searches.group, result.recent_searches.items);
+  }
   if ([
     "MULTIPLE_RESULTS", "NO_RESULTS", "RESULT_OPENED",
     "CATALOG_FILES_SCANNED",
@@ -158,6 +161,14 @@ async function call(method, ...args) {
   const busyMessage = BUSY_MESSAGES[method] || "Đang xử lý trên WFX…";
   setBusy(true, busyMessage);
   setStatus("neutral", busyMessage);
+  if (catalogAutoPrepare) {
+    // Việc của Catalog thì chờ Master chuẩn bị xong rồi dùng luôn; việc khác
+    // nghĩa là người dùng đã đi tiếp, nên dừng lượt tự mở tại checkpoint.
+    if (!/catalog/.test(method)) {
+      Promise.resolve(callQuiet("cancel_current_action")).catch(() => {});
+    }
+    await catalogAutoPrepare;
+  }
   // Watchdog: nếu một bridge call treo (Chrome/WFX không phản hồi, promise
   // không resolve), giải phóng UI thay vì để mọi nút disable vĩnh viễn ("đơ").
   // Backend vẫn giữ run lock; kết quả thật (nếu có) sẽ về sau qua result sink.

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from wfx_panel import constants
 from wfx_panel.coercion import boolean, bounded_int
+from wfx_panel.controllers import catalog_query
 from wfx_panel.controllers.catalog_files import ArticleFileController
 from wfx_panel.controllers.catalog_folders import CatalogFolderController
 from wfx_panel.controllers.catalog_style import StyleImportController
@@ -220,6 +221,57 @@ class CatalogController:
         if result.get("code") == "CATEGORY_SELECTED":
             self.prepared_category = str(category_name)
         return result
+
+    def auto_prepare(self, category_name: str) -> dict:
+        """Chuẩn bị Master khi người dùng vào module, chưa cần bấm Tìm.
+
+        Chỉ chạy khi người dùng đã bật công tắc ``catalog_auto_prepare`` và
+        phiên đang sống: không mở lại Chrome, không đăng nhập hộ
+        (``auto_prepare_catalog`` nằm trong ``AUTO_RELOGIN_EXCLUDED_METHODS``),
+        và automation tự bỏ qua nếu tab WFX đang có việc dở.
+        """
+        panel = self._panel
+        category = str(category_name or "")
+        value = constants.CATEGORIES.get(category)
+        auto_prepare = getattr(panel._login, "auto_prepare_catalog_master", None)
+        if not panel._prefs.load_prefs(panel._base_dir).get("catalog_auto_prepare"):
+            reason = "Chưa bật tự mở Catalog."
+        elif self.prepared_category == category:
+            reason = "Catalog đã sẵn sàng."
+        elif value is None:
+            reason = f"Category lạ: {category}"
+        elif not panel._session_active:
+            reason = "Chưa có phiên WFX đang hoạt động."
+        elif not callable(auto_prepare):
+            reason = "Phiên bản tự động hóa chưa hỗ trợ tự mở Catalog."
+        else:
+            reason = ""
+        if reason:
+            return {
+                "ok": True,
+                "code": "CATALOG_AUTO_PREPARE_SKIPPED",
+                "message": reason,
+                "category": category,
+                "prepared": self.prepared_category == category,
+            }
+
+        def action() -> dict:
+            if self.prepared_category != category:
+                self._forget_search_and_files()
+            return auto_prepare(category, value, panel._log)
+
+        # Lượt người dùng không bấm: không ghi lịch sử tác vụ, không đẩy kết
+        # quả qua result sink (UI tự đọc giá trị trả về và không bật lỗi).
+        result = panel._run(
+            "auto_prepare_catalog",
+            action,
+            {"category_name": category},
+            record_job=False,
+            emit_result=False,
+        )
+        if result.get("code") == "CATEGORY_SELECTED":
+            self.prepared_category = category
+        return {**result, "prepared": self.prepared_category == category}
 
     def find(
         self,
@@ -545,10 +597,14 @@ class CatalogController:
         method_name: str = "catalog_action",
     ) -> dict:
         """Một nút cho Tìm/Costing/BOM/File, luôn tìm trong Master."""
+        category = str(category_name or "")
+        resolved_kind, resolved_query = self.resolve_query(
+            category, filter_kind, query
+        )
         request = CatalogActionRequest(
-            category_name=str(category_name or ""),
-            filter_kind=str(filter_kind or "").casefold(),
-            query=str(query or "").strip(),
+            category_name=category,
+            filter_kind=resolved_kind,
+            query=resolved_query,
             destination=str(destination or "").casefold() or None,
         )
         result = self._panel._run(
@@ -585,6 +641,28 @@ class CatalogController:
         ):
             self.active_article_destination = None
         return result
+
+    def resolve_query(
+        self,
+        category_name: str,
+        filter_kind: str,
+        query: str,
+    ) -> tuple[str, str]:
+        """Đổi kiểu ``auto`` của ô tìm gộp thành Code/Buyer Ref/Article Name."""
+        kind = str(filter_kind or "").strip().casefold()
+        value = str(query or "").strip()
+        if kind != catalog_query.AUTO_KIND:
+            return kind, value
+        document = article_library.load_cached(self._panel._base_dir)
+        resolved_kind, resolved_query, reason = catalog_query.resolve(
+            str(category_name or ""), kind, value, document
+        )
+        if reason.startswith("library_") and reason != "library_code":
+            self._panel._log(
+                "[CATALOG] Thư viện Article: giá trị nhập khớp đúng một Code "
+                f"{resolved_query}; tìm thẳng theo Code."
+            )
+        return resolved_kind, resolved_query
 
     def _library_details(
         self,
@@ -689,6 +767,12 @@ class CatalogController:
         category = str(category_name or "").strip()
         kind = str(filter_kind or "").strip().casefold()
         value = str(query or "").strip()
+        if kind == catalog_query.AUTO_KIND:
+            kind = (
+                "code"
+                if catalog_query.looks_like_code(category, value)
+                else catalog_query.secondary_kind(category)
+            )
         if len(value) < 2:
             return {
                 "ok": True,

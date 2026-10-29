@@ -79,14 +79,40 @@ def _read_control_options(
     return []
 
 
-def _select_po_row(frame: Frame, section_selector: str, rmpo_no: str) -> None:
-    section = _first_visible(frame.locator(section_selector))
+def _select_po_row(
+    frame: Frame,
+    section_selector: str,
+    rmpo_no: str,
+    *,
+    timeout_s: float = 0,
+) -> None:
+    """Chọn đúng một dòng có PO No. = RMPO.
+
+    ``timeout_s`` > 0 cho bảng vừa Search: WFX còn có thể đang vẽ lại, nên
+    0 dòng khớp được chờ tiếp. Nhiều dòng khớp thì dừng ngay, không đoán."""
+    deadline = time.monotonic() + timeout_s
+    selected: dict = {}
+    while True:
+        section = _first_visible(frame.locator(section_selector))
+        if section is not None:
+            try:
+                selected = section.evaluate(_SELECT_PO_ROW_JS, rmpo_no) or {}
+            except PlaywrightError:
+                selected = {"ok": False, "reason": "document-changed"}
+            if selected.get("ok") or int(selected.get("count") or 0) > 1:
+                break
+        if time.monotonic() >= deadline:
+            break
+        _wait(frame, 250)
     if section is None:
         raise PlaywrightTimeoutError(
             f"Không tìm thấy bảng {section_selector}."
         )
-    selected = section.evaluate(_SELECT_PO_ROW_JS, rmpo_no)
     if not selected.get("ok"):
+        if selected.get("reason") == "po-row-ambiguous" and not selected.get("count"):
+            raise PlaywrightTimeoutError(
+                f"Không thấy dòng PO No. {rmpo_no} trong kết quả GRN Pending."
+            )
         raise PlaywrightTimeoutError(
             "Không chọn được đúng RMPO trong bảng; "
             f"reason={selected.get('reason')}; count={selected.get('count', 0)}"
@@ -124,9 +150,12 @@ def _wait_loading_finished(frame: Frame, timeout_s: float = 25) -> None:
     stable_since = 0.0
     while time.monotonic() < deadline:
         try:
+            # WFX chặn trang bằng blockUI/UpdateProgress khi postback; thiếu
+            # chúng thì bảng PO bị đọc lúc chưa vẽ lại.
             loading = frame.locator(
                 ".ag-overlay-loading-wrapper, .ag-loading, .loading, "
-                ".loader, [aria-busy='true']"
+                ".loader, [aria-busy='true'], .blockUI, .blockOverlay, "
+                ".ui-widget-overlay, [id*='UpdateProgress']"
             )
             busy = any(
                 loading.nth(index).is_visible()

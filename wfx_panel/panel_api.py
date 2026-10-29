@@ -28,6 +28,7 @@ from wfx_panel.controllers import (
     OCController,
     ReportsController,
     SaleASNController,
+    SearchRecentController,
     SessionController,
     SettingsController,
 )
@@ -106,6 +107,7 @@ class PanelAPI:
         self._modules = ModulesController(self)
         self._access = AccessController(self)
         self._session = SessionController(self)
+        self._search_recent = SearchRecentController(self)
         # Engine chạy flow: khóa, hủy, lịch sử, telemetry.
         self._engine = AutomationRunEngine(self)
 
@@ -247,6 +249,7 @@ class PanelAPI:
                 "focus_chrome_on_module"
             ],
             "always_on_top": preferences["always_on_top"],
+            "catalog_auto_prepare": preferences["catalog_auto_prepare"],
             "open_excel_file_after_download": preferences[
                 "open_excel_file_after_download"
             ],
@@ -466,16 +469,27 @@ class PanelAPI:
         return self._sale_asn.cancel_sale_asn_create(review_token)
 
     def search_oc(self, filter_kind: str, query: str) -> dict:
-        return self._modules.search_oc(filter_kind, query)
+        return self._search_recent.remember(
+            "oc", [query], self._modules.search_oc(filter_kind, query), filter_kind
+        )
 
     def search_sample(self, sample_no: str='', style: str='', created_by: str='', buyer: str='') -> dict:
-        return self._modules.search_sample(sample_no, style, created_by, buyer)
+        return self._search_recent.remember(
+            "sample",
+            [sample_no, style, created_by, buyer],
+            self._modules.search_sample(sample_no, style, created_by, buyer),
+        )
 
     def open_sample_new(self) -> dict:
         return self._modules.open_sample_new()
 
     def search_sale_asn(self, filter_kind: str, query: str) -> dict:
-        return self._sale_asn.search_sale_asn(filter_kind, query)
+        return self._search_recent.remember(
+            "sale-asn",
+            [query],
+            self._sale_asn.search_sale_asn(filter_kind, query),
+            filter_kind,
+        )
 
     def export_sale_asn_price_check(self, price_check: dict, file_path: str) -> dict:
         return self._sale_asn.export_sale_asn_price_check(price_check, file_path)
@@ -493,42 +507,69 @@ class PanelAPI:
         return self._sale_asn.save_sale_asn_documents(export_token, file_path)
 
     def search_rmpo(self, supplier: str, order_no: str) -> dict:
-        return self._inventory.search_rmpo(supplier, order_no)
+        return self._search_recent.remember(
+            "rmpo",
+            [supplier, order_no],
+            self._inventory.search_rmpo(supplier, order_no),
+        )
 
     def run_rmpo_action(self, choice_id: str, action_name: str) -> dict:
         return self._inventory.run_rmpo_action(choice_id, action_name)
 
-    def prepare_grn_receipt(self, rmpo_no: str, mode: str, rmpo_choice_id: str='') -> dict:
-        return self._inventory.prepare_grn_receipt(rmpo_no, mode, rmpo_choice_id)
+    def prepare_grn_receipt(self, rmpo_no: str, mode: str, rmpo_choice_id: str='', site: str='') -> dict:
+        return self._inventory.prepare_grn_receipt(rmpo_no, mode, rmpo_choice_id, site)
 
-    def continue_grn_receipt(self, receipt_token: str, sourcing_confirmed: bool) -> dict:
-        return self._inventory.continue_grn_receipt(receipt_token, sourcing_confirmed)
+    def continue_grn_receipt(self, receipt_token: str, sourcing_confirmed: bool, site: str='') -> dict:
+        return self._inventory.continue_grn_receipt(receipt_token, sourcing_confirmed, site)
+
+    def grn_sites(self) -> dict:
+        return self._inventory.grn_sites()
 
     def finalize_grn_receipt(self, receipt_token: str, site: str) -> dict:
         return self._inventory.finalize_grn_receipt(receipt_token, site)
 
     def search_grn(self, filter_kind: str, query: str) -> dict:
-        return self._inventory.search_grn(filter_kind, query)
+        return self._search_recent.remember(
+            "grn-search",
+            [query],
+            self._inventory.search_grn(filter_kind, query),
+            filter_kind,
+        )
 
     def search_indent(self, module_id: str, supplier: str, article: str, indent_no: str, style: str) -> dict:
-        return self._modules.search_indent(
+        # Indent List và User Indent dùng chung form: kind giữ module để hàng
+        # Gần đây của module này không chạy lại điều kiện của module kia.
+        return self._search_recent.remember(
+            "indent",
+            [supplier, article, indent_no, style],
+            self._modules.search_indent(
+                module_id,
+                supplier,
+                article,
+                indent_no,
+                style,
+            ),
             module_id,
-            supplier,
-            article,
-            indent_no,
-            style,
         )
 
     def search_supplier_invoice(self, supplier: str='', invoice_no: str='', po_no: str='', asn_grn_no: str='') -> dict:
-        return self._modules.search_supplier_invoice(
-            supplier,
-            invoice_no,
-            po_no,
-            asn_grn_no,
+        return self._search_recent.remember(
+            "supplier-invoice",
+            [supplier, invoice_no, po_no, asn_grn_no],
+            self._modules.search_supplier_invoice(
+                supplier,
+                invoice_no,
+                po_no,
+                asn_grn_no,
+            ),
         )
 
     def search_advance_pr(self, buyer: str='', supplier: str='', invoice_no: str='', order_no: str='') -> dict:
-        return self._finance.search_advance_pr(buyer, supplier, invoice_no, order_no)
+        return self._search_recent.remember(
+            "advance-pr",
+            [buyer, supplier, invoice_no, order_no],
+            self._finance.search_advance_pr(buyer, supplier, invoice_no, order_no),
+        )
 
     def review_expense_import(self, file_path: str) -> dict:
         return self._finance.review_expense_import(file_path)
@@ -540,11 +581,15 @@ class PanelAPI:
         return self._finance.fill_expense_import(review_token)
 
     def search_expense_invoice(self, supplier: str='', invoice_no: str='', created_by: str='', status: str='') -> dict:
-        return self._modules.search_expense_invoice(
-            supplier,
-            invoice_no,
-            created_by,
-            status,
+        return self._search_recent.remember(
+            "expense-invoice",
+            [supplier, invoice_no, created_by, status],
+            self._modules.search_expense_invoice(
+                supplier,
+                invoice_no,
+                created_by,
+                status,
+            ),
         )
 
     def cancel_supplier_invoice(self, invoice_no: str) -> dict:
@@ -563,13 +608,25 @@ class PanelAPI:
         return self._directory.open_supplier_category(category_name)
 
     def find_supplier(self, query: str) -> dict:
-        return self._directory.find_supplier(query)
+        return self._search_recent.remember(
+            "supplier", [query], self._directory.find_supplier(query)
+        )
 
     def find_supplier_in_category(self, category_name: str, query: str) -> dict:
-        return self._directory.find_supplier_in_category(category_name, query)
+        return self._search_recent.remember(
+            "supplier",
+            [query],
+            self._directory.find_supplier_in_category(category_name, query),
+            category_name,
+        )
 
     def find_buyer(self, query: str) -> dict:
-        return self._directory.find_buyer(query)
+        return self._search_recent.remember(
+            "buyer", [query], self._directory.find_buyer(query)
+        )
+
+    def recent_searches(self, group: str) -> dict:
+        return self._search_recent.load(group)
 
     def switch_division(self, division_key: str) -> dict:
         return self._access.switch_division(division_key)
@@ -590,6 +647,9 @@ class PanelAPI:
 
     def prepare_catalog(self, category_name: str) -> dict:
         return self._catalog.prepare(category_name)
+
+    def auto_prepare_catalog(self, category_name: str) -> dict:
+        return self._catalog.auto_prepare(category_name)
 
     def review_catalog_style_import(
         self,
@@ -697,13 +757,19 @@ class PanelAPI:
         created_by: str = "",
         buyer: str = "",
     ) -> dict:
-        return self._catalog.files_view.check_sample_files_with_filters(
-            {
-                "sample_no": str(sample_no or "").strip(),
-                "style": str(style or "").strip(),
-                "created_by": str(created_by or "").strip(),
-                "buyer": str(buyer or "").strip(),
-            }
+        # kind `files`: bấm lại từ hàng Gần đây chạy đúng Xem file đính kèm.
+        return self._search_recent.remember(
+            "sample",
+            [sample_no, style, created_by, buyer],
+            self._catalog.files_view.check_sample_files_with_filters(
+                {
+                    "sample_no": str(sample_no or "").strip(),
+                    "style": str(style or "").strip(),
+                    "created_by": str(created_by or "").strip(),
+                    "buyer": str(buyer or "").strip(),
+                }
+            ),
+            "files",
         )
 
     def open_sample_file_choice(self, choice_id: str) -> dict:
@@ -833,6 +899,9 @@ class PanelAPI:
 
     def set_toast_enabled(self, enabled: bool) -> dict:
         return self._settings.set_toast_enabled(enabled)
+
+    def set_catalog_auto_prepare(self, enabled: bool) -> dict:
+        return self._settings.set_catalog_auto_prepare(enabled)
 
     def set_focus_chrome_on_module(self, enabled: bool) -> dict:
         return self._settings.set_focus_chrome_on_module(enabled)

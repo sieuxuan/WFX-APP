@@ -19,7 +19,7 @@ function applyTheme(theme) {
     ? theme
     : "light";
   document.documentElement.dataset.theme = resolveTheme(catalogThemeChoice);
-  // Scope vào đúng nút chọn giao diện; nút catalog-kind cũng dùng .seg-button
+  // Scope vào đúng nút chọn giao diện; Division và nút khác cũng dùng .seg-button
   // nên KHÔNG được quét chung .seg-button ở đây.
   $$("[data-theme-choice]").forEach((button) =>
     button.setAttribute(

@@ -8,6 +8,7 @@ from wfx_panel.automation._common import (
     COMPANY_ID,
     Any,
     Callable,
+    Page,
     Playwright,
     PlaywrightError,
     PlaywrightTimeoutError,
@@ -277,19 +278,88 @@ def find_and_open_catalog_destination(
     )
 
 
+# Ô nhập dữ liệu trên màn WFX đang mở mà người dùng có thể đã gõ dở. Ô lọc
+# của AG Grid và thanh phân trang chỉ là bộ lọc List: mất đi không mất việc.
+_UNSAVED_INPUT_JS = """() => {
+    const shown = element => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' &&
+            rect.width > 0 && rect.height > 0;
+    };
+    const skippedTypes = new Set([
+        'hidden', 'button', 'submit', 'reset', 'image', 'checkbox', 'radio',
+        'file', 'search'
+    ]);
+    return [...document.querySelectorAll('input, textarea')].some(field => {
+        if (field.disabled || field.readOnly) return false;
+        if (field.tagName === 'INPUT' &&
+            skippedTypes.has((field.type || '').toLowerCase())) return false;
+        if (field.closest('.ag-floating-filter, .ag-header, .ag-paging-panel')) {
+            return false;
+        }
+        return String(field.value || '').trim() !== '' && shown(field);
+    });
+}"""
+
+
+def _catalog_auto_open_blocker(page: Page) -> str | None:
+    """Lý do KHÔNG được tự điều hướng tab WFX chính, hoặc None nếu an toàn.
+
+    Tự mở Catalog khi người dùng chỉ vào module là thao tác họ chưa bấm. Nếu
+    tab chính đang ở một màn khác còn dữ liệu nhập dở (New/Edit chứng từ,
+    form tìm kiếm cổ điển), điều hướng body là mất trắng phần đó. Đọc lỗi
+    cũng coi là không an toàn: không chắc thì không đụng.
+    """
+    if _catalog_tree_frame_now(page) is not None:
+        return None
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        try:
+            if frame.evaluate(_UNSAVED_INPUT_JS):
+                return "màn WFX đang mở còn dữ liệu nhập"
+        except PlaywrightError:
+            return "không đọc được màn WFX đang mở"
+    return None
+
+
 def prepare_catalog_master(
     category_name: str,
     category_value: str,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Mở Catalog/Category/Master cho luồng Tìm, Costing và BOM."""
+    return _prepare_catalog_master(category_name, category_value, log)
+
+
+def auto_prepare_catalog_master(
+    category_name: str,
+    category_value: str,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Chuẩn bị Master ngay khi người dùng vào module Catalog, chưa bấm Tìm.
+
+    Khác lượt do người dùng bấm: không đưa Chrome lên foreground và bỏ qua
+    (``CATALOG_AUTO_PREPARE_SKIPPED``) khi tab chính đang có việc dở.
+    """
+    return _prepare_catalog_master(category_name, category_value, log, auto=True)
+
+
+def _prepare_catalog_master(
+    category_name: str,
+    category_value: str,
+    log: Callable[[str], None],
+    *,
+    auto: bool = False,
+) -> dict[str, Any]:
     playwright: Playwright | None = None
     try:
         if not _chrome_is_ready():
             return _result(False, "CHROME_CLOSED", "Trình duyệt làm việc chưa được mở.")
 
         playwright = sync_playwright().start()
-        _browser, page = _connect_to_chrome(playwright)
+        _browser, page = _connect_to_chrome(playwright, bring_to_front=not auto)
         _attach_dialog_handler(page, log)
         if not _session_is_active(page):
             return _result(
@@ -305,6 +375,19 @@ def prepare_catalog_master(
                 f"Đã chuẩn bị {category_name} > Master để tìm kiếm.",
                 category=category_name,
                 value=category_value,
+            )
+
+        blocker = _catalog_auto_open_blocker(page) if auto else None
+        if blocker is not None:
+            _write_log(
+                log,
+                f"[CATALOG] Không tự mở Catalog: {blocker}. Bấm Tìm khi sẵn sàng.",
+            )
+            return _result(
+                True,
+                "CATALOG_AUTO_PREPARE_SKIPPED",
+                "Chưa tự mở Catalog để giữ màn WFX đang làm; bấm Tìm khi sẵn sàng.",
+                category=category_name,
             )
 
         previous_grid = next(

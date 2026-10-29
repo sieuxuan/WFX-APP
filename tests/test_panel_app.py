@@ -1985,7 +1985,9 @@ def test_mo_manual_thu_panel_sau_khi_cua_so_san_sang(monkeypatch):
     assert hidden == [True]
 
 
-def test_wfx_manual_theo_trang_thai_luon_tren_cung(monkeypatch):
+def test_wfx_manual_khong_ghim_tren_cung_du_panel_luon_tren_cung(monkeypatch):
+    # User đọc hướng dẫn song song với Chrome: cửa sổ này không được che
+    # trình duyệt làm việc dù panel đang bật `Luôn trên cùng`.
     import wfx_panel.panel_app as module
 
     app = module.PanelApp()
@@ -1993,7 +1995,7 @@ def test_wfx_manual_theo_trang_thai_luon_tren_cung(monkeypatch):
     created = _patch_manual_window(monkeypatch, module)
 
     assert app.open_wfx_manual()["ok"] is True
-    assert created[0].kwargs["on_top"] is True
+    assert created[0].kwargs["on_top"] is False
 
 
 def test_wfx_manual_dieu_huong_toi_muc_khi_da_mo(monkeypatch):

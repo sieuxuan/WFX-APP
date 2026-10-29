@@ -68,7 +68,7 @@ class CostingController:
                 "code": "APPAREL_ONLY",
                 "message": "Import/export Costing chỉ hỗ trợ Category Apparel.",
             }
-        query = str(query or "").strip()
+        filter_kind, query = catalog.resolve_query(category_name, filter_kind, query)
         current = catalog.result
         if (
             current

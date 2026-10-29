@@ -57,7 +57,7 @@ class _Login:
         self.calls.append(("action", args[-1] if args else ""))
         return {"ok": True, "code": "RMPO_PO_OPENED", "message": "Đã mở."}
 
-    def prepare_grn_receipt(self, xpath, rmpo_no, supplier, mode, log=print):
+    def prepare_grn_receipt(self, xpath, rmpo_no, supplier, mode, log=print, *, site=""):
         self.calls.append(("prepare", rmpo_no))
         return {
             "ok": True,
@@ -67,7 +67,7 @@ class _Login:
             "supplier": supplier or "YKK",
         }
 
-    def continue_grn_receipt(self, supplier, log=print):
+    def continue_grn_receipt(self, supplier, log=print, *, rmpo_no="", site=""):
         self.calls.append(("continue", supplier))
         return {
             "ok": True,

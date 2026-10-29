@@ -23,6 +23,7 @@ function openModulePage(moduleId) {
   }
   const previousModule = selectedModule;
   selectedModule = module;
+  moduleLastField = null;
   $("#module-page-title").textContent = module.name;
   $(".module-modal-subtitle").textContent =
     module.description || "Mở màn hình WFX.";
@@ -46,6 +47,7 @@ function openModulePage(moduleId) {
     syncCatalogKind();
     hideCatalogResults();
     syncCatalogStepButtons();
+    autoPrepareCatalog();
   } else if (module.kind === "sale_asn") {
     showSaleAsnView("create", { focus: false });
     resetSaleAsnProgress();
@@ -80,6 +82,7 @@ function openModulePage(moduleId) {
   ) {
     clearSharedWorkspaceInputs(module.kind);
   }
+  loadModuleRecentSearches(module.kind);
 }
 
 async function stopCurrentAction() {

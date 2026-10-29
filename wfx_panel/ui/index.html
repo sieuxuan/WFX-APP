@@ -159,6 +159,11 @@
                 </button>
               </div>
             </div>
+            <label class="catalog-auto-prepare toggle-row" data-tooltip="Vào màn Catalog là tự mở Category > Master, không chờ bấm Tìm. Bỏ qua khi tab WFX đang có màn nhập dở.">
+              <span>Tự mở Catalog khi vào màn này</span>
+              <input class="catalog-auto-prepare-input" type="checkbox" />
+              <i aria-hidden="true"></i>
+            </label>
             <div class="catalog-folder-field" hidden>
               <div class="catalog-folder-label">
                 <span>Chọn vị trí mặc định mới</span>
@@ -176,12 +181,8 @@
             </div>
           </div>
           <div class="catalog-search">
-            <div class="segmented catalog-kind" role="group" aria-label="Kiểu tìm Catalog">
-              <button type="button" class="seg-button catalog-kind-button" data-catalog-kind="code" aria-pressed="true">Article Code</button>
-              <button type="button" class="seg-button catalog-kind-button catalog-secondary-kind" data-catalog-kind="buyer_reference" aria-pressed="false">Buyer Reference</button>
-            </div>
             <div class="catalog-query-row">
-              <input class="catalog-query" type="text" autocomplete="off" placeholder="Ví dụ: ABC123" aria-label="Nội dung tìm Catalog" />
+              <input class="catalog-query" type="text" autocomplete="off" placeholder="Article Code hoặc Buyer Reference" aria-label="Article Code hoặc Buyer Reference" />
               <button type="button" class="catalog-primary-action" data-catalog-action="find">Tìm</button>
             </div>
             <div class="catalog-article-suggestions" role="listbox" aria-label="Gợi ý Article" hidden></div>
@@ -336,6 +337,10 @@
                 <input class="oc-query" type="text" autocomplete="off" placeholder="Nhập OC No." aria-label="Nội dung tìm OC" />
               <button type="button" class="special-primary-button" data-module-action="oc-search" data-validation-group="oc" disabled>Tìm</button>
               </div>
+              <div class="search-recent" data-recent-group="oc" hidden>
+                <span class="search-recent-label">Gần đây</span>
+                <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+              </div>
             </div>
           </section>
           <div class="oc-flow-heading">
@@ -463,12 +468,19 @@
               <span><strong>Nhập kho RMPO</strong></span>
               <button type="button" class="module-secondary-button grn-rmpo-list-button" data-module-action="grn-rmpo-list">RMPO List</button>
             </div>
-            <label class="module-multi-filter-field">
-              <span>RMPO No.</span>
-              <input class="grn-rmpo-query" type="text" autocomplete="off" placeholder="Nhập đầy đủ hoặc phần số, ví dụ 2345" aria-label="RMPO cần nhập kho" />
-            </label>
+            <div class="module-multi-filter-grid grn-form-grid">
+              <label class="module-multi-filter-field">
+                <span>RMPO No.</span>
+                <input class="grn-rmpo-query" type="text" autocomplete="off" placeholder="Ví dụ 2345" aria-label="RMPO cần nhập kho" />
+              </label>
+              <label class="module-multi-filter-field">
+                <span>Site</span>
+                <select class="grn-site-select" aria-label="Site nhận kho" aria-describedby="grn-site-hint"><option value="">Tự đọc từ WFX</option></select>
+              </label>
+            </div>
+            <small class="module-action-hint grn-site-hint" id="grn-site-hint">Lần đầu để trống: app đọc danh sách Site từ WFX và nhớ cho lần sau.</small>
             <div class="grn-linked-context" aria-live="polite" hidden>
-              <span>Đã nhận từ RMPO List</span>
+              <span>Từ RMPO List</span>
               <strong class="grn-linked-supplier"></strong>
             </div>
             <div class="workflow-choice-grid grn-mode-grid">
@@ -491,10 +503,10 @@
             </section>
 
             <section class="grn-checkpoint grn-site-step" aria-live="polite" hidden>
-              <label class="module-multi-filter-field">
-                <span>Site</span>
-                <select class="grn-site-select" aria-label="Site nhận kho"><option value="">Chọn Site</option></select>
-              </label>
+              <div>
+                <strong>Chọn Site để mở New GRN</strong>
+                <span>Đã đọc danh sách Site từ WFX vào ô Site phía trên.</span>
+              </div>
               <button type="button" class="special-primary-button" data-module-action="grn-next" disabled>Next — mở New GRN</button>
             </section>
 
@@ -517,6 +529,10 @@
               <button type="button" class="special-primary-button" data-module-action="grn-search" data-validation-group="grn-search" disabled>Tìm và mở GRN</button>
             </div>
             <small class="module-validation-hint" data-validation-hint="grn-search">Nhập số Invoice hoặc RMPO.</small>
+            <div class="search-recent" data-recent-group="grn-search" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </section>
         </div>
 
@@ -542,6 +558,10 @@
             <button type="button" class="sample-check-file-button module-multi-search-button" data-module-action="sample-check-file" data-validation-group="sample" disabled>Xem file đính kèm</button>
             <small class="module-validation-hint" data-validation-hint="sample">Nhập ít nhất một điều kiện.</small>
             <button type="button" class="module-clear-filters-button" data-clear-group="sample" hidden>Xóa điều kiện</button>
+            <div class="search-recent" data-recent-group="sample" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
             <section class="sample-file-results" aria-live="polite" hidden>
               <div class="catalog-results-heading">
                 <strong class="sample-file-results-title">Kết quả</strong>
@@ -701,6 +721,10 @@
               <input class="sale-asn-query" type="text" autocomplete="off" placeholder="Nhập Invoice No." aria-label="Nội dung tìm Sale ASN" aria-describedby="sale-asn-documents-hint" />
               <button type="button" class="special-primary-button" data-module-action="sale-asn-search" data-validation-group="sale-asn" disabled>Tìm</button>
             </div>
+            <div class="search-recent" data-recent-group="sale-asn" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
             <button type="button" class="special-primary-button sale-asn-documents-button" data-module-action="sale-asn-documents">Xuất Invoice + PKL</button>
             <small class="module-action-hint" id="sale-asn-documents-hint">Nhập đúng Invoice No., hoặc chọn sẵn 1 dòng trên WFX.<br />Không cần kéo cột Docs.</small>
           </section>
@@ -713,12 +737,16 @@
           </button>
           <div class="module-search-block">
             <div class="module-multi-filter-grid module-multi-filter-grid-two">
+              <label class="module-multi-filter-field"><span>RMPO No.</span><input class="rmpo-order-query" type="text" autocomplete="off" placeholder="Ví dụ 2345" /></label>
               <label class="module-multi-filter-field"><span>Supplier</span><input class="rmpo-supplier-query" type="text" autocomplete="off" /></label>
-              <label class="module-multi-filter-field"><span>RMPO No.</span><input class="rmpo-order-query" type="text" autocomplete="off" /></label>
             </div>
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="rmpo-search" data-validation-group="rmpo" disabled>Tìm</button>
-            <small class="module-validation-hint" data-validation-hint="rmpo">Nhập Supplier hoặc RMPO No.</small>
+            <small class="module-validation-hint" data-validation-hint="rmpo">Nhập RMPO No. hoặc Supplier.</small>
             <button type="button" class="module-clear-filters-button" data-clear-group="rmpo" hidden>Xóa điều kiện</button>
+            <div class="search-recent" data-recent-group="rmpo" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </div>
           <section class="rmpo-results" aria-live="polite" hidden>
             <div class="catalog-results-heading">
@@ -734,16 +762,24 @@
               </table>
               <div class="rmpo-results-empty" hidden>Không tìm thấy RMPO phù hợp.</div>
             </div>
-            <div class="rmpo-selection" hidden>
-              <div class="rmpo-selection-copy">
-                <small>RMPO đã chọn</small>
-                <strong class="rmpo-selection-order"></strong>
-                <span class="rmpo-selection-meta"></span>
+            <div class="rmpo-selection" aria-live="polite" hidden>
+              <div class="rmpo-selection-head">
+                <div class="rmpo-selection-copy">
+                  <small>RMPO đã chọn</small>
+                  <strong class="rmpo-selection-order"></strong>
+                </div>
+                <span class="rmpo-status-badge" data-rmpo-status="other"></span>
               </div>
+              <dl class="rmpo-selection-details">
+                <div class="rmpo-detail-wide"><dt>Supplier</dt><dd class="rmpo-selection-supplier"></dd></div>
+                <div><dt>Qty</dt><dd class="rmpo-selection-qty"></dd></div>
+                <div><dt>Last Created</dt><dd class="rmpo-selection-created"></dd></div>
+              </dl>
+              <p class="rmpo-selection-note" hidden></p>
+              <button type="button" class="special-primary-button rmpo-receive-button" data-module-action="rmpo-receive">Nhập kho</button>
               <div class="rmpo-selection-actions">
                 <button type="button" class="sale-asn-secondary-button" data-module-action="rmpo-check-po">Kiểm tra PO</button>
-                <button type="button" class="special-primary-button" data-module-action="rmpo-edit-po">Sửa PO</button>
-                <button type="button" class="special-primary-button" data-module-action="rmpo-receive">Nhập kho</button>
+                <button type="button" class="sale-asn-secondary-button" data-module-action="rmpo-edit-po">Sửa PO</button>
                 <button type="button" class="sale-asn-secondary-button" data-module-action="rmpo-check-received">Check Received</button>
               </div>
             </div>
@@ -765,6 +801,10 @@
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="indent-search" data-validation-group="indent" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="indent">Nhập ít nhất một điều kiện.</small>
             <button type="button" class="module-clear-filters-button" data-clear-group="indent" hidden>Xóa điều kiện</button>
+            <div class="search-recent" data-recent-group="indent" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </div>
         </div>
 
@@ -789,6 +829,10 @@
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="advance-pr-search" data-validation-group="advance-pr" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="advance-pr">Nhập ít nhất một điều kiện.</small>
             <button type="button" class="module-clear-filters-button" data-clear-group="advance-pr" hidden>Xóa điều kiện</button>
+            <div class="search-recent" data-recent-group="advance-pr" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </div>
         </div>
 
@@ -807,6 +851,10 @@
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="supplier-invoice-search" data-validation-group="supplier-invoice" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="supplier-invoice">Nhập ít nhất một điều kiện.</small>
             <button type="button" class="module-clear-filters-button" data-clear-group="supplier-invoice" hidden>Xóa điều kiện</button>
+            <div class="search-recent" data-recent-group="supplier-invoice" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </div>
           <div class="module-search-block module-cancel-section">
             <label class="module-multi-filter-field"><span>Invoice No. cần Cancel</span><input class="supplier-invoice-cancel-query" type="text" autocomplete="off" placeholder="Nhập đúng Invoice No." aria-label="Invoice No. cần Cancel" /></label>
@@ -857,6 +905,10 @@
             <button type="button" class="special-primary-button module-multi-search-button" data-module-action="expense-invoice-search" data-validation-group="expense-invoice" disabled>Tìm</button>
             <small class="module-validation-hint" data-validation-hint="expense-invoice">Nhập ít nhất một điều kiện.</small>
             <button type="button" class="module-clear-filters-button" data-clear-group="expense-invoice" hidden>Xóa điều kiện</button>
+            <div class="search-recent" data-recent-group="expense-invoice" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </div>
           </section>
         </div>
@@ -971,6 +1023,10 @@
             <button type="button" class="special-primary-button" data-module-action="supplier-find" data-validation-group="supplier" disabled>Tìm tất cả Category</button>
             <button type="button" class="module-secondary-button" data-module-action="supplier-find-category" data-validation-group="supplier" disabled>Chỉ tìm trong Category đang chọn</button>
             <small class="module-validation-hint" data-validation-hint="supplier">Nhập tên Supplier. App tự mở List nếu chưa mở.</small>
+            <div class="search-recent" data-recent-group="supplier" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </div>
         </div>
 
@@ -983,6 +1039,10 @@
             <label><span>Tìm Buyer</span><input class="buyer-query" type="text" autocomplete="off" placeholder="Nhập tên hoặc một phần tên công ty" /></label>
             <button type="button" class="special-primary-button" data-module-action="buyer-find" data-validation-group="buyer" disabled>Tìm và mở Buyer</button>
             <small class="module-validation-hint" data-validation-hint="buyer">Nhập tên Buyer.</small>
+            <div class="search-recent" data-recent-group="buyer" hidden>
+              <span class="search-recent-label">Gần đây</span>
+              <div class="search-recent-list" role="group" aria-label="Tìm gần đây"></div>
+            </div>
           </div>
         </div>
 

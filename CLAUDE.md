@@ -100,7 +100,9 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   dung đã đóng gói trong `wfx_panel/manual/`. Cửa sổ này chạy offline hoàn toàn:
   không gọi mạng, không cần Chrome, không cần phiên WFX. Bấm lần hai đưa cửa sổ
   đang mở lên trước, không tạo cửa sổ trùng. Cửa sổ Manual không tham gia logic
-  tự thu của panel. Mỗi màn module có nút dấu hỏi mở đúng mục của module đó, và
+  tự thu của panel và luôn là cửa sổ thường (`on_top=False`), không theo công
+  tắc `Luôn trên cùng`: user đọc hướng dẫn song song với Chrome nên không được
+  để nó che trình duyệt làm việc. Mỗi màn module có nút dấu hỏi mở đúng mục của module đó, và
   thanh trạng thái hiện nút trợ giúp khi lỗi có mục hướng dẫn. Sau khi ứng dụng
   tự cập nhật, nút Manual hiện badge `Mới` có nhãn rõ ràng và mở thẳng phần Có
   gì mới. Nút Log dùng badge cảnh báo `!` màu vàng khi có lỗi mới; không dùng
@@ -155,6 +157,15 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
 - Các form Search/Cancel nhiều điều kiện phải disable hành động khi toàn bộ ô
   liên quan còn trống, hiện gợi ý ngay tại form và chỉ nhận Enter khi hợp lệ;
   backend vẫn giữ validation như lớp bảo vệ cuối.
+- Mọi form Tìm module (OC, Sample, Sale ASN, RMPO, Tìm GRN, Indent, Advance PR,
+  Supplier Inv, Expense Inv, Supplier, Buyer) có hàng `Gần đây` giống Catalog.
+  Delegator `PanelAPI` bọc kết quả qua `SearchRecentController.remember`: chỉ
+  lượt `ok` mới được ghi (`stores/search_recent.py`, `search-recent.json`), theo
+  User ID + nhóm form trùng tên nhóm `INPUT_VALIDATION_GROUPS`, tối đa 6, mới
+  nhất trước, giá trị đúng thứ tự ô kèm `kind` (kiểu lọc, Category Supplier,
+  module Indent, `files` cho Xem file Sample). Nhóm lạ bị từ chối. Bấm chip điền
+  lại đủ ô + kind rồi chạy đúng nút của form; Cancel Supplier Invoice là thao tác
+  phá hủy nên KHÔNG có hàng Gần đây.
 - `Lịch sử hoạt động` chỉ gồm `Tất cả tác vụ` và `Log kỹ thuật`; không tách thêm
   thẻ `Cần xử lý`. Heartbeat `maintain_session` thành công không ghi `jobs.json`,
   không thêm log RUN và không thay footer.
@@ -193,6 +204,27 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   Costing; không bắt người dùng cuộn xuống dưới form tìm kiếm. Hai workspace
   không có hero/block hướng dẫn lặp lại. Nút mở List luôn ghi `Mở Catalog`;
   vị trí Apparel mặc định được chỉnh bằng nút icon nhỏ nằm cạnh nút này.
+- Catalog chỉ có MỘT ô tìm, không còn nút chọn kiểu Article Code/Buyer
+  Reference. UI gửi `filter_kind="auto"`; `controllers/catalog_query.py` đổi
+  thành kiểu cụ thể trước khi chạm automation: khớp exact một Code trong Thư
+  viện Article → Code; Apparel bắt đầu `SWV`/`SKN`/`PS[WKG]`+số, Category khác
+  dạng chữ + ≥4 số, hoặc đúng 4 chữ số → Code; Buyer Reference (Apparel)/
+  Article Name (khác) khớp exact chỉ một Code → tìm thẳng Code đó; còn lại
+  tìm theo Buyer Reference/Article Name. Apparel KHÔNG dùng luật chữ + số
+  chung vì Buyer Reference có dạng `GMPA08941`. Kiểu tìm truyền rõ (Gần đây,
+  dòng kết quả) giữ nguyên. Gợi ý `suggest_articles(..., "auto", ...)` theo
+  cùng luật.
+- Công tắc `Tự mở Catalog khi vào màn này` (`prefs.catalog_auto_prepare`, mặc
+  định TẮT) cho phép vào module/đổi Category là chạy `auto_prepare_catalog`.
+  Lượt này chỉ chạy khi phiên đang sống, nằm trong
+  `AUTO_RELOGIN_EXCLUDED_METHODS` (không mở lại Chrome, không đăng nhập hộ),
+  không đưa Chrome lên foreground, không ghi `jobs.json` và không qua result
+  sink. Automation (`auto_prepare_catalog_master`) trả
+  `CATALOG_AUTO_PREPARE_SKIPPED` và KHÔNG điều hướng khi tab WFX chính không
+  ở Catalog mà còn ô input/textarea có dữ liệu (trừ ô lọc AG Grid) hoặc không
+  đọc được frame. JS `call()` chờ lượt tự mở xong trước mọi bridge call; việc
+  không phải Catalog thì gửi `cancel_current_action` trước để người dùng không
+  nhận `ACTION_IN_PROGRESS`.
 - Khi bấm lại `Mở Catalog` cho cùng Category, automation được tái sử dụng
   Master hiện tại chỉ khi đã xác nhận đúng Category, Catalog Grid còn tương tác,
   Floating Filter đang bật và dữ liệu đã ổn định. Nếu bất kỳ probe nào không
@@ -919,9 +951,18 @@ Các workflow riêng hiện có:
   GRN Pending mở bằng `//*[@id="0050_0020_0380"]/a`: nước ngoài chọn Receipt
   Type `ASN from Supplier - Against ASN` và Imported; trong nước chọn
   `ASN from Supplier - Against PO` và không chọn Imported. Cả hai chọn From là
-  Supplier, Search, đọc danh sách Site từ `#CellID11` về app; sau khi user chọn
-  Site, chọn duy nhất dòng có PO No. đúng RMPO trong `#sectionOrderShipment` rồi
-  click New tại `//*[@id="titlebarGRNPending"]/tbody/tr/td[2]/span/div[1]`.
+  Supplier rồi Search. Site được chọn ngay trong app từ danh sách nhớ theo User
+  ID + Division (`stores/grn_sites.py`, `grn-sites.json`); controller chỉ nhận
+  Site có trong danh sách đó (khác thì `GRN_SITE_INVALID`, không chạm Chrome).
+  Chưa chọn Site thì đọc dropdown `#CellID11` về app (WFX chỉ bind option sau
+  `mousedown`, không gom `select.clsCombo` của control khác), lưu lại danh sách
+  rồi dừng cho user chọn. Có Site thì chọn Site, BẤM SEARCH LẠI (đổi Site không
+  tự tải lại bảng), chờ cả lớp `blockUI`/`UpdateProgress`, poll tới khi có duy
+  nhất dòng PO No. đúng RMPO trong `#sectionOrderShipment` (nhiều dòng thì dừng
+  ngay) rồi click New tại
+  `//*[@id="titlebarGRNPending"]/tbody/tr/td[2]/span/div[1]`. Luồng nước ngoài
+  giữ Site trong phiên và chỉ dùng sau checkpoint Sourcing ASN. RMPO List chỉ
+  có một kết quả thì app tự chọn dòng đó và chỉ hiện thẻ thao tác.
   Tìm GRN mở `//*[@id="0050_0020_0010"]/a`, nhận Invoice ở `#row_txtDocNum`
   (checkbox `#chk_8` + ô `#txtDocNum`) hoặc RMPO/Order No. ở
   `#row_txtOrderNum` (checkbox `#chk_9` + ô `#txtOrderNum`), luôn bỏ tích Date

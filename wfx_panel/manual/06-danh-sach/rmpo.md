@@ -7,16 +7,20 @@ khiển.
 
 1. Mở module RMPO List.
 2. Bấm `List` nếu bạn chỉ muốn mở danh sách hiện tại.
-3. Nhập tên vào ô Supplier nếu bạn muốn lọc theo nhà cung cấp.
-4. Nhập số vào ô RMPO No. nếu bạn muốn lọc theo đơn.
+3. Nhập số vào ô RMPO No. nếu bạn muốn lọc theo đơn.
+4. Nhập tên vào ô Supplier nếu bạn muốn lọc theo nhà cung cấp.
 5. Bấm `Tìm`.
 6. Chờ các dòng phù hợp hiện trong bảng kết quả của ứng dụng.
-7. Bấm một dòng để chọn RMPO.
+7. Bấm một dòng để chọn RMPO. Nếu chỉ có một kết quả, ứng dụng chọn sẵn và
+   hiện ngay thẻ RMPO đã chọn, không cần bấm vào dòng. Thẻ hiện Status,
+   Supplier, Qty, Last Created và ghi chú RMPO có nhập kho được hay không.
 8. Chọn thao tác cần dùng:
    - `Kiểm tra PO` mở OC No. của dòng đó trên WFX.
    - `Sửa PO` mở RMPO và tự bấm `Revise`. Ứng dụng có thể chờ WFX tải tối đa 3 phút.
-   - `Nhập kho` hiện khi RMPO chưa ở trạng thái Received. Nút này chuyển RMPO và
-     Supplier sang module `(GRN) Nhập kho` để chọn luồng nước ngoài/trong nước.
+   - `Nhập kho` chỉ hiện khi RMPO nhập kho được: không hiện với Status
+     Received (đã nhập hết) hoặc Waiting (chưa được duyệt); Part Received vẫn
+     nhập tiếp được. Nút này chuyển RMPO và Supplier sang module `(GRN) Nhập
+     kho` để chọn luồng nước ngoài/trong nước.
    - `Check Received` mở thông tin nhận kho khi trạng thái là Received hoặc
      Part Received.
 
@@ -38,6 +42,7 @@ khiển.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
+| Không có nút `Nhập kho` | RMPO đang Received hoặc Waiting. Chờ RMPO được duyệt, hoặc dùng `Check Received` để xem phần đã nhận. |
 | Không thấy RMPO | Nhập đủ RMPO No. có tiền tố để ứng dụng tự chuyển đúng Division, hoặc xóa bớt một điều kiện rồi tìm lại. |
 | Dòng hoặc Status đã thay đổi | Bấm `Tìm` lại rồi chọn đúng RMPO mới nhất. |
 | Division đã đổi sau lượt tìm | Bấm `Tìm` lại. Danh sách cũ thuộc Division trước nên không còn dùng được. |

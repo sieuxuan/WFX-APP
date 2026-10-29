@@ -53,6 +53,9 @@ _CONTROL_OPTIONS_JS = r"""spec => {
         return style.display !== 'none' && style.visibility !== 'hidden'
             && rect.width > 0 && rect.height > 0;
     };
+    const mousedown = element => element.dispatchEvent(new MouseEvent(
+        'mousedown', {bubbles: true, cancelable: true, view: window}
+    ));
     const host = [...document.querySelectorAll(spec.selector)]
         .find(shown) || document.querySelector(spec.selector);
     if (!host) return [];
@@ -60,18 +63,30 @@ _CONTROL_OPTIONS_JS = r"""spec => {
         const action = host.querySelector(
             '.select2-selection, .lblEditable, [contenteditable="true"], span'
         ) || host;
+        // Select2 mở bằng mousedown; label WFX mở editor bằng click.
+        mousedown(action);
         action.click();
     }
-    const selects = [
-        ...host.querySelectorAll('select'),
-        ...document.querySelectorAll('select:focus, select.clsCombo'),
-    ];
+    let selects = [...host.querySelectorAll('select')];
+    // Label WFX có thể dựng editor <select> ở cuối document thay vì trong host.
+    // Chỉ lấy đúng editor đó: gom mọi select.clsCombo sẽ trộn option của
+    // Receipt Type/From vào danh sách Site.
+    if (!selects.length) {
+        const editor = document.querySelector('select:focus')
+            || [...document.querySelectorAll('select')].filter(shown).at(-1);
+        if (editor) selects = [editor];
+    }
     const labels = [];
-    selects.forEach(select => [...select.options].forEach(option => {
-        const label = clean(option.textContent || option.title);
-        if (!option.disabled && clean(option.value) && label
-            && !/^\[?select\]?$/i.test(label)) labels.push(label);
-    }));
+    selects.forEach(select => {
+        // Dropdown WFX chỉ bind option sau mousedown (như ddlBuyer/ddlPackage),
+        // nên lượt đọc đầu có thể rỗng; lượt sau đọc lại option vừa bind.
+        mousedown(select);
+        [...select.options].forEach(option => {
+            const label = clean(option.textContent || option.title);
+            if (!option.disabled && clean(option.value) && label
+                && !/^\[?select\]?$/i.test(label)) labels.push(label);
+        });
+    });
     [...document.querySelectorAll(
         '[role="option"], .select2-results__option, li.clsMultiSelectContent'
     )].filter(shown).forEach(option => {
@@ -103,8 +118,9 @@ _SELECT_PO_ROW_JS = r"""(root, expectedPo) => {
     const rows = [...root.querySelectorAll('tr')].filter(row =>
         [...row.children].some(child => child.tagName === 'TD')
     );
-    const matches = rows.filter(row => {
-        const cells = [...row.children].filter(child => child.tagName === 'TD');
+    const dataCells = row => [...row.children].filter(child => child.tagName === 'TD');
+    let matches = rows.filter(row => {
+        const cells = dataCells(row);
         const exact = cells.find(cell => [
             'colPONo', 'colPONumber', 'colOrderNo', 'colOrderRefNo'
         ].includes(cell.id));
@@ -113,6 +129,14 @@ _SELECT_PO_ROW_JS = r"""(root, expectedPo) => {
         );
         return fold(text(poCell)) === fold(expectedPo);
     });
+    // WFX có thể vẽ Header và Content thành hai table riêng, khi đó cellIndex
+    // không trỏ được về tiêu đề cột PO No. Số RMPO đầy đủ đủ đặc trưng để khớp
+    // exact trên chính ô của dòng; vẫn bắt buộc đúng một dòng.
+    if (!matches.length) {
+        matches = rows.filter(row => dataCells(row).some(
+            cell => fold(text(cell)) === fold(expectedPo)
+        ));
+    }
     if (matches.length !== 1) {
         return {ok: false, reason: 'po-row-ambiguous', count: matches.length};
     }

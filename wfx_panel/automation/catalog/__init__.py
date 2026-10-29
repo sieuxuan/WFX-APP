@@ -105,6 +105,7 @@ from wfx_panel.automation.catalog.filters import (  # noqa: F401
 )
 from wfx_panel.automation.catalog.flows import (  # noqa: F401
     _find_in_open_catalog,
+    auto_prepare_catalog_master,
     filter_and_open_catalog_code,
     find_and_open_catalog_destination,
     find_in_open_catalog,
@@ -155,6 +156,7 @@ __all__ = [
     "open_catalog_destination",
     "open_catalog_folder",
     "open_catalog_master",
+    "auto_prepare_catalog_master",
     "prepare_catalog_master",
     "probe_catalog_data_source",
     "quick_find_catalog",
