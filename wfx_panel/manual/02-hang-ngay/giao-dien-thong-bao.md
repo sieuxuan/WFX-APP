@@ -14,6 +14,12 @@ Chọn cách WFX Smart hiển thị và quyết định những thông báo bạ
 ## Mẹo
 
 > [!meo]
+> Mọi tác vụ tự động (tìm, mở List/New, tải file, Upload OC, nhập kho GRN,
+> RMPO, báo cáo, Tạo Style...) đều gửi thông báo khi xong hoặc khi cần bạn kiểm
+> tra, miễn là bạn đang ở cửa sổ khác. Chỉ lượt kiểm tra phiên chạy nền mới im
+> lặng.
+
+> [!meo]
 > Bấm vào thông báo khi xong việc để mở lại bảng điều khiển và xem kết quả
 > ngay, không cần bấm icon nổi. Bấm dấu `✕` trên thông báo thì chỉ đóng thông
 > báo và giữ nguyên màn hình bạn đang làm.

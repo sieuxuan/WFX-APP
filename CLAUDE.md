@@ -150,7 +150,11 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
 - Form góp ý chỉ cho gửi từ 5 ký tự và hiển thị bộ đếm trên giới hạn 2.000 ký tự.
 - Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
-  trong màn module.
+  trong màn module. Câu status bị cắt `…` phải đọc được nguyên văn khi hover:
+  `setStatus` gắn `data-tooltip` + `data-tooltip-clipped`/`data-tooltip-wide`,
+  tooltip chỉ hiện khi chữ thật sự bị cắt và cập nhật tại chỗ khi câu đổi. Hai
+  đèn trình duyệt/phiên WFX chỉ là chấm (không in chữ `Chrome`/`WFX`), tên nằm
+  ở tooltip và `aria-label`.
 - Result sink từ backend phải nhả trạng thái busy của UI độc lập với Promise
   pywebview. Nếu Promise bridge bị kẹt sau khi backend đã ghi kết quả, các nút
   workflow vẫn phải hoạt động lại ngay.
@@ -175,6 +179,13 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   WebView2 hidden và vẫn lưu ở Notification Center. Nếu tray chưa sẵn sàng,
   giữ thông báo mới nhất rồi phát ngay sau callback setup. Settings có nút thử
   toast; toast không được lấy focus.
+  MỌI flow qua `_run()` đều phải phát toast khi xong (thành công hay cần kiểm
+  tra); `_on_result` dùng danh sách loại trừ `SILENT_RESULT_METHODS` trong
+  `app/layout.py`, không dùng danh sách cho phép, để flow mới không bị sót. Chỉ
+  kiểm tra phiên nền, `auto_prepare_catalog`, `switch_division`, bước dạo đầu
+  `inspect_active_catalog_costing` và `cancel_oc_upload_review` được im lặng.
+  Flow còn lại phải có nhãn trong `NOTIFICATION_ACTION_LABELS`;
+  `tests/test_notifications_controller.py` quét AST mọi lời gọi `_run()` để canh.
   Bấm vào THÂN toast phải mở lại panel qua `show_from_tray()`, vì đó là lý do
   người dùng bấm. Toast native gửi `NIN_BALLOONUSERCLICK` (`0x0405`) chứ không
   phải `WM_LBUTTONUP`, và pystray không xử lý message này, nên

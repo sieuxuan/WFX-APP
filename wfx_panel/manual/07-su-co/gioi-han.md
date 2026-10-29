@@ -5,7 +5,8 @@ Windows và trạng thái WFX.
 
 ## Các bước
 
-1. Kiểm tra hai đèn Chrome và WFX trước khi chạy tác vụ.
+1. Kiểm tra hai chấm trạng thái trình duyệt và phiên WFX ở góc phải thanh dưới
+   cùng trước khi chạy tác vụ.
 2. Chờ WFX tải xong màn hình hiện tại.
 3. Bấm lại tác vụ một lần nếu thông báo hướng dẫn cho phép thử lại.
 4. Tra mã lỗi nếu vấn đề vẫn còn.

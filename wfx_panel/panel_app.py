@@ -47,8 +47,8 @@ from wfx_panel.app.layout import (  # noqa: F401
     MANUAL_WINDOW_MIN,
     MANUAL_WINDOW_TITLE,
     MANUAL_WINDOW_WIDTH,
-    MODULE_NOTIFICATION_METHODS,
     PANEL_BLUR_GRACE_SECONDS,
+    SILENT_RESULT_METHODS,
     TASKBAR_ACTIVATION_POLL_SECONDS,
     WFX_MANUAL_URL,
     WINDOW_HEIGHT,
@@ -482,7 +482,7 @@ class PanelApp:
             or foreground_pid is None
             or foreground_pid == os.getpid()
         )
-        if method in MODULE_NOTIFICATION_METHODS and not panel_is_foreground:
+        if method not in SILENT_RESULT_METHODS and not panel_is_foreground:
             self._show_notification(
                 result,
                 method=method,

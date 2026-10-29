@@ -81,18 +81,37 @@ function positionTooltip(target, tooltip) {
   tooltip.style.top = `${Math.round(Math.min(maxTop, Math.max(edge, preferredTop)))}px`;
 }
 
+// data-tooltip-clipped="<selector>": chỉ hiện tooltip khi phần chữ đó đang bị
+// cắt bằng ellipsis, để câu ngắn đã đọc đủ thì không lặp lại.
+function tooltipTextClipped(target) {
+  const selector = target.dataset.tooltipClipped;
+  if (selector === undefined) return true;
+  const node = (selector && target.querySelector(selector)) || target;
+  return node.scrollWidth > node.clientWidth + 1;
+}
+
 function showTooltip(target) {
   const label = String(target?.dataset.tooltip || "").trim();
   const tooltip = $("#app-tooltip");
   if (!label || !tooltip || !target.isConnected) return;
+  if (!tooltipTextClipped(target)) return;
   hideTooltip();
   tooltipTarget = target;
   tooltip.textContent = label;
+  tooltip.toggleAttribute("data-wide", target.hasAttribute("data-tooltip-wide"));
   tooltip.hidden = false;
   tooltipTarget.dataset.tooltipPreviousDescribedby =
     tooltipTarget.getAttribute("aria-describedby") || "";
   tooltipTarget.setAttribute("aria-describedby", tooltip.id);
   positionTooltip(target, tooltip);
+}
+
+// Nội dung của target đổi trong lúc tooltip đang mở (status footer đổi câu):
+// cập nhật tại chỗ thay vì để tooltip giữ câu cũ.
+function refreshTooltip(target) {
+  if (!target || target !== tooltipTarget) return;
+  hideTooltip();
+  showTooltip(target);
 }
 
 function scheduleTooltip(target, delay) {

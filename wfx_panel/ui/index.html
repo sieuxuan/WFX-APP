@@ -89,15 +89,15 @@
     </div>
 
     <footer class="panel-footer">
-      <span class="footer-status" data-tone="neutral"><i></i><b class="footer-status-text">Đang kiểm tra...</b></span>
+      <span class="footer-status" data-tone="neutral" data-tooltip-wide data-tooltip-clipped=".footer-status-text"><i></i><b class="footer-status-text">Đang kiểm tra...</b></span>
       <button class="footer-help-button" type="button" data-tooltip="Xem hướng dẫn xử lý" aria-label="Xem hướng dẫn xử lý lỗi này" hidden>?</button>
       <button class="footer-report-button" type="button" data-tooltip="Gửi lỗi này cho nhóm hỗ trợ, kèm log tự động" hidden>Báo lỗi</button>
       <button class="stop-action-button" type="button" data-tooltip="Dừng tại checkpoint an toàn" hidden>
         <span aria-hidden="true"></span>Stop
       </button>
       <span class="footer-health">
-        <span class="health-chrome" data-state="unknown" data-tooltip="Trình duyệt làm việc"><i></i>Chrome</span>
-        <span class="health-session" data-state="unknown" data-tooltip="Phiên WFX"><i></i>WFX</span>
+        <span class="health-chrome" data-state="unknown" role="img" data-tooltip="Trình duyệt làm việc" aria-label="Trình duyệt làm việc"><i></i></span>
+        <span class="health-session" data-state="unknown" role="img" data-tooltip="Phiên WFX" aria-label="Phiên WFX"><i></i></span>
         <button class="health-refresh" type="button" data-tooltip="Kiểm tra lại trạng thái" aria-label="Kiểm tra lại trạng thái"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
       </span>
     </footer>

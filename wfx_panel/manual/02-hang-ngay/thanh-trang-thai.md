@@ -5,9 +5,12 @@ hay không.
 
 ## Các bước
 
-1. Đọc thông báo ở góc trái thanh dưới cùng.
-2. Kiểm tra đèn Chrome để biết trình duyệt đã sẵn sàng.
-3. Kiểm tra đèn WFX để biết tài khoản còn kết nối.
+1. Đọc thông báo ở góc trái thanh dưới cùng. Câu dài bị cắt bằng dấu `…` thì
+   rê chuột lên dòng đó để xem nguyên câu.
+2. Kiểm tra chấm thứ nhất ở góc phải (trình duyệt làm việc) để biết trình duyệt
+   đã sẵn sàng.
+3. Kiểm tra chấm thứ hai (phiên WFX) để biết tài khoản còn kết nối. Rê chuột lên
+   từng chấm để xem tên và giờ đăng nhập.
 4. Bấm nút kiểm tra lại ở góc phải nếu trạng thái chưa cập nhật.
 
 ## Mẹo
@@ -20,5 +23,6 @@ hay không.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Đèn Chrome chưa sáng | Bấm `Mở trình duyệt` trên dải thông báo ở đầu bảng điều khiển. |
-| Đèn WFX chưa sáng | Mở trình duyệt, đăng nhập WFX rồi bấm nút kiểm tra lại. |
+| Chấm trình duyệt chưa xanh | Bấm `Mở trình duyệt` trên dải thông báo ở đầu bảng điều khiển. |
+| Chấm phiên WFX chưa xanh | Mở trình duyệt, đăng nhập WFX rồi bấm nút kiểm tra lại. |
+| Thông báo ở thanh dưới bị cắt mất phần cuối | Rê chuột lên dòng thông báo để xem nguyên câu. |
