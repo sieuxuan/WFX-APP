@@ -5,15 +5,15 @@ from wfx_panel.version import APP_VERSION, DISPLAY_VERSION, RELEASE_TAG
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_public_version_is_1_1_3():
-    assert APP_VERSION == "1.1.3"
-    assert DISPLAY_VERSION == "1.1.3"
-    assert RELEASE_TAG == "v1.1.3"
+def test_public_version_is_1_1_4():
+    assert APP_VERSION == "1.1.4"
+    assert DISPLAY_VERSION == "1.1.4"
+    assert RELEASE_TAG == "v1.1.4"
 
 
 def test_windows_build_embeds_release_version():
     spec = (ROOT / "wfx_panel" / "wfx-panel.spec").read_text(encoding="utf-8")
     info = (ROOT / "wfx_panel" / "version_info.txt").read_text(encoding="utf-8")
     assert 'version="version_info.txt"' in spec
-    assert "ProductVersion', '1.1.3" in info
-    assert "prodvers=(1, 1, 3, 0)" in info
+    assert "ProductVersion', '1.1.4" in info
+    assert "prodvers=(1, 1, 4, 0)" in info
