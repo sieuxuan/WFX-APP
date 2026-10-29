@@ -822,6 +822,49 @@ def test_auto_add_po_recovers_once_when_popup_document_changes(monkeypatch):
     assert any("nhận kết quả từ frame mới" in message for message in logs)
 
 
+def test_popup_recovery_window_never_exceeds_the_configured_timeout(monkeypatch):
+    # CI 3.12 (run 40823535251): khi đồng hồ chưa nhích giữa hai lần đọc,
+    # (t + 40) - t làm tròn thành 40.000000000000014 > 40.
+    import types
+
+    from wfx_panel.automation.sale_asn_create import po as po_module
+
+    frozen = 123.456
+    assert (frozen + 40) - frozen > 40
+    patch_automation(
+        monkeypatch, po_module, "time", types.SimpleNamespace(monotonic=lambda: frozen)
+    )
+    stale_frame = object()
+    fresh_frame = object()
+    windows: list[float] = []
+
+    def fake_auto(frame, _row, _log, *, final, search_fields):
+        if frame is stale_frame:
+            raise sale_asn_create._POFrameChanged
+        return True, [], "PO"
+
+    def fake_frame(_context, _selector, timeout_s):
+        windows.append(timeout_s)
+        return object(), fresh_frame
+
+    patch_automation(monkeypatch, po_module, "_auto_add_po", fake_auto)
+    patch_automation(monkeypatch, po_module, "_frame_with_selector", fake_frame)
+
+    po_module._auto_add_po_with_frame_retry(
+        object(),
+        stale_frame,
+        {"source_row": 2, "po_no": "PO-1"},
+        lambda _message: None,
+        final=False,
+        search_fields=("po",),
+    )
+
+    assert windows and all(
+        0 < window <= sale_asn_create.PO_POPUP_RECOVERY_TIMEOUT_SECONDS
+        for window in windows
+    )
+
+
 def test_auto_add_po_uses_results_already_rendered_after_document_change(monkeypatch):
     context = object()
     stale_frame = object()

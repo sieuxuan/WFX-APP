@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.1.4",
+    "date": "2026-10-29",
+    "highlights": [
+      {
+        "title": "Kiểm tra cập nhật ổn định hơn",
+        "body": "Khi nhiều máy dùng chung mạng làm GitHub tạm giới hạn lượt kiểm tra, ứng dụng tự chuyển sang cách kiểm tra dự phòng thay vì báo Chưa thể kiểm tra. Nếu vẫn chưa kiểm tra được, thông báo nêu rõ lý do như bị giới hạn lượt hay không kết nối được GitHub, kèm hướng xử lý trong mục Cập nhật của Hướng dẫn.",
+        "entry": "su-co-cap-nhat"
+      }
+    ]
+  },
+  {
     "version": "1.1.3",
     "date": "2026-10-29",
     "highlights": [
@@ -15,11 +26,11 @@
       },
       {
         "title": "Catalog: một ô tìm cho cả Code và Buyer Reference",
-      "body": "Không còn phải chọn Article Code hay Buyer Reference trước khi tìm. Gõ Code (kể cả 4 số cuối), Buyer Reference hoặc Article Name vào cùng một ô; ứng dụng tự nhận ra và nếu giá trị khớp đúng một Style trong thư viện Article thì mở thẳng Style đó. Bật Tự mở Catalog khi vào màn này để Catalog và Master được chuẩn bị sẵn ngay khi bạn mở module; ứng dụng bỏ qua nếu tab WFX đang có màn nhập dở.",
-      "entry": "catalog-tim-style"
-    },
-    {
-      "title": "Hàng Gần đây cho các ô tìm",
+        "body": "Không còn phải chọn Article Code hay Buyer Reference trước khi tìm. Gõ Code (kể cả 4 số cuối), Buyer Reference hoặc Article Name vào cùng một ô; ứng dụng tự nhận ra và nếu giá trị khớp đúng một Style trong thư viện Article thì mở thẳng Style đó. Bật Tự mở Catalog khi vào màn này để Catalog và Master được chuẩn bị sẵn ngay khi bạn mở module; ứng dụng bỏ qua nếu tab WFX đang có màn nhập dở.",
+        "entry": "catalog-tim-style"
+      },
+      {
+        "title": "Hàng Gần đây cho các ô tìm",
         "body": "OC, Sample, Sale ASN, RMPO, Tìm GRN, Indent, Advance PR, Supplier Inv, Expense Inv, Supplier và Buyer có hàng Gần đây giống Catalog. Bấm một lượt tìm cũ để điền lại đủ điều kiện và chạy lại ngay.",
         "entry": "hang-ngay-tim-module"
       },
