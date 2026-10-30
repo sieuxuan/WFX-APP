@@ -332,10 +332,7 @@ body.embed .main { padding-block: 16px 32px; }
 .meter i:nth-child(1) { height: 8px; }
 .meter i:nth-child(2) { height: 12px; }
 .meter i:nth-child(3) { height: 16px; }
-.lv-1 .meter i.on { background: var(--muted); }
-.lv-2 .meter i.on { background: var(--warn); }
-.lv-3 .meter i.on { background: var(--bad); }
-.lv-3 b { color: var(--bad); }
+.meter i.on { background: var(--accent); }
 .status { color: var(--st); }
 .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
 .s-new { --st: var(--st-new); }

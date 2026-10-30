@@ -7,9 +7,11 @@ const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
 const PRIORITY = {
-  nice: { level: 1, label: "Có thì tốt", note: "Tiện hơn, nhưng chưa gấp" },
-  need: { level: 2, label: "Cần", note: "Làm thường xuyên, đang tốn thời gian" },
-  urgent: { level: 3, label: "Rất gấp", note: "Đang ảnh hưởng hoặc chặn công việc" },
+  // Khóa giữ nguyên trong D1; chỉ nhãn đổi. Đây là đề xuất tính năng nên đo
+  // mức có ích, không đo độ khẩn.
+  nice: { level: 1, label: "Có thì tốt", note: "Tiện hơn, thỉnh thoảng mới dùng" },
+  need: { level: 2, label: "Cần", note: "Dùng thường xuyên, tiết kiệm được thời gian" },
+  urgent: { level: 3, label: "Rất cần", note: "Tốn nhiều thời gian mỗi ngày hoặc dễ sai sót khi làm tay" },
 };
 const STATUS = {
   new: "Mới", reviewing: "Đang xem xét", planned: "Đã lên kế hoạch", done: "Đã có trong app", declined: "Chưa thực hiện",
