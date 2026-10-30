@@ -7,9 +7,9 @@ const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
 const PRIORITY = {
-  nice: { label: "Có thì tốt", note: "Tiện hơn, chưa gấp" },
-  need: { label: "Cần", note: "Làm thường xuyên, tốn thời gian" },
-  urgent: { label: "Rất gấp", note: "Đang ảnh hưởng công việc" },
+  nice: { level: 1, label: "Có thì tốt", note: "Tiện hơn, nhưng chưa gấp" },
+  need: { level: 2, label: "Cần", note: "Làm thường xuyên, đang tốn thời gian" },
+  urgent: { level: 3, label: "Rất gấp", note: "Đang ảnh hưởng hoặc chặn công việc" },
 };
 const STATUS = {
   new: "Mới", reviewing: "Đang xem xét", planned: "Đã lên kế hoạch", done: "Đã có trong app", declined: "Chưa thực hiện",
@@ -443,7 +443,25 @@ function renderRequests() {
 }
 
 const statusPill = (r) => el("span", { class: `pill status s-${statusKey(r)}`, text: STATUS[statusKey(r)] });
-const priorityPill = (r) => (PRIORITY[r.priority] ? el("span", { class: `pill p-${r.priority}`, text: PRIORITY[r.priority].label }) : null);
+// Ảnh thu nhỏ ngay trên dòng đề xuất; bấm để phóng to (nằm trên lớp click của dòng).
+function imageStrip(keys, max) {
+  const shown = keys.slice(0, max);
+  return el("div", { class: "strip" }, shown.map((key, i) => el("button", {
+    type: "button", class: "strip-img", "aria-label": `Phóng to ảnh ${i + 1}`,
+    onclick: (e) => { e.stopPropagation(); openLightbox(`/api/images/${key}`); },
+  }, el("img", { src: `/api/images/${key}`, alt: "", loading: "lazy" }),
+    i === shown.length - 1 && keys.length > max ? el("span", { class: "more", text: `+${keys.length - max}` }) : null)));
+}
+
+// Mức độ chỉ hiện trong chi tiết: thang 3 nấc + nhãn + giải thích, không đưa ra danh sách.
+function priorityBlock(r) {
+  const p = PRIORITY[r.priority];
+  if (!p) return null;
+  return el("div", { class: `priority lv-${p.level}` },
+    el("span", { class: "meter", "aria-hidden": "true" }, [1, 2, 3].map((n) => el("i", { class: n <= p.level ? "on" : null }))),
+    el("span", {}, el("b", { text: p.label }), el("span", { class: "hint", text: ` · ${p.note}` }))
+  );
+}
 const who = (name, team) => [name, team].filter(Boolean).join(" · ");
 
 function voteButton(r) {
@@ -460,15 +478,16 @@ function ticket(r) {
   const thread = replies(r);
   const mine = state.mine.has(r.id);
   const meta = [mine ? `${r.name} (bạn)` : r.name, r.team, fmtDate(r.created_at),
-    thread.length ? `${thread.length} trả lời` : "", r.images.length ? `${r.images.length} ảnh` : ""].filter(Boolean);
+    thread.length ? `${thread.length} trả lời` : ""].filter(Boolean);
   return el("article", { class: `ticket s-${statusKey(r)}${r.status === "done" ? " is-done" : ""}` },
     voteButton(r),
     el("div", { class: "ticket-body" },
       el("button", { type: "button", class: "ticket-title", text: r.title, onclick: () => openDetail(r.id) }),
       el("p", { class: "wish", text: r.wish }),
+      r.images.length ? imageStrip(r.images, 4) : null,
       el("div", { class: "meta", text: meta.join(" · ") })
     ),
-    el("div", { class: "ticket-side" }, statusPill(r), r.priority === "urgent" ? priorityPill(r) : null)
+    el("div", { class: "ticket-side" }, statusPill(r))
   );
 }
 
@@ -506,8 +525,10 @@ $("#req-module").addEventListener("change", (e) => { state.filter.module = e.tar
 /* ---------------- Đề xuất: chi tiết + trao đổi ---------------- */
 
 const detailDialog = $("#detail-dialog");
-const KIND_TEXT = { done: "đã đánh dấu xong", reopen: "đã mở lại đề xuất", status: "đã đổi trạng thái" };
-const kindText = (c) => (c.kind === "status" ? `${KIND_TEXT.status} sang “${STATUS[c.status] || c.status}”` : KIND_TEXT[c.kind] || "");
+const KIND_TEXT = { done: "đã đánh dấu xong", reopen: "đã mở lại đề xuất", status: "đã đổi trạng thái", priority: "đã đổi mức độ cần thiết" };
+const kindText = (c) => (c.kind === "status" ? `${KIND_TEXT.status} sang “${STATUS[c.status] || c.status}”`
+  : c.kind === "priority" ? `${KIND_TEXT.priority} sang “${PRIORITY[c.status]?.label || c.status}”`
+    : KIND_TEXT[c.kind] || "");
 const initials = (name) => name.split(/\s+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, "")).filter(Boolean)
   .slice(0, 3).slice(-2).map((w) => w[0]).join("").toUpperCase() || "?";
 
@@ -541,8 +562,7 @@ function renderDetail() {
   const effort = [FREQ[r.frequency], r.minutes ? `khoảng ${r.minutes} phút mỗi lần` : ""].filter(Boolean).join(", ");
   const doneEvent = [...r.comments].reverse().find((c) => c.kind === "done");
 
-  fill($("#detail-badges"), el("span", { class: "code", text: r.id }), statusPill(r),
-    r.priority === "urgent" ? priorityPill(r) : null, el("span", { class: "pill module", text: r.module }));
+  fill($("#detail-badges"), el("span", { class: "code", text: r.id }), statusPill(r), el("span", { class: "pill module", text: r.module }));
 
   const keepDraft = $("#reply-text")?.value || "";
   const body = $("#detail-body");
@@ -555,13 +575,13 @@ function renderDetail() {
           el("div", { class: "facts" },
             el("span", {}, "Người gửi ", el("b", { text: who(r.name, r.team) })),
             el("span", {}, "Gửi lúc ", el("b", { text: fmtDate(r.created_at, true) })),
-            PRIORITY[r.priority] ? el("span", {}, "Mức độ ", el("b", { text: PRIORITY[r.priority].label })) : null,
             effort ? el("span", {}, "Tần suất ", el("b", { text: effort })) : null
           )
         )
       ),
       r.status === "done" ? el("div", { class: "done-banner" },
         doneEvent ? `${who(doneEvent.name, doneEvent.team)} đã đánh dấu xong lúc ${fmtDate(doneEvent.created_at, true)}.` : "Đề xuất này đã có trong app.") : null,
+      PRIORITY[r.priority] ? el("div", { class: "block" }, el("h3", { text: "Mức độ cần thiết" }), priorityBlock(r)) : null,
       el("div", { class: "block" }, el("h3", { text: "Mong muốn" }), el("p", { text: r.wish })),
       r.current_flow ? el("div", { class: "block" }, el("h3", { text: "Hiện tại đang làm" }), el("p", { text: r.current_flow })) : null,
       r.images.length ? el("div", { class: "block" }, el("h3", { text: "Ảnh minh họa" }),
@@ -677,16 +697,28 @@ async function postComment(r, payload) {
 /* ---------------- Đề xuất: quản trị ---------------- */
 
 function adminRow(r) {
-  const select = el("select", { "aria-label": `Trạng thái ${r.id}` },
+  const select = el("select", { id: "admin-status" },
     Object.entries(STATUS).map(([k, t]) => el("option", { value: k, text: t, selected: k === r.status })));
+  const prio = el("select", { id: "admin-priority" },
+    Object.entries(PRIORITY).map(([k, p]) => el("option", { value: k, text: p.label, selected: k === r.priority })));
   const msg = el("span", { class: "form-msg" });
-  const apply = el("button", { type: "button", class: "btn btn-sm", text: "Đổi trạng thái", onclick: async () => {
-    if (select.value === r.status) { msg.textContent = "Trạng thái không đổi."; return; }
+  // Một nút lưu cả hai: mỗi thay đổi là một dòng riêng trong luồng trao đổi;
+  // nội dung ô trả lời đi kèm thay đổi đầu tiên.
+  const apply = el("button", { type: "button", class: "btn btn-sm btn-primary", text: "Lưu thay đổi", onclick: async () => {
+    const changes = [];
+    if (select.value !== r.status) changes.push({ action: "status", status: select.value });
+    if (prio.value !== r.priority) changes.push({ action: "priority", priority: prio.value });
+    if (!changes.length) { msg.textContent = "Chưa có gì thay đổi."; msg.className = "form-msg"; return; }
     apply.disabled = true;
     const text = $("#reply-text");
-    const ok = await postComment(r, { action: "status", status: select.value, body: text ? text.value : "", name: state.identity.name || ROLE_LABEL.admin, team: state.identity.team });
+    const author = { name: state.identity.name || ROLE_LABEL.admin, team: state.identity.team };
+    let ok = true;
+    for (const [i, change] of changes.entries()) {
+      ok = await postComment(r, { ...change, ...author, body: i === 0 && text ? text.value : "" });
+      if (!ok) break;
+    }
     apply.disabled = false;
-    if (ok) { toast(`Đã đổi trạng thái ${r.id}`); loadRequests(true); }
+    if (ok) { if (text) text.value = ""; toast(`Đã lưu thay đổi ${r.id}`); loadRequests(true); }
   } });
   let armed = false;
   const del = el("button", { type: "button", class: "btn btn-sm btn-danger", text: "Xóa đề xuất", onclick: async () => {
@@ -696,8 +728,10 @@ function adminRow(r) {
     if (ok) { toast(`Đã xóa ${r.id}`); detailDialog.close(); loadRequests(true); }
   } });
   return el("div", { class: "admin-row" },
-    el("span", { class: "hint", text: "Quản trị: đổi trạng thái gửi kèm nội dung ô trả lời phía trên (nếu có)." }),
-    select, apply, del, msg);
+    el("span", { class: "hint", text: "Quản trị: nội dung ô trả lời phía trên (nếu có) được gửi kèm thay đổi." }),
+    el("label", { class: "admin-field" }, el("span", { text: "Trạng thái" }), select),
+    el("label", { class: "admin-field" }, el("span", { text: "Mức độ" }), prio),
+    apply, el("span", { class: "spacer" }), del, msg);
 }
 
 async function adminCall(url, init, msgNode) {
@@ -893,9 +927,9 @@ form.addEventListener("submit", async (e) => {
 /* ---------------- Xem ảnh ---------------- */
 
 const lightbox = $("#lightbox");
-function openLightbox(src) { $("#lightbox-img").src = src; lightbox.hidden = false; }
-lightbox.addEventListener("click", () => { lightbox.hidden = true; });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") lightbox.hidden = true; });
+// <dialog> để nằm trên cả hộp chi tiết đang mở; Esc chỉ đóng ảnh, không đóng hộp bên dưới.
+function openLightbox(src) { $("#lightbox-img").src = src; if (!lightbox.open) lightbox.showModal(); }
+lightbox.addEventListener("click", () => lightbox.close());
 
 /* ---------------- Bấm nền tối để đóng hộp thoại ---------------- */
 
@@ -921,13 +955,19 @@ closeOnBackdrop(adminDialog, () => Boolean($("#admin-key").value));
 
 /* ---------------- Giao diện sáng/tối ---------------- */
 
-// Mặc định theo hệ điều hành; bấm nút thì ghi đè và nhớ trong trình duyệt.
+// Mặc định theo màu hệ thống. Bấm nút để chọn màu ngược lại thì nhớ trong trình
+// duyệt; bấm về đúng màu hệ thống thì bỏ ghi nhớ để trang lại đi theo hệ thống.
 $("#theme-toggle").addEventListener("click", () => {
   const root = document.documentElement;
-  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  const next = dark ? "light" : "dark";
-  root.dataset.theme = next;
-  try { localStorage.setItem("wfx-theme", next); } catch {}
+  const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : systemDark;
+  const nextDark = !dark;
+  try {
+    if (nextDark === systemDark) { delete root.dataset.theme; localStorage.removeItem("wfx-theme"); }
+    else { root.dataset.theme = nextDark ? "dark" : "light"; localStorage.setItem("wfx-theme", root.dataset.theme); }
+  } catch {
+    root.dataset.theme = nextDark ? "dark" : "light";
+  }
 });
 
 /* ---------------- Khởi động ---------------- */

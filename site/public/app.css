@@ -314,8 +314,28 @@ body.embed .main { padding-block: 16px 32px; }
 .code { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .pill.module { padding: 1px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-weight: 500; }
-.p-urgent { padding: 0 8px; border-radius: 999px; background: var(--bad-bg); color: var(--bad); font-size: 12px; }
-.p-need, .p-nice { color: var(--muted); font-weight: 500; }
+/* ảnh thu nhỏ trên dòng đề xuất, nằm trên lớp click của dòng */
+.strip { display: flex; gap: 6px; margin: 4px 0 2px; }
+.strip-img {
+  position: relative; z-index: 1; width: 72px; height: 50px; padding: 0; border-radius: 7px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--surface-2); cursor: zoom-in; flex: none;
+}
+.strip-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.strip-img:hover { border-color: var(--accent); }
+.strip-img .more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .55); color: #fff; font-weight: 700; font-size: 14px; }
+
+/* mức độ cần thiết: thang 3 nấc, chỉ có trong chi tiết */
+.priority { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.priority b { font-weight: 600; }
+.meter { display: inline-flex; gap: 3px; align-items: flex-end; }
+.meter i { width: 6px; border-radius: 2px; background: var(--line-strong); }
+.meter i:nth-child(1) { height: 8px; }
+.meter i:nth-child(2) { height: 12px; }
+.meter i:nth-child(3) { height: 16px; }
+.lv-1 .meter i.on { background: var(--muted); }
+.lv-2 .meter i.on { background: var(--warn); }
+.lv-3 .meter i.on { background: var(--bad); }
+.lv-3 b { color: var(--bad); }
 .status { color: var(--st); }
 .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
 .s-new { --st: var(--st-new); }
@@ -424,7 +444,7 @@ body.embed .main { padding-block: 16px 32px; }
 .role-tag-owner { background: var(--accent-soft); color: var(--accent); }
 .msg.event .avatar { width: 22px; height: 22px; margin: 2px 5px 0; font-size: 11px; border: 0; }
 .msg.event.k-done .avatar { background: var(--good); color: var(--surface); }
-.msg.event.k-reopen .avatar, .msg.event.k-status .avatar { background: var(--surface-2); color: var(--st-reviewing); }
+.msg.event.k-reopen .avatar, .msg.event.k-status .avatar, .msg.event.k-priority .avatar { background: var(--surface-2); color: var(--st-reviewing); }
 .event-line { font-size: 13px; color: var(--text-2); padding-top: 3px; display: grid; gap: 6px; }
 .event-line time { color: var(--muted); }
 .event-line .bubble p { color: var(--text); font-size: 14px; }
@@ -441,9 +461,15 @@ body.embed .main { padding-block: 16px 32px; }
 .admin-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
 .admin-row .hint { flex: 1 1 100%; }
 .admin-row select { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface); }
+.admin-row .spacer { flex: 1; }
+.admin-field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 
-.lightbox { position: fixed; inset: 0; z-index: 60; background: var(--scrim); display: grid; place-items: center; padding: 20px; cursor: zoom-out; }
-.lightbox img { max-height: 100%; border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+.lightbox {
+  border: 0; padding: 0; background: transparent; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px);
+  overflow: visible; cursor: zoom-out;
+}
+.lightbox::backdrop { background: rgba(0, 0, 0, .8); }
+.lightbox img { display: block; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 70;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
