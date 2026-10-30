@@ -287,7 +287,7 @@ async function addComment(request, env, id) {
   if (name.length > LIMITS.name || team.length > LIMITS.team) return fail(400, "Tên hoặc bộ phận quá dài.");
   if (message.length > LIMITS.comment) return fail(400, `Trả lời tối đa ${LIMITS.comment} ký tự.`);
 
-  const row = await env.DB.prepare("SELECT status, owner_hash FROM requests WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT status, priority, owner_hash FROM requests WHERE id = ?").bind(id).first();
   if (!row) return fail(404, "Đề xuất không còn tồn tại.");
 
   const admin = await isAdmin(request, env);
@@ -297,6 +297,7 @@ async function addComment(request, env, id) {
   const role = admin ? "admin" : owner ? "owner" : "user";
 
   let status = "";
+  let priority = "";
   if (action === "comment") {
     if (!message) return fail(400, "Hãy nhập nội dung trả lời.");
   } else if (action === "done" || action === "reopen") {
@@ -307,6 +308,11 @@ async function addComment(request, env, id) {
     if (!admin) return fail(403, "Chỉ quản trị mới đổi trạng thái.");
     status = String(body.status || "");
     if (!STATUSES.has(status)) return fail(400, "Trạng thái không hợp lệ.");
+  } else if (action === "priority") {
+    if (!admin) return fail(403, "Chỉ quản trị mới đổi mức độ cần thiết.");
+    priority = String(body.priority || "");
+    if (!PRIORITIES.has(priority)) return fail(400, "Mức độ cần thiết không hợp lệ.");
+    if (row.priority === priority) return fail(409, "Mức độ cần thiết không đổi.");
   } else {
     return fail(400, "Thao tác không hợp lệ.");
   }
@@ -327,9 +333,14 @@ async function addComment(request, env, id) {
     env.DB.prepare(
       `INSERT INTO comments (request_id, created_at, name, team, role, kind, status, body, ip_hash)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, now, name, team, role, action, status, message, ipHash),
+    // Đổi mức độ dùng lại cột status của comment để ghi mức độ mới.
+    ).bind(id, now, name, team, role, action, status || priority, message, ipHash),
   ];
-  if (status) {
+  if (priority) {
+    statements.push(env.DB.prepare(
+      "UPDATE requests SET priority = ?, updated_at = ? WHERE id = ?"
+    ).bind(priority, now, id));
+  } else if (status) {
     statements.push(env.DB.prepare(
       "UPDATE requests SET status = ?, updated_at = ?, done_at = ? WHERE id = ?"
     ).bind(status, now, status === "done" ? now : null, id));
@@ -337,7 +348,7 @@ async function addComment(request, env, id) {
     statements.push(env.DB.prepare("UPDATE requests SET updated_at = ? WHERE id = ?").bind(now, id));
   }
   await env.DB.batch(statements);
-  return json({ ok: true, role, status: status || row.status }, {}, 201);
+  return json({ ok: true, role, status: status || row.status, priority: priority || row.priority }, {}, 201);
 }
 
 async function deleteRequest(env, id) {
