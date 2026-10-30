@@ -76,6 +76,8 @@ function el(tag, attrs = {}, ...children) {
   for (const child of children.flat()) if (child != null && child !== false) node.append(child);
   return node;
 }
+// replaceChildren() in null thành chữ "null"; el() đã bỏ qua null nên mọi chỗ thay nội dung đều đi qua đây.
+const fill = (node, ...children) => node.replaceChildren(...children.flat().filter((c) => c != null && c !== false));
 const fmtDate = (iso, withTime = false) => {
   if (!iso) return "";
   const d = new Date(iso.length === 10 ? iso + "T00:00:00" : iso);
@@ -165,14 +167,14 @@ async function renderDownload() {
   const content = state.content;
   const latestNotes = content.whats_new[0];
   const side = $("#dl-whatsnew");
-  side.replaceChildren(
+  fill(side,
     el("h2", { text: `Có gì mới ở ${latestNotes.version}` }),
     el("ul", {}, latestNotes.highlights.slice(0, 4).map((h) => el("li", { text: h.title }))),
     el("a", { href: href("/co-gi-moi"), text: "Xem toàn bộ thay đổi" })
   );
   const install = content.entries["bat-dau-cai-dat"];
   if (install) {
-    $("#dl-install").replaceChildren(
+    fill($("#dl-install"),
       el("h2", { text: "Cách cài đặt" }),
       el("div", { class: "prose", html: install.html }),
       el("a", { href: href("/huong-dan/bat-dau-cai-dat"), text: "Mở trong Hướng dẫn sử dụng" })
@@ -183,7 +185,7 @@ async function renderDownload() {
   const release = await loadRelease();
   const actions = $("#dl-actions");
   if (!release.ok) {
-    actions.replaceChildren(
+    fill(actions,
       el("a", { class: "btn btn-primary", href: "https://github.com/sieuxuan/WFX-APP/releases/latest", target: "_blank", rel: "noopener", text: "Mở trang phát hành" })
     );
     $("#dl-meta").textContent = release.error || "Chưa đọc được bản phát hành mới nhất.";
@@ -199,8 +201,8 @@ async function renderDownload() {
     buttons.push(el("a", { class: "btn", href: release.portable.url, target: "_blank", rel: "noopener" },
       "Bản portable", el("small", { text: `.zip · ${fmtSize(release.portable.size)}` })));
   }
-  actions.replaceChildren(...buttons);
-  $("#dl-meta").replaceChildren(
+  fill(actions, ...buttons);
+  fill($("#dl-meta"),
     `Phát hành ngày ${fmtDate(release.published_at)}. Windows 10/11 64-bit, cài cho riêng tài khoản của bạn, không cần quyền quản trị, tự cập nhật. Bản portable chỉ cần giải nén rồi chạy `,
     el("b", { text: "WFX-Panel.exe" }), "."
   );
@@ -227,7 +229,7 @@ function renderChangelog() {
     )))
   );
   const recent = versions.slice(0, 6).map(card);
-  list.replaceChildren(...recent);
+  fill(list, ...recent);
   if (versions.length > 6) {
     list.append(el("li", {}, el("details", { class: "older" },
       el("summary", { text: `Các bản cũ hơn (${versions.length - 6})` }),
@@ -242,7 +244,7 @@ function renderManualToc(currentId) {
   const { chapters, entries } = state.content;
   const currentChapter = entries[currentId]?.chapter;
   const toc = $("#manual-toc");
-  toc.replaceChildren(
+  fill(toc,
     el("a", { href: href("/huong-dan"), text: "Tổng quan", "aria-current": currentId === "" ? "page" : null }),
     ...chapters.map((chapter) => el("details", { open: chapter.id === currentChapter || !currentChapter },
       el("summary", { text: chapter.title }),
@@ -262,7 +264,7 @@ function renderManual(sub) {
 
   const entry = entries[sub];
   if (!entry) {
-    body.replaceChildren(
+    fill(body,
       el("h1", { text: "Hướng dẫn sử dụng" }),
       el("p", { class: "lead", text: `Giống cửa sổ Hướng dẫn trong app bản ${state.content.version}. Chọn một chương, hoặc gõ vào ô tìm kiếm (có dấu hay không dấu đều được).` }),
       el("div", { class: "chapter-grid" }, chapters.map((chapter) => el("a", { class: "chapter-card", href: href(`/huong-dan/${chapter.entries[0]}`) },
@@ -276,7 +278,7 @@ function renderManual(sub) {
   const index = order.indexOf(entry.id);
   const prev = entries[order[index - 1]];
   const next = entries[order[index + 1]];
-  body.replaceChildren(
+  fill(body,
     el("span", { class: "crumb", text: chapter ? chapter.title : "" }),
     el("h1", { text: entry.title }),
     entry.summary ? el("p", { class: "lead", text: entry.summary }) : null,
@@ -299,7 +301,7 @@ function renderErrorTable(body, query = "") {
     const again = $("input[type=search]", body);
     again.focus(); again.setSelectionRange(pos, pos);
   });
-  body.replaceChildren(
+  fill(body,
     el("span", { class: "crumb", text: "Cài đặt, cập nhật và xử lý sự cố" }),
     el("h1", { text: "Tra mã lỗi" }),
     el("p", { class: "lead", text: "Thanh trạng thái của app hiện mã lỗi khi một thao tác không thành công. Tìm mã đó ở đây để biết nguyên nhân và cách xử lý." }),
@@ -332,7 +334,7 @@ $("#manual-search").addEventListener("input", (event) => {
   const chapterTitle = Object.fromEntries(chapters.map((c) => [c.id, c.title]));
   const hits = Object.values(entries).filter((e) => tokens.every((t) => e.search.includes(t))).slice(0, 10);
   const errorHits = errors.filter((r) => tokens.every((t) => r.haystack.includes(t))).slice(0, 4);
-  box.replaceChildren(
+  fill(box,
     ...hits.map((e) => el("a", { href: href(`/huong-dan/${e.id}`) }, el("b", { text: e.title }), el("small", { text: chapterTitle[e.chapter] }))),
     ...errorHits.map((r) => el("a", { href: href("/huong-dan/ma-loi") }, el("b", { text: r.code }), el("small", { text: r.title }))),
     hits.length || errorHits.length ? null : el("span", { class: "hint", text: "Không tìm thấy mục nào." })
@@ -351,7 +353,7 @@ async function loadRequests(force = false) {
     if (!data.ok) throw new Error(data.error);
     state.requests = data.requests;
   } catch {
-    $("#req-list").replaceChildren(el("div", { class: "empty" },
+    fill($("#req-list"), el("div", { class: "empty" },
       el("b", { text: "Chưa tải được danh sách đề xuất." }),
       el("span", { text: "Kiểm tra kết nối mạng rồi tải lại trang." })));
     return;
@@ -377,7 +379,7 @@ function renderRequests() {
     ["done", "Đã xong", all.filter((r) => r.status === "done").length],
     ["mine", "Của tôi", all.filter((r) => state.mine.has(r.id)).length],
   ];
-  $("#status-tabs").replaceChildren(...tabs.map(([key, label, n]) => el("button", {
+  fill($("#status-tabs"), ...tabs.map(([key, label, n]) => el("button", {
     type: "button", class: "tab", "aria-pressed": String(status === key),
     onclick: () => { state.filter.status = key; renderRequests(); },
   }, label, el("em", { text: String(n) }))));
@@ -387,7 +389,7 @@ function renderRequests() {
   const modules = moduleOrder().filter((m) => byModule.has(m));
   for (const m of byModule.keys()) if (!modules.includes(m)) modules.push(m);
   if (module !== "all" && !byModule.has(module)) state.filter.module = "all";
-  $("#req-module").replaceChildren(
+  fill($("#req-module"),
     el("option", { value: "all", text: "Mọi module" }),
     ...modules.map((m) => el("option", { value: m, text: `${m} (${byModule.get(m)})`, selected: m === state.filter.module }))
   );
@@ -414,14 +416,14 @@ function renderRequests() {
 
   const list = $("#req-list");
   if (!all.length) {
-    list.replaceChildren(el("div", { class: "empty" },
+    fill(list, el("div", { class: "empty" },
       el("b", { text: "Chưa có đề xuất nào." }),
       el("span", { text: "Đề xuất bạn gửi sẽ hiện ở đây, xếp theo module, để cả nhóm cùng theo dõi." }),
       el("button", { type: "button", class: "btn btn-primary", text: "Gửi đề xuất đầu tiên", onclick: openForm })));
     return;
   }
   if (!items.length) {
-    list.replaceChildren(el("div", { class: "empty" },
+    fill(list, el("div", { class: "empty" },
       el("b", { text: "Không có đề xuất nào khớp bộ lọc." }),
       el("button", { type: "button", class: "btn btn-sm", text: "Xem tất cả", onclick: () => {
         state.filter = { ...state.filter, status: "all", module: "all", q: "" };
@@ -434,7 +436,7 @@ function renderRequests() {
   for (const r of items) { if (!groups.has(r.module)) groups.set(r.module, []); groups.get(r.module).push(r); }
   const order = moduleOrder();
   const orderedGroups = [...groups.keys()].sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
-  list.replaceChildren(...orderedGroups.map((name) => el("section", { class: "group" },
+  fill(list, ...orderedGroups.map((name) => el("section", { class: "group" },
     el("div", { class: "group-head" }, el("h2", { text: name }), el("span", { text: String(groups.get(name).length) })),
     el("div", { class: "rows" }, groups.get(name).map(ticket))
   )));
@@ -539,12 +541,12 @@ function renderDetail() {
   const effort = [FREQ[r.frequency], r.minutes ? `khoảng ${r.minutes} phút mỗi lần` : ""].filter(Boolean).join(", ");
   const doneEvent = [...r.comments].reverse().find((c) => c.kind === "done");
 
-  $("#detail-badges").replaceChildren(el("span", { class: "code", text: r.id }), statusPill(r),
+  fill($("#detail-badges"), el("span", { class: "code", text: r.id }), statusPill(r),
     r.priority === "urgent" ? priorityPill(r) : null, el("span", { class: "pill module", text: r.module }));
 
   const keepDraft = $("#reply-text")?.value || "";
   const body = $("#detail-body");
-  body.replaceChildren(
+  fill(body,
     el("div", { class: "detail-grid" },
       el("div", { class: "detail-top" },
         voteButton(r),
@@ -576,14 +578,17 @@ function renderDetail() {
   );
 }
 
+const ROLE_LABEL = { admin: "Quản trị", owner: "Người gửi" };
+
 function threadItem(c) {
-  const roleTag = c.role === "admin" ? el("span", { class: "role role-tag-admin", text: "Quản trị" })
-    : c.role === "owner" ? el("span", { class: "role role-tag-owner", text: "Người gửi" }) : null;
+  // Quản trị chưa nhập tên thì tên gửi đi chính là "Quản trị": không lặp nhãn.
+  const roleTag = ROLE_LABEL[c.role] && c.name !== ROLE_LABEL[c.role]
+    ? el("span", { class: `role role-tag-${c.role}`, text: ROLE_LABEL[c.role] }) : null;
   if (c.kind !== "comment") {
     return el("li", { class: `msg event k-${c.kind}` },
       el("span", { class: "avatar", "aria-hidden": "true", text: c.kind === "done" ? "✓" : "↺" }),
       el("div", { class: "event-line" },
-        el("span", {}, el("b", { text: who(c.name, c.team) }), " ", roleTag, " ", kindText(c), " · ", el("time", { datetime: c.created_at, text: fmtDate(c.created_at, true) })),
+        el("span", {}, el("b", { text: who(c.name, c.team) }), roleTag ? [" ", roleTag] : null, " ", kindText(c), " · ", el("time", { datetime: c.created_at, text: fmtDate(c.created_at, true) })),
         c.body ? el("div", { class: "bubble" }, el("p", { text: c.body })) : null
       )
     );
@@ -604,9 +609,13 @@ function composer(r, canMark, keepDraft) {
   const nameInput = el("input", { id: "reply-name", type: "text", maxlength: "80", placeholder: "Tên của bạn", value: id.name, autocomplete: "name" });
   const teamInput = el("input", { id: "reply-team", type: "text", maxlength: "60", placeholder: "Bộ phận / Team", value: id.team });
   const editing = { on: !hasIdentity };
+  // Lưu ngay khi gõ để lần sau (và form gửi đề xuất) tự điền lại.
+  const remember = () => saveIdentity(nameInput.value, teamInput.value);
+  nameInput.addEventListener("input", remember);
+  teamInput.addEventListener("input", remember);
   const identityBox = el("div", { class: "identity" });
   const paintIdentity = () => {
-    identityBox.replaceChildren(...(editing.on
+    fill(identityBox, ...(editing.on
       ? [el("div", { class: "grid-2" }, nameInput, teamInput)]
       : [el("span", {}, "Trả lời với tên ", el("b", { text: who(state.identity.name, state.identity.team) }), state.adminKey ? " (Quản trị)" : state.owner[r.id] ? " (Người gửi)" : ""),
         el("button", { type: "button", class: "link-btn", text: "Đổi", onclick: () => { editing.on = true; paintIdentity(); nameInput.focus(); } })]));
@@ -675,7 +684,7 @@ function adminRow(r) {
     if (select.value === r.status) { msg.textContent = "Trạng thái không đổi."; return; }
     apply.disabled = true;
     const text = $("#reply-text");
-    const ok = await postComment(r, { action: "status", status: select.value, body: text ? text.value : "", name: state.identity.name || "Quản trị", team: state.identity.team });
+    const ok = await postComment(r, { action: "status", status: select.value, body: text ? text.value : "", name: state.identity.name || ROLE_LABEL.admin, team: state.identity.team });
     apply.disabled = false;
     if (ok) { toast(`Đã đổi trạng thái ${r.id}`); loadRequests(true); }
   } });
@@ -735,7 +744,7 @@ const draftFields = ["name", "team", "title", "module", "wish", "current_flow", 
 
 function fillModuleSelect() {
   const select = $("#f-module");
-  select.replaceChildren(el("option", { value: "", text: "Chọn module" }),
+  fill(select, el("option", { value: "", text: "Chọn module" }),
     ...state.content.module_groups.map((g) => el("optgroup", { label: g.name },
       g.modules.map((m) => el("option", { value: m.name, text: m.name, title: m.description })))));
   const prio = $("#f-priority");
@@ -766,16 +775,28 @@ function updateCounter() {
   const n = $("#f-wish").value.length;
   $("#wish-count").textContent = `${n.toLocaleString("vi-VN")} / 3.000`;
 }
-form.addEventListener("input", () => { saveDraft(); updateCounter(); });
+form.addEventListener("input", (e) => {
+  saveDraft(); updateCounter();
+  if (e.target === form.elements.name || e.target === form.elements.team) saveIdentity(form.elements.name.value, form.elements.team.value);
+});
 
 function setFormMsg(text, kind = "") {
   const m = $("#form-msg");
   m.textContent = text; m.className = `form-msg${kind ? " " + kind : ""}`;
 }
 
+let formOpenedWith = "";
+const formSnapshot = () => JSON.stringify([...draftFields.map((n) => form.elements[n].value), form.elements.priority.value, state.pending.length]);
+
 function openForm() {
   setFormMsg("");
-  if (!formDialog.open) formDialog.showModal();
+  // Tên + bộ phận đã nhập ở ô trả lời cũng dùng cho form gửi.
+  if (!form.elements.name.value && state.identity.name) {
+    form.elements.name.value = state.identity.name;
+    form.elements.team.value = state.identity.team;
+    saveDraft();
+  }
+  if (!formDialog.open) { formDialog.showModal(); formOpenedWith = formSnapshot(); }
   if (!form.elements.name.value) form.elements.name.focus();
 }
 $("#open-form").addEventListener("click", openForm);
@@ -808,7 +829,7 @@ async function addFiles(files) {
   setFormMsg(notes.join(" "), notes.length ? "error" : "");
 }
 function renderPending() {
-  $("#pending").replaceChildren(...state.pending.map((p, i) => el("div", { class: "thumb" },
+  fill($("#pending"), ...state.pending.map((p, i) => el("div", { class: "thumb" },
     el("img", { src: p.url, alt: `Ảnh đính kèm ${i + 1}` }),
     el("button", { type: "button", class: "remove", "aria-label": `Bỏ ảnh ${i + 1}`, text: "×", onclick: () => {
       URL.revokeObjectURL(p.url); state.pending.splice(i, 1); renderPending();
@@ -876,6 +897,28 @@ function openLightbox(src) { $("#lightbox-img").src = src; lightbox.hidden = fal
 lightbox.addEventListener("click", () => { lightbox.hidden = true; });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") lightbox.hidden = true; });
 
+/* ---------------- Bấm nền tối để đóng hộp thoại ---------------- */
+
+// Chỉ đóng khi không làm mất gì; đang nhập dở thì giữ hộp và nhắc dùng nút ×.
+function closeOnBackdrop(dialog, isDirty) {
+  const outside = (e) => {
+    if (e.target !== dialog) return false;
+    const box = dialog.getBoundingClientRect();
+    return e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
+  };
+  let pressed = false;
+  dialog.addEventListener("pointerdown", (e) => { pressed = outside(e); });
+  dialog.addEventListener("click", (e) => {
+    if (!pressed || !outside(e)) return;
+    pressed = false;
+    if (isDirty()) toast("Bạn đang nhập dở. Bấm × nếu muốn đóng.");
+    else dialog.close();
+  });
+}
+closeOnBackdrop(detailDialog, () => Boolean($("#reply-text")?.value.trim()));
+closeOnBackdrop(formDialog, () => formSnapshot() !== formOpenedWith);
+closeOnBackdrop(adminDialog, () => Boolean($("#admin-key").value));
+
 /* ---------------- Giao diện sáng/tối ---------------- */
 
 // Mặc định theo hệ điều hành; bấm nút thì ghi đè và nhớ trong trình duyệt.
@@ -893,7 +936,7 @@ $("#theme-toggle").addEventListener("click", () => {
   try {
     await loadContent();
   } catch {
-    $("#main").replaceChildren(el("div", { class: "empty" }, el("b", { text: "Chưa tải được nội dung trang." }), el("span", { text: "Tải lại trang sau ít phút." })));
+    fill($("#main"), el("div", { class: "empty" }, el("b", { text: "Chưa tải được nội dung trang." }), el("span", { text: "Tải lại trang sau ít phút." })));
     return;
   }
   render();
