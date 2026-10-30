@@ -145,7 +145,6 @@ async function loadContent() {
   const response = await fetch("/content/site.json");
   if (!response.ok) throw new Error("content " + response.status);
   state.content = await response.json();
-  $("#brand-version").textContent = `Hướng dẫn cho bản ${state.content.version}`;
   fillModuleSelect();
 }
 
@@ -167,16 +166,16 @@ async function renderDownload() {
   const latestNotes = content.whats_new[0];
   const side = $("#dl-whatsnew");
   side.replaceChildren(
-    el("span", { class: "eyebrow", text: `Có gì mới ở ${latestNotes.version}` }),
-    el("ul", {}, latestNotes.highlights.slice(0, 4).map((h) => el("li", {}, el("b", { text: h.title })))),
-    el("a", { href: href("/co-gi-moi"), text: "Xem toàn bộ thay đổi →" })
+    el("h2", { text: `Có gì mới ở ${latestNotes.version}` }),
+    el("ul", {}, latestNotes.highlights.slice(0, 4).map((h) => el("li", { text: h.title }))),
+    el("a", { href: href("/co-gi-moi"), text: "Xem toàn bộ thay đổi" })
   );
   const install = content.entries["bat-dau-cai-dat"];
   if (install) {
     $("#dl-install").replaceChildren(
       el("h2", { text: "Cách cài đặt" }),
       el("div", { class: "prose", html: install.html }),
-      el("a", { href: href("/huong-dan/bat-dau-cai-dat"), text: "Mở trong Hướng dẫn sử dụng →" })
+      el("a", { href: href("/huong-dan/bat-dau-cai-dat"), text: "Mở trong Hướng dẫn sử dụng" })
     );
     wrapTables($("#dl-install"));
   }
@@ -202,7 +201,7 @@ async function renderDownload() {
   }
   actions.replaceChildren(...buttons);
   $("#dl-meta").replaceChildren(
-    `Phát hành ngày ${fmtDate(release.published_at)}. Nên dùng bộ cài: app tự nâng cấp và giữ nguyên lối tắt. Bản portable chỉ cần giải nén rồi chạy `,
+    `Phát hành ngày ${fmtDate(release.published_at)}. Windows 10/11 64-bit, cài cho riêng tài khoản của bạn, không cần quyền quản trị, tự cập nhật. Bản portable chỉ cần giải nén rồi chạy `,
     el("b", { text: "WFX-Panel.exe" }), "."
   );
 }
@@ -213,7 +212,7 @@ function renderChangelog() {
   const list = $("#changelog");
   if (list.childElementCount) return;
   const versions = state.content.whats_new;
-  const card = (release, index) => el("li", { class: "card release" },
+  const card = (release, index) => el("li", { class: "release" },
     el("div", { class: "release-tag" },
       el("b", { text: release.version }),
       el("span", { text: fmtDate(release.date) }),
@@ -264,13 +263,11 @@ function renderManual(sub) {
   const entry = entries[sub];
   if (!entry) {
     body.replaceChildren(
-      el("span", { class: "eyebrow", text: `Hướng dẫn sử dụng · bản ${state.content.version}` }),
-      el("h1", { text: "Hướng dẫn sử dụng WFX Smart" }),
-      el("p", { class: "lead", text: "Nội dung giống hệt cửa sổ Manual trong app. Chọn một chương để bắt đầu, hoặc gõ vào ô tìm kiếm (có dấu hay không dấu đều được)." }),
+      el("h1", { text: "Hướng dẫn sử dụng" }),
+      el("p", { class: "lead", text: `Giống cửa sổ Hướng dẫn trong app bản ${state.content.version}. Chọn một chương, hoặc gõ vào ô tìm kiếm (có dấu hay không dấu đều được).` }),
       el("div", { class: "chapter-grid" }, chapters.map((chapter) => el("a", { class: "chapter-card", href: href(`/huong-dan/${chapter.entries[0]}`) },
         el("b", { text: chapter.title }),
-        el("span", { text: chapter.summary }),
-        el("small", { class: "hint", text: `${chapter.entries.length} mục` })
+        el("span", { text: chapter.summary })
       )))
     );
     return;
@@ -374,33 +371,26 @@ function renderRequests() {
   const all = state.requests || [];
   const { status, module, sort, q } = state.filter;
 
-  const open = all.filter((r) => OPEN_STATUSES.has(r.status)).length;
-  const done = all.filter((r) => r.status === "done").length;
-  const votes = all.reduce((sum, r) => sum + r.votes, 0);
-  $("#req-stats").replaceChildren(
-    stat(all.length, "đề xuất đã gửi"),
-    stat(open, "đang mở", "var(--st-reviewing)"),
-    stat(done, "đã có trong app", "var(--st-done)"),
-    stat(votes, "lượt cùng cần", "var(--accent)")
-  );
-
-  const statusChips = [
+  const tabs = [
     ["all", "Tất cả", all.length],
-    ["open", "Đang mở", open],
-    ["planned", "Đã lên kế hoạch", all.filter((r) => r.status === "planned").length],
-    ["done", "Đã xong", done],
+    ["open", "Đang mở", all.filter((r) => OPEN_STATUSES.has(r.status)).length],
+    ["done", "Đã xong", all.filter((r) => r.status === "done").length],
     ["mine", "Của tôi", all.filter((r) => state.mine.has(r.id)).length],
   ];
-  $("#status-chips").replaceChildren(el("span", { class: "chip-label", text: "Trạng thái" }),
-    ...statusChips.map(([key, label, n]) => chip(label, n, status === key, () => { state.filter.status = key; renderRequests(); })));
+  $("#status-tabs").replaceChildren(...tabs.map(([key, label, n]) => el("button", {
+    type: "button", class: "tab", "aria-pressed": String(status === key),
+    onclick: () => { state.filter.status = key; renderRequests(); },
+  }, label, el("em", { text: String(n) }))));
 
   const byModule = new Map();
   for (const r of all) byModule.set(r.module, (byModule.get(r.module) || 0) + 1);
   const modules = moduleOrder().filter((m) => byModule.has(m));
   for (const m of byModule.keys()) if (!modules.includes(m)) modules.push(m);
-  $("#module-chips").replaceChildren(el("span", { class: "chip-label", text: "Module" }),
-    chip("Tất cả", all.length, module === "all", () => { state.filter.module = "all"; renderRequests(); }),
-    ...modules.map((m) => chip(m, byModule.get(m), module === m, () => { state.filter.module = m; renderRequests(); })));
+  if (module !== "all" && !byModule.has(module)) state.filter.module = "all";
+  $("#req-module").replaceChildren(
+    el("option", { value: "all", text: "Mọi module" }),
+    ...modules.map((m) => el("option", { value: m, text: `${m} (${byModule.get(m)})`, selected: m === state.filter.module }))
+  );
 
   const needle = normalize(q);
   let items = all.filter((r) => {
@@ -426,11 +416,18 @@ function renderRequests() {
   if (!all.length) {
     list.replaceChildren(el("div", { class: "empty" },
       el("b", { text: "Chưa có đề xuất nào." }),
-      el("span", { text: "Bấm “+ Gửi đề xuất mới” để gửi đề xuất đầu tiên. Đề xuất sẽ hiện ở đây, xếp theo module, kèm trạng thái và trao đổi." })));
+      el("span", { text: "Đề xuất bạn gửi sẽ hiện ở đây, xếp theo module, để cả nhóm cùng theo dõi." }),
+      el("button", { type: "button", class: "btn btn-primary", text: "Gửi đề xuất đầu tiên", onclick: openForm })));
     return;
   }
   if (!items.length) {
-    list.replaceChildren(el("div", { class: "empty" }, el("b", { text: "Không có đề xuất nào khớp bộ lọc." }), el("span", { text: "Chọn “Tất cả” ở cả Trạng thái và Module để xem toàn bộ." })));
+    list.replaceChildren(el("div", { class: "empty" },
+      el("b", { text: "Không có đề xuất nào khớp bộ lọc." }),
+      el("button", { type: "button", class: "btn btn-sm", text: "Xem tất cả", onclick: () => {
+        state.filter = { ...state.filter, status: "all", module: "all", q: "" };
+        $("#req-search").value = "";
+        renderRequests();
+      } })));
     return;
   }
   const groups = new Map();
@@ -438,14 +435,11 @@ function renderRequests() {
   const order = moduleOrder();
   const orderedGroups = [...groups.keys()].sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
   list.replaceChildren(...orderedGroups.map((name) => el("section", { class: "group" },
-    el("div", { class: "group-head" }, el("h2", { text: name }), el("span", { text: `${groups.get(name).length} đề xuất` })),
-    el("div", { class: "cards" }, groups.get(name).map(ticket))
+    el("div", { class: "group-head" }, el("h2", { text: name }), el("span", { text: String(groups.get(name).length) })),
+    el("div", { class: "rows" }, groups.get(name).map(ticket))
   )));
 }
 
-const stat = (n, label, tone) => el("div", { class: "stat", style: tone ? `--tone: ${tone}` : null },
-  el("b", { text: n.toLocaleString("vi-VN") }), el("span", { text: label }));
-const chip = (label, n, pressed, onclick) => el("button", { type: "button", class: "chip", "aria-pressed": String(pressed), onclick }, label, el("em", { text: String(n) }));
 const statusPill = (r) => el("span", { class: `pill status s-${statusKey(r)}`, text: STATUS[statusKey(r)] });
 const priorityPill = (r) => (PRIORITY[r.priority] ? el("span", { class: `pill p-${r.priority}`, text: PRIORITY[r.priority].label }) : null);
 const who = (name, team) => [name, team].filter(Boolean).join(" · ");
@@ -456,27 +450,23 @@ function voteButton(r) {
     type: "button", class: "vote", "aria-pressed": String(voted),
     "aria-label": `${voted ? "Bỏ" : "Đánh dấu"} tôi cũng cần, ${r.votes} người`, title: "Tôi cũng cần tính năng này",
     onclick: (e) => { e.stopPropagation(); toggleVote(r); },
-  }, el("b", { text: String(r.votes) }), el("small", { text: "Cần" }));
+  }, el("span", { html: ARROW_UP }), el("b", { text: String(r.votes) }));
 }
+const ARROW_UP = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2 11 9H1z" fill="currentColor"/></svg>';
 
 function ticket(r) {
   const thread = replies(r);
-  const last = thread[thread.length - 1];
   const mine = state.mine.has(r.id);
+  const meta = [mine ? `${r.name} (bạn)` : r.name, r.team, fmtDate(r.created_at),
+    thread.length ? `${thread.length} trả lời` : "", r.images.length ? `${r.images.length} ảnh` : ""].filter(Boolean);
   return el("article", { class: `ticket s-${statusKey(r)}${r.status === "done" ? " is-done" : ""}` },
     voteButton(r),
     el("div", { class: "ticket-body" },
-      el("div", { class: "ticket-top" }, el("span", { class: "code", text: r.id }), priorityPill(r), statusPill(r)),
       el("button", { type: "button", class: "ticket-title", text: r.title, onclick: () => openDetail(r.id) }),
-      el("div", { class: "meta" }, el("b", { text: mine ? `${r.name} (bạn)` : r.name }), r.team ? ` · ${r.team}` : "", ` · ${fmtDate(r.created_at)}`),
       el("p", { class: "wish", text: r.wish }),
-      last ? el("div", { class: "last-reply" }, el("b", { text: `${last.name}${last.role === "admin" ? " (Quản trị)" : ""}: ` }), last.body || kindText(last)) : null,
-      el("div", { class: "ticket-foot" },
-        el("span", { text: thread.length ? `${thread.length} trả lời` : "Chưa có trả lời" }),
-        r.images.length ? el("span", { text: `${r.images.length} ảnh` }) : null,
-        el("button", { type: "button", class: "link-btn", text: "Mở trao đổi →", onclick: () => openDetail(r.id) })
-      )
-    )
+      el("div", { class: "meta", text: meta.join(" · ") })
+    ),
+    el("div", { class: "ticket-side" }, statusPill(r), r.priority === "urgent" ? priorityPill(r) : null)
   );
 }
 
@@ -509,6 +499,7 @@ function rerender() {
 
 $("#req-search").addEventListener("input", (e) => { state.filter.q = e.target.value; renderRequests(); });
 $("#req-sort").addEventListener("change", (e) => { state.filter.sort = e.target.value; renderRequests(); });
+$("#req-module").addEventListener("change", (e) => { state.filter.module = e.target.value; renderRequests(); });
 
 /* ---------------- Đề xuất: chi tiết + trao đổi ---------------- */
 
@@ -548,7 +539,8 @@ function renderDetail() {
   const effort = [FREQ[r.frequency], r.minutes ? `khoảng ${r.minutes} phút mỗi lần` : ""].filter(Boolean).join(", ");
   const doneEvent = [...r.comments].reverse().find((c) => c.kind === "done");
 
-  $("#detail-badges").replaceChildren(el("span", { class: "code", text: r.id }), statusPill(r), priorityPill(r), el("span", { class: "pill module", text: r.module }));
+  $("#detail-badges").replaceChildren(el("span", { class: "code", text: r.id }), statusPill(r),
+    r.priority === "urgent" ? priorityPill(r) : null, el("span", { class: "pill module", text: r.module }));
 
   const keepDraft = $("#reply-text")?.value || "";
   const body = $("#detail-body");
@@ -561,6 +553,7 @@ function renderDetail() {
           el("div", { class: "facts" },
             el("span", {}, "Người gửi ", el("b", { text: who(r.name, r.team) })),
             el("span", {}, "Gửi lúc ", el("b", { text: fmtDate(r.created_at, true) })),
+            PRIORITY[r.priority] ? el("span", {}, "Mức độ ", el("b", { text: PRIORITY[r.priority].label })) : null,
             effort ? el("span", {}, "Tần suất ", el("b", { text: effort })) : null
           )
         )
@@ -574,8 +567,8 @@ function renderDetail() {
           type: "button", class: "thumb", "aria-label": `Phóng to ảnh ${i + 1}`, onclick: () => openLightbox(`/api/images/${key}`),
         }, el("img", { src: `/api/images/${key}`, alt: `Ảnh minh họa ${i + 1}`, loading: "lazy" }))))) : null
     ),
-    el("div", { class: "block" },
-      el("h3", { text: `Trao đổi (${replies(r).length})` }),
+    el("div", { class: "block thread-block" },
+      el("h3", { text: replies(r).length ? `Trao đổi (${replies(r).length})` : "Trao đổi" }),
       r.comments.length ? el("ol", { class: "thread" }, r.comments.map(threadItem)) : el("p", { class: "thread-empty", text: "Chưa có trả lời nào. Hãy là người đầu tiên góp ý hoặc hỏi thêm." })
     ),
     composer(r, canMark, keepDraft),
@@ -649,7 +642,7 @@ function composer(r, canMark, keepDraft) {
       canMark && r.status === "done" ? el("button", { type: "button", class: "btn btn-sm", text: "Mở lại", onclick: () => send("reopen") }) : null,
       el("button", { type: "button", class: "btn btn-sm btn-primary", text: "Gửi trả lời", onclick: () => send("comment") })
     ),
-    canMark ? null : el("p", { class: "hint", text: "Người gửi đề xuất (trên trình duyệt đã dùng để gửi) và quản trị có thể đánh dấu đã xong." })
+    canMark ? null : el("p", { class: "hint", text: "Người gửi (trên trình duyệt đã dùng để gửi) hoặc quản trị đánh dấu được đã xong." })
   );
   box.postError = (text) => { msg.textContent = text; msg.className = "form-msg error"; };
   return box;
@@ -760,6 +753,7 @@ function restoreDraft() {
   const draft = store.get(DRAFT_KEY, {});
   for (const name of draftFields) if (typeof draft[name] === "string" && form.elements[name]) form.elements[name].value = draft[name];
   if (draft.priority && PRIORITY[draft.priority]) $(`#p-${draft.priority}`).checked = true;
+  if (draft.current_flow || draft.frequency || draft.minutes) $("#more-fields").open = true;
   updateCounter();
 }
 function saveDraft() {
@@ -859,8 +853,6 @@ form.addEventListener("submit", async (e) => {
     if (result.id) { state.mine.add(result.id); store.set("wfx-mine", [...state.mine]); }
     if (result.id && result.owner_token) { state.owner[result.id] = result.owner_token; store.set("wfx-owner", state.owner); }
     saveIdentity(form.elements.name.value, form.elements.team.value);
-    if (result.id && result.owner_token) { state.owner[result.id] = result.owner_token; store.set("wfx-owner", state.owner); }
-    saveIdentity(form.elements.name.value, form.elements.team.value);
     for (const name of ["title", "module", "wish", "current_flow", "frequency", "minutes"]) form.elements[name].value = "";
     $("#p-need").checked = true;
     state.pending.forEach((p) => URL.revokeObjectURL(p.url));
@@ -883,6 +875,17 @@ const lightbox = $("#lightbox");
 function openLightbox(src) { $("#lightbox-img").src = src; lightbox.hidden = false; }
 lightbox.addEventListener("click", () => { lightbox.hidden = true; });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") lightbox.hidden = true; });
+
+/* ---------------- Giao diện sáng/tối ---------------- */
+
+// Mặc định theo hệ điều hành; bấm nút thì ghi đè và nhớ trong trình duyệt.
+$("#theme-toggle").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = dark ? "light" : "dark";
+  root.dataset.theme = next;
+  try { localStorage.setItem("wfx-theme", next); } catch {}
+});
 
 /* ---------------- Khởi động ---------------- */
 
