@@ -318,6 +318,7 @@ ERROR_CODE_INFO = {
     'REPORT_SAVE_ACCOUNT_REQUIRED': ('Chưa có tài khoản để lưu tham số', 'Đăng nhập WFX rồi bấm Lưu tham số lại.'),
     'REPORT_SAVE_FAILED': ('Không lưu được tham số báo cáo', 'Kiểm tra ổ đĩa hoặc đóng ứng dụng khác đang mở dữ liệu WFX Smart.'),
     'COLOR_REPORT_OPTIONS_NOT_READY': ('Tham số báo cáo Color Combination chưa nạp xong', 'Chờ trang WFX ổn định rồi chọn lại OC Division.'),
+    'COLOR_REPORT_OC_NOT_FOUND': ('Không tìm thấy OC', 'Style đang chọn chưa có OCNum. Chọn style khác hoặc kiểm tra OC trên WFX.'),
     'COLOR_REPORT_STYLE_LIST_EMPTY': ('Mùa đang chọn không có BuyerStyleReference', 'Chọn lại OC Division, Buyer hoặc Season rồi tải lại tham số.'),
     'COLOR_REPORT_NO_STYLE_SELECTED': ('Chưa chọn style để tải báo cáo', 'Tích ít nhất một BuyerStyleReference rồi bấm Tải báo cáo.'),
     'COLOR_REPORT_OUTPUT_DIR_REQUIRED': ('Chưa chọn thư mục lưu báo cáo', 'Bấm Chọn… để chỉ định thư mục lưu trước khi tải.'),

@@ -16,14 +16,6 @@ function setStatus(tone, label) {
 window.wfxSetStatus = setStatus;
 
 function setBrowserStatus(alive, available = true, name = null) {
-  const health = $(".health-chrome");
-  if (health) {
-    health.dataset.state = alive ? "ok" : "bad";
-    health.dataset.tooltip = alive
-      ? `${name || "Chromium"} · trình duyệt làm việc`
-      : "Chưa kết nối trình duyệt";
-    health.setAttribute("aria-label", health.dataset.tooltip);
-  }
   const banner = $(".browser-banner");
   if (banner) {
     banner.hidden = alive === true;
@@ -67,14 +59,6 @@ function setSessionStatus(active, lastLoginAt) {
   sessionActive = active == null ? null : Boolean(active);
   if (lastLoginAt !== undefined) {
     lastLoginTime = String(lastLoginAt || "");
-  }
-  const node = $(".health-session");
-  if (node) {
-    node.dataset.state = active == null ? "unknown" : (active ? "ok" : "bad");
-    node.dataset.tooltip = active === true && lastLoginTime
-      ? `Phiên WFX · đăng nhập lúc ${lastLoginTime}`
-      : "Phiên WFX";
-    node.setAttribute("aria-label", node.dataset.tooltip);
   }
   $$(".division-button").forEach((button) => {
     button.disabled = active !== true;

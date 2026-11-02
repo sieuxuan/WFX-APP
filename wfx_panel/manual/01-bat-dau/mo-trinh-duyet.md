@@ -10,7 +10,7 @@ trong cửa sổ này như Chrome thông thường.
 2. Bấm `Mở trình duyệt`.
 3. Chờ Chrome, Edge, Brave hoặc Chromium mở ra.
 4. Đăng nhập WFX nếu trình duyệt yêu cầu.
-5. Chờ hai chấm trạng thái ở góc phải thanh dưới cùng chuyển sang màu xanh.
+5. Xem trạng thái `Đã đăng nhập` trong thẻ `Tài khoản` trước khi làm việc.
 
 ## Mẹo
 

@@ -199,8 +199,41 @@ class ReportsController:
             for item in list(style_refs or ())[:500]
             if str(item).strip()
         ]
+        if safe_selection.get("export_mode", "style") not in {"style", "oc_num"}:
+            return {
+                "ok": False,
+                "code": "REPORT_PARAMETERS_INVALID",
+                "message": "Hãy chọn xuất theo Style hoặc OCNum.",
+            }
+        retry_ocnums = dict(selection or {}).get("retry_ocnums")
+        if retry_ocnums is not None:
+            if not isinstance(retry_ocnums, Mapping) or any(
+                not isinstance(labels, list)
+                or not labels
+                or any(
+                    not isinstance(label, str) or not label.strip() for label in labels
+                )
+                for labels in retry_ocnums.values()
+            ):
+                return {
+                    "ok": False,
+                    "code": "REPORT_PARAMETERS_INVALID",
+                    "message": "Danh sách OCNum cần chạy lại không hợp lệ.",
+                }
+            safe_selection["retry_ocnums"] = {
+                str(key)[:200]: [label[:200] for label in labels[:500]]
+                for key, labels in list(retry_ocnums.items())[:500]
+                if str(key) in safe_refs
+            }
         method = "run_color_report_batch"
-        self.save_report_parameters("color_combination_production", safe_selection)
+        self.save_report_parameters(
+            "color_combination_production",
+            {
+                key: value
+                for key, value in safe_selection.items()
+                if key != "retry_ocnums"
+            },
+        )
         return panel._run(
             method,
             lambda: runner(

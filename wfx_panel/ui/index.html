@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WFX Smart</title>
-  <link rel="stylesheet" href="style.css?v=20260805-1">
+  <link rel="stylesheet" href="style.css?v=20261102-1">
 </head>
 <body>
   <aside class="panel" aria-label="Bảng điều khiển WFX Smart">
@@ -96,8 +96,6 @@
         <span aria-hidden="true"></span>Stop
       </button>
       <span class="footer-health">
-        <span class="health-chrome" data-state="unknown" role="img" data-tooltip="Trình duyệt làm việc" aria-label="Trình duyệt làm việc"><i></i></span>
-        <span class="health-session" data-state="unknown" role="img" data-tooltip="Phiên WFX" aria-label="Phiên WFX"><i></i></span>
         <button class="health-refresh" type="button" data-tooltip="Kiểm tra lại trạng thái" aria-label="Kiểm tra lại trạng thái"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
       </span>
     </footer>
@@ -835,6 +833,7 @@
             </div>
           </div>
           <section class="module-search-block payment-request-block" data-payment-module="0065_0880_0010_0020" aria-label="In đề nghị thanh toán">
+            <label class="module-multi-filter-field"><span>Requester (họ và tên)</span><input class="payment-request-requester" type="text" maxlength="500" autocomplete="name" placeholder="Nhập một lần, dùng chung cho các form ĐNTT" aria-label="Requester (họ và tên)" /></label>
             <label class="module-multi-filter-field"><span>Invoice No. để in ĐNTT</span><input class="payment-request-invoice" type="text" autocomplete="off" placeholder="Nhập invoice hoặc để trống dùng dòng đã chọn" aria-label="Invoice No. để in ĐNTT" /></label>
             <button type="button" class="special-primary-button" data-module-action="advance-pr-payment-request">In ĐNTT</button>
             <small class="module-action-hint">Nhập đúng Invoice No. hoặc chọn một dòng trong List trên WFX.</small>
@@ -880,6 +879,7 @@
             </section>
           </div>
           <section class="module-search-block payment-request-block" data-payment-module="0065_0880_0020_0020" aria-label="In đề nghị thanh toán">
+            <label class="module-multi-filter-field"><span>Requester (họ và tên)</span><input class="payment-request-requester" type="text" maxlength="500" autocomplete="name" placeholder="Nhập một lần, dùng chung cho các form ĐNTT" aria-label="Requester (họ và tên)" /></label>
             <label class="module-multi-filter-field"><span>Invoice No. để in ĐNTT</span><input class="payment-request-invoice" type="text" autocomplete="off" placeholder="Nhập invoice hoặc để trống dùng dòng đã chọn" aria-label="Invoice No. để in ĐNTT" /></label>
             <button type="button" class="special-primary-button" data-module-action="supplier-invoice-payment-request">In ĐNTT</button>
             <small class="module-action-hint">Nhập đúng Invoice No. hoặc chọn một dòng trong List trên WFX.</small>
@@ -891,36 +891,49 @@
           </section>
         </div>
 
-        <div class="special-module-workspace" data-module-view="expense_invoice" hidden>
-          <section class="expense-import-block" aria-label="Nhập Expense Invoice từ Excel">
-            <div class="expense-section-heading">
-              <strong>Nhập từ Excel</strong>
-              <button type="button" class="module-clear-filters-button" data-module-action="expense-invoice-new">New trống</button>
-            </div>
-            <div class="workflow-choice-grid">
-              <button type="button" class="special-primary-button" data-module-action="expense-invoice-template">Tải mẫu Excel</button>
-              <button type="button" class="special-primary-button" data-module-action="expense-invoice-import">Chọn file Excel</button>
-            </div>
-            <div class="expense-import-review" hidden>
-              <strong class="expense-import-file"></strong>
-              <span class="expense-import-summary"></span>
-              <div class="workflow-choice-grid">
-                <button type="button" class="special-primary-button" data-module-action="expense-invoice-fill" disabled>Điền trên WFX</button>
-                <button type="button" class="module-clear-filters-button" data-module-action="expense-invoice-clear">Bỏ file</button>
+        <div class="special-module-workspace expense-workspace" data-module-view="expense_invoice" hidden>
+          <section class="oc-upload-card expense-card expense-create-card" data-stage="idle" aria-label="Tạo Expense Invoice từ Excel">
+            <div class="oc-card-heading">
+              <div class="oc-upload-card-copy">
+                <span class="oc-section-label">Tạo hóa đơn</span>
+                <strong>Nhập từ Excel</strong>
+                <small>Lấy file, điền rồi chọn lại để app kiểm tra trước khi điền lên WFX.</small>
               </div>
+              <button type="button" class="oc-secondary-button" data-module-action="expense-invoice-new">New trống</button>
+            </div>
+            <div class="expense-setup">
+              <div class="expense-source-grid" role="group" aria-label="Lấy file Excel">
+                <button type="button" class="expense-source-button" data-module-action="expense-invoice-template">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg>
+                  <span><strong>Tải mẫu Excel</strong><small>File trống, có sẵn dropdown</small></span>
+                </button>
+                <button type="button" class="expense-source-button" data-module-action="expense-invoice-export">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>
+                  <span><strong>Export format</strong><small>Từ một dòng đang chọn trong List</small></span>
+                </button>
+              </div>
+              <button type="button" class="special-primary-button expense-choose-button" data-module-action="expense-invoice-import">Chọn file Excel</button>
+            </div>
+            <div class="expense-import-review" aria-live="polite" hidden>
+              <div class="expense-import-review-copy">
+                <span class="oc-section-label">File đã kiểm tra</span>
+                <strong class="expense-import-file"></strong>
+                <small class="expense-import-summary"></small>
+              </div>
+              <div class="expense-import-actions">
+                <button type="button" class="oc-secondary-button" data-module-action="expense-invoice-clear">Bỏ file</button>
+                <button type="button" class="special-primary-button" data-module-action="expense-invoice-fill" disabled>Điền trên WFX</button>
+              </div>
+              <small class="module-action-hint">App chỉ điền và đối chiếu; bạn tự Save/Confirm trên WFX.</small>
             </div>
           </section>
-          <section class="expense-import-block" aria-label="Xuất Expense Invoice từ WFX">
-            <div class="expense-section-heading">
-              <strong>Xuất từ WFX</strong>
-              <button type="button" class="special-primary-button" data-module-action="expense-invoice-export">Export format</button>
-            </div>
-            <p class="module-search-note">Chọn một hóa đơn trong Expense Inv List để xuất Excel kèm Cost Center, sửa và import lại.</p>
-          </section>
-          <section class="expense-lookup" aria-label="Tra cứu Expense Invoice">
-            <div class="expense-section-heading">
-              <strong>Tra cứu</strong>
-              <button type="button" class="module-clear-filters-button" data-module-action="expense-invoice-list">Mở Expense Inv List</button>
+          <section class="oc-upload-card expense-card" aria-label="Tra cứu Expense Invoice">
+            <div class="oc-card-heading">
+              <div class="oc-upload-card-copy">
+                <span class="oc-section-label">Tra cứu</span>
+                <strong>Expense Inv List</strong>
+              </div>
+              <button type="button" class="oc-secondary-button" data-module-action="expense-invoice-list">Mở Expense Inv List</button>
             </div>
           <div class="module-search-block">
             <div class="module-multi-filter-grid">
@@ -938,7 +951,12 @@
             </div>
           </div>
           </section>
-          <section class="module-search-block payment-request-block" data-payment-module="0065_0880_0030_0020" aria-label="In đề nghị thanh toán">
+          <section class="oc-upload-card expense-card payment-request-block" data-payment-module="0065_0880_0030_0020" aria-label="In đề nghị thanh toán">
+            <div class="oc-upload-card-copy">
+              <span class="oc-section-label">Thanh toán</span>
+              <strong>In đề nghị thanh toán (ĐNTT)</strong>
+            </div>
+            <label class="module-multi-filter-field"><span>Requester (họ và tên)</span><input class="payment-request-requester" type="text" maxlength="500" autocomplete="name" placeholder="Nhập một lần, dùng chung cho các form ĐNTT" aria-label="Requester (họ và tên)" /></label>
             <label class="module-multi-filter-field"><span>Invoice No. để in ĐNTT</span><input class="payment-request-invoice" type="text" autocomplete="off" placeholder="Nhập invoice hoặc để trống dùng dòng đã chọn" aria-label="Invoice No. để in ĐNTT" /></label>
             <button type="button" class="special-primary-button" data-module-action="expense-invoice-payment-request">In ĐNTT</button>
             <small class="module-action-hint">Nhập đúng Invoice No. hoặc chọn một dòng trong List trên WFX.</small>
@@ -959,7 +977,7 @@
             </button>
             <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="report-color-combination">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5Z"/><path d="M4 10h16M9 10v9"/></svg>
-              <span><strong>Color Combination - Production</strong><small>Tải hàng loạt theo BuyerStyleReference</small></span>
+              <span><strong>Color Combination - Production</strong><small>Tải theo Style hoặc từng OCNum</small></span>
             </button>
           </section>
           <section class="reports-detail" hidden aria-live="polite">
@@ -982,6 +1000,12 @@
             </div>
           </section>
           <section class="color-report-workspace" hidden aria-live="polite">
+            <label class="color-report-level-field"><span>Xuất báo cáo theo</span>
+              <select class="color-report-export-mode">
+                <option value="style">Theo Style — gộp tất cả OCNum</option>
+                <option value="oc_num">Theo OCNum — mỗi OC một file</option>
+              </select>
+            </label>
             <div class="color-report-levels-grid">
               <label class="color-report-level-field"><span>OC Division</span>
                 <select class="color-report-level" data-level="division"></select>
@@ -1006,7 +1030,7 @@
               </div>
               <div class="color-report-style-list" role="group" aria-label="Danh sách BuyerStyleReference"></div>
             </div>
-            <label class="color-report-level-field color-report-single-style" hidden><span>BuyerStyleReference</span>
+            <label class="color-report-level-field color-report-single-style" hidden><span>Style</span>
               <select class="color-report-single-select"></select>
             </label>
             <div class="color-report-dir-row">
@@ -1282,22 +1306,22 @@
   <!-- Các script dưới đây chia chung một global scope và chạy tuần tự.
        Thứ tự phải giữ nguyên: core khai báo state dùng chung, bootstrap
        gắn sự kiện và khởi động sau cùng. -->
-  <script src="panel/core.js?v=20260921-3"></script>
-  <script src="panel/modules.js?v=20260921-3"></script>
-  <script src="panel/status.js?v=20260921-3"></script>
-  <script src="panel/shell.js?v=20260921-3"></script>
-  <script src="panel/bridge.js?v=20260921-3"></script>
-  <script src="panel/workspace.js?v=20260921-3"></script>
-  <script src="panel/oc.js?v=20260921-3"></script>
-  <script src="panel/sale_asn.js?v=20260921-3"></script>
-  <script src="panel/forms.js?v=20260921-3"></script>
-  <script src="panel/gdn.js?v=20260921-3"></script>
-  <script src="panel/catalog.js?v=20260921-3"></script>
-  <script src="panel/reports.js?v=20260921-3"></script>
-  <script src="panel/inventory.js?v=20260921-3"></script>
-  <script src="panel/lists.js?v=20260921-3"></script>
-  <script src="panel/costing.js?v=20260921-3"></script>
-  <script src="panel/module_actions.js?v=20260921-3"></script>
-  <script src="panel/bootstrap.js?v=20260921-3"></script>
+  <script src="panel/core.js?v=20261102-1"></script>
+  <script src="panel/modules.js?v=20261102-1"></script>
+  <script src="panel/status.js?v=20261102-1"></script>
+  <script src="panel/shell.js?v=20261102-1"></script>
+  <script src="panel/bridge.js?v=20261102-1"></script>
+  <script src="panel/workspace.js?v=20261102-1"></script>
+  <script src="panel/oc.js?v=20261102-1"></script>
+  <script src="panel/sale_asn.js?v=20261102-1"></script>
+  <script src="panel/forms.js?v=20261102-1"></script>
+  <script src="panel/gdn.js?v=20261102-1"></script>
+  <script src="panel/catalog.js?v=20261102-1"></script>
+  <script src="panel/reports.js?v=20261102-1"></script>
+  <script src="panel/inventory.js?v=20261102-1"></script>
+  <script src="panel/lists.js?v=20261102-1"></script>
+  <script src="panel/costing.js?v=20261102-1"></script>
+  <script src="panel/module_actions.js?v=20261102-1"></script>
+  <script src="panel/bootstrap.js?v=20261102-1"></script>
 </body>
 </html>

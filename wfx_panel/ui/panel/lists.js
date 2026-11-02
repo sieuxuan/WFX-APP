@@ -11,10 +11,17 @@ function syncExpenseImportActions() {
   if (button) button.disabled = busy || !expenseReviewToken;
 }
 
+function setExpenseImportStage(stage) {
+  // Khi đang review, ẩn bước lấy/chọn file để chỉ còn một nút chính.
+  const card = $(".expense-create-card");
+  if (card) card.dataset.stage = stage;
+}
+
 function clearExpenseImportView() {
   expenseReviewToken = "";
   const view = $(".expense-import-review");
   if (view) view.hidden = true;
+  setExpenseImportStage("idle");
   syncExpenseImportActions();
 }
 
@@ -39,6 +46,7 @@ async function chooseExpenseImport() {
     $(".expense-import-summary").textContent =
       `${result.supplier} · ${result.invoice_no} · ${result.row_count} dòng · ${result.total} ${result.currency}`;
     $(".expense-import-review").hidden = false;
+    setExpenseImportStage("review");
     syncExpenseImportActions();
   }
   return result;

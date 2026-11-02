@@ -1,0 +1,202 @@
+"""Chạy JavaScript thật: giữ mode, cascade và OC lỗi khi bấm chạy lại."""
+
+import re
+from pathlib import Path
+
+import pytest
+from playwright.sync_api import sync_playwright
+
+from wfx_panel.automation import color_combination as color
+
+
+@pytest.mark.parametrize(
+    "oc_labels,select_all,checked,popup_open",
+    [
+        ([], False, False, False),
+        (["1-L0527-PS"], False, True, False),
+        (["1-L0527-PS"], False, False, False),
+        (["1-L0527-PS"], False, True, True),
+        (["OC001", "OC002"], False, True, False),
+        (["OC001", "OC002"], True, True, False),
+    ],
+)
+def test_oc_popup_keeps_first_real_oc_with_or_without_select_all(
+    oc_labels,
+    select_all,
+    checked,
+    popup_open,
+):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            rows = "".join(
+                f'<span><input id="oc{index}" type="checkbox" {"checked" if checked else ""}'
+                f' onclick="window.ocClicks=(window.ocClicks||0)+1">'
+                f'<label for="oc{index}">{label}</label></span>'
+                for index, label in enumerate(oc_labels)
+            )
+            all_row = (
+                """<label><input id="all" type="checkbox" checked
+                onclick="document.querySelectorAll('#oc_divDropDown input[type=checkbox]').forEach(e=>e.checked=this.checked)">(Select All)</label>"""
+                if select_all
+                else ""
+            )
+            page.set_content(f"""
+                <table id="ParameterTable_rptCustomReportViewer_ctl04"><tr>
+                  <td>OCNum</td><td><input id="oc_txtValue" readonly>
+                    <input id="oc_ddDropDownButton" type="image"
+                      onclick="const p=document.getElementById('oc_divDropDown');
+                        p.style.display=p.style.display==='none'?'block':'none'; return false;">
+                  </td></tr></table>
+                <div id="oc_divDropDown" style="display:{"block" if popup_open else "none"}">
+                  {all_row}{rows}<input type="hidden" value="0">
+                </div>
+            """)
+            parameter = color._read_oc_parameter(page)
+            assert [option["label"] for option in parameter["options"]] == oc_labels
+            assert not page.locator("#oc_divDropDown").is_visible()
+            if not oc_labels:
+                assert parameter["value"] == []
+                return
+            color._select_ocnums(page, [oc_labels[-1]])
+            assert color._read_oc_parameter(page)["value"] == [
+                f"oc{len(oc_labels) - 1}"
+            ]
+            color._select_ocnums(page, None)
+            assert len(color._read_oc_parameter(page)["value"]) == len(oc_labels)
+        finally:
+            browser.close()
+
+
+def test_batch_style_picker_and_no_oc_result_are_not_duplicated_or_errors():
+    ui = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
+    html = (ui / "index.html").read_text(encoding="utf-8")
+    markup = re.search(
+        r'<section class="color-report-workspace"[\s\S]*?</section>', html
+    )[0]
+    markup = markup.replace(
+        'class="color-report-workspace" hidden', 'class="color-report-workspace"'
+    )
+    css = (ui / "style.css").read_text(encoding="utf-8")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(f"<style>{css}</style>{markup}")
+            page.add_script_tag(
+                content="""
+                const $ = s => document.querySelector(s);
+                const escapeHtml = s => String(s || '');
+                const colorReportState = {styleRefs:[{value:'r1',label:'STYLE'}], selected:new Set(['r1'])};
+            """
+            )
+            page.add_script_tag(path=str(ui / "panel" / "reports.js"))
+            page.evaluate("renderColorReportStyles()")
+            assert page.locator(".color-report-style-block").is_visible()
+            assert not page.locator(".color-report-single-style").is_visible()
+            page.evaluate(
+                "$('.color-report-batch-toggle').checked=false; renderColorReportStyles()"
+            )
+            assert not page.locator(".color-report-style-block").is_visible()
+            assert page.locator(".color-report-single-style").is_visible()
+            page.evaluate(
+                "renderColorReportResult({saved:[],failed:[],skipped:[{style_ref:'STYLE'}]})"
+            )
+            card = page.locator(".color-report-result-card")
+            assert card.is_visible()
+            assert "Không tìm thấy OC" in card.inner_text()
+            assert "lỗi" not in card.inner_text()
+            assert (
+                card.locator('[data-color-report-result-action="retry"]').count() == 0
+            )
+        finally:
+            browser.close()
+
+
+def test_oc_popup_uses_click_handlers_and_restores_all_ocnums():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content("""
+                <table id="ParameterTable_rptCustomReportViewer_ctl04"><tr>
+                  <td>OCNum</td><td>
+                    <input id="oc_txtValue" readonly>
+                    <input id="oc_ddDropDownButton" type="image"
+                      onclick="const p=document.getElementById('oc_divDropDown');
+                        p.style.display=p.style.display==='none'?'block':'none'; return false;">
+                  </td></tr></table>
+                <div id="oc_divDropDown" style="display:none">
+                  <label><input id="all" type="checkbox" checked
+                    onclick="document.querySelectorAll('#oc_divDropDown input').forEach(e=>e.checked=this.checked)">(Select All)</label>
+                  <label><input id="oc1" type="checkbox" checked
+                    onclick="window.ocClicks=(window.ocClicks||0)+1">OC001</label>
+                  <label><input id="oc2" type="checkbox" checked
+                    onclick="window.ocClicks=(window.ocClicks||0)+1">OC002</label>
+                </div>
+            """)
+            color._select_ocnums(page, ["OC002"])
+            assert color._read_oc_parameter(page)["value"] == ["oc2"]
+            assert page.evaluate("window.ocClicks") == 1
+            assert not page.locator("#oc_divDropDown").is_visible()
+            color._select_ocnums(page, None)
+            assert color._read_oc_parameter(page)["value"] == ["oc1", "oc2"]
+            assert page.evaluate("window.ocClicks") == 2
+        finally:
+            browser.close()
+
+
+def test_oc_retry_uses_the_original_selection_and_only_failed_ocnums():
+    ui = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
+    html = re.sub(
+        r"<script\b[^>]*>[\s\S]*?</script>",
+        "",
+        (ui / "index.html").read_text(encoding="utf-8"),
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(html)
+            page.add_script_tag(
+                content="""
+                const $ = s => document.querySelector(s);
+                const escapeHtml = s => String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;');
+                let colorReportRunActive = false;
+                const colorReportState = {styleRefs: [{value:'r1',label:'STYLE'}],
+                  selected: new Set(['r1']), outputDir: 'D:/original'};
+                const calls = [];
+                async function call(method, selection, refs, directory) {
+                  calls.push({method, selection, refs, directory});
+                  return {ok:true, export_mode:'oc_num', output_dir:directory,
+                    saved:[{style_ref:'STYLE',style_ref_value:'r1',oc_num:'OC001',file_name:'OC001.xlsx'}],
+                    failed:[{style_ref:'STYLE',style_ref_value:'r1',oc_num:'OC002',message:'Error'}]};
+                }
+                async function callQuiet() {}
+            """
+            )
+            page.add_script_tag(path=str(ui / "panel" / "reports.js"))
+            page.evaluate("""async () => {
+                $('.color-report-export-mode').value = 'oc_num';
+                $('.color-report-level[data-level="buyer"]').innerHTML = '<option value="b1">Buyer 1</option>';
+                await runColorReportBatch();
+            }""")
+            assert page.evaluate("calls[0].selection.export_mode") == "oc_num"
+            assert page.evaluate("calls[0].refs") == ["r1"]
+            # Người dùng đổi màn hình/lựa chọn sau lượt tải: Retry vẫn thuộc lượt cũ.
+            page.evaluate("""() => {
+                $('.color-report-export-mode').value = 'style';
+                $('.color-report-level[data-level="buyer"]').innerHTML = '<option value="b2">Buyer 2</option>';
+                colorReportState.outputDir = 'D:/changed';
+                $('[data-color-report-result-action="retry"]').click();
+            }""")
+            page.wait_for_function("calls.length === 2")
+            retry = page.evaluate("calls[1]")
+            assert retry["selection"]["export_mode"] == "oc_num"
+            assert retry["selection"]["buyer"] == "b1"
+            assert retry["selection"]["retry_ocnums"] == {"r1": ["OC002"]}
+            assert retry["refs"] == ["r1"]
+            assert retry["directory"] == "D:/original"
+        finally:
+            browser.close()

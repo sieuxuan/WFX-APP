@@ -12,6 +12,7 @@ from wfx_panel.automation._common import (
     Playwright,
     PlaywrightTimeoutError,
     _result,
+    _wait,
     _write_log,
     sync_playwright,
 )
@@ -46,6 +47,20 @@ LEVEL_LABELS = {
 CASCADE_KEYS = ("division", "buyer", "season")
 STYLE_CODE_LABEL = "StyleCode"
 SIZE_VISIBILITY_LABEL = "SizeVisibility"
+OC_NUM_LABEL = "OCNum"
+
+# ReportViewer không tạo Select All khi chỉ có một OC. Nhận diện theo nhãn/
+# handler thay vì bỏ checkbox đầu tiên (đó có thể là OC duy nhất).
+_OC_ROWS_JS = r"""root => [...root.querySelectorAll('input[type="checkbox"]')]
+  .map(element => {
+    const label = ([...(element.labels || [])].map(label => label.textContent).join(' ')
+      || element.parentElement?.textContent || '').replace(/\s+/g, ' ').trim();
+    return {
+      value: element.id, label, selected: element.checked,
+      select_all: /^\(?select all\)?$/i.test(label)
+        || /OnSelectAllClick/.test(element.getAttribute('onclick') || ''),
+    };
+  }).filter(option => option.value && option.label)"""
 
 _TRAILING_DIGITS = re.compile(r"(\d+)\s*$")
 _FORBIDDEN_FILE_CHARS = re.compile(r'[\\/:*?"<>|]')
@@ -100,9 +115,7 @@ def clean_style_ref_options(
     return cleaned
 
 
-def unique_target(
-    directory: Path, stem: str, suffix: str = ".xlsx"
-) -> Path:
+def unique_target(directory: Path, stem: str, suffix: str = ".xlsx") -> Path:
     """Không ghi đè file đã có: thêm hậu tố (2), (3)..."""
     target = Path(directory) / f"{stem}{suffix}"
     index = 2
@@ -120,8 +133,7 @@ def prune_selection(
     cleaned: dict[str, str] = {}
     for key in CASCADE_KEYS:
         available = {
-            str(option.get("value") or "")
-            for option in options_by_key.get(key) or ()
+            str(option.get("value") or "") for option in options_by_key.get(key) or ()
         }
         current = str((values or {}).get(key) or "")
         if not current or current not in available:
@@ -154,6 +166,7 @@ def batch_styles(
     total = len(references)
     saved: list[dict] = []
     failed: list[dict] = []
+    skipped: list[dict] = []
     for index, reference in enumerate(references, start=1):
         try:
             checkpoint()
@@ -164,10 +177,15 @@ def batch_styles(
             saved.append(run_one(reference))
         except AutomationCancelled:
             log(f"[COLOR] Đã dừng theo yêu cầu sau {len(saved)}/{total} style.")
-            return {"saved": saved, "failed": failed, "cancelled": True}
+            return {
+                "saved": saved,
+                "failed": failed,
+                "skipped": skipped,
+                "cancelled": True,
+            }
         except StyleFailure as failure:
             log(f"[COLOR] Bỏ qua {reference}: {failure.message}")
-            failed.append(
+            (skipped if failure.code == "COLOR_REPORT_OC_NOT_FOUND" else failed).append(
                 {
                     "style_ref": reference,
                     "code": failure.code,
@@ -183,7 +201,7 @@ def batch_styles(
                     "message": f"{type(error).__name__}: {error}",
                 }
             )
-    return {"saved": saved, "failed": failed, "cancelled": False}
+    return {"saved": saved, "failed": failed, "skipped": skipped, "cancelled": False}
 
 
 def select_and_settle(
@@ -286,9 +304,7 @@ def load_color_report_options(
     except PlaywrightTimeoutError as error:
         return _result(False, "COLOR_REPORT_OPTIONS_NOT_READY", str(error))
     except Exception as error:
-        return _result(
-            False, "REPORT_LOAD_FAILED", f"{type(error).__name__}: {error}"
-        )
+        return _result(False, "REPORT_LOAD_FAILED", f"{type(error).__name__}: {error}")
     finally:
         if playwright is not None:
             playwright.stop()
@@ -304,21 +320,14 @@ def _view_and_download(page: Page, log: Callable[[str], None]) -> Path:
     return _user_downloads_dir() / file_name
 
 
-def _run_one_style(
+def _prepare_style(
     page: Page,
     controls: Mapping[str, str],
     style_ref: str,
-    output_dir: Path,
-    log: Callable[[str], None],
-    style_ref_label: str | None = None,
-) -> dict:
-    """Một style: chọn ref, chọn StyleCode mới nhất, chạy report, lưu file."""
-    current = select_and_settle(
-        page, controls, LEVEL_LABELS["style_ref"], style_ref
-    )
-    style_options = read_select_options(
-        page, current.get(STYLE_CODE_LABEL, "")
-    )
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Chọn ref, StyleCode mới nhất và SizeVisibility trước khi xuất."""
+    current = select_and_settle(page, controls, LEVEL_LABELS["style_ref"], style_ref)
+    style_options = read_select_options(page, current.get(STYLE_CODE_LABEL, ""))
     picked = pick_style_code(style_options)
     if picked is None:
         raise StyleFailure(
@@ -326,9 +335,7 @@ def _run_one_style(
             f"Không có StyleCode cho {style_ref}.",
         )
     if len(style_options) > 1:
-        current = select_and_settle(
-            page, current, STYLE_CODE_LABEL, picked["value"]
-        )
+        current = select_and_settle(page, current, STYLE_CODE_LABEL, picked["value"])
     # SizeVisibility luôn phải là Yes; chỉ đặt khi đang khác để tránh
     # một postback thừa cho mỗi style.
     size_id = current.get(SIZE_VISIBILITY_LABEL, "")
@@ -340,13 +347,114 @@ def _run_one_style(
                         page, current, SIZE_VISIBILITY_LABEL, option["value"]
                     )
                 break
-    # OCNum giữ nguyên mặc định WFX: nó được nạp lại theo style và
-    # mặc định đã chọn hết PO.
-    source = _view_and_download(page, log)
-    display_ref = str(style_ref_label or style_ref).strip() or str(style_ref)
-    target = unique_target(
-        Path(output_dir), safe_file_stem(display_ref, picked["label"])
+    return current, picked
+
+
+def _read_oc_parameter(page: Page) -> dict:
+    """Đọc cả option lẫn lựa chọn thật của popup OCNum, không đoán theo text."""
+    key = resolve_controls(page).get(OC_NUM_LABEL, "")
+    button_id = key.removesuffix("_txtValue") + "_ddDropDownButton"
+    button = page.locator(f'[id="{button_id}"]')
+    if not key or not button.count() or not button.is_enabled():
+        raise StyleFailure(
+            "COLOR_REPORT_OPTIONS_NOT_READY",
+            "Danh sách OCNum chưa sẵn sàng. Hãy chọn lại style và tải tham số.",
+        )
+    root_id = key.removesuffix("_txtValue") + "_divDropDown"
+    root = page.locator(f'[id="{root_id}"]')
+    # Khi Chrome bị cửa sổ khác che, click chờ animation frame có thể treo.
+    # Gọi đúng handler popup; vẫn phát click event và đối chiếu sau postback.
+    if not root.evaluate("element => getComputedStyle(element).display !== 'none'"):
+        button.evaluate("element => element.click()")
+    try:
+        _wait(page, 100)
+        rows = [row for row in root.evaluate(_OC_ROWS_JS) if not row["select_all"]]
+    finally:
+        if root.evaluate("element => getComputedStyle(element).display !== 'none'"):
+            button.evaluate("element => element.click()")
+        _wait_postback_settled(page, POSTBACK_TIMEOUT_SECONDS)
+    return {
+        "key": key,
+        "options": [{"value": row["value"], "label": row["label"]} for row in rows],
+        "value": [row["value"] for row in rows if row["selected"]],
+    }
+
+
+def _set_oc_parameter(page: Page, parameter: dict, values: list[str]) -> None:
+    stem = parameter["key"].removesuffix("_txtValue")
+    button = page.locator(f'[id="{stem}_ddDropDownButton"]')
+    root = page.locator(f'[id="{stem}_divDropDown"]')
+    if not root.evaluate("element => getComputedStyle(element).display !== 'none'"):
+        button.evaluate("element => element.click()")
+    try:
+        _wait(page, 100)
+        root.evaluate(
+            """(root, values) => {
+              const rows = ("""
+            + _OC_ROWS_JS
+            + """)(root);
+              const wanted = new Set(values);
+              const all = rows.find(row => row.select_all);
+              if (all?.selected) root.ownerDocument.getElementById(all.value).click();
+              for (const row of rows.filter(row => !row.select_all)) {
+                const box = root.ownerDocument.getElementById(row.value);
+                if (box.checked !== wanted.has(box.id)) box.click();
+              }
+            }""",
+            values,
+        )
+    finally:
+        if root.evaluate("element => getComputedStyle(element).display !== 'none'"):
+            button.evaluate("element => element.click()")
+        _wait_postback_settled(page, POSTBACK_TIMEOUT_SECONDS)
+
+
+def _select_ocnums(page: Page, labels: list[str] | None) -> None:
+    """Resolve lại ID sau postback; None chọn tất cả OC để xuất theo style."""
+    parameter = _read_oc_parameter(page)
+    options = parameter["options"]
+    if not options:
+        raise StyleFailure("COLOR_REPORT_OC_NOT_FOUND", "Không tìm thấy OC.")
+    wanted = (
+        options
+        if labels is None
+        else [option for option in options if option["label"] in labels]
     )
+    if not wanted or (labels is not None and len(wanted) != len(labels)):
+        raise StyleFailure(
+            "COLOR_REPORT_OPTIONS_NOT_READY",
+            "OCNum cần tải không còn trong danh sách của style. Hãy tải lại tham số.",
+        )
+    values = [option["value"] for option in wanted]
+    if set(parameter.get("value") or []) != set(values):
+        _set_oc_parameter(page, parameter, values)
+    confirmed = _read_oc_parameter(page)
+    selected = set(confirmed.get("value") or [])
+    actual = [
+        option["label"]
+        for option in confirmed["options"]
+        if option["value"] in selected
+    ]
+    if sorted(actual) != sorted(option["label"] for option in wanted):
+        raise StyleFailure(
+            "COLOR_REPORT_OPTIONS_NOT_READY",
+            "WFX chưa nhận đúng lựa chọn OCNum. Hãy thử tải lại báo cáo.",
+        )
+
+
+def _download_style_report(
+    page: Page,
+    output_dir: Path,
+    log: Callable[[str], None],
+    display_ref: str,
+    style_code: str,
+    oc_num: str = "",
+) -> dict:
+    source = _view_and_download(page, log)
+    stem = safe_file_stem(display_ref, style_code)
+    if oc_num:
+        stem = safe_file_stem(stem, oc_num)
+    target = unique_target(Path(output_dir), stem)
     try:
         shutil.copy2(source, target)
     except OSError as error:
@@ -356,9 +464,126 @@ def _run_one_style(
         ) from error
     return {
         "style_ref": display_ref,
-        "style_code": picked["label"],
+        "style_code": style_code,
         "file_path": str(target),
         "file_name": target.name,
+        **({"oc_num": oc_num} if oc_num else {}),
+    }
+
+
+def _run_one_style(
+    page: Page,
+    controls: Mapping[str, str],
+    style_ref: str,
+    output_dir: Path,
+    log: Callable[[str], None],
+    style_ref_label: str | None = None,
+) -> dict:
+    current, picked = _prepare_style(page, controls, style_ref)
+    # Lượt trước có thể đã tải một OC trên cùng tab report. Chọn lại toàn bộ
+    # để chế độ theo style luôn gộp đủ OC, kể cả WFX giữ lựa chọn cũ.
+    if current.get(OC_NUM_LABEL):
+        _select_ocnums(page, None)
+    display_ref = str(style_ref_label or style_ref).strip() or str(style_ref)
+    return _download_style_report(page, output_dir, log, display_ref, picked["label"])
+
+
+def _batch_ocnums(
+    page: Page,
+    references: list[str],
+    style_labels: Mapping[str, str],
+    output_dir: Path,
+    log: Callable[[str], None],
+    progress: Callable[..., None] | None,
+    retry_ocnums: Mapping[str, list[str]],
+) -> dict:
+    """Giữ kết quả từng OC ngay khi tải xong, kể cả lỗi hoặc Stop giữa style."""
+    saved: list[dict] = []
+    failed: list[dict] = []
+    skipped: list[dict] = []
+
+    def record_failure(item: dict, error: Exception) -> None:
+        if (
+            isinstance(error, StyleFailure)
+            and error.code == "COLOR_REPORT_OC_NOT_FOUND"
+        ):
+            _write_log(log, f"[COLOR] {item['style_ref']}: Không tìm thấy OC, bỏ qua.")
+            skipped.append({**item, "code": error.code, "message": error.message})
+        else:
+            failed.append({**item, **_oc_failure(error, log)})
+
+    try:
+        for index, reference in enumerate(references, start=1):
+            checkpoint()
+            display_ref = style_labels.get(reference) or reference
+            item = {"style_ref": display_ref, "style_ref_value": reference}
+            try:
+                if progress:
+                    progress(
+                        "style",
+                        f"Đang đọc OCNum {display_ref}… {index}/{len(references)}",
+                        index,
+                        len(references),
+                    )
+                _current, picked = _prepare_style(
+                    page, resolve_controls(page), reference
+                )
+                options = _read_oc_parameter(page)["options"]
+                if not options:
+                    raise StyleFailure(
+                        "COLOR_REPORT_OC_NOT_FOUND", "Không tìm thấy OC."
+                    )
+                labels = list(dict.fromkeys(option["label"] for option in options))
+                if reference in retry_ocnums:
+                    labels = list(dict.fromkeys(retry_ocnums[reference]))
+            except AutomationCancelled:
+                raise
+            except Exception as error:
+                record_failure(item, error)
+                continue
+            for oc_index, label in enumerate(labels, start=1):
+                checkpoint()
+                oc_item = {**item, "oc_num": label}
+                try:
+                    if progress:
+                        progress(
+                            "oc_num",
+                            f"Đang tải {display_ref} · {label} ({oc_index}/{len(labels)} OC)… {index}/{len(references)}",
+                            index,
+                            len(references),
+                        )
+                    _select_ocnums(page, [label])
+                    saved.append(
+                        {
+                            **_download_style_report(
+                                page,
+                                output_dir,
+                                log,
+                                display_ref,
+                                picked["label"],
+                                label,
+                            ),
+                            "style_ref_value": reference,
+                        }
+                    )
+                except AutomationCancelled:
+                    raise
+                except Exception as error:
+                    record_failure(oc_item, error)
+    except AutomationCancelled:
+        return {"saved": saved, "failed": failed, "skipped": skipped, "cancelled": True}
+    return {"saved": saved, "failed": failed, "skipped": skipped, "cancelled": False}
+
+
+def _oc_failure(error: Exception, log: Callable[[str], None]) -> dict:
+    _write_log(log, f"[COLOR] OCNum: {type(error).__name__}: {error}")
+    return {
+        "code": error.code
+        if isinstance(error, StyleFailure)
+        else "COLOR_REPORT_STYLE_FAILED",
+        "message": error.message
+        if isinstance(error, StyleFailure)
+        else f"{type(error).__name__}: {error}",
     }
 
 
@@ -369,9 +594,12 @@ def run_color_report_batch(
     log: Callable[[str], None] = print,
     progress: Callable[..., None] | None = None,
 ) -> dict:
-    references = [
-        str(item).strip() for item in style_refs or () if str(item).strip()
-    ]
+    export_mode = str(selection.get("export_mode") or "style")
+    if export_mode not in {"style", "oc_num"}:
+        return _result(
+            False, "REPORT_PARAMETERS_INVALID", "Hãy chọn xuất theo Style hoặc OCNum."
+        )
+    references = [str(item).strip() for item in style_refs or () if str(item).strip()]
     if not references:
         return _result(
             False,
@@ -403,40 +631,83 @@ def run_color_report_batch(
             for option in cascade["levels"]["style_ref"]["options"]
         }
         controls = resolve_controls(report_page)
-        outcome = batch_styles(
-            references,
-            lambda reference: _run_one_style(
+        outcome = (
+            _batch_ocnums(
                 report_page,
-                controls,
-                reference,
+                references,
+                style_labels,
                 target_dir,
                 log,
-                style_labels.get(reference),
-            ),
-            progress=progress,
-            log=log,
+                progress,
+                selection.get("retry_ocnums") or {},
+            )
+            if export_mode == "oc_num"
+            else batch_styles(
+                references,
+                lambda reference: _run_one_style(
+                    report_page,
+                    controls,
+                    reference,
+                    target_dir,
+                    log,
+                    style_labels.get(reference),
+                ),
+                progress=progress,
+                log=log,
+            )
         )
         saved = outcome["saved"]
         failed = outcome["failed"]
+        skipped = outcome.get("skipped", [])
+        for item in skipped:
+            if not item.get("style_ref_value"):
+                item["style_ref_value"] = item["style_ref"]
+                item["style_ref"] = style_labels.get(
+                    item["style_ref"], item["style_ref"]
+                )
+        if export_mode == "oc_num":
+            message = f"Đã tải {len(saved)} báo cáo theo OCNum."
+            if failed:
+                message += f" {len(failed)} mục lỗi."
+        else:
+            message = f"Đã tải {len(saved)}/{len(references)} style."
+            if failed:
+                message += f" {len(failed)} style lỗi."
+        if skipped:
+            message += f" Không tìm thấy OC ở {len(skipped)} style; đã bỏ qua."
         if outcome["cancelled"]:
             return _result(
                 False,
                 "COLOR_REPORT_CANCELLED",
-                f"Đã dừng theo yêu cầu. Đã tải {len(saved)}/{len(references)} style.",
+                f"Đã dừng theo yêu cầu. {message}",
                 saved=saved,
                 failed=failed,
+                skipped=skipped,
                 output_dir=str(target_dir),
+                export_mode=export_mode,
             )
-        message = f"Đã tải {len(saved)}/{len(references)} style."
-        if failed:
-            message += f" {len(failed)} style lỗi."
+        if not saved and not failed and skipped:
+            return _result(
+                True,
+                "COLOR_REPORT_OC_NOT_FOUND",
+                f"Không tìm thấy OC cho {len(skipped)} style đã chọn.",
+                saved=saved,
+                failed=failed,
+                skipped=skipped,
+                output_dir=str(target_dir),
+                export_mode=export_mode,
+            )
         return _result(
-            True,
-            "COLOR_REPORT_BATCH_DONE",
-            message,
+            bool(saved),
+            "COLOR_REPORT_BATCH_DONE"
+            if saved
+            else (failed[0]["code"] if failed else "REPORT_EXPORT_FAILED"),
+            message if saved else f"Không tải được báo cáo nào. {message}",
             saved=saved,
             failed=failed,
+            skipped=skipped,
             output_dir=str(target_dir),
+            export_mode=export_mode,
         )
     except StyleFailure as failure:
         return _result(False, failure.code, failure.message)

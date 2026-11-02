@@ -425,6 +425,40 @@ def test_an_unexpected_batch_error_is_an_export_failure(
 # --- một style ----------------------------------------------------------
 
 
+def test_empty_oc_batch_is_a_normal_result_without_reportable_error(monkeypatch, clock, tmp_path):
+    from wfx_panel.job_history import requires_attention
+    from wfx_panel.run_policy import NON_REPORTABLE_FAILURES
+
+    _wire(monkeypatch, clock, cascade=_cascade([{"value": "r1", "label": "STYLE"}]))
+    patch_automation(monkeypatch, color_combination, "_batch_ocnums", lambda *_a: {
+        "saved": [], "failed": [], "skipped": [{
+            "style_ref": "STYLE", "style_ref_value": "r1",
+            "code": "COLOR_REPORT_OC_NOT_FOUND", "message": "Không tìm thấy OC.",
+        }], "cancelled": False,
+    })
+    result = _batch(tmp_path, selection={"export_mode": "oc_num"})
+    assert result["ok"] is True
+    assert result["code"] == "COLOR_REPORT_OC_NOT_FOUND"
+    assert result["failed"] == []
+    assert "Không tìm thấy OC" in result["message"]
+    assert requires_attention(result) is False
+    assert result["code"] in NON_REPORTABLE_FAILURES
+
+
+def test_all_failed_styles_are_reported_as_failure_not_batch_done(monkeypatch, clock, tmp_path):
+    _wire(monkeypatch, clock, cascade=_cascade([{"value": "r1", "label": "STYLE"}]))
+
+    def fail(*_args, **_kwargs):
+        raise StyleFailure("COLOR_REPORT_OPTIONS_NOT_READY", "Chưa có OCNum.")
+
+    patch_automation(monkeypatch, color_combination, "_run_one_style", fail)
+    result = _batch(tmp_path, style_refs=["r1"])
+    assert result["ok"] is False
+    assert result["code"] == "COLOR_REPORT_OPTIONS_NOT_READY"
+    assert "Không tải được báo cáo nào" in result["message"]
+    assert len(result["failed"]) == 1
+
+
 def test_size_visibility_is_only_set_when_it_is_not_already_yes(
     monkeypatch, tmp_path
 ):
