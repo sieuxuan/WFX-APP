@@ -202,18 +202,39 @@ def test_module_results_route_to_external_notification():
     ]
 
 
-def test_module_results_do_not_show_external_notification_while_panel_visible():
+def test_module_results_still_toast_while_panel_is_foreground(monkeypatch):
+    # Task xong phải báo dù user đang nhìn panel: trước đây flow giữ user ở
+    # panel thì im lặng còn flow đưa Chrome lên thì có báo.
+    import os
+
+    import wfx_panel.panel_app as module
+
+    app = module.PanelApp()
+    sent = []
+    app.window = object()
+    app._panel_visible = True
+    app._show_notification = lambda result, **context: sent.append((result, context))
+    patch_shell(monkeypatch, "_foreground_process_id", lambda: os.getpid())
+
+    result = {"ok": True, "message": "nhiều kết quả"}
+    app._on_result("find_code", result, 0.2)
+
+    assert sent == [(result, {"method": "find_code", "elapsed": 0.2})]
+
+
+def test_module_results_toast_while_panel_is_hidden():
     from wfx_panel.panel_app import PanelApp
 
     app = PanelApp()
     sent = []
     app.window = None
-    app._panel_visible = True
+    app._panel_visible = False
     app._show_notification = lambda result, **context: sent.append((result, context))
 
-    app._on_result("find_code", {"ok": True, "message": "nhiều kết quả"}, 0.2)
+    result = {"ok": False, "message": "Cần kiểm tra"}
+    app._on_result("search_grn", result, 1.5)
 
-    assert sent == []
+    assert sent == [(result, {"method": "search_grn", "elapsed": 1.5})]
 
 
 def test_module_result_shows_toast_when_wfx_has_foreground(monkeypatch):

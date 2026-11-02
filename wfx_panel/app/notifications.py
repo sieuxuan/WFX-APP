@@ -1,7 +1,5 @@
-"""Toast báo tác vụ xong khi người dùng đang nhìn Chrome.
+"""Toast báo tác vụ xong, dù panel đang mở, đang thu hay user ở cửa sổ khác.
 
-Toast phải hiện khi foreground đang ở WFX, KỂ CẢ khi panel chưa kịp đổi cờ
-sang hidden, và không được hiện trùng khi panel thật sự đang foreground.
 Tray sẵn sàng thì dùng notification native để khỏi tốn thêm một WebView2
 ẩn và vẫn lưu ở Notification Center; tray chưa sẵn sàng thì giữ thông báo
 mới nhất rồi phát ngay sau callback setup. Toast không được lấy focus."""
@@ -73,7 +71,7 @@ class NotificationController:
         shown = self._show_notification(
             {
                 "ok": True,
-                "message": "Toast đang hoạt động và sẽ hiện khi bạn làm việc ở WFX.",
+                "message": "Toast đang hoạt động và sẽ hiện mỗi khi tác vụ xong.",
             },
             method="test_notification",
             elapsed=0.0,

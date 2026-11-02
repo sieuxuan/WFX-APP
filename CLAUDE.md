@@ -173,8 +173,10 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
 - `Lịch sử hoạt động` chỉ gồm `Tất cả tác vụ` và `Log kỹ thuật`; không tách thêm
   thẻ `Cần xử lý`. Heartbeat `maintain_session` thành công không ghi `jobs.json`,
   không thêm log RUN và không thay footer.
-- Toast hoàn tất phải hiện khi foreground đang ở WFX, kể cả panel chưa kịp đổi
-  cờ sang hidden; không hiện trùng khi panel thật sự đang foreground. Nếu
+- Toast hoàn tất phải hiện MỖI khi tác vụ xong, bất kể panel đang mở/foreground,
+  đang thu hay người dùng ở WFX/cửa sổ khác. Không được chặn toast theo
+  foreground: chặn như vậy làm flow giữ user ở panel im lặng còn flow đưa
+  Chrome lên thì có báo, người dùng thấy "chỗ báo chỗ không". Nếu
   tray Windows đã sẵn sàng, dùng notification native để không tốn thêm một
   WebView2 hidden và vẫn lưu ở Notification Center. Nếu tray chưa sẵn sàng,
   giữ thông báo mới nhất rồi phát ngay sau callback setup. Settings có nút thử

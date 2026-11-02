@@ -67,7 +67,6 @@ from wfx_panel.version import APP_VERSION
 from wfx_panel.win32_window import (
     BUBBLE_WINDOW_TITLE,
     MAIN_WINDOW_TITLE,
-    _foreground_process_id,
 )
 
 HOTKEY = hotkey.DEFAULT
@@ -479,13 +478,10 @@ class PanelApp:
                 "[SALE ASN] Đã lưu file nhưng không mở được thư mục chứa file."
             )
 
-        foreground_pid = _foreground_process_id()
-        panel_is_foreground = self._panel_visible and (
-            self.window is None
-            or foreground_pid is None
-            or foreground_pid == os.getpid()
-        )
-        if method not in SILENT_RESULT_METHODS and not panel_is_foreground:
+        # Báo cả khi panel đang mở/foreground: trước đây toast bị bỏ khi user
+        # còn ở panel, nên flow đưa Chrome lên thì có báo, flow giữ user ở
+        # panel thì im lặng — người dùng thấy "chỗ báo chỗ không".
+        if method not in SILENT_RESULT_METHODS:
             self._show_notification(
                 result,
                 method=method,
