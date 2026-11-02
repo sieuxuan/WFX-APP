@@ -1,11 +1,16 @@
 [
   {
-    "version": "1.1.4",
-    "date": "2026-10-29",
+    "version": "1.1.5",
+    "date": "2026-11-02",
     "highlights": [
       {
+        "title": "Color Combination: tách báo cáo theo OCNum",
+        "body": "Reports có lựa chọn xuất theo Style như trước hoặc tách từng OCNum thành file Excel riêng. Tên file có OCNum để dễ gửi cho buyer. Style chưa có OC chỉ hiện Không tìm thấy OC và được bỏ qua. Khi tải hàng loạt, chỉ hiện danh sách Style để tránh trùng ô chọn. Nếu có lỗi, bấm chạy lại để chỉ tải những OC lỗi; các file đã tải vẫn được giữ.",
+        "entry": "danh-sach-reports"
+      },
+      {
         "title": "In ĐNTT ngay trong từng module tài chính",
-        "body": "Expense Inv, Supplier Inv và Advance PR có nút In ĐNTT. Nhập số invoice hoặc chọn một dòng trên WFX, điền họ tên người đề nghị rồi xuất Payment Request Form ra Excel.",
+        "body": "Expense Inv, Supplier Inv và Advance PR có nút In ĐNTT. Nhập số invoice hoặc chọn một dòng trên WFX rồi xuất Payment Request Form ra Excel. Requester chỉ cần nhập một lần, app nhớ theo tài khoản và dùng chung cho cả ba form ĐNTT.",
         "entry": "danh-sach-qa-tai-chinh"
       },
       {
@@ -13,6 +18,27 @@
         "body": "Chọn một hóa đơn trong Expense Inv List, bấm Export format để lưu file Excel có thể sửa và import lại. Sheet Cost Centers lưu đủ các cấp phân bổ, tỷ lệ và ghi chú. Khi nhập, app kiểm tra Cost Center bắt buộc theo Ledger; bạn vẫn tự Save/Confirm trên WFX.",
         "entry": "danh-sach-qa-tai-chinh"
       },
+      {
+        "title": "Sale ASN: ONEILL tự chọn PSSG và cộng Qty dòng màu",
+        "body": "Tạo Sale ASN cho ONEILL tự chuyển sang Division PSSG trước khi xử lý. Các dòng Excel chỉ có Qty được cộng vào PO/Style gần nhất phía trên, dùng cùng tổng số lượng khi tìm PO và kiểm tra giá/Qty.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Tìm Supplier Invoice và Expense Invoice đúng danh sách",
+        "body": "Tìm theo PO hoặc ASN/GRN trong Supplier Inv hoạt động đúng; Expense Inv được nhận diện riêng. Sau khi WFX tải lại bảng, ứng dụng báo số dòng tìm được.",
+        "entry": "danh-sach-qa-tai-chinh"
+      },
+      {
+        "title": "Thông báo hoàn tất và chẩn đoán lỗi đầy đủ hơn",
+        "body": "Các tác vụ tự động đều thông báo khi hoàn tất, kể cả khi bạn đang mở bảng điều khiển. Di chuột lên trạng thái bị cắt để đọc đủ câu. Báo lỗi tự động kèm bước gặp lỗi và log chẩn đoán đã ẩn thông tin nhạy cảm.",
+        "entry": "hang-ngay-trang-thai"
+      }
+    ]
+  },
+  {
+    "version": "1.1.4",
+    "date": "2026-10-29",
+    "highlights": [
       {
         "title": "Kiểm tra cập nhật ổn định hơn",
         "body": "Khi nhiều máy dùng chung mạng làm GitHub tạm giới hạn lượt kiểm tra, ứng dụng tự chuyển sang cách kiểm tra dự phòng thay vì báo Chưa thể kiểm tra. Nếu vẫn chưa kiểm tra được, thông báo nêu rõ lý do như bị giới hạn lượt hay không kết nối được GitHub, kèm hướng xử lý trong mục Cập nhật của Hướng dẫn.",

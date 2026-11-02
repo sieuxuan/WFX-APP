@@ -99,6 +99,11 @@ class ListFrame:
         self.root = Mock()
         self.root.evaluate.return_value = rows
         self.missing_title = missing_title
+        self.activity = {"visible": False, "focused": False, "interacted": 0}
+
+    def evaluate(self, script):
+        assert script == flow._ACTIVITY_JS
+        return self.activity
 
     def locator(self, selector):
         if "tblGridContent" in selector:
@@ -129,9 +134,80 @@ def test_wfx_lists_with_duplicate_titlebar_ids_are_supported(suffix):
     frame = ListFrame(suffix, [row()])
     original = frame.locator
     frame.locator = lambda selector: (
-        SimpleNamespace(count=lambda: 2) if "titlebar" in selector else original(selector)
+        SimpleNamespace(count=lambda: 2)
+        if "titlebar" in selector
+        else original(selector)
     )
     assert flow._selected_invoice(context(frame), suffix) == (frame, row())
+
+
+@pytest.mark.parametrize("flag", ["visible", "focused"])
+def test_current_list_selection_ignores_checked_rows_retained_in_old_tabs(flag):
+    current = ListFrame("ExpenseInvoiceList", [row("5316")])
+    current.activity[flag] = True
+    stale = ListFrame("ExpenseInvoiceList", [row()])
+    assert flow._selected_invoice(context(stale, current), "ExpenseInvoiceList") == (
+        current,
+        row("5316"),
+    )
+
+
+def test_minimized_browser_uses_the_row_highlighted_by_the_user():
+    chosen = {**row("5316"), "highlighted": True}
+    current = ListFrame("ExpenseInvoiceList", [chosen])
+    stale = ListFrame("ExpenseInvoiceList", [row()])
+    assert flow._selected_invoice(
+        context(stale, current, stale), "ExpenseInvoiceList"
+    ) == (current, chosen)
+
+
+def test_latest_row_interaction_wins_over_highlights_in_old_tabs():
+    old = ListFrame("ExpenseInvoiceList", [{**row(), "highlighted": True}])
+    current = ListFrame("ExpenseInvoiceList", [{**row("5316"), "highlighted": True}])
+    old.activity["interacted"] = 100
+    current.activity["interacted"] = 200
+    assert (
+        flow._selected_invoice(context(current, old), "ExpenseInvoiceList")[0]
+        is current
+    )
+
+
+@pytest.mark.parametrize("rows", [[row(selected=False)], [row(), row("2")]])
+def test_current_tab_requires_one_selection_even_when_other_tabs_have_a_checked_row(
+    rows,
+):
+    current = ListFrame("ExpenseInvoiceList", rows)
+    current.activity["visible"] = True
+    stale = ListFrame("ExpenseInvoiceList", [row()])
+    with pytest.raises(flow.PaymentSelectionError):
+        flow._selected_invoice(context(current, stale), "ExpenseInvoiceList")
+
+
+def test_two_hidden_highlighted_tabs_without_recency_are_not_guessed():
+    first = ListFrame("ExpenseInvoiceList", [{**row(), "highlighted": True}])
+    second = ListFrame("ExpenseInvoiceList", [{**row("2"), "highlighted": True}])
+    with pytest.raises(flow.PaymentSelectionError):
+        flow._selected_invoice(context(first, second), "ExpenseInvoiceList")
+
+
+def test_prepare_reads_the_user_tab_without_activating_main_wfx_first(monkeypatch):
+    lease = Mock()
+    monkeypatch.setattr(
+        flow, "sync_playwright", lambda: SimpleNamespace(start=lambda: lease)
+    )
+    connector = Mock(return_value=(object(), SimpleNamespace(context=object())))
+    monkeypatch.setattr(flow, "_active_wfx_page", connector)
+    monkeypatch.setattr(
+        flow,
+        "_selected_invoice",
+        Mock(side_effect=flow.PaymentSelectionError("Choose one row")),
+    )
+    assert (
+        flow.prepare_payment_request(EXPENSE)["code"]
+        == "PAYMENT_REQUEST_SELECTION_REQUIRED"
+    )
+    connector.assert_called_once_with(lease, print, bring_to_front=False)
+    lease.stop.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -183,7 +259,8 @@ def test_partial_duplicate_or_unread_pages_require_manual_choice(
 
 
 class Panel:
-    def __init__(self):
+    def __init__(self, base_dir):
+        self._base_dir = base_dir
         self.user = "user-a"
         self._current_division = "woven"
         self._log = lambda line: None
@@ -196,11 +273,11 @@ class Panel:
 
 
 @pytest.fixture
-def controller(monkeypatch, state):
+def controller(monkeypatch, state, tmp_path):
     monkeypatch.setattr(
         finance,
         "prepare_payment_request",
-        lambda *args: {
+        lambda *args, **kwargs: {
             "ok": True,
             "code": "PAYMENT_REQUEST_PREPARED",
             "_report_state": state,
@@ -208,7 +285,7 @@ def controller(monkeypatch, state):
             "module_id": args[0],
         },
     )
-    return finance.FinanceController(Panel())
+    return finance.FinanceController(Panel(tmp_path))
 
 
 def test_report_state_stays_private_and_new_prepare_invalidates_old_token(
@@ -317,7 +394,57 @@ def test_only_superseded_dntt_tabs_are_closed():
     old_report, user_list, current = Mock(), Mock(), Mock()
     old_report.evaluate.return_value = True
     user_list.evaluate.return_value = False
-    flow._close_previous_reports(SimpleNamespace(pages=[old_report, user_list, current]), current)
+    flow._close_previous_reports(
+        SimpleNamespace(pages=[old_report, user_list, current]), current
+    )
     old_report.close.assert_called_once()
     user_list.close.assert_not_called()
     current.close.assert_not_called()
+
+
+def test_requester_is_shared_by_all_modules_and_survives_reopening(
+    controller, monkeypatch
+):
+    assert controller.save_payment_request_requester("  Nguyễn Văn An  ")["ok"]
+    reopened = finance.FinanceController(controller._panel)
+    assert reopened.load_payment_request_requester()["requester"] == "Nguyễn Văn An"
+    runner = Mock(
+        return_value={"ok": False, "code": "PAYMENT_REQUEST_SELECTION_REQUIRED"}
+    )
+    monkeypatch.setattr(finance, "prepare_payment_request", runner)
+    for module_id in flow.MODULES:
+        reopened.prepare_payment_request(module_id)
+        assert runner.call_args.kwargs["requester"] == "Nguyễn Văn An"
+
+
+def test_requester_is_kept_across_divisions_but_separated_by_account(controller):
+    controller.save_payment_request_requester("User A")
+    controller._panel._current_division = "knit"
+    assert controller.load_payment_request_requester()["requester"] == "User A"
+    controller._panel.user = "user-b"
+    assert controller.load_payment_request_requester()["requester"] == ""
+    controller.save_payment_request_requester("User B")
+    controller._panel.user = "USER-A"
+    assert controller.load_payment_request_requester()["requester"] == "User A"
+
+
+def test_late_requester_save_from_previous_account_is_rejected(controller):
+    controller.save_payment_request_requester("User A")
+    controller._panel.user = "user-b"
+    assert not controller.save_payment_request_requester("old name", "user-a")["ok"]
+    assert controller.load_payment_request_requester()["requester"] == ""
+
+
+def test_prepare_persists_requester_before_opening_wfx(controller, monkeypatch):
+    runner = Mock(return_value={"ok": False})
+    monkeypatch.setattr(finance, "prepare_payment_request", runner)
+    controller.prepare_payment_request(EXPENSE, "INV-1", "Nguyen Van An")
+    assert controller.load_payment_request_requester()["requester"] == "Nguyen Van An"
+    assert runner.call_args.kwargs["requester"] == "Nguyen Van An"
+
+
+@pytest.mark.parametrize("value", [None, ["An"], "x" * 501])
+def test_requester_rejects_invalid_values_without_erasing_saved_name(controller, value):
+    controller.save_payment_request_requester("An")
+    assert not controller.save_payment_request_requester(value)["ok"]
+    assert controller.load_payment_request_requester()["requester"] == "An"

@@ -21,8 +21,8 @@ Màn hình `Reports` giúp bạn chạy báo cáo WFX và tải file Excel. Hi�
 
 ## Color Combination - Production
 
-Báo cáo này chỉ xuất được một style mỗi lần chạy trên WFX. Ứng dụng tự lặp
-qua danh sách style để bạn không phải chọn lại từng cái.
+Báo cáo này có hai cách xuất: gộp theo Style hoặc tách riêng từng OCNum.
+Chọn cách buyer yêu cầu; ứng dụng tự lặp qua các style đã chọn.
 
 1. Mở module `Reports` rồi bấm `Color Combination - Production`.
 2. Chọn `OC Division`, `Buyer`, `Season`. Mỗi lần chọn, ứng dụng chờ WFX nạp
@@ -30,15 +30,25 @@ qua danh sách style để bạn không phải chọn lại từng cái.
 3. Danh sách `Style` hiện toàn bộ `BuyerStyleReference` của mùa và mặc định
    chọn hết. Bỏ tích những style không cần, hoặc gõ vào ô lọc rồi bấm
    `Chọn tất cả` để chọn nhanh nhóm đang hiện.
-4. Bấm `Chọn…` để chỉ định thư mục lưu. Ứng dụng nhớ thư mục này cho lần sau.
-5. Bấm `Tải báo cáo`. Mỗi style được lưu thành một file
-   `BuyerStyleReference - StyleCode.xlsx`.
-6. Chạy xong, thẻ kết quả cho biết bao nhiêu style thành công và bao nhiêu lỗi.
+4. Trong `Xuất báo cáo theo`, chọn `Theo Style — gộp tất cả OCNum` (mặc định)
+   hoặc `Theo OCNum — mỗi OC một file`.
+5. Bấm `Chọn…` để chỉ định thư mục lưu. Ứng dụng nhớ thư mục này cho lần sau.
+6. Bấm `Tải báo cáo`.
+   - Theo Style: mỗi style có một file `BuyerStyleReference - StyleCode.xlsx`,
+     gồm tất cả OCNum của style.
+   - Theo OCNum: ứng dụng tải từng OC của mỗi style đã chọn, mỗi file chỉ có
+     một OC và mang tên `BuyerStyleReference - StyleCode - OCNum.xlsx`.
+7. Chạy xong, thẻ kết quả cho biết bao nhiêu báo cáo thành công và bao nhiêu lỗi.
 
 > [!meo]
 > Tắt `Tải hàng loạt` nếu chỉ cần đúng một style.
 > Ứng dụng tự chọn `StyleCode` có số lớn nhất, tức bản style mới nhất.
-> `SizeVisibility` luôn được đặt `Yes`, còn `OCNum` giữ nguyên mặc định của WFX.
+> `SizeVisibility` luôn được đặt `Yes` ở cả hai cách xuất.
+> Style chỉ có một OCNum vẫn được tải thành một file riêng khi xuất theo OCNum.
+> Nếu style chưa có OCNum, ứng dụng hiện `Không tìm thấy OC` và bỏ qua style đó.
+> Đây là thông báo bình thường, không phải lỗi ứng dụng; các style có OC vẫn được tải.
+> Tắt `Tải hàng loạt` và chọn một style nếu chỉ cần tách OC của style đó.
+> File trùng tên được thêm số `(2)`, `(3)` để giữ file đã tải.
 > Bấm `Stop` ở thanh dưới cùng để dừng; các file đã tải vẫn được giữ.
 
 > [!loi]
@@ -46,5 +56,8 @@ qua danh sách style để bạn không phải chọn lại từng cái.
 > ổn định rồi chọn lại `OC Division`.
 > `Không lưu được file báo cáo vào thư mục đã chọn`: kiểm tra quyền ghi và
 > dung lượng của thư mục lưu.
-> Style lỗi lẻ tẻ không làm dừng cả lượt; bấm `Chạy lại n style lỗi` ở thẻ
-> kết quả.
+> Style hoặc OC lỗi lẻ tẻ không làm dừng cả lượt; bấm `Chạy lại n mục lỗi`
+> ở thẻ kết quả. Khi xuất theo OCNum, ứng dụng chỉ tải lại những OC lỗi;
+> nếu chưa đọc được danh sách OC của một style thì tải lại toàn bộ OC của style đó.
+> Nếu các mục có lỗi đều không tải được file, ứng dụng báo lỗi và giữ danh sách cần chạy lại.
+> Nếu toàn bộ style chưa có OCNum, ứng dụng chỉ thông báo `Không tìm thấy OC`.

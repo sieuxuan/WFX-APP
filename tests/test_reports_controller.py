@@ -60,9 +60,7 @@ class FakeLogin:
 
 @pytest.fixture
 def api(tmp_path):
-    api = PanelAPI(
-        login_module=FakeLogin(), prefs_module=prefs, base_dir=tmp_path
-    )
+    api = PanelAPI(login_module=FakeLogin(), prefs_module=prefs, base_dir=tmp_path)
     prefs.save_account("tester", "", base_dir=tmp_path)
     return api
 
@@ -84,9 +82,7 @@ class BareLogin(FakeLogin):
 
 @pytest.fixture
 def bare_api(tmp_path):
-    return PanelAPI(
-        login_module=BareLogin(), prefs_module=prefs, base_dir=tmp_path
-    )
+    return PanelAPI(login_module=BareLogin(), prefs_module=prefs, base_dir=tmp_path)
 
 
 # --- danh mục báo cáo ---------------------------------------------------
@@ -148,9 +144,7 @@ def test_an_empty_report_id_is_refused(api):
 
 
 def test_parameters_cannot_be_saved_before_the_user_logs_in(tmp_path):
-    api = PanelAPI(
-        login_module=FakeLogin(), prefs_module=prefs, base_dir=tmp_path
-    )
+    api = PanelAPI(login_module=FakeLogin(), prefs_module=prefs, base_dir=tmp_path)
 
     result = api.save_report_parameters(COLOR, {"division": "d1"})
 
@@ -290,16 +284,15 @@ def test_a_style_list_that_is_not_a_list_is_refused(api):
 
 
 def test_a_batch_saves_the_selection_before_it_runs(api, tmp_path):
-    api.run_color_report_batch(
-        {"division": "d1", "buyer": "b1"}, ["r1"], str(tmp_path)
-    )
+    api.run_color_report_batch({"division": "d1", "buyer": "b1"}, ["r1"], str(tmp_path))
 
     assert api._reports._saved_report_parameters(COLOR)["division"] == "d1"
 
 
 def test_a_batch_trims_the_style_list_and_drops_blank_entries(api, tmp_path):
     api.run_color_report_batch(
-        {}, ["r1", "   ", "", "r2"] + [f"r{index}" for index in range(600)],
+        {},
+        ["r1", "   ", "", "r2"] + [f"r{index}" for index in range(600)],
         str(tmp_path),
     )
 
@@ -310,11 +303,41 @@ def test_a_batch_trims_the_style_list_and_drops_blank_entries(api, tmp_path):
     assert output_dir == str(tmp_path)
 
 
-def test_a_batch_is_recorded_in_the_job_history_under_its_own_method(
-    api, tmp_path
-):
+def test_a_batch_is_recorded_in_the_job_history_under_its_own_method(api, tmp_path):
     result = api.run_color_report_batch({}, ["r1", "r2"], str(tmp_path))
 
     assert result["code"] == "COLOR_REPORT_BATCH_DONE"
     methods = [job["method"] for job in api.get_job_history()["jobs"]]
     assert "run_color_report_batch" in methods
+
+
+def test_oc_mode_and_retry_filter_reach_automation_without_persisting_retries(
+    api, tmp_path
+):
+    selection = {
+        "division": "d1",
+        "export_mode": "oc_num",
+        "retry_ocnums": {"r1": ["OC001"]},
+    }
+    api.run_color_report_batch(selection, ["r1"], str(tmp_path))
+    assert api._login.calls[-1][1] == selection
+    saved = api._reports._saved_report_parameters(COLOR)
+    assert saved["export_mode"] == "oc_num"
+    assert "retry_ocnums" not in saved
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        {"export_mode": "unknown"},
+        {"export_mode": "oc_num", "retry_ocnums": ["OC001"]},
+        {"export_mode": "oc_num", "retry_ocnums": {"r1": "OC001"}},
+        {"export_mode": "oc_num", "retry_ocnums": {"r1": []}},
+    ],
+)
+def test_invalid_oc_mode_or_retry_filter_never_starts_automation(
+    api, tmp_path, selection
+):
+    result = api.run_color_report_batch(selection, ["r1"], str(tmp_path))
+    assert result["code"] == "REPORT_PARAMETERS_INVALID"
+    assert api._login.calls == []

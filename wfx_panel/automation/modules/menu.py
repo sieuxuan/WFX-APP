@@ -143,10 +143,15 @@ def open_module(
             playwright.stop()
 
 
-def _active_wfx_page(playwright: Playwright, log: Callable[[str], None]) -> tuple[Any, Page]:
+def _active_wfx_page(
+    playwright: Playwright, log: Callable[[str], None], *, bring_to_front: bool = True,
+) -> tuple[Any, Page]:
     if not _chrome_is_ready():
         raise RuntimeError("CHROME_CLOSED")
-    browser, page = _connect_to_chrome(playwright)
+    if bring_to_front:
+        browser, page = _connect_to_chrome(playwright)
+    else:
+        browser, page = _connect_to_chrome(playwright, bring_to_front=False)
     _attach_dialog_handler(page, log)
     login_form = page.locator("#txtUserID")
     if login_form.count() and login_form.is_visible(timeout=1_500):

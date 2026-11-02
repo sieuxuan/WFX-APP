@@ -83,6 +83,9 @@ function openModulePage(moduleId) {
     clearSharedWorkspaceInputs(module.kind);
   }
   loadModuleRecentSearches(module.kind);
+  if (["expense_invoice", "supplier_invoice", "advance_pr"].includes(module.kind)) {
+    loadPaymentRequester();
+  }
 }
 
 async function stopCurrentAction() {

@@ -7,7 +7,8 @@ function handleResult(result) {
   if (!result) return;
   const cancelled = result.code === "ACTION_CANCELLED";
   setStatus(
-    cancelled ? "warning" : (result.ok ? "success" : "error"),
+    result.code === "COLOR_REPORT_OC_NOT_FOUND" ? "neutral"
+      : (cancelled ? "warning" : (result.ok ? "success" : "error")),
     result.message || "",
   );
   if (result.code?.startsWith?.("GDN_")) {
@@ -136,7 +137,7 @@ function handleResult(result) {
        "LOGIN_FAILED", "LOGIN_TIMEOUT", "NOT_LOGGED_IN",
        "SESSION_USER_MISMATCH"].includes(result.code)) {
     // Kiểm tra nền không được kéo người dùng ra khỏi việc đang làm để mở
-    // một sheet bị khóa. Badge WFX ở footer và dòng trạng thái đã đủ; chỉ
+    // một sheet bị khóa. Trạng thái trong Tài khoản và dòng trạng thái đã đủ; chỉ
     // thao tác do chính người dùng bấm mới ép nhập lại tài khoản.
     if (result.method !== "maintain_session") {
       showCredentialPrompt(result.code, result.message);

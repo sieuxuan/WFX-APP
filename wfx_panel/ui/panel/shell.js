@@ -46,7 +46,17 @@ function syncAccountView() {
 }
 
 function setAccount(userId) {
-  accountUserId = String(userId || "").trim();
+  const nextUser = String(userId || "").trim();
+  const changed = nextUser.toLowerCase() !== accountUserId.toLowerCase();
+  if (changed) {
+    paymentRequesterAccount = null;
+    paymentRequesterRevision += 1;
+    setPaymentRequester("");
+  }
+  accountUserId = nextUser;
+  if (changed && ["expense_invoice", "supplier_invoice", "advance_pr"].includes(selectedModule?.kind)) {
+    loadPaymentRequester();
+  }
   $(".user-input").value = accountUserId;
   syncAccountView();
 }

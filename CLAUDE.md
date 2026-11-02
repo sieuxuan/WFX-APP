@@ -143,7 +143,7 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   credential mới hoặc chủ động bấm đăng nhập. Mỗi lần thử lại là một lần nhập
   sai trên WFX và đủ nhiều thì tài khoản bị khóa.
 - Kết quả gửi sang UI phải kèm `method` của flow sinh ra nó. Kiểm tra nền
-  (`maintain_session`) thất bại chỉ được đổi badge WFX, dòng trạng thái và ghi
+  (`maintain_session`) thất bại chỉ được đổi trạng thái phiên, dòng trạng thái và ghi
   đúng một dòng `jobs.json`; không được ép mở sheet Tài khoản đang bị khóa
   giữa lúc người dùng làm việc khác. Heartbeat thành công vẫn im lặng tuyệt
   đối. `SESSION_RESTORED` phải xóa prompt đăng nhập như các mã đăng nhập khác.
@@ -152,9 +152,9 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
   trong màn module. Câu status bị cắt `…` phải đọc được nguyên văn khi hover:
   `setStatus` gắn `data-tooltip` + `data-tooltip-clipped`/`data-tooltip-wide`,
-  tooltip chỉ hiện khi chữ thật sự bị cắt và cập nhật tại chỗ khi câu đổi. Hai
-  đèn trình duyệt/phiên WFX chỉ là chấm (không in chữ `Chrome`/`WFX`), tên nằm
-  ở tooltip và `aria-label`.
+  tooltip chỉ hiện khi chữ thật sự bị cắt và cập nhật tại chỗ khi câu đổi.
+  Footer không hiển thị hai chấm trạng thái trình duyệt/phiên WFX; giữ nút
+  kiểm tra lại trạng thái. Trạng thái đăng nhập nằm trong thẻ Tài khoản.
 - Result sink từ backend phải nhả trạng thái busy của UI độc lập với Promise
   pywebview. Nếu Promise bridge bị kẹt sau khi backend đã ghi kết quả, các nút
   workflow vẫn phải hoạt động lại ngay.
@@ -1033,13 +1033,22 @@ Các workflow riêng hiện có:
   Order No. trên `gridAdvancePaymentRequestList`.
 - Expense Inv, Supplier Inv và Advance PR đều có nút `In ĐNTT`: nhập exact
   Invoice No. hoặc để trống để dùng đúng một dòng đã chọn trên WFX. Tự mở đúng
-  List khi tìm, không in khi số invoice mơ hồ; khi dùng lựa chọn trên UI phải
-  có duy nhất một dòng được chọn trong các tab List của module đó. Click BI Print → Payment Request Form, xác nhận TXNID trùng dòng,
+  List khi tìm, không in khi số invoice mơ hồ. Khi để trống invoice, ưu tiên
+  đúng List đang focus/visible, rồi tương tác chọn dòng gần nhất và dấu highlight
+  của WFX; radio còn tick ở tab cũ không được chặn dòng vừa chọn. Probe không
+  được activate tab WFX chính trước khi xác định List. Trong List được chọn
+  vẫn phải có đúng một dòng; chưa xác định được tab thì yêu cầu chọn lại, không
+  đoán theo thứ tự tạo tab. Click BI Print → Payment Request Form, xác nhận TXNID trùng dòng,
   đọc tham số Requester/tỷ giá từ report thật rồi View Report và Export Excel
   bằng luồng download native. Không dùng quy tắc ctl05/ctl07 ngày của Shipment
   cho Payment Request Form. Tham số trong từng module độc lập với Reports;
   TXNID không được sửa từ UI. Mã báo cáo gắn tài khoản/Division và document
   report hiện tại, hết hạn sau 30 phút hoặc khi mở ĐNTT khác.
+  Requester có ô nhập sẵn trong cả ba module, đồng bộ hai chiều với các ô tên
+  trong phần tham số. Tự lưu theo User ID (không phụ thuộc Division) tại
+  `report-parameters.json` / `payment_request.requester`; nhập một lần và giữ
+  sau khi mở lại app. Mở report tự điền Requester đã nhớ, đổi tài khoản không
+  mang tên cũ sang tài khoản mới.
 - Các module generic còn lại thuộc nhóm Finance/Admin theo quyền tài khoản.
 
 ### Webhook và quyền riêng tư

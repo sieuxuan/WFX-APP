@@ -123,15 +123,22 @@ Phần `Tra cứu` luôn hiện ngay dưới phần nhập Excel, gồm các ô 
 1. Hoàn tất và lưu chứng từ trên WFX.
 2. Mở module tương ứng trong app. Nhập đúng số hóa đơn vào `Invoice No. để in ĐNTT`,
    hoặc để trống ô này và chọn đúng một dòng trong List trên WFX.
-3. Bấm `In ĐNTT`. App mở `BI Print` → `Payment Request Form` của chứng từ đó.
-4. Kiểm tra số invoice ở đầu phần tham số. Điền `Requester (Ho va Ten)`.
+3. Điền `Requester (họ và tên)` ngay trong app. Chỉ cần nhập một lần: tên được
+   nhớ theo tài khoản và dùng chung cho cả ba module, kể cả sau khi mở lại app.
+4. Bấm `In ĐNTT`. App mở `BI Print` → `Payment Request Form` của chứng từ đó,
+   tự điền `Requester (Ho va Ten)`. Kiểm tra số invoice ở đầu phần tham số.
    Giữ lựa chọn để trống tỷ giá nếu không cần nhập; bỏ chọn để nhập tỷ giá riêng.
 5. Bấm `Xuất Excel ĐNTT`. App chạy báo cáo, chờ tải xong rồi xuất Excel
    như các báo cáo khác. File nằm trong thư mục tải xuống của trình duyệt.
 
 Nếu nhiều dòng trùng số hoặc kết quả có nhiều trang, hãy chọn đúng dòng trên WFX,
-để trống ô invoice của In ĐNTT rồi bấm lại. Nếu có nhiều tab List, bỏ chọn ở các
-tab khác. App chỉ in khi xác định được đúng một chứng từ.
+để trống ô invoice của In ĐNTT rồi bấm lại. App ưu tiên tab List bạn đang làm
+và dòng vừa chọn; dấu chọn còn giữ ở tab cũ không cản in. Nếu chưa xác định được
+tab cần in, mở tab đó và chọn lại một dòng rồi bấm `In ĐNTT`. App chỉ in khi
+xác định được đúng một chứng từ.
+
+Sửa Requester ở một module hoặc trong phần tham số sẽ đồng bộ sang các form
+ĐNTT còn lại. Đổi tài khoản sẽ dùng tên riêng của tài khoản đó.
 
 Báo cáo hết hiệu lực sau 30 phút, khi mở ĐNTT khác, đổi tài khoản/Division, hoặc
 khi bạn đóng hay chuyển báo cáo WFX. Bấm `In ĐNTT` lại để tải tham số mới.

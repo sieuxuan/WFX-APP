@@ -28,6 +28,7 @@ from wfx_panel.automation.payment_request import (
     export_payment_request,
     prepare_payment_request,
 )
+from wfx_panel.stores.report_parameters import ReportParameterStore
 from wfx_panel.workbooks.expense_invoice import (
     ExpenseWorkbookError,
     load_seed_options,
@@ -45,14 +46,37 @@ class FinanceController:
         self._expense_lock = threading.Lock()
         self.payment_reports: dict[str, dict] = {}
 
-    def prepare_payment_request(self, module_id: str, invoice_no: str = "") -> dict:
+    def load_payment_request_requester(self) -> dict:
+        account = str(self._panel._account().get("user_id") or "").strip().casefold()
+        store = ReportParameterStore(self._panel._base_dir / "report-parameters.json")
+        return {"ok": True, "requester": str(store.load(account, "payment_request").get("requester") or "")}
+
+    def save_payment_request_requester(self, requester: str, user_id: str = "") -> dict:
+        account = str(self._panel._account().get("user_id") or "").strip().casefold()
+        if not account or (user_id and str(user_id).strip().casefold() != account):
+            return {"ok": False, "code": "REPORT_SAVE_ACCOUNT_REQUIRED", "message": "Tài khoản đã thay đổi. Hãy mở lại module để điền Requester."}
+        if not isinstance(requester, str) or len(requester) > 500:
+            return {"ok": False, "code": "REPORT_PARAMETERS_INVALID", "message": "Requester phải là họ tên, tối đa 500 ký tự."}
+        try:
+            store = ReportParameterStore(self._panel._base_dir / "report-parameters.json")
+            store.save(account, "payment_request", {"requester": requester.strip()})
+        except OSError:
+            return {"ok": False, "code": "REPORT_SAVE_FAILED", "message": "Chưa lưu được Requester. Hãy kiểm tra quyền ghi dữ liệu ứng dụng."}
+        return {"ok": True, "requester": requester.strip()}
+
+    def prepare_payment_request(self, module_id: str, invoice_no: str = "", requester: str | None = None) -> dict:
         module_id = str(module_id or "")
         if module_id not in PAYMENT_REQUEST_MODULES:
             return {"ok": False, "code": "MODULE_UNKNOWN", "message": "Module này không hỗ trợ In ĐNTT."}
+        if requester is not None:
+            saved = self.save_payment_request_requester(requester)
+            if not saved.get("ok"):
+                return saved
+        name = self.load_payment_request_requester()["requester"]
 
         def action() -> dict:
             self.payment_reports.clear()
-            result = prepare_payment_request(module_id, str(invoice_no or "").strip(), self._panel._log)
+            result = prepare_payment_request(module_id, str(invoice_no or "").strip(), self._panel._log, requester=name)
             state = result.pop("_report_state", None)
             if result.get("ok") and state:
                 token = secrets.token_urlsafe(24)

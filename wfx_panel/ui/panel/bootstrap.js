@@ -968,6 +968,7 @@ function init() {
   buildModules();
   bindTooltips();
   bind();
+  $$(".payment-request-requester").forEach(bindPaymentRequesterInput);
   updateFeedbackState();
   // PanelApp chủ động inject bootstrap trong luồng khởi động. Chỉ gọi bridge
   // làm fallback nếu sau một nhịp UI vẫn chưa nhận state, tránh đọc/render

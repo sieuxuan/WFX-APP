@@ -267,34 +267,53 @@ function renderColorReportResult(result) {
   $(".color-report-progress-card").hidden = true;
   const saved = Array.isArray(result.saved) ? result.saved : [];
   const failed = Array.isArray(result.failed) ? result.failed : [];
-  if (!saved.length && !failed.length) {
+  const skipped = Array.isArray(result.skipped) ? result.skipped : [];
+  if (!saved.length && !failed.length && !skipped.length) {
     card.hidden = true;
     return;
   }
   const failedRows = failed.map((item) =>
-    `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}</strong><span>${escapeHtml(item.message)}</span></div>`,
+    `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}${item.oc_num ? ` · ${escapeHtml(item.oc_num)}` : ""}</strong><span>${escapeHtml(item.message)}</span></div>`,
   ).join("");
   const savedRows = saved.map((item) =>
     `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}</strong><span>${escapeHtml(item.file_name)}</span></div>`,
   ).join("");
+  const skippedRows = skipped.map((item) =>
+    `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}</strong><span>Không tìm thấy OC</span></div>`,
+  ).join("");
   card.innerHTML = `
-    <div class="color-report-result-row"><span class="chip">${saved.length} thành công</span><span class="chip">${failed.length} lỗi</span></div>
+    <div class="color-report-result-row">${saved.length ? `<span class="chip">${saved.length} thành công</span>` : ""}${failed.length ? `<span class="chip">${failed.length} lỗi</span>` : ""}${skipped.length ? `<span class="chip">${skipped.length} style không tìm thấy OC</span>` : ""}</div>
     ${failedRows}
-    ${saved.length ? `<details><summary>${saved.length} style đã tải</summary>${savedRows}</details>` : ""}
+    ${skippedRows}
+    ${saved.length ? `<details><summary>${saved.length} báo cáo đã tải</summary>${savedRows}</details>` : ""}
     <div class="color-report-result-actions">
-      ${failed.length ? `<button type="button" class="module-secondary-button" data-color-report-result-action="retry">Chạy lại ${failed.length} style lỗi</button>` : ""}
-      <button type="button" class="module-secondary-button" data-color-report-result-action="open-dir">Mở thư mục</button>
+      ${failed.length ? `<button type="button" class="module-secondary-button" data-color-report-result-action="retry">Chạy lại ${failed.length} mục lỗi</button>` : ""}
+      ${saved.length ? '<button type="button" class="module-secondary-button" data-color-report-result-action="open-dir">Mở thư mục</button>' : ""}
     </div>`;
   card.dataset.failedRefs = JSON.stringify(
-    failed.map((item) => String(item.style_ref)),
+    [...new Set(failed.map((item) => String(item.style_ref_value || item.style_ref)))],
   );
+  const retrySelection = { ...(result.request_selection || {}),
+    export_mode: result.export_mode || "style" };
+  delete retrySelection.retry_ocnums;
+  if (retrySelection.export_mode === "oc_num") {
+    retrySelection.retry_ocnums = {};
+    const wholeStyles = new Set(failed.filter((item) => !item.oc_num)
+      .map((item) => String(item.style_ref_value || item.style_ref)));
+    failed.forEach((item) => {
+      const ref = String(item.style_ref_value || item.style_ref);
+      if (item.oc_num && !wholeStyles.has(ref)) {
+        (retrySelection.retry_ocnums[ref] ||= []).push(String(item.oc_num));
+      }
+    });
+  }
   card.querySelector('[data-color-report-result-action="retry"]')?.addEventListener(
     "click", () => runColorReportBatch(
-      JSON.parse(card.dataset.failedRefs || "[]"),
+      JSON.parse(card.dataset.failedRefs || "[]"), retrySelection, result.output_dir,
     ),
   );
   card.querySelector('[data-color-report-result-action="open-dir"]')?.addEventListener(
-    "click", () => callQuiet("open_report_export_dir", colorReportState.outputDir),
+    "click", () => callQuiet("open_report_export_dir", result.output_dir || colorReportState.outputDir),
   );
   card.hidden = false;
 }
@@ -324,7 +343,7 @@ async function chooseColorReportDir() {
   return result;
 }
 
-async function runColorReportBatch(onlyRefs = null) {
+async function runColorReportBatch(onlyRefs = null, retrySelection = null, retryOutputDir = null) {
   const batch = $(".color-report-batch-toggle").checked;
   const refs = onlyRefs || (batch
     ? colorReportState.styleRefs.map((option) => String(option.value))
@@ -332,12 +351,15 @@ async function runColorReportBatch(onlyRefs = null) {
     : [$(".color-report-single-select").value].filter(Boolean));
   resetColorReportProgress({ show: true, total: refs.length });
   colorReportRunActive = true;
+  const selection = retrySelection || { ...colorReportSelection(),
+    export_mode: $(".color-report-export-mode")?.value || "style" };
   let result = null;
   try {
     result = await call(
       "run_color_report_batch",
-      colorReportSelection(), refs, colorReportState.outputDir,
+      selection, refs, retryOutputDir || colorReportState.outputDir,
     );
+    if (result) result.request_selection = selection;
     return result;
   } finally {
     colorReportRunActive = false;
@@ -421,6 +443,15 @@ function renderPaymentRequest(result) {
   if (section.dataset.reportToken === result.report_token && !section.hidden) return;
   section.dataset.reportToken = result.report_token || "";
   renderReportParameters({ ...result, report_name: `ĐNTT — ${result.invoice_no || ""}` }, section);
+  for (const parameter of result.parameters || []) {
+    if (!String(parameter.label || "").toLowerCase().includes("requester")) continue;
+    const field = section.querySelector(`[data-report-parameter="${CSS.escape(parameter.key)}"]`);
+    if (field) {
+      field.dataset.paymentRequesterParameter = "true";
+      bindPaymentRequesterInput(field);
+    }
+  }
+  setPaymentRequester(result.requester || paymentRequester);
   // ReportViewer's Null checkbox controls whether an exchange rate is supplied.
   section.querySelectorAll('[data-report-parameter$="_cbNull"]').forEach((checkbox) => {
     checkbox.addEventListener("change", syncPaymentRequestParameters);
@@ -445,7 +476,7 @@ function preparePaymentRequest(moduleId) {
     section.hidden = true;
     delete section.dataset.reportToken;
   });
-  return runSelectedModuleAction("prepare_payment_request", moduleId, invoiceNo);
+  return runSelectedModuleAction("prepare_payment_request", moduleId, invoiceNo, paymentRequester);
 }
 
 function exportPaymentRequest(moduleId) {
@@ -460,4 +491,42 @@ function exportPaymentRequest(moduleId) {
   return runSelectedModuleAction(
     "export_payment_request", section.dataset.reportToken, reportParameterValues(section),
   );
+}
+
+function setPaymentRequester(value) {
+  paymentRequester = String(value || "");
+  $$('.payment-request-requester, [data-payment-requester-parameter]').forEach((field) => {
+    if (field.value !== paymentRequester) field.value = paymentRequester;
+  });
+}
+
+function bindPaymentRequesterInput(field) {
+  field.addEventListener("input", () => {
+    paymentRequesterRevision += 1;
+    setPaymentRequester(field.value);
+  });
+  field.addEventListener("change", persistPaymentRequester);
+}
+
+async function persistPaymentRequester() {
+  const value = paymentRequester;
+  const account = accountUserId;
+  if (!account) return;
+  const result = await callQuiet("save_payment_request_requester", value, account);
+  if (account !== accountUserId || value !== paymentRequester) return;
+  if (result?.ok) setPaymentRequester(result.requester);
+  else if (result) setStatus("error", result.message || "Chưa lưu được Requester.");
+}
+
+async function loadPaymentRequester() {
+  const account = accountUserId;
+  if (paymentRequesterAccount === account) return;
+  paymentRequesterAccount = account;
+  const revision = ++paymentRequesterRevision;
+  setPaymentRequester("");
+  if (!account) return;
+  const result = await callQuiet("load_payment_request_requester");
+  if (revision === paymentRequesterRevision && account === accountUserId && result?.ok) {
+    setPaymentRequester(result.requester);
+  }
 }

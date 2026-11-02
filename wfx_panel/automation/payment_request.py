@@ -50,7 +50,8 @@ _ROWS_JS = r"""root => {
                 cell => cell.id.toLowerCase() === 'colinvoiceno');
             const box = row.querySelector('input[type=radio],input[type=checkbox]');
             return {id:row.id, invoice_no:norm(cell?.textContent),
-                selected:Boolean(box?.checked)};
+                selected:Boolean(box?.checked),
+                highlighted:row.classList.contains('trContenthighlight')};
         }).filter(row => row.id && row.invoice_no);
 }"""
 
@@ -75,6 +76,58 @@ class PaymentSelectionError(ValueError):
     pass
 
 
+_ACTIVITY_JS = """() => {
+    if (!window.__wfxDnttActivity) {
+        const state = window.__wfxDnttActivity = {lastRowInteraction: 0};
+        const remember = event => {
+            if (event.isTrusted && event.target.closest?.('tr.trContent')) {
+                state.lastRowInteraction = Date.now();
+            }
+        };
+        document.addEventListener('pointerdown', remember, true);
+        document.addEventListener('keydown', remember, true);
+    }
+    return {
+        visible: document.visibilityState === 'visible',
+        focused: document.hasFocus(),
+        interacted: window.__wfxDnttActivity.lastRowInteraction,
+    };
+}"""
+
+
+def _current_list(frames):
+    """Resolve the user's List without activating the main WFX tab first.
+
+    Minimized Chrome can report every document hidden. WFX's highlight and
+    trusted row interactions then distinguish a deliberate selection from
+    default radio buttons retained in old List tabs.
+    """
+    states = []
+    for frame, rows in frames:
+        state = frame.evaluate(_ACTIVITY_JS)
+        states.append((frame, rows, state))
+    for flag in ("focused", "visible"):
+        candidates = [(frame, rows) for frame, rows, state in states if state[flag]]
+        if len(candidates) == 1:
+            return candidates[0]
+    latest = max((state["interacted"] for _, _, state in states), default=0)
+    recent = [
+        (frame, rows)
+        for frame, rows, state in states
+        if latest and state["interacted"] == latest
+    ]
+    if len(recent) == 1:
+        return recent[0]
+    highlighted = [
+        (frame, rows)
+        for frame, rows in frames
+        if any(row["selected"] and row.get("highlighted") for row in rows)
+    ]
+    if len(highlighted) == 1:
+        return highlighted[0]
+    return None
+
+
 def _list_frames(context, suffix):
     for page in context.pages:
         for frame in page.frames:
@@ -92,14 +145,19 @@ def _list_frames(context, suffix):
 
 
 def _selected_invoice(context, suffix):
-    selected = []
+    frames = []
     for frame in _list_frames(context, suffix):
         rows = frame.locator(f"#grid{suffix}_tblGridContent").evaluate(_ROWS_JS)
-        selected.extend((frame, row) for row in rows if row["selected"])
+        frames.append((frame, rows))
+    current = _current_list(frames)
+    source = [current] if current is not None else frames
+    selected = [
+        (frame, row) for frame, rows in source for row in rows if row["selected"]
+    ]
     if len(selected) != 1:
         raise PaymentSelectionError(
             "Hãy nhập Invoice No. hoặc chọn đúng một dòng trong List của module này; "
-            "bỏ chọn ở các tab List khác rồi bấm In ĐNTT."
+            "mở tab List cần in, chọn lại một dòng rồi bấm In ĐNTT."
         )
     frame, row = selected[0]
     if not str(row["id"]).isdecimal():
@@ -199,13 +257,13 @@ def _close_previous_reports(context, current):
             continue
 
 
-def prepare_payment_request(module_id, invoice_no="", log=print):
+def prepare_payment_request(module_id, invoice_no="", log=print, *, requester=""):
     if module_id not in MODULES:
         return _result(False, "MODULE_UNKNOWN", "Module này không hỗ trợ In ĐNTT.")
     playwright = None
     try:
         playwright = sync_playwright().start()
-        _browser, page = _active_wfx_page(playwright, log)
+        _browser, page = _active_wfx_page(playwright, log, bring_to_front=False)
         suffix = MODULES[module_id][1]
         if str(invoice_no or "").strip():
             found_invoice = _find_invoice(page, module_id, str(invoice_no).strip(), log)
@@ -245,6 +303,13 @@ def prepare_payment_request(module_id, invoice_no="", log=print):
         report_page, report_frame = found
         reports._wait_postback_settled(report_frame)
         parameters, identity = _parameters(report_frame, selected)
+        if requester:
+            requester_values = {}
+            for parameter in parameters:
+                if "requester" in parameter["label"].casefold():
+                    parameter["value"] = requester
+                    requester_values[parameter["key"]] = requester
+            reports._set_parameters(report_frame, requester_values)
         marker = secrets.token_urlsafe(24)
         report_frame.evaluate("marker => { window.__wfxDnttReport = marker; }", marker)
         _close_previous_reports(report_page.context, report_page)
@@ -255,6 +320,7 @@ def prepare_payment_request(module_id, invoice_no="", log=print):
             "Đã mở đề nghị thanh toán. Điền họ tên rồi xuất báo cáo.",
             module_id=module_id,
             invoice_no=selected["invoice_no"],
+            requester=requester,
             parameters=parameters,
             _report_state={
                 "marker": marker,

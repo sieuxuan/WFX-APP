@@ -585,12 +585,10 @@ def test_visual_regression_harness_covers_theme_dpi_and_key_views():
         assert hook in source
 
 
-def test_footer_has_health_indicators():
+def test_footer_keeps_refresh_and_stop_controls():
     html = (UI / "index.html").read_text(encoding="utf-8")
     for hook in [
         'class="footer-health"',
-        'class="health-chrome"',
-        'class="health-session"',
         'class="health-refresh"',
     ]:
         assert hook in html, hook
@@ -598,16 +596,10 @@ def test_footer_has_health_indicators():
     assert "checkpoint an toàn" in html
 
 
-def test_footer_health_shows_only_dots_with_tooltips():
-    import re
-
+def test_footer_does_not_show_browser_and_session_dots():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    for hook, label in (("health-chrome", "Trình duyệt làm việc"), ("health-session", "Phiên WFX")):
-        match = re.search(rf'<span class="{hook}"[^>]*>(.*?)</span>', html)
-        assert match, hook
-        assert match.group(1) == "<i></i>", "chỉ giữ chấm trạng thái, không in chữ"
-        assert f'data-tooltip="{label}"' in match.group(0)
-        assert f'aria-label="{label}"' in match.group(0)
+    assert 'class="health-chrome"' not in html
+    assert 'class="health-session"' not in html
 
 
 def test_clipped_footer_status_shows_full_text_on_hover():
