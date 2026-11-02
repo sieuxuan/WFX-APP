@@ -19,12 +19,21 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
    Khi đã khớp chính xác, ô Buyer hiện dấu ✓ ở bên phải.
 4. Bấm `Tải form trống` nếu bạn chưa có form 22 cột.
 5. Điền dữ liệu theo thứ tự từ trên xuống dưới trong file rồi lưu lại.
+   Nếu tách số lượng theo màu, bạn có thể để trống cả `Style No` và `PO No`
+   ở dòng tiếp theo rồi chỉ nhập `Qty`. Ứng dụng cộng Qty của các dòng này vào
+   PO/Style gần nhất phía trên, ví dụ `264` và `84` thành `348`, rồi import
+   bằng tổng đó. Các thông tin khác lấy từ dòng có PO/Style. Dòng chỉ có Qty
+   phải nằm sau một dòng có đủ PO và Style.
 6. Bấm `Chọn file & kiểm tra`.
 7. Kiểm tra Invoice No., số PO, số Style và các dữ liệu cần điền trong thẻ review.
    Từ lúc này, ô Buyer, nút chọn file và `Tùy chọn nâng cao` thu lại thành một
    dòng gọn ở trên cùng ghi Buyer và tên file. Bấm `Đổi` trên dòng đó để quay về
    chọn Buyer/file khác.
 8. Bấm `Bắt đầu tạo Sale ASN`.
+   Với Buyer `ONEILL`, ứng dụng luôn kiểm tra và tự chuyển sang Division `PSSG`
+   trước khi mở form, thêm PO hoặc điền dữ liệu. Mỗi lần tiếp tục cũng kiểm tra
+   lại; nếu đã ở PSSG thì giữ nguyên. Nếu không chuyển được, ứng dụng dừng import
+   để bạn kiểm tra Division và thử lại.
 9. Theo dõi thẻ `Tiến độ Sale ASN`: năm bước `Thêm PO`, `Order Details`,
    `Style Details`, `Shipping Info` và bước cuối `Check giá / Qty` sáng dần theo
    đúng bước ứng dụng đang làm.
@@ -149,7 +158,10 @@ liệu.
 ## Quy tắc của file Excel
 
 - Mỗi file chỉ chứa một Invoice No. và một FTY.
-- Chỉ dòng có `PO No` mới được tính và xử lý; dòng tổng hoặc ghi chú không có PO sẽ được bỏ qua.
+- Dòng có `PO No` là một dòng import. Dòng trống cả `PO No` và `Style No`
+  nhưng có `Qty` được cộng vào PO/Style gần nhất phía trên; không tạo thêm
+  dòng import. Dòng hoàn toàn trống hoặc ghi chú có tên ở ô Style mà không có
+  PO được bỏ qua. Tổng Qty được dùng cho tìm PO và `Check giá / Qty`.
 - Với mỗi dòng có PO, `Style No` và `FTY` là dữ liệu bắt buộc. `Destination` có
   thể để trống.
 - `Style No` được dùng như từ khóa tìm gần đúng. Ví dụ `M Acel Jacket` có thể khớp với Style `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX.
