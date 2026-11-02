@@ -369,6 +369,7 @@ def load_prefs(base_dir: Path | None = None) -> dict:
         "costing_export_dir": str(
             data.get("costing_export_dir") or ""
         ).strip()[:32_000],
+        "expense_workbook_dir": str(data.get("expense_workbook_dir") or "").strip()[:32_000],
         "report_export_dir": str(
             data.get("report_export_dir") or ""
         ).strip()[:32_000],
@@ -488,6 +489,7 @@ def save_prefs(
     panel_offset_y: int | None = None,
     catalog_default_folder: dict | None = None,
     costing_export_dir: str | None = None,
+    expense_workbook_dir: str | None = None,
     report_export_dir: str | None = None,
     sale_asn_import_dir: str | None = None,
     sale_asn_stages: list[str] | None = None,
@@ -520,6 +522,7 @@ def save_prefs(
             panel_offset_y=panel_offset_y,
             catalog_default_folder=catalog_default_folder,
             costing_export_dir=costing_export_dir,
+            expense_workbook_dir=expense_workbook_dir,
             report_export_dir=report_export_dir,
             sale_asn_import_dir=sale_asn_import_dir,
             sale_asn_stages=sale_asn_stages,
@@ -554,6 +557,7 @@ def _save_prefs_locked(
     panel_offset_y: int | None,
     catalog_default_folder: dict | None,
     costing_export_dir: str | None,
+    expense_workbook_dir: str | None,
     report_export_dir: str | None,
     sale_asn_import_dir: str | None,
     sale_asn_stages: list[str] | None,
@@ -618,6 +622,8 @@ def _save_prefs_locked(
         )
     if costing_export_dir is not None:
         current["costing_export_dir"] = str(costing_export_dir).strip()[:32_000]
+    if expense_workbook_dir is not None:
+        current["expense_workbook_dir"] = str(expense_workbook_dir).strip()[:32_000]
     if report_export_dir is not None:
         current["report_export_dir"] = str(report_export_dir).strip()[:32_000]
     if session_user_id is not None:

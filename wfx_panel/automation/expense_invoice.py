@@ -6,7 +6,7 @@ import re
 import time
 from datetime import date
 from decimal import Decimal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from wfx_panel.automation._common import (
     _browser_boundary_result,
@@ -14,6 +14,10 @@ from wfx_panel.automation._common import (
     _wait,
     _write_log,
     sync_playwright,
+)
+from wfx_panel.automation.expense_cost_centers import (
+    fill_cost_centers,
+    verify_cost_centers,
 )
 from wfx_panel.automation.modules.creation import open_module_new
 from wfx_panel.automation.modules.menu import _active_wfx_page
@@ -161,6 +165,7 @@ def _frames(browser) -> list:
         for frame in page.frames:
             if (
                 urlsplit(frame.url).path.casefold().endswith("/wfxexpenseinvoice.aspx")
+                and parse_qs(urlsplit(frame.url).query).get("View") != ["1"]
                 and frame.locator(GRID).count()
                 and frame.locator("#ddlInvoiceType").count()
             ):
@@ -267,14 +272,32 @@ def _line(frame, index: int, data: dict) -> dict:
             field.fill(data[key])
         # Click header rời editor để WFX commit xOnBlur/tính tiền.
         frame.locator("#gridExpenseInvoiceExpenseDetail_tblGridHeader").click()
+        # Select2's hidden backing select may never receive native blur. Ask
+        # WFX's grid to commit its current editor, just as its toolbar does.
+        frame.evaluate("""() => {
+            const grid=window.objsectionExpenseInvoiceExpenseDetail?.gridExpenseInvoiceExpenseDetail;
+            if (grid) window.jQuery(grid).SaveGridFocusedCell();
+        }""")
         _settle(frame)
-        actual = row.locator(f'[id="{CELLS[key]}"]').inner_text().strip()
+        actual = _line_value(frame, index, key)
         if key == "ledger":
             if _normal(actual) != _normal(chosen["ledger_label"]):
                 raise ExpenseInputError(f"WFX chưa nhận Ledger ở dòng {index + 1}.")
         elif _read_number(actual) != Decimal(data[key]):
             raise ExpenseInputError(f"WFX chưa nhận {key} ở dòng {index + 1}.")
     return chosen
+
+
+def _line_value(frame, index: int, key: str) -> str:
+    # WFX keeps its Select2 editor (including every option's text) inside the
+    # cell after commit. Its grid data is the committed value used by Save.
+    value = frame.evaluate("""args => {
+        const row=window.objsectionExpenseInvoiceExpenseDetail?.gridExpenseInvoiceExpenseDetail?.data[args.index];
+        return row ? row[{ledger:'LedgerAcName',qty:'ExpenseQty',rate:'ExpenseRate'}[args.key]] : null;
+    }""", {"index": index, "key": key})
+    if value is not None:
+        return str(value).strip()
+    return _rows(frame).nth(index).locator(f'[id="{CELLS[key]}"]').inner_text().strip()
 
 
 # Đọc thẳng từ handler dropdown mà chính WFX gọi (GET, không ghi, không đổi
@@ -385,6 +408,8 @@ def fill_expense_invoice(data: dict, log=print) -> dict:
                     )
             written.append(_line(frame, index, line))
             _write_log(log, f"[EXPENSE] Đã điền chi phí {index + 1}/{len(lines)}")
+        for index in range(len(lines)):
+            fill_cost_centers(frame, index, data.get("cost_centers", {}).get(index + 1, []))
         # Đối chiếu toàn bộ sau cùng: callback WFX có thể thay dữ liệu trước đó.
         if _rows(frame).count() != len(lines):
             raise ExpenseInputError(
@@ -413,14 +438,14 @@ def fill_expense_invoice(data: dict, log=print) -> dict:
                     "Invoice Type hoặc Sub-Type không đúng giá trị cố định."
                 )
         for index, line in enumerate(lines):
-            row = _rows(frame).nth(index)
-            if _normal(row.locator('[id="ColLedgerAcName"]').inner_text()) != _normal(
+            verify_cost_centers(frame, index, data.get("cost_centers", {}).get(index + 1, []))
+            if _normal(_line_value(frame, index, "ledger")) != _normal(
                 written[index]["ledger_label"]
             ):
                 raise ExpenseInputError(f"Ledger dòng {index + 1} đã thay đổi.")
             for key in ("qty", "rate"):
                 if _read_number(
-                    row.locator(f'[id="{CELLS[key]}"]').inner_text()
+                    _line_value(frame, index, key)
                 ) != Decimal(line[key]):
                     raise ExpenseInputError(f"{key} dòng {index + 1} đã thay đổi.")
         # Form đã mở sẵn: tiện đọc dropdown thật của tài khoản/Division này cho

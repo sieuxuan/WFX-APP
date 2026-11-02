@@ -86,6 +86,7 @@ SILENT_RESULT_METHODS = frozenset(
 
 NOTIFICATION_ACTION_LABELS = {
     "fill_expense_import": "Nhập Expense Invoice",
+    "export_expense_invoice": "Xuất Expense Invoice",
     "open_module": "Mở module",
     "prepare_catalog": "Catalog",
     "browse_catalog": "Catalog",

@@ -45,12 +45,17 @@ class FileDialogController:
             message = f"{message} {result.get('message', '')}".strip()
         return {"ok": True, "code": "EXPENSE_TEMPLATE_SAVED", "message": message, "file_path": str(target), "file_name": target.name, "options_source": result.get("code")}
 
-    def expense_file_dialog(self, save: bool = False) -> dict:
+    def expense_file_dialog(self, save: bool = False, export: bool = False) -> dict:
         app = self._app
         if app.window is None:
             return {"ok": False, "code": "EXPENSE_FILE_DIALOG_FAILED", "message": "Cửa sổ chọn file chưa sẵn sàng."}
         try:
             options = {"allow_multiple": False, "file_types": ("Excel workbook (*.xlsx)",)}
+            base_dir = getattr(app, '_base_dir', None)
+            if base_dir is not None:
+                directory = prefs.load_prefs(base_dir).get('expense_workbook_dir', '')
+                if directory and Path(directory).is_dir():
+                    options['directory'] = directory
             if save:
                 options["save_filename"] = "Expense-Invoice.xlsx"
             selected = app.window.create_file_dialog(
@@ -59,8 +64,18 @@ class FileDialogController:
             if not selected:
                 return {"ok": False, "code": "EXPENSE_FILE_DIALOG_CANCELLED", "message": "Đã hủy chọn file Expense Invoice."}
             target = _dialog_selected_path(selected)
+            if base_dir is not None:
+                try:
+                    prefs.save_prefs(base_dir, expense_workbook_dir=str(target.parent))
+                except OSError:
+                    pass
             if save:
                 target = target.with_suffix(".xlsx")
+                if export:
+                    result = app.api.export_expense_invoice(str(target))
+                    if result.get('ok'):
+                        self._handle_downloaded_excel(str(target))
+                    return result
                 result = app.api._finance.expense_template_options()
                 if not result.get("ok"):
                     return result

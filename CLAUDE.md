@@ -466,6 +466,16 @@ Các workflow riêng hiện có:
   Import Expense Invoice. Mẫu nguồn tại
   `wfx_panel/assets/templates/Expense-Invoice.xlsx`; khảo sát và tiến độ nằm
   ở `docs/EXPENSE_INVOICE_SCAN.md`.
+  `Export format` yêu cầu đúng một dòng đang chọn trong Expense Inv List,
+  mở route `WFXExpenseInvoice.aspx` với `View=1` trong tab đọc riêng (link
+  Invoice No. có thể mở BI report nên không dùng để crawl). Xác minh cả ID và
+  Invoice No. rồi xuất cùng mẫu import, kiểm tra đọc lại trước khi thay file.
+  Sheet `Cost Centers` bổ sung Expense Line/Allocation/Category/Cost Center/
+  Percent/Comments, giữ đủ các cấp và nhiều nhóm phân bổ, không mang ID nội bộ
+  từ hóa đơn gốc sang New. Mẫu 13 cột cũ vẫn đọc được. Import chọn dropdown
+  theo tên thật, kiểm tra IsCostCenterAttached/IsCostCenterMandatory của từng
+  Ledger, lưu phân bổ vào bộ nhớ bản New và đối chiếu lại; không gọi API lưu
+  hóa đơn hoặc `CostCentreAllocSaveData`. View chỉ đọc không cản tạo New.
 
 - Catalog: Category/folder, Master, Article Code; Apparel dùng Buyer Reference,
   category khác dùng Article Name; Costing, BOM,

@@ -128,6 +128,7 @@ const moduleActions = {
   },
   "expense-invoice-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
   "expense-invoice-template": downloadExpenseTemplate,
+  "expense-invoice-export": () => call("export_expense_format"),
   "expense-invoice-import": chooseExpenseImport,
   "expense-invoice-fill": fillExpenseImport,
   "expense-invoice-clear": clearExpenseImport,
