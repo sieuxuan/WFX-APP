@@ -21,6 +21,10 @@ if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
 from wfx_panel import constants
+from wfx_panel.controllers.document_division import (
+    align_division,
+    with_document_division_state,
+)
 from wfx_panel.stores.sale_asn_buyers import SaleASNBuyerStore, normalise_buyers
 from wfx_panel.workbooks.sale_asn import (
     SaleASNWorkbookError,
@@ -299,16 +303,38 @@ class SaleASNController:
                 selected_po_candidates=selected_candidates,
                 selected_po_final=bool(review.get("pending_po_final")),
             )
-        result = panel._run(
-            method,
-            lambda: runner(
+        def action() -> dict:
+            division_state: dict[str, Any] = {}
+            if str(review["buyer"]).strip().casefold() == "oneill":
+                if not callable(getattr(panel._login, "switch_division", None)):
+                    return {
+                        "ok": False,
+                        "code": "DIVISION_CHANGE_FAILED",
+                        "message": "Chưa kiểm tra được Division PSSG cho Buyer ONEILL; đã dừng import Sale ASN.",
+                    }
+                failed, division_state = align_division(
+                    panel,
+                    "pssg",
+                    reason="Buyer ONEILL",
+                    module="Sale ASN",
+                )
+                if failed is not None:
+                    return failed
+            created = runner(
                 constants.SALE_ASN_NEW_XPATH,
                 str(review["buyer"]),
                 list(document["rows"]),
                 start_index,
                 panel._log,
                 **runner_kwargs,
-            ),
+            )
+            return with_document_division_state(
+                created, division_state, label="Buyer ONEILL"
+            )
+
+        result = panel._run(
+            method,
+            action,
             {
                 "invoice_no": document["invoice_no"],
                 "po_count": document["po_count"],

@@ -743,7 +743,13 @@ Các workflow riêng hiện có:
   `CHROME_CLOSED`/`NOT_LOGGED_IN` giữ nguyên để run engine tự retry.
 - Sale ASN: List + Floating Filter, tìm theo Invoice No./Buyer Order Ref/OC
   No., New từ Excel, và tải Documents. Workspace có đúng MỘT tầng tab gồm
-  `Tạo mới` (mặc định) và `Tra cứu`; nút mở `Sale ASN List` là icon nằm trên
+  `Tạo mới` (mặc định) và `Tra cứu`. Khi import với Buyer exact `ONEILL` (không phân biệt hoa/thường,
+  bỏ khoảng trắng hai đầu), mọi lượt Bắt đầu/Tiếp tục phải kiểm tra và chuyển
+  Division sang `PSSG` trong cùng flow, trước mọi thao tác mở/refresh form,
+  chọn Buyer, thêm PO hay điền dữ liệu, kể cả khi bỏ bước Thêm PO. Đã ở PSSG
+  thì không đổi lại; đổi thất bại phải dừng import, giữ mã lỗi phiên/Chrome để
+  engine tự retry. Dùng `align_division`, reset cache khi đổi và gộp trạng thái
+  Division vào kết quả để panel đồng bộ. Nút mở `Sale ASN List` là icon nằm trên
   thanh trên nên dùng được ở cả hai thẻ. Không được thêm tầng tab thứ hai bên
   trong thẻ Tạo mới. Thẻ `Tạo mới` là một cột dọc Buyer → file → review → chạy.
   Buyer được quét từ `#Cell_Buyer`, cache lại, và dùng listbox gợi ý (không dùng
@@ -805,6 +811,13 @@ Các workflow riêng hiện có:
   `SEASON`/cột `DESCRIPTION` cũ. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
   đúng thứ tự dòng. Một PO có thể có nhiều Style; chỉ cặp PO No. + Style No. trùng
   hoàn toàn là lỗi. Style No./PO No./FTY bắt buộc, Destination là tùy chọn;
+  riêng dòng trống cả Style No. và PO No. nhưng có Qty là dòng tách màu:
+  cộng Qty vào PO/Style gần nhất phía trên, không tạo dòng automation mới,
+  giữ thông tin khác của dòng cha. Hỗ trợ nhiều dòng màu liên tiếp, bỏ qua
+  dòng hoàn toàn trống; Qty vẫn phải là số nguyên không âm và tổng không
+  vượt giới hạn số. Dòng Qty chưa có cha đủ PO/Style phải báo lỗi dòng.
+  Tổng Qty dùng xuyên suốt tìm PO và Check giá/Qty. Dòng có đủ PO/Style
+  trùng cặp vẫn là lỗi, không tự gộp.
   Shipping Mode chỉ
   bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
   nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;

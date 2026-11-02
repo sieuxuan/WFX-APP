@@ -216,7 +216,7 @@ def test_reader_requires_supported_shipping_mode_for_shipping_info(
     assert any("Shipping Mode" in error for error in raised.value.errors)
 
 
-def test_reader_ignores_every_row_without_po_number(tmp_path):
+def test_reader_ignores_note_rows_without_po_number(tmp_path):
     rows = _valid_rows()
     rows.append(
         {

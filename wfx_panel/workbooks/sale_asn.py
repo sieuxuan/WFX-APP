@@ -302,6 +302,7 @@ def read_sale_asn_workbook(
             )
 
         raw_rows: list[dict[str, object]] = []
+        qty_continuations: dict[int, list[tuple[int, object]]] = {}
         for source_row in range(2, sheet.max_row + 1):
             values = {
                 column: (
@@ -311,9 +312,15 @@ def read_sale_asn_workbook(
                 )
                 for column in SALE_ASN_COLUMNS
             }
-            # PO No quyết định một dòng có phải dữ liệu ASN hay không. Dòng
-            # tổng, ghi chú hoặc format thừa không có PO được bỏ qua hoàn toàn.
-            if not _identifier(values["PO No"]):
+            # Dòng màu chỉ có Qty kế thừa PO/Style gần nhất phía trên. Các
+            # dòng ghi chú có Style nhưng không có PO vẫn được bỏ qua như cũ.
+            has_po = bool(_identifier(values["PO No"]))
+            quantity_only = (
+                not has_po
+                and not _identifier(values["Style No"])
+                and bool(_text(values["Qty"]))
+            )
+            if not has_po and not quantity_only:
                 continue
             formula_cells = [
                 f"{sheet.cell(source_row, header_map[_header_identity(column)]).coordinate}"
@@ -330,7 +337,19 @@ def read_sale_asn_workbook(
                     "File Sale ASN không được dùng công thức trong vùng nhập liệu.",
                     tuple(f"{cell}: đang chứa công thức." for cell in formula_cells),
                 )
-            raw_rows.append({"source_row": source_row, **values})
+            if quantity_only:
+                if not raw_rows or not _identifier(raw_rows[-1]["Style No"]):
+                    raise SaleASNWorkbookError(
+                        "SALE_ASN_FILE_VALIDATION_FAILED",
+                        "Dòng Qty chưa có PO/Style phía trên để cộng.",
+                        (f"Qty dòng {source_row}: cần một dòng có PO No và Style No phía trên.",),
+                    )
+                parent_row = int(raw_rows[-1]["source_row"])
+                qty_continuations.setdefault(parent_row, []).append(
+                    (source_row, values["Qty"])
+                )
+            else:
+                raw_rows.append({"source_row": source_row, **values})
     finally:
         workbook.close()
 
@@ -430,6 +449,15 @@ def read_sale_asn_workbook(
                     cell=f"{column} dòng {source_row}",
                     integer=column in {"Qty", "Carton"},
                 )
+                if column == "Qty" and source_row in qty_continuations:
+                    total = Decimal(numbers[column] or "0")
+                    for color_row, quantity in qty_continuations[source_row]:
+                        total += Decimal(
+                            _number(quantity, cell=f"Qty dòng {color_row}", integer=True)
+                        )
+                    numbers[column] = _number(
+                        total, cell=f"Tổng Qty của PO/Style dòng {source_row}", integer=True
+                    )
             except ValueError as error:
                 errors.append(str(error))
                 numbers[column] = ""

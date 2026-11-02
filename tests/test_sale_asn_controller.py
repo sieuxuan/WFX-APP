@@ -298,6 +298,122 @@ def test_discarding_a_token_that_never_existed_reports_nothing_removed(api):
 # --- chạy review --------------------------------------------------------
 
 
+@pytest.mark.parametrize("buyer", ["ONEILL", "  oneill  "])
+@pytest.mark.parametrize("stage", ["po", "shipping_info"])
+@pytest.mark.parametrize("continuing", [False, True])
+def test_oneill_checks_pssg_before_any_import_stage(
+    api, tmp_path, monkeypatch, buyer, stage, continuing
+):
+    _wire_read(monkeypatch)
+    prepared = api.prepare_sale_asn_create(
+        str(_source(tmp_path)), buyer, [stage]
+    )
+    calls = []
+    monkeypatch.setattr(api._catalog, "reset_context", lambda: calls.append("catalog"))
+    api._login.reset_menu_route_cache = lambda: calls.append("menu")
+
+    def switch(key, log):
+        calls.append(("switch", key))
+        return {
+            "ok": True,
+            "code": "DIVISION_CHANGED",
+            "current_division": "pssg",
+            "division_label": "PSSG",
+            "division_name": "Pro Sports",
+        }
+
+    def runner(*args, **kwargs):
+        calls.append(("import", kwargs["stage"]))
+        return {"ok": False, "code": "SALE_ASN_PO_SELECTION_REQUIRED", "message": "Chọn PO."}
+
+    api._login.switch_division = switch
+    api._login.run_sale_asn_create = runner
+    run = api.continue_sale_asn_create if continuing else api.start_sale_asn_create
+
+    result = run(prepared["review_token"])
+
+    assert calls == [("switch", "pssg"), "menu", "catalog", ("import", stage)]
+    assert result["current_division"] == api._current_division == "pssg"
+    assert result["message"].startswith("Đã tự chuyển sang Division PSSG.")
+    assert result["review_token"] == prepared["review_token"]
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["DIVISION_ALREADY_ACTIVE", "DIVISION_OPTION_NOT_FOUND", "NOT_LOGGED_IN", "CHROME_CLOSED"],
+)
+def test_oneill_only_imports_after_pssg_is_confirmed(api, tmp_path, monkeypatch, code):
+    _wire_read(monkeypatch)
+    # Kiểm tra kết quả đầu vào engine; cơ chế tự mở Chrome/login lại được test riêng.
+    monkeypatch.setattr(api, "_run", lambda method, action, request=None: action())
+    prepared = api.prepare_sale_asn_create(str(_source(tmp_path)), "ONEILL", ["po"])
+    calls = []
+
+    def switch(key, log):
+        calls.append(("switch", key))
+        return {
+            "ok": code == "DIVISION_ALREADY_ACTIVE",
+            "code": code,
+            "message": "Division result.",
+            **({"current_division": "pssg", "division_label": "PSSG"}
+               if code == "DIVISION_ALREADY_ACTIVE" else {}),
+        }
+
+    def runner(*args, **kwargs):
+        calls.append("import")
+        return {"ok": True, "code": "SALE_ASN_FORM_COMPLETED", "message": "Xong."}
+
+    api._login.switch_division = switch
+    api._login.run_sale_asn_create = runner
+    api._login.reset_menu_route_cache = lambda: calls.append("menu")
+    monkeypatch.setattr(api._catalog, "reset_context", lambda: calls.append("catalog"))
+
+    result = api.start_sale_asn_create(prepared["review_token"])
+
+    if code == "DIVISION_ALREADY_ACTIVE":
+        assert calls == [("switch", "pssg"), "import"]
+        assert result["message"] == "Xong."
+        assert result["current_division"] == "pssg"
+    else:
+        assert calls == [("switch", "pssg")]
+        assert result["code"] == code
+        assert prepared["review_token"] in api._sale_asn.create_reviews
+        if code in {"NOT_LOGGED_IN", "CHROME_CLOSED"}:
+            assert result["message"] == "Division result."
+
+
+@pytest.mark.parametrize("buyer", ["J.LINDEBERG", "ONEILL HONGKONG WOOVET LTD", ""])
+def test_other_buyers_keep_the_current_division(api, tmp_path, monkeypatch, buyer):
+    _wire_read(monkeypatch)
+    prepared = api.prepare_sale_asn_create(
+        str(_source(tmp_path)), buyer, ["shipping_info"]
+    )
+    calls = []
+    api._login.switch_division = lambda *args: calls.append("switch")
+
+    def runner(*args, **kwargs):
+        calls.append("import")
+        return {"ok": True, "code": "SALE_ASN_FORM_COMPLETED", "message": "Xong."}
+
+    api._login.run_sale_asn_create = runner
+
+    api.start_sale_asn_create(prepared["review_token"])
+
+    assert calls == ["import"]
+
+
+def test_oneill_stops_if_division_switching_is_unavailable(api, tmp_path, monkeypatch):
+    _wire_read(monkeypatch)
+    prepared = api.prepare_sale_asn_create(str(_source(tmp_path)), "ONEILL", ["po"])
+    calls = []
+    api._login.run_sale_asn_create = lambda *args, **kwargs: calls.append("import")
+
+    result = api.start_sale_asn_create(prepared["review_token"])
+
+    assert result["code"] == "DIVISION_CHANGE_FAILED"
+    assert calls == []
+
+
 def test_running_an_expired_review_asks_for_the_file_again(api):
     assert (
         api.start_sale_asn_create("het-han")["code"]

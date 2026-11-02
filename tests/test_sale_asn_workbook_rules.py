@@ -272,6 +272,86 @@ def test_one_po_with_two_styles_is_allowed(tmp_path):
     assert _read(tmp_path, _row(), second)["po_count"] == 2
 
 
+def _color_qty(quantity):
+    return [quantity if column == "Qty" else None for column in SALE_ASN_COLUMNS]
+
+
+@pytest.mark.parametrize("stages", [None, ["po"], ["order_details"], ["shipping_info"]])
+def test_color_quantities_are_added_to_the_previous_po_style(tmp_path, stages):
+    document = _read(
+        tmp_path,
+        _row(**{"Style No": 1500151, "PO No": "ARG-265-BM1-PS", "Qty": 264}),
+        _color_qty(84),
+        _row(**{"Style No": 2500155, "PO No": "ARG-265-BM1-PS", "Qty": 30}),
+        _row(**{"Style No": 1500169, "PO No": "ARG-265-BM2-PS", "Qty": 84}),
+        _color_qty(120),
+        _row(**{"Style No": 2500159, "PO No": "ARG-265-BM2-PS", "Qty": 186}),
+        required_stages=stages,
+    )
+
+    assert document["po_count"] == document["style_count"] == 4
+    assert [row["qty"] for row in document["rows"]] == ["348", "30", "204", "186"]
+    assert [row["source_row"] for row in document["rows"]] == [2, 4, 5, 7]
+    assert sum(int(row["qty"]) for row in document["rows"]) == 768
+    assert document["rows"][0]["carton"] == "2"
+    assert document["rows"][0]["price"] == "2.5"
+
+
+def test_multiple_color_rows_and_empty_rows_keep_the_same_parent(tmp_path):
+    document = _read(
+        tmp_path, _row(Qty="1,000"), _color_qty(" 20 "), _color_qty(None),
+        _color_qty(30), _color_qty(0),
+    )
+
+    assert len(document["rows"]) == 1
+    assert document["rows"][0]["qty"] == "1050"
+
+
+def test_color_qty_can_supply_a_parent_with_an_empty_qty(tmp_path):
+    document = _read(tmp_path, _row(Qty=None), _color_qty(84))
+
+    assert document["rows"][0]["qty"] == "84"
+
+
+@pytest.mark.parametrize("qty", ["abc", -1, 1.5, "NaN", "Infinity", "1E+50"])
+def test_invalid_color_qty_is_reported_on_its_own_row(tmp_path, qty):
+    with pytest.raises(SaleASNWorkbookError) as error:
+        _read(tmp_path, _row(), _color_qty(qty))
+
+    assert error.value.code == "SALE_ASN_FILE_VALIDATION_FAILED"
+    assert any("Qty dòng 3" in item for item in error.value.errors)
+
+
+def test_color_qty_formula_is_not_silently_ignored(tmp_path):
+    with pytest.raises(SaleASNWorkbookError) as error:
+        _read(tmp_path, _row(), _color_qty("=40+44"))
+
+    assert error.value.code == "SALE_ASN_FILE_FORMULA_ERROR"
+    assert any("C3" in item for item in error.value.errors)
+
+
+def test_color_qty_without_a_parent_is_rejected(tmp_path):
+    with pytest.raises(SaleASNWorkbookError) as error:
+        _read(tmp_path, _color_qty(84), _row())
+
+    assert error.value.code == "SALE_ASN_FILE_VALIDATION_FAILED"
+    assert any("Qty dòng 2" in item for item in error.value.errors)
+
+
+def test_color_qty_cannot_inherit_a_parent_without_style(tmp_path):
+    with pytest.raises(SaleASNWorkbookError) as error:
+        _read(tmp_path, _row(**{"Style No": ""}), _color_qty(84), required_stages=["order_details"])
+
+    assert any("Qty dòng 3" in item for item in error.value.errors)
+
+
+def test_aggregated_color_qty_still_obeys_the_number_limit(tmp_path):
+    with pytest.raises(SaleASNWorkbookError) as error:
+        _read(tmp_path, _row(Qty="9999999999999999"), _color_qty(1))
+
+    assert any("Tổng Qty" in item and "quá lớn" in item for item in error.value.errors)
+
+
 def test_a_file_with_two_invoices_is_refused(tmp_path):
     second = _row(**{"Style No": "W ACEL", "Invoice No": "INV-2"})
 
