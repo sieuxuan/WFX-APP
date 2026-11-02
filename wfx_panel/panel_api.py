@@ -571,6 +571,12 @@ class PanelAPI:
             self._finance.search_advance_pr(buyer, supplier, invoice_no, order_no),
         )
 
+    def prepare_payment_request(self, module_id: str, invoice_no: str = '') -> dict:
+        return self._finance.prepare_payment_request(module_id, invoice_no)
+
+    def export_payment_request(self, report_token: str, values: Mapping[str, Any] | None = None) -> dict:
+        return self._finance.export_payment_request(report_token, values)
+
     def review_expense_import(self, file_path: str) -> dict:
         return self._finance.review_expense_import(file_path)
 

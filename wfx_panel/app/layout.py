@@ -152,6 +152,8 @@ NOTIFICATION_ACTION_LABELS = {
     "cancel_supplier_invoice": "Cancel Supplier Invoice",
     "cancel_supplier_invoice_choice": "Cancel Supplier Invoice",
     "load_report_parameters": "Tải tham số báo cáo",
+    "prepare_payment_request": "In ĐNTT",
+    "export_payment_request": "Xuất Excel ĐNTT",
     "export_report_excel": "Xuất Excel báo cáo",
     "load_color_report_options": "Tải tham số Color Combination",
     "run_color_report_batch": "Tải hàng loạt Color Combination",

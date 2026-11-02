@@ -256,10 +256,10 @@ def _date_to_iso(value: Any) -> str:
     return cleaned
 
 
-def _read_parameters(page: Page) -> list[dict[str, Any]]:
+def _read_parameters(page: Page, *, shipment_date_ids: bool = True) -> list[dict[str, Any]]:
     """Đọc control ReportViewer, gồm multiselect popup và datepicker WFX."""
     parameters = page.locator(PARAMETER_TABLE).evaluate(
-        """table => {
+        """(table, shipmentDateIds) => {
           const toIsoDate = value => {
             const match = String(value || '').trim().match(
               new RegExp('^(\\\\d{1,2})/(\\\\d{1,2})/(\\\\d{4})$')
@@ -277,7 +277,7 @@ def _read_parameters(page: Page) -> list[dict[str, Any]]:
             const calendarTrigger = valueCell?.querySelector(
               'img.ui-datepicker-trigger, input[type="image"][src*="calendar" i], img[src*="calendar" i], [id*="calendar" i]'
             );
-            const dateIdLabel = /ctl05_txtValue$/.test(el.id)
+            const dateIdLabel = !shipmentDateIds ? '' : /ctl05_txtValue$/.test(el.id)
               ? 'Ship Date from'
               : (/ctl07_txtValue$/.test(el.id) ? 'Ship Date To' : '');
             const label = (dateIdLabel || labelCell?.textContent ||
@@ -306,7 +306,8 @@ def _read_parameters(page: Page) -> list[dict[str, Any]]:
               })).filter(option => option.label) : [],
             };
           });
-        }"""
+        }""",
+        shipment_date_ids,
     )
     by_key = {str(item.get("key") or ""): item for item in parameters}
     for key, descriptor in by_key.items():
@@ -318,9 +319,9 @@ def _read_parameters(page: Page) -> list[dict[str, Any]]:
                   'img.ui-datepicker-trigger, input[type="image"][src*="calendar" i], img[src*="calendar" i], [id*="calendar" i]'))"""
             )
         )
-        if is_date_control or str(descriptor.get("key") or "").endswith(
+        if is_date_control or (shipment_date_ids and str(descriptor.get("key") or "").endswith(
             ("ctl05_txtValue", "ctl07_txtValue")
-        ):
+        )):
             descriptor["type"] = "date"
             descriptor["value"] = _date_to_iso(descriptor.get("value"))
     buttons = page.locator(
@@ -615,7 +616,8 @@ def _wait_report_ready(
     )
 
 
-def _export_excel(page: Page) -> Path:
+def _export_excel(page: Page, *, report_frame: Any | None = None) -> Path:
+    target = report_frame if report_frame is not None else page
     downloads: list[Any] = []
     attached_pages: list[Page] = []
     downloads_before_click = snapshot_downloads()
@@ -633,10 +635,10 @@ def _export_excel(page: Page) -> Path:
         attach(current)
     page.context.on("page", attach)
     try:
-        export = page.locator(REPORT_EXPORT_BUTTON).first
+        export = target.locator(REPORT_EXPORT_BUTTON).first
         export.wait_for(state="visible", timeout=10_000)
         export.evaluate("element => element.click()")
-        excel = page.locator(REPORT_EXCEL_ACTION).first
+        excel = target.locator(REPORT_EXCEL_ACTION).first
         excel.wait_for(state="attached", timeout=10_000)
         # ReportViewer giữ link Excel trong menu display:none. DOM click gọi
         # exportReport('EXCELOPENXML') ổn định hơn việc chờ menu animation.

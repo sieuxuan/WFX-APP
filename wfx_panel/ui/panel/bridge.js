@@ -19,6 +19,9 @@ function handleResult(result) {
   if (result.code === "REPORT_PARAMETERS_LOADED") {
     renderReportParameters(result);
   }
+  if (result.code === "PAYMENT_REQUEST_PREPARED") {
+    renderPaymentRequest(result);
+  }
   if (["SALE_ASN_PO_SELECTION_REQUIRED", "SALE_ASN_FORM_COMPLETED"].includes(result.code) || result.resume_stage) {
     renderSaleAsnRunResult(result);
   }
@@ -177,7 +180,7 @@ async function call(method, ...args) {
     ? 1800000
     : method === "run_color_report_batch"
     ? COLOR_REPORT_BATCH_WATCHDOG_MS
-    : (method === "export_report_excel"
+    : (["export_report_excel", "export_payment_request"].includes(method)
     ? REPORT_CALL_WATCHDOG_MS
     : (method === "run_gdn_dispatch"
       ? LONG_CALL_WATCHDOG_MS

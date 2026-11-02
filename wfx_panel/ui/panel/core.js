@@ -294,6 +294,7 @@ const moduleFilterKinds = {
   grn: "invoice",
 };
 const MODULE_RUN_METHODS = new Set([
+  "prepare_payment_request", "export_payment_request",
   "export_expense_invoice",
   "fill_expense_import",
   "open_chrome", "login", "retry_job", "open_module",
@@ -394,6 +395,8 @@ const BUSY_MESSAGES = {
   toggle_company_foc: "Đang đổi và lưu cấu hình FOC…",
   switch_division: "Đang đổi Division…",
   load_report_parameters: "Đang tải tham số báo cáo…",
+  prepare_payment_request: "Đang mở đề nghị thanh toán…",
+  export_payment_request: "Đang xuất đề nghị thanh toán…",
   export_report_excel: "Đang chạy report và export Excel…",
   load_color_report_options: "Đang tải tham số Color Combination…",
   run_color_report_batch: "Đang tải báo cáo theo từng style…",
@@ -472,6 +475,8 @@ const JOB_METHOD_LABELS = {
   toggle_company_foc: "Đổi FOC Company Setup",
   switch_division: "Đổi Division",
   load_report_parameters: "Tải tham số báo cáo",
+  prepare_payment_request: "In ĐNTT",
+  export_payment_request: "Xuất Excel ĐNTT",
   export_report_excel: "Xuất Excel báo cáo",
   load_color_report_options: "Tải tham số Color Combination",
   run_color_report_batch: "Tải hàng loạt Color Combination",

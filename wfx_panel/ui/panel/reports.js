@@ -22,17 +22,17 @@ function showReportDetail(reportId, title) {
     reportId !== "color_combination_production";
 }
 
-function renderReportParameters(result) {
-  selectedReportId = String(result.report_id || "");
+function renderReportParameters(result, section = $(".report-parameters")) {
+  const reportId = String(result.report_id || result.report_token || "");
+  if (!result.report_token) selectedReportId = reportId;
   const savedValues = result.saved_parameters || {};
   if (Object.keys(savedValues).length) {
-    reportParameterCache.set(selectedReportId, savedValues);
+    reportParameterCache.set(reportId, savedValues);
   }
-  const cachedValues = reportParameterCache.get(selectedReportId) || {};
-  const section = $(".report-parameters");
-  const fields = $(".report-parameters-fields");
-  if (!section || !fields || !selectedReportId) return;
-  $(".report-parameters-title").textContent =
+  const cachedValues = reportParameterCache.get(reportId) || {};
+  const fields = section?.querySelector(".report-parameters-fields");
+  if (!section || !fields || !reportId) return;
+  section.querySelector(".report-parameters-title").textContent =
     `Tham số: ${result.report_name || "báo cáo"}`;
   fields.innerHTML = (Array.isArray(result.parameters) ? result.parameters : [])
     .map((parameter) => {
@@ -357,13 +357,13 @@ async function loadShipmentSummaryReport() {
   return result;
 }
 
-function reportParameterValues() {
+function reportParameterValues(root = $(".report-parameters")) {
   const values = {};
-  $$('[data-report-parameter]').forEach((field) => {
+  root.querySelectorAll('[data-report-parameter]').forEach((field) => {
     values[field.dataset.reportParameter] = field.type === "checkbox"
       ? field.checked : field.value;
   });
-  $$('[data-report-multiselect]').forEach((wrapper) => {
+  root.querySelectorAll('[data-report-multiselect]').forEach((wrapper) => {
     values[wrapper.dataset.reportMultiselect] = [
       ...wrapper.querySelectorAll('.report-multi-option:checked')
     ].map((option) => option.value);
@@ -382,7 +382,7 @@ function exportSelectedReport() {
 }
 
 function setReportLastMonth() {
-  const dateFields = [...$(".report-parameters-fields").querySelectorAll(
+  const dateFields = [...$(".report-parameters .report-parameters-fields").querySelectorAll(
     'input[type="date"][data-report-parameter]'
   )];
   if (dateFields.length < 2) {
@@ -412,4 +412,52 @@ async function saveSelectedReportParameters() {
   const result = await call("save_report_parameters", selectedReportId, values);
   if (result?.ok) reportParameterCache.set(selectedReportId, values);
   return result;
+}
+
+function renderPaymentRequest(result) {
+  const block = $(`[data-payment-module="${CSS.escape(result.module_id || "")}"]`);
+  if (!block) return;
+  const section = block.querySelector(".payment-request-parameters");
+  if (section.dataset.reportToken === result.report_token && !section.hidden) return;
+  section.dataset.reportToken = result.report_token || "";
+  renderReportParameters({ ...result, report_name: `ĐNTT — ${result.invoice_no || ""}` }, section);
+  // ReportViewer's Null checkbox controls whether an exchange rate is supplied.
+  section.querySelectorAll('[data-report-parameter$="_cbNull"]').forEach((checkbox) => {
+    checkbox.addEventListener("change", syncPaymentRequestParameters);
+  });
+  syncPaymentRequestParameters();
+  section.querySelector('input[required]')?.focus();
+}
+
+function syncPaymentRequestParameters() {
+  $$('.payment-request-parameters [data-report-parameter$="_cbNull"]').forEach((checkbox) => {
+    const section = checkbox.closest(".payment-request-parameters");
+    const key = checkbox.dataset.reportParameter.replace(/_cbNull$/, "_txtValue");
+    const field = section.querySelector(`[data-report-parameter="${CSS.escape(key)}"]`);
+    if (field) field.disabled = busy || checkbox.checked;
+  });
+}
+
+function preparePaymentRequest(moduleId) {
+  const block = $(`[data-payment-module="${CSS.escape(moduleId)}"]`);
+  const invoiceNo = block.querySelector(".payment-request-invoice").value.trim();
+  $$(".payment-request-parameters").forEach((section) => {
+    section.hidden = true;
+    delete section.dataset.reportToken;
+  });
+  return runSelectedModuleAction("prepare_payment_request", moduleId, invoiceNo);
+}
+
+function exportPaymentRequest(moduleId) {
+  const section = $(`[data-payment-module="${CSS.escape(moduleId)}"] .payment-request-parameters`);
+  if (!section?.dataset.reportToken) {
+    setStatus("warning", "Hãy bấm In ĐNTT để mở báo cáo trước.");
+    return null;
+  }
+  for (const field of section.querySelectorAll("input[required], select[required]")) {
+    if (!field.reportValidity()) return null;
+  }
+  return runSelectedModuleAction(
+    "export_payment_request", section.dataset.reportToken, reportParameterValues(section),
+  );
 }

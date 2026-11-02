@@ -1792,8 +1792,10 @@ body.compact-mode .compact-launcher .compact-mark {
     .module-multi-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
     .module-multi-filter-field { display: grid; min-width: 0; gap: 4px; }
     .module-multi-filter-field span { color: var(--text-2); font-size: 12px; font-weight: 700; }
-    .module-multi-filter-field input { width: 100%; min-width: 0; height: 34px; padding: 0 8px; color: var(--text); font-size: 12px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
-    .module-multi-filter-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .module-multi-filter-field input,
+    .payment-request-parameters input:not([type="checkbox"]) { width: 100%; min-width: 0; height: 34px; padding: 0 8px; color: var(--text); font-size: 12px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+    .module-multi-filter-field input:focus,
+    .payment-request-parameters input:not([type="checkbox"]):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .grn-form-grid select { height: 34px; padding: 0 6px; color: var(--text); font-size: 12px; outline: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
     .grn-form-grid select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .module-multi-search-button { width: 100%; }
@@ -2321,6 +2323,9 @@ body.compact-mode .compact-launcher .compact-mark {
     }
     .report-parameters-heading small { color: var(--text-3); font-size: 12px; }
     .report-parameters-fields { display: grid; gap: 7px; }
+    .payment-request-parameters { display: grid; gap: 8px; padding-top: 8px; }
+    .payment-request-parameters[hidden] { display: none; }
+    .payment-request-parameters > strong { font-size: 12px; overflow-wrap: anywhere; }
     .report-parameter-field { display: grid; gap: 4px; color: var(--text-2); font-size: 12px; font-weight: 700; }
     .report-parameter-field input,
     .report-parameter-field select { min-width: 0; width: 100%; }

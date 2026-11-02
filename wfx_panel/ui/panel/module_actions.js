@@ -109,6 +109,12 @@ const moduleActions = {
     $(".indent-style-query").value.trim(),
   ),
   "advance-pr-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
+  "advance-pr-payment-request": () => preparePaymentRequest("0065_0880_0010_0020"),
+  "advance-pr-payment-export": () => exportPaymentRequest("0065_0880_0010_0020"),
+  "supplier-invoice-payment-request": () => preparePaymentRequest("0065_0880_0020_0020"),
+  "supplier-invoice-payment-export": () => exportPaymentRequest("0065_0880_0020_0020"),
+  "expense-invoice-payment-request": () => preparePaymentRequest("0065_0880_0030_0020"),
+  "expense-invoice-payment-export": () => exportPaymentRequest("0065_0880_0030_0020"),
   "advance-pr-new": () => selectedModule && runSelectedModuleAction("open_module_new", selectedModule.id),
   "advance-pr-search": () => runSelectedModuleAction(
     "search_advance_pr",

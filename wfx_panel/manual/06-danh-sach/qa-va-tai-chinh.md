@@ -115,3 +115,23 @@ Phần `Tra cứu` luôn hiện ngay dưới phần nhập Excel, gồm các ô 
 | Dropdown thiếu Supplier/Ledger mới | Điền một hóa đơn trên WFX bằng app để cập nhật danh sách, rồi tải lại mẫu. Trong lúc chờ có thể gõ đúng tên như trên WFX. |
 | Chưa điền xong hoặc đã bấm Stop | Kiểm tra phần đã điền trên WFX; lưu/xử lý bản đang làm trước khi mở New trống và chọn lại file. |
 | Export chưa xong | Chọn đúng một hóa đơn bằng nút tròn trong Expense Inv List; bỏ chọn ở các tab List khác. Kiểm tra loại hóa đơn, phân bổ Cost Center và đóng file Excel đang mở. |
+
+## In đề nghị thanh toán (ĐNTT)
+
+Áp dụng cho Expense Inv, Supplier Inv và Advance PR; mỗi module có nút `In ĐNTT`.
+
+1. Hoàn tất và lưu chứng từ trên WFX.
+2. Mở module tương ứng trong app. Nhập đúng số hóa đơn vào `Invoice No. để in ĐNTT`,
+   hoặc để trống ô này và chọn đúng một dòng trong List trên WFX.
+3. Bấm `In ĐNTT`. App mở `BI Print` → `Payment Request Form` của chứng từ đó.
+4. Kiểm tra số invoice ở đầu phần tham số. Điền `Requester (Ho va Ten)`.
+   Giữ lựa chọn để trống tỷ giá nếu không cần nhập; bỏ chọn để nhập tỷ giá riêng.
+5. Bấm `Xuất Excel ĐNTT`. App chạy báo cáo, chờ tải xong rồi xuất Excel
+   như các báo cáo khác. File nằm trong thư mục tải xuống của trình duyệt.
+
+Nếu nhiều dòng trùng số hoặc kết quả có nhiều trang, hãy chọn đúng dòng trên WFX,
+để trống ô invoice của In ĐNTT rồi bấm lại. Nếu có nhiều tab List, bỏ chọn ở các
+tab khác. App chỉ in khi xác định được đúng một chứng từ.
+
+Báo cáo hết hiệu lực sau 30 phút, khi mở ĐNTT khác, đổi tài khoản/Division, hoặc
+khi bạn đóng hay chuyển báo cáo WFX. Bấm `In ĐNTT` lại để tải tham số mới.
