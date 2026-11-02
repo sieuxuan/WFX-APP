@@ -1016,6 +1016,15 @@ Các workflow riêng hiện có:
   Invoice New và phải xác nhận navigation, không phụ thuộc màn List hiện tại.
   Advance PR hỗ trợ tìm kết hợp theo Buyer Name, Supplier, Invoice Number và
   Order No. trên `gridAdvancePaymentRequestList`.
+- Expense Inv, Supplier Inv và Advance PR đều có nút `In ĐNTT`: nhập exact
+  Invoice No. hoặc để trống để dùng đúng một dòng đã chọn trên WFX. Tự mở đúng
+  List khi tìm, không in khi số invoice mơ hồ; khi dùng lựa chọn trên UI phải
+  có duy nhất một dòng được chọn trong các tab List của module đó. Click BI Print → Payment Request Form, xác nhận TXNID trùng dòng,
+  đọc tham số Requester/tỷ giá từ report thật rồi View Report và Export Excel
+  bằng luồng download native. Không dùng quy tắc ctl05/ctl07 ngày của Shipment
+  cho Payment Request Form. Tham số trong từng module độc lập với Reports;
+  TXNID không được sửa từ UI. Mã báo cáo gắn tài khoản/Division và document
+  report hiện tại, hết hạn sau 30 phút hoặc khi mở ĐNTT khác.
 - Các module generic còn lại thuộc nhóm Finance/Admin theo quyền tài khoản.
 
 ### Webhook và quyền riêng tư

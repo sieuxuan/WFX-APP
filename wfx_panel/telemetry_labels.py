@@ -11,6 +11,8 @@ moi ma reportable con thieu mapping.
 from __future__ import annotations
 
 METHOD_LABELS = {
+    "prepare_payment_request": "In ĐNTT",
+    "export_payment_request": "Xuất Excel ĐNTT",
     "fill_expense_import": "Điền Expense Invoice từ Excel",
     "login": "Đăng nhập WFX",
     "check_session": "Kiểm tra phiên WFX",
@@ -75,6 +77,18 @@ METHOD_LABELS = {
 }
 
 ERROR_CODE_INFO = {
+    "PAYMENT_REQUEST_SELECTION_REQUIRED": (
+        "Cần chọn một chứng từ để in ĐNTT",
+        "Nhập đúng Invoice No. hoặc chọn duy nhất một dòng trên WFX, để trống ô invoice rồi bấm In ĐNTT.",
+    ),
+    "PAYMENT_REQUEST_EXPIRED": (
+        "Đề nghị thanh toán đã hết hiệu lực",
+        "Bấm In ĐNTT trong đúng module để mở lại báo cáo và điền họ tên.",
+    ),
+    "PAYMENT_REQUEST_FAILED": (
+        "Chưa mở được đề nghị thanh toán",
+        "Kiểm tra đúng List và quyền BI Print trên WFX rồi bấm In ĐNTT lại.",
+    ),
     "EXPENSE_FILE_INVALID": ("File Expense Invoice chưa hợp lệ", "Kiểm tra dòng/cột trong thông báo hoặc tải lại mẫu Excel."),
     "EXPENSE_FILE_DIALOG_FAILED": ("Không chọn/lưu được file Expense Invoice", "Đóng file Excel đang mở và kiểm tra quyền thư mục rồi thử lại."),
     "EXPENSE_REVIEW_EXPIRED": ("File Expense Invoice đã hết hiệu lực", "Chọn lại file sau khi đổi tài khoản/Division hoặc quá 30 phút."),

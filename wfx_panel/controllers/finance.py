@@ -10,6 +10,7 @@ import json
 import secrets
 import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
@@ -20,6 +21,13 @@ if TYPE_CHECKING:
 from wfx_panel import constants
 from wfx_panel.automation.expense_export import export_selected_expense_invoice
 from wfx_panel.automation.expense_invoice import fill_expense_invoice
+from wfx_panel.automation.payment_request import (
+    MODULES as PAYMENT_REQUEST_MODULES,
+)
+from wfx_panel.automation.payment_request import (
+    export_payment_request,
+    prepare_payment_request,
+)
 from wfx_panel.workbooks.expense_invoice import (
     ExpenseWorkbookError,
     load_seed_options,
@@ -35,6 +43,42 @@ class FinanceController:
         self.supplier_invoice_choices: dict[str, dict[str, str]] = {}
         self.expense_reviews: dict[str, dict] = {}
         self._expense_lock = threading.Lock()
+        self.payment_reports: dict[str, dict] = {}
+
+    def prepare_payment_request(self, module_id: str, invoice_no: str = "") -> dict:
+        module_id = str(module_id or "")
+        if module_id not in PAYMENT_REQUEST_MODULES:
+            return {"ok": False, "code": "MODULE_UNKNOWN", "message": "Module này không hỗ trợ In ĐNTT."}
+
+        def action() -> dict:
+            self.payment_reports.clear()
+            result = prepare_payment_request(module_id, str(invoice_no or "").strip(), self._panel._log)
+            state = result.pop("_report_state", None)
+            if result.get("ok") and state:
+                token = secrets.token_urlsafe(24)
+                self.payment_reports[token] = {
+                    "state": state, "created": time.monotonic(),
+                    "context": self._expense_context(), "module_id": module_id,
+                }
+                result["report_token"] = token
+            return result
+
+        return self._panel._run("prepare_payment_request", action, {"module_id": module_id})
+
+    def export_payment_request(self, report_token: str, values: Mapping | None = None) -> dict:
+        if not isinstance(values, Mapping):
+            return {"ok": False, "code": "REPORT_PARAMETERS_INVALID", "message": "Tham số báo cáo không hợp lệ."}
+
+        def action() -> dict:
+            report = self.payment_reports.get(str(report_token or ""))
+            if (
+                report is None or time.monotonic() - report["created"] > 1800
+                or report["context"] != self._expense_context()
+            ):
+                return {"ok": False, "code": "PAYMENT_REQUEST_EXPIRED", "message": "Báo cáo đã hết hiệu lực. Hãy bấm In ĐNTT lại."}
+            return export_payment_request(report["state"], dict(values), self._panel._log)
+
+        return self._panel._run("export_payment_request", action)
 
     def _expense_context(self) -> tuple:
         account = self._panel._account()

@@ -4,6 +4,11 @@
     "date": "2026-10-29",
     "highlights": [
       {
+        "title": "In ĐNTT ngay trong từng module tài chính",
+        "body": "Expense Inv, Supplier Inv và Advance PR có nút In ĐNTT. Nhập số invoice hoặc chọn một dòng trên WFX, điền họ tên người đề nghị rồi xuất Payment Request Form ra Excel.",
+        "entry": "danh-sach-qa-tai-chinh"
+      },
+      {
         "title": "Xuất Expense Invoice kèm Cost Center",
         "body": "Chọn một hóa đơn trong Expense Inv List, bấm Export format để lưu file Excel có thể sửa và import lại. Sheet Cost Centers lưu đủ các cấp phân bổ, tỷ lệ và ghi chú. Khi nhập, app kiểm tra Cost Center bắt buộc theo Ledger; bạn vẫn tự Save/Confirm trên WFX.",
         "entry": "danh-sach-qa-tai-chinh"

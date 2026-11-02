@@ -924,6 +924,18 @@ def test_the_two_wfx_ship_date_controls_are_always_dates(clock):
     assert descriptor["value"] == "2026-09-01"
 
 
+def test_payment_rate_and_requester_ids_are_not_shipment_dates(clock):
+    descriptors = [
+        {"key": "rpt_ctl05_txtValue", "label": "ExchangeRate (VND>>USD)", "type": "text", "value": "25000"},
+        {"key": "rpt_ctl07_txtValue", "label": "Requester (Ho va Ten)", "type": "text", "value": "Nguyen Van An"},
+    ]
+    page = _params_page(
+        clock, descriptors,
+        controls=[element("input", id=item["key"]) for item in descriptors],
+    )
+    assert reports._read_parameters(page, shipment_date_ids=False) == descriptors
+
+
 def _popup_parameter(clock, kind, *, options, checked=()):
     text = element("input", id="p_txtValue", attrs={"readonly": "readonly"})
     button = element(
