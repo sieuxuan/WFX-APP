@@ -580,6 +580,9 @@ class PanelAPI:
     def fill_expense_import(self, review_token: str) -> dict:
         return self._finance.fill_expense_import(review_token)
 
+    def export_expense_invoice(self, file_path: str) -> dict:
+        return self._finance.export_expense_invoice(file_path)
+
     def search_expense_invoice(self, supplier: str='', invoice_no: str='', created_by: str='', status: str='') -> dict:
         return self._search_recent.remember(
             "expense-invoice",

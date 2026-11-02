@@ -79,6 +79,8 @@ ERROR_CODE_INFO = {
     "EXPENSE_FILE_DIALOG_FAILED": ("Không chọn/lưu được file Expense Invoice", "Đóng file Excel đang mở và kiểm tra quyền thư mục rồi thử lại."),
     "EXPENSE_REVIEW_EXPIRED": ("File Expense Invoice đã hết hiệu lực", "Chọn lại file sau khi đổi tài khoản/Division hoặc quá 30 phút."),
     "EXPENSE_INPUT_FAILED": ("Chưa hoàn tất điền Expense Invoice", "Kiểm tra form trên WFX trước khi chạy lại; app không tự Save/Confirm."),
+    "EXPENSE_EXPORT_FAILED": ("Chưa xuất được Expense Invoice", "Chọn đúng một hóa đơn trong Expense Inv List, kiểm tra Cost Center và đóng file Excel trước khi thử lại."),
+    "EXPENSE_EXPORT_SELECTION_REQUIRED": ("Chọn một Expense Invoice để xuất", "Chọn nút tròn của đúng một hóa đơn trong Expense Inv List và bỏ chọn ở các tab List khác."),
     "DIVISION_CHANGE_NOT_CONFIRMED": (
         "WFX chưa xác nhận đổi Division",
         "Kiểm tra menu Division trên WFX rồi thử lại.",

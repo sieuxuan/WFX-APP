@@ -294,6 +294,7 @@ const moduleFilterKinds = {
   grn: "invoice",
 };
 const MODULE_RUN_METHODS = new Set([
+  "export_expense_invoice",
   "fill_expense_import",
   "open_chrome", "login", "retry_job", "open_module",
   "prepare_catalog", "scan_catalog_folders", "find_code", "find_buyer_reference",
@@ -327,6 +328,8 @@ const BUSY_MESSAGES = {
   download_expense_template: "Đang lưu mẫu Expense Invoice…",
   review_expense_import: "Đang kiểm tra file Expense Invoice…",
   fill_expense_import: "Đang điền Expense Invoice trên WFX…",
+  export_expense_format: "Đang xuất Expense Invoice đang chọn…",
+  export_expense_invoice: "Đang đọc Expense Invoice và Cost Center…",
   open_chrome: "Đang mở và đăng nhập WFX…",
   retry_job: "Đang chạy lại tác vụ…",
   open_module: "Đang mở module trên WFX…",

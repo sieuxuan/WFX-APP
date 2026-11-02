@@ -11,17 +11,20 @@ import secrets
 import threading
 import time
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
 from wfx_panel import constants
+from wfx_panel.automation.expense_export import export_selected_expense_invoice
 from wfx_panel.automation.expense_invoice import fill_expense_invoice
 from wfx_panel.workbooks.expense_invoice import (
     ExpenseWorkbookError,
     load_seed_options,
     read_expense_workbook,
+    save_expense_workbook,
 )
 
 
@@ -110,6 +113,28 @@ class FinanceController:
             self._save_expense_options(result.pop("options", None))
             return result
         return self._panel._run("fill_expense_import", action, {"module_id": "0065_0880_0030_0020"})
+
+    def export_expense_invoice(self, file_path: str) -> dict:
+        def action() -> dict:
+            target = Path(str(file_path or ''))
+            if target.suffix.casefold() != '.xlsx':
+                return {"ok": False, "code": "EXPENSE_FILE_INVALID", "message": "Chọn nơi lưu file Expense Invoice .xlsx."}
+            result = export_selected_expense_invoice(self._panel._log)
+            if not result.get('ok'):
+                return result
+            data = result.pop('data')
+            try:
+                # Validate the complete round trip before replacing a user file.
+                with TemporaryDirectory(prefix='.wfx-expense-', dir=target.parent) as folder:
+                    pending = Path(folder) / 'invoice.xlsx'
+                    save_expense_workbook(pending, data, self.expense_template_options()['options'])
+                    read_expense_workbook(pending)
+                    pending.replace(target)
+            except (OSError, ValueError) as error:
+                message = str(error) if isinstance(error, ExpenseWorkbookError) else 'Không lưu được file; hãy đóng file Excel và kiểm tra quyền thư mục.'
+                return {"ok": False, "code": "EXPENSE_EXPORT_FAILED", "message": message}
+            return {"ok": True, "code": "EXPENSE_EXPORTED", "message": f"Đã xuất {len(data['lines'])} dòng Expense Invoice kèm Cost Center. Có thể sửa file rồi import lại.", "file_path": str(target), "file_name": target.name, "row_count": len(data['lines'])}
+        return self._panel._run('export_expense_invoice', action, {'module_id': '0065_0880_0030_0020'})
 
     def search_supplier_invoice(
         self,

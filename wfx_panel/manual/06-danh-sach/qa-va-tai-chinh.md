@@ -38,6 +38,45 @@ Invoice.
 7. Khi app báo hoàn tất, tự kiểm tra hóa đơn trên WFX rồi bấm Save/Confirm.
    App không tự bấm các nút này.
 
+## Xuất hóa đơn để dùng lại lần sau
+
+1. Bấm `Mở Expense Inv List`, tìm hóa đơn rồi chọn nút tròn ở đúng một dòng.
+2. Trở lại app, bấm `Export format` và chọn nơi lưu file `.xlsx`.
+3. App tự mở hóa đơn ở chế độ xem, đọc thông tin chung, mọi dòng chi phí và
+   phân bổ Cost Center. File có dropdown giống mẫu import.
+4. Giữ file làm mẫu cho lần sau. Sửa Invoice No., ngày, số lượng, đơn giá và
+   các thông tin cần đổi, lưu lại rồi bấm `Chọn file Excel` → `Điền trên WFX`.
+5. App tạo trên New trống. Bạn kiểm tra và tự Save/Confirm trên WFX.
+
+Chỉ hỗ trợ `General Expense` / `ALL OTHER EXPENSES` theo mẫu import hiện tại.
+Nếu hóa đơn có Additional Charges ngoài mẫu, app báo để bạn kiểm tra thay vì
+xuất thiếu thông tin. File không chứa các tệp đính kèm của hóa đơn gốc.
+
+## Cost Center theo từng Ledger
+
+File mới có thêm sheet `Cost Centers`; sheet `Expense Invoice` vẫn giữ 13 cột.
+File cũ không có sheet này vẫn đọc được, nhưng Ledger yêu cầu Cost Center
+phải được bổ sung phân bổ trước khi điền hoàn tất.
+
+| Cột trong Cost Centers | Cách điền |
+|---|---|
+| Expense Line | Số thứ tự dòng chi phí có dữ liệu trong sheet Expense Invoice, bắt đầu từ 1. |
+| Allocation | Số nhóm phân bổ trong cùng dòng chi phí, ví dụ 1, 2. |
+| Category | Tên cấp phân bổ trên WFX, ví dụ DIVISION hoặc DEPARTMENT. |
+| Cost Center | Tên Cost Center đúng như trên WFX. |
+| Percent | Tỷ lệ dạng số từ lớn hơn 0 đến 100, ví dụ 100 hoặc 60; không nhập ký hiệu %. |
+| Comments | Ghi chú phân bổ, có thể để trống. |
+
+Ví dụ chi phí 1 phân bổ 100% cho DIVISION=WOVEN HANOI và DEPARTMENT=IT & WFX:
+nhập hai dòng, cùng Expense Line=1, Allocation=1, Percent=100 và Comments;
+mỗi dòng ghi một Category và Cost Center tương ứng. Chia 60%/40% thì dùng hai
+Allocation, mỗi nhóm ghi đủ các cấp cần thiết. Tổng Percent mỗi Category phải
+bằng 100. Khi đổi Qty/Rate, app tính số tiền phân bổ theo tỷ lệ mới.
+
+Khi xuất, app giữ đủ các cấp, tỷ lệ và ghi chú. Khi nhập, app đối chiếu tên với
+danh sách thật của Ledger trên WFX, rồi kiểm tra lại phân bổ. Thiếu cấp bắt
+buộc hoặc Ledger không cho gắn Cost Center thì app dừng và nêu dòng cần sửa.
+
 > [!luuy]
 > Nếu form đang có dữ liệu, app dừng để tránh ghi đè. Hãy kiểm tra/lưu hóa đơn
 > đang làm rồi tự mở `New` trống trước khi chọn file và chạy lại. Nếu dừng hoặc
@@ -75,3 +114,4 @@ Phần `Tra cứu` luôn hiện ngay dưới phần nhập Excel, gồm các ô 
 | File đã hết hiệu lực | Chọn lại file khi quá 30 phút hoặc sau khi đổi tài khoản/Division. |
 | Dropdown thiếu Supplier/Ledger mới | Điền một hóa đơn trên WFX bằng app để cập nhật danh sách, rồi tải lại mẫu. Trong lúc chờ có thể gõ đúng tên như trên WFX. |
 | Chưa điền xong hoặc đã bấm Stop | Kiểm tra phần đã điền trên WFX; lưu/xử lý bản đang làm trước khi mở New trống và chọn lại file. |
+| Export chưa xong | Chọn đúng một hóa đơn bằng nút tròn trong Expense Inv List; bỏ chọn ở các tab List khác. Kiểm tra loại hóa đơn, phân bổ Cost Center và đóng file Excel đang mở. |

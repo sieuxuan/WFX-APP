@@ -10,6 +10,7 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -53,6 +54,16 @@ TEMPLATE = RESOURCE_DIR / "wfx_panel/assets/templates/Expense-Invoice.xlsx"
 # app thay bằng danh sách thật của từng tài khoản/Division sau lượt điền đầu.
 OPTIONS_SEED = RESOURCE_DIR / "wfx_panel/assets/templates/Expense-Invoice-options.json"
 OPTION_KEYS = ("supplier", "currency", "payment_term", "ledger", "brand", "team")
+COST_SHEET = "Cost Centers"
+COST_COLUMNS = (
+    "Expense Line",
+    "Allocation",
+    "Category",
+    "Cost Center",
+    "Percent",
+    "Comments",
+)
+MAX_COST_ROWS = 5000
 
 
 class ExpenseWorkbookError(ValueError):
@@ -112,6 +123,15 @@ def save_template(target: Path, options: dict | None = None) -> None:
     workbook = load_workbook(TEMPLATE)
     try:
         sheet = workbook[SHEET]
+        costs = workbook.create_sheet(COST_SHEET)
+        costs.append(COST_COLUMNS)
+        costs.freeze_panes = "A2"
+        costs.auto_filter.ref = "A1:F1"
+        for cell in costs[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="17365D")
+        for column, width in zip("ABCDEF", (18, 16, 28, 36, 16, 45), strict=True):
+            costs.column_dimensions[column].width = width
         lists = workbook.create_sheet("_Lists")
         fields = {
             "supplier": "A",
@@ -236,9 +256,124 @@ def read_expense_workbook(source: Path) -> dict:
         return {
             "header": shared,
             "lines": lines,
+            "cost_centers": _read_cost_centers(workbook, len(lines)),
             "total": format(
                 sum(Decimal(r["qty"]) * Decimal(r["rate"]) for r in lines), "f"
             ),
         }
+    finally:
+        workbook.close()
+
+
+def _read_cost_centers(workbook, line_count: int) -> dict[int, list[dict]]:
+    """Names only: IDs from another invoice/account must never be imported."""
+    if COST_SHEET not in workbook.sheetnames:
+        return {}
+    sheet = workbook[COST_SHEET]
+    if sheet.max_row > MAX_COST_ROWS + 1 or sheet.max_column > len(COST_COLUMNS):
+        raise ExpenseWorkbookError("Sheet Cost Centers vượt quá 5.000 dòng hoặc 6 cột.")
+    rows = sheet.iter_rows(max_col=len(COST_COLUMNS))
+    if tuple(text(c.value) for c in next(rows)) != COST_COLUMNS:
+        raise ExpenseWorkbookError(
+            "Tên hoặc thứ tự cột sheet Cost Centers không đúng mẫu."
+        )
+    groups: dict[tuple[int, str], dict] = {}
+    for row_no, cells in enumerate(rows, 2):
+        if not any(text(c.value) for c in cells):
+            continue
+        try:
+            if any(c.data_type in {"f", "e"} for c in cells):
+                raise ValueError("chỉ nhập giá trị, không dùng công thức/ô lỗi")
+            line, allocation, category, center, percent, comments = [
+                text(c.value) for c in cells
+            ]
+            if not line.isdecimal() or not 1 <= int(line) <= line_count:
+                raise ValueError(
+                    "Expense Line phải trỏ tới số thứ tự dòng chi phí, bắt đầu từ 1"
+                )
+            if not allocation or not category or not center:
+                raise ValueError("Allocation, Category và Cost Center không được trống")
+            pct = number(percent)
+            if not 0 < pct <= 100:
+                raise ValueError("Percent phải lớn hơn 0 và không vượt quá 100")
+            if (
+                any(len(v) > 255 for v in (allocation, category, center))
+                or len(comments) > 2000
+            ):
+                raise ValueError("nội dung quá dài")
+            group = groups.setdefault(
+                (int(line), allocation),
+                {"percent": str(pct), "comments": comments, "centers": []},
+            )
+            if Decimal(group["percent"]) != pct or group["comments"] != comments:
+                raise ValueError(
+                    "Percent và Comments phải giống nhau trong cùng Allocation"
+                )
+            if any(
+                c["category"].casefold() == category.casefold()
+                for c in group["centers"]
+            ):
+                raise ValueError("Category bị lặp trong cùng Allocation")
+            group["centers"].append({"category": category, "center": center})
+        except (ValueError, InvalidOperation) as error:
+            raise ExpenseWorkbookError(
+                f"Cost Centers · dòng {row_no}: {error}."
+            ) from error
+    result: dict[int, list[dict]] = {}
+    for (line, _allocation), group in groups.items():
+        result.setdefault(line, []).append(group)
+    for line, allocations in result.items():
+        totals: dict[str, Decimal] = {}
+        for allocation in allocations:
+            for center in allocation["centers"]:
+                key = center["category"].casefold()
+                totals[key] = totals.get(key, Decimal(0)) + Decimal(
+                    allocation["percent"]
+                )
+        if any(total != 100 for total in totals.values()):
+            raise ExpenseWorkbookError(
+                f"Cost Centers · chi phí {line}: tổng Percent của mỗi Category phải bằng 100."
+            )
+    return result
+
+
+def save_expense_workbook(
+    target: Path, data: dict, options: dict | None = None
+) -> None:
+    """Export into the same editable format accepted by the import reader."""
+    save_template(target, options)
+    workbook = load_workbook(target)
+    try:
+        sheet = workbook[SHEET]
+        for index, line in enumerate(data["lines"], 2):
+            record = {**data["header"], **line}
+            for column, key in enumerate(KEYS, 1):
+                cell = sheet.cell(index, column)
+                value = record.get(key, "")
+                if key in {"invoice_date", "gl_date", "due_date"}:
+                    cell.value = date.fromisoformat(_day(value))
+                    cell.number_format = "dd/mm/yyyy"
+                elif key in {"qty", "rate"}:
+                    cell.value = Decimal(str(value))
+                else:
+                    cell.value = text(value)
+                    cell.data_type = "s"  # Preserve leading zeroes and literal '=...'.
+        costs = workbook[COST_SHEET]
+        for line_no, allocations in data.get("cost_centers", {}).items():
+            for allocation_no, allocation in enumerate(allocations, 1):
+                for center in allocation["centers"]:
+                    costs.append(
+                        [
+                            int(line_no),
+                            allocation_no,
+                            center["category"],
+                            center["center"],
+                            Decimal(allocation["percent"]),
+                            allocation.get("comments", ""),
+                        ]
+                    )
+                    for column in (3, 4, 6):
+                        costs.cell(costs.max_row, column).data_type = "s"
+        workbook.save(target)
     finally:
         workbook.close()

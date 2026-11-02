@@ -1,5 +1,33 @@
 # Khảo sát New Expense Invoice — 28/10/2026
 
+## Bổ sung Export và Cost Center — 02/11/2026
+
+- Expense Inv List chọn dòng bằng radio `rdRequestID`, dòng `tr.trContent`
+  có ID nội bộ; số hóa đơn ở `ColInvoiceNo`. Không dựa vào tab cuối cùng.
+- Link Invoice No. của hóa đơn Confirmed/Paid có thể mở BI report theo
+  `LinkExpenseInvoiceRPTWithInvoiceNo`. Route xem dữ liệu của chính WFX là
+  `WFXExpenseInvoice.aspx` với ExpenseInvoiceID, Action=Edit, View=1. Tab View
+  hiển thị header bằng span mang cùng ID control; đọc được qua textContent.
+- Grid nghiệp vụ: `objsectionExpenseInvoiceExpenseDetail.gridExpenseInvoiceExpenseDetail.data`.
+  Metadata mỗi Ledger có `IsCostCenterAttached`, `IsCostCenterMandatory`,
+  `LedgerAcCode`, `ExpenseInvoiceLedgerID`, `LedgerAmt`, `ExpenseQty`, `ExpenseRate`.
+- Tài khoản khảo sát dùng hierarchy: `gHierarchyStructureForCostCenters=1`,
+  hai Category bắt buộc DIVISION và DEPARTMENT. Đọc bằng
+  `GetDatasourceForCostCentreHierarchyStructure`, tên/cấp trong
+  `CostCentreAllocCat.JsonData`, phân bổ trong `CostCentreAlloc.JsonData`.
+  Không mang các ID này sang file import; file chỉ giữ tên, tỷ lệ và ghi chú.
+- Link `colLedgerCostCenter` mở popup. Editor từng cấp là
+  `ddlCCACostProfit<CategoryID>`, cột `colCostProfit<CategoryID>`, tỷ lệ `txtPerc`.
+  Narration có EditItem ID `lblNarration` trùng với Label của dòng khác: phải
+  giới hạn locator vào input/select/textarea.
+- Select2 giữ editor trong ô; đọc innerText toàn cell sẽ gồm mọi option.
+  Gọi WFX `SaveGridFocusedCell()` rồi đối chiếu dữ liệu grid đã commit.
+- `SaveCostCentreAllocPopup` (hierarchy) và `SaveAndCloseCostCenterAllocation`
+  (flat) chỉ ghi cache của bản New, không lưu invoice lên server. Tuyệt đối
+  không gọi `CostCentreAllocSaveData`, `SaveData` hay Confirm của invoice.
+- Đã kiểm tra export → đọc lại XLSX với hóa đơn thật; điền phân bổ 100% và
+  hai nhóm 60%/40% trên New chưa lưu, đối chiếu thành công rồi đóng bản test.
+
 ## Phạm vi và kết quả thực tế
 
 Đã khảo sát trực tiếp phiên WFX đang mở qua giao diện Chrome. Trang đích là

@@ -4,6 +4,11 @@
     "date": "2026-10-29",
     "highlights": [
       {
+        "title": "Xuất Expense Invoice kèm Cost Center",
+        "body": "Chọn một hóa đơn trong Expense Inv List, bấm Export format để lưu file Excel có thể sửa và import lại. Sheet Cost Centers lưu đủ các cấp phân bổ, tỷ lệ và ghi chú. Khi nhập, app kiểm tra Cost Center bắt buộc theo Ledger; bạn vẫn tự Save/Confirm trên WFX.",
+        "entry": "danh-sach-qa-tai-chinh"
+      },
+      {
         "title": "Kiểm tra cập nhật ổn định hơn",
         "body": "Khi nhiều máy dùng chung mạng làm GitHub tạm giới hạn lượt kiểm tra, ứng dụng tự chuyển sang cách kiểm tra dự phòng thay vì báo Chưa thể kiểm tra. Nếu vẫn chưa kiểm tra được, thông báo nêu rõ lý do như bị giới hạn lượt hay không kết nối được GitHub, kèm hướng xử lý trong mục Cập nhật của Hướng dẫn.",
         "entry": "su-co-cap-nhat"
