@@ -75,11 +75,28 @@
     <div class="page-head row-between">
       <div>
         <h1>Đề xuất tính năng</h1>
-        <p class="lead">Bấm mũi tên nếu bạn cũng cần tính năng đó, mở một đề xuất để trao đổi, hoặc gửi đề xuất mới kèm ảnh chụp màn hình.</p>
+        <p class="lead">Xem app đã làm được gì, bấm mũi tên nếu bạn cũng cần một đề xuất, hoặc gửi đề xuất mới kèm ảnh chụp màn hình.</p>
       </div>
       <button class="btn btn-primary" type="button" id="open-form">Gửi đề xuất</button>
     </div>
 
+    <nav class="view-tabs" aria-label="Đề xuất hoặc tính năng đang có">
+      <a href="/de-xuat" data-link data-subnav="list">Đề xuất</a>
+      <a href="/de-xuat/tinh-nang" data-link data-subnav="features">Tính năng đang có</a>
+    </nav>
+
+    <div class="feat-pane" id="feat-pane" hidden>
+      <div class="toolbar-row">
+        <label class="search">
+          <span class="sr-only">Tìm tính năng</span>
+          <input id="feat-search" type="search" placeholder="Tìm tính năng: costing, excel, ĐNTT, nhập kho…" autocomplete="off">
+        </label>
+      </div>
+      <p class="hint" id="feat-meta"></p>
+      <div id="feat-list" class="req-list"></div>
+    </div>
+
+    <div class="req-pane" id="req-pane">
     <div class="toolbar">
       <div class="toolbar-row">
         <label class="search">
@@ -104,6 +121,7 @@
 
     <div id="req-list" class="req-list">
       <div class="empty">Đang tải danh sách đề xuất…</div>
+    </div>
     </div>
 
     <p class="admin-link"><button type="button" class="link-btn" id="admin-toggle">Quản trị</button></p>

@@ -25,16 +25,36 @@ CORE_JS = ROOT / "wfx_panel" / "ui" / "panel" / "core.js"
 OUTPUT = ROOT / "site" / "public" / "content" / "site.json"
 
 _GROUP = re.compile(r'\{\s*name:\s*"([^"]+)",\s*accent:')
-_MODULE = re.compile(r'\{\s*name:\s*"([^"]+)",\s*id:\s*"[^"]+",.*?description:\s*"([^"]*)"')
+_MODULE = re.compile(r'\{\s*name:\s*"([^"]+)",\s*id:\s*"([^"]+)",.*?description:\s*"([^"]*)"')
 
+APP_MODULE = "app"
 # Đề xuất không thuộc module nào có sẵn vẫn cần một chỗ để chọn.
 EXTRA_GROUP = {
     "name": "Chung",
     "modules": [
-        {"name": "Giao diện & cài đặt app", "description": "Bảng điều khiển, phím tắt, thông báo, cập nhật."},
-        {"name": "Module mới", "description": "Màn WFX chưa có trong app."},
+        {"id": APP_MODULE, "name": "Giao diện & cài đặt app", "description": "Bảng điều khiển, phím tắt, thông báo, cập nhật."},
+        {"id": "new", "name": "Module mới", "description": "Màn WFX chưa có trong app."},
     ],
 }
+# Chương không khai báo module riêng nhưng là một workspace của module khác.
+CHAPTER_MODULE = {"costing": "0003_6200"}
+MANUAL_DIR = ROOT / "wfx_panel" / "manual"
+_HEADING = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
+# Tiêu đề khung chung của mọi mục Hướng dẫn, không phải tên một tính năng.
+_NOT_FEATURE = re.compile(r"^(Dùng để làm gì|Các bước|Cách điền|Mẹo|Lưu ý|Gặp lỗi|Quy tắc)", re.IGNORECASE)
+
+
+def load_entry_features() -> dict[str, list[str]]:
+    """Tên các tính năng con trong từng mục Hướng dẫn, lấy từ tiêu đề ##/###."""
+    manifest = json.loads((MANUAL_DIR / "manifest.json").read_text(encoding="utf-8"))
+    features: dict[str, list[str]] = {}
+    for chapter in manifest["chapters"]:
+        for entry in chapter["entries"]:
+            text = (MANUAL_DIR / entry["file"]).read_text(encoding="utf-8")
+            features[entry["id"]] = [
+                title.replace("`", "") for title in _HEADING.findall(text) if not _NOT_FEATURE.match(title)
+            ]
+    return features
 
 
 def load_module_groups(source: str) -> list[dict]:
@@ -47,11 +67,38 @@ def load_module_groups(source: str) -> list[dict]:
         module = _MODULE.search(line)
         if module and groups:
             groups[-1]["modules"].append(
-                {"name": module.group(1), "description": module.group(2)}
+                {"id": module.group(2), "name": module.group(1), "description": module.group(3)}
             )
     if not groups or not any(group["modules"] for group in groups):
         raise SystemExit(f"Không đọc được MODULE_GROUPS trong {CORE_JS}")
     return [*groups, EXTRA_GROUP]
+
+
+def build_features(book: dict, module_groups: list[dict]) -> dict:
+    """Gom mục Hướng dẫn theo module để trang Đề xuất liệt kê tính năng đang có.
+
+    Mục khai báo `covers.modules` thuộc các module đó; mục sau nó trong cùng
+    chương (Upload OC, Mở Costing...) thuộc module đầu tiên vừa gặp. Chương
+    không có module nào là tính năng chung của app. Module mới chỉ cần có mục
+    Hướng dẫn (test_manual đã bắt buộc) là tự hiện trên trang.
+    """
+    known = {module["id"] for group in module_groups for module in group["modules"]}
+    by_module: dict[str, list[str]] = {}
+    for chapter in book["chapters"]:
+        current = CHAPTER_MODULE.get(chapter["id"])
+        for entry_id in chapter["entries"]:
+            modules = [m for m in book["entries"][entry_id]["covers"].get("modules", []) if m in known]
+            if modules:
+                current = modules[0]
+            for module_id in modules or [current or APP_MODULE]:
+                by_module.setdefault(module_id, []).append(entry_id)
+    latest = book["whats_new"][0] if book["whats_new"] else {"version": "", "highlights": []}
+    return {
+        "modules": by_module,
+        "sub": {entry_id: titles for entry_id, titles in load_entry_features().items() if titles},
+        "new_version": latest["version"],
+        "new_entries": sorted({h["entry"] for h in latest["highlights"] if h.get("entry")}),
+    }
 
 
 def build_site_content(book: dict, module_groups: list[dict]) -> dict:
@@ -80,6 +127,7 @@ def build_site_content(book: dict, module_groups: list[dict]) -> dict:
         "errors": errors,
         "whats_new": book["whats_new"],
         "module_groups": module_groups,
+        "features": build_features(book, module_groups),
     }
 
 

@@ -266,6 +266,29 @@ body.embed .main { padding-block: 16px 32px; }
 .pager a { text-decoration: none; font-weight: 600; font-size: 14px; max-width: 48%; }
 .error-row td:first-child { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 
+/* Đề xuất — hai tab: danh sách đề xuất / tính năng đang có */
+.view-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); justify-self: start; }
+.view-tabs a { padding: 6px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--text-2); text-decoration: none; }
+.view-tabs a:hover { color: var(--text); }
+.view-tabs a[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.req-pane, .feat-pane { display: grid; gap: 24px; }
+.feat-pane { gap: 14px; }
+.feat-pane .search { flex: 1 1 260px; }
+.feat-pane .search input { width: 100%; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); }
+.feat-module { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.feat-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.feat-head h3 { font-size: 16px; }
+.feat-head .btn { flex: none; white-space: nowrap; }
+.feat-items { list-style: none; margin: 0; padding: 0; }
+.feat-items > li { display: grid; gap: 2px; padding: 12px 16px; }
+.feat-items > li + li { border-top: 1px solid var(--line); }
+.feat-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.feat-title a { font-weight: 600; color: var(--text); text-decoration: none; }
+.feat-title a:hover { color: var(--accent); text-decoration: underline; }
+.badge-new { font-size: 12px; font-weight: 600; padding: 0 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.feat-sub { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; font-size: 14px; color: var(--text-2); }
+.feat-sub li::marker { color: var(--accent); }
+
 /* Đề xuất — thanh công cụ */
 .toolbar { display: grid; gap: 14px; }
 .toolbar-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
