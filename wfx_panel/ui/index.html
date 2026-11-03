@@ -977,7 +977,11 @@
             </button>
             <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="report-color-combination">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5Z"/><path d="M4 10h16M9 10v9"/></svg>
-              <span><strong>Color Combination - Production</strong><small>Tải theo Style hoặc từng OCNum</small></span>
+              <span><strong>ColorCombination Style Wise</strong><small>Mỗi style một file Excel</small></span>
+            </button>
+            <button type="button" class="workflow-choice workflow-choice-wide" data-module-action="report-color-combination-po">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5Z"/><path d="M4 10h16M9 10v9"/></svg>
+              <span><strong>ColorCombination PO Wise</strong><small>Tải theo PO, Style và từng StyleCode</small></span>
             </button>
           </section>
           <section class="reports-detail" hidden aria-live="polite">
@@ -1000,12 +1004,6 @@
             </div>
           </section>
           <section class="color-report-workspace" hidden aria-live="polite">
-            <label class="color-report-level-field"><span>Xuất báo cáo theo</span>
-              <select class="color-report-export-mode">
-                <option value="style">Theo Style — gộp tất cả OCNum</option>
-                <option value="oc_num">Theo OCNum — mỗi OC một file</option>
-              </select>
-            </label>
             <div class="color-report-levels-grid">
               <label class="color-report-level-field"><span>OC Division</span>
                 <select class="color-report-level" data-level="division"></select>
@@ -1022,7 +1020,7 @@
               </label>
             </div>
             <div class="color-report-style-block">
-              <div class="color-report-style-heading"><span>Style</span><small class="color-report-style-count">0/0</small></div>
+              <div class="color-report-style-heading"><span class="color-report-style-title">Style</span><small class="color-report-style-count">0/0</small></div>
               <div class="color-report-style-tools">
                 <button type="button" class="module-secondary-button" data-module-action="color-report-select-all">Chọn tất cả</button>
                 <button type="button" class="module-secondary-button" data-module-action="color-report-clear-all">Bỏ chọn</button>
@@ -1030,7 +1028,7 @@
               </div>
               <div class="color-report-style-list" role="group" aria-label="Danh sách BuyerStyleReference"></div>
             </div>
-            <label class="color-report-level-field color-report-single-style" hidden><span>Style</span>
+            <label class="color-report-level-field color-report-single-style" hidden><span class="color-report-single-label">Style</span>
               <select class="color-report-single-select"></select>
             </label>
             <div class="color-report-dir-row">

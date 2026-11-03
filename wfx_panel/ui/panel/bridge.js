@@ -7,7 +7,7 @@ function handleResult(result) {
   if (!result) return;
   const cancelled = result.code === "ACTION_CANCELLED";
   setStatus(
-    result.code === "COLOR_REPORT_OC_NOT_FOUND" ? "neutral"
+    ["COLOR_REPORT_OC_NOT_FOUND", "COLOR_PO_REPORT_EMPTY"].includes(result.code) ? "neutral"
       : (cancelled ? "warning" : (result.ok ? "success" : "error")),
     result.message || "",
   );
@@ -179,7 +179,7 @@ async function call(method, ...args) {
   let watchdog;
   const watchdogMs = method === "fill_expense_import"
     ? 1800000
-    : method === "run_color_report_batch"
+    : ["run_color_report_batch", "run_color_po_report_batch"].includes(method)
     ? COLOR_REPORT_BATCH_WATCHDOG_MS
     : (["export_report_excel", "export_payment_request"].includes(method)
     ? REPORT_CALL_WATCHDOG_MS

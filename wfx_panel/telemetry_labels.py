@@ -35,6 +35,8 @@ METHOD_LABELS = {
     "clear_catalog_costing_dependencies": "Clear All Dependency",
     "load_color_report_options": "Tải tham số Color Combination",
     "run_color_report_batch": "Tải hàng loạt Color Combination",
+    "load_color_po_report_options": "Tải tham số ColorCombination PO Wise",
+    "run_color_po_report_batch": "Tải ColorCombination PO Wise",
     "open_sale_asn_new": "Mở Sale ASN mới",
     "open_sample_new": "Mở Sample Order mới",
     "search_oc": "Tìm trong OC List",
@@ -319,6 +321,8 @@ ERROR_CODE_INFO = {
     'REPORT_SAVE_FAILED': ('Không lưu được tham số báo cáo', 'Kiểm tra ổ đĩa hoặc đóng ứng dụng khác đang mở dữ liệu WFX Smart.'),
     'COLOR_REPORT_OPTIONS_NOT_READY': ('Tham số báo cáo Color Combination chưa nạp xong', 'Chờ trang WFX ổn định rồi chọn lại OC Division.'),
     'COLOR_REPORT_OC_NOT_FOUND': ('Không tìm thấy OC', 'Style đang chọn chưa có OCNum. Chọn style khác hoặc kiểm tra OC trên WFX.'),
+    'COLOR_PO_REPORT_NO_PO_SELECTED': ('Chưa chọn PO để tải báo cáo', 'Chọn ít nhất một PO_No rồi bấm Tải báo cáo.'),
+    'COLOR_PO_REPORT_EMPTY': ('Không có mục đủ dữ liệu để tải', 'Các mục thiếu StyleCode hoặc OC được bỏ qua. Chọn PO khác hoặc kiểm tra dữ liệu trên WFX.'),
     'COLOR_REPORT_STYLE_LIST_EMPTY': ('Mùa đang chọn không có BuyerStyleReference', 'Chọn lại OC Division, Buyer hoặc Season rồi tải lại tham số.'),
     'COLOR_REPORT_NO_STYLE_SELECTED': ('Chưa chọn style để tải báo cáo', 'Tích ít nhất một BuyerStyleReference rồi bấm Tải báo cáo.'),
     'COLOR_REPORT_OUTPUT_DIR_REQUIRED': ('Chưa chọn thư mục lưu báo cáo', 'Bấm Chọn… để chỉ định thư mục lưu trước khi tải.'),
@@ -359,6 +363,8 @@ _METHOD_MODULES = {
     "run_gdn_dispatch": "(GDN) Dispatch",
     "load_color_report_options": "Reports",
     "run_color_report_batch": "Reports",
+    "load_color_po_report_options": "Reports",
+    "run_color_po_report_batch": "Reports",
 }
 
 _MODULE_NAMES_BY_ID = {

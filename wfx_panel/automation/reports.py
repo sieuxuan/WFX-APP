@@ -48,7 +48,7 @@ REPORTS = {
     },
     "color_combination_production": {
         "id": "color_combination_production",
-        "name": "Color Combination - Production",
+        "name": "ColorCombination Style Wise",
         "kind": "cascade_batch",
         "custom_report_id": "0864e93b-ee5d-4dbc-840e-c83a1b44d728",
         "url": (
@@ -58,6 +58,19 @@ REPORTS = {
             "/WFXPSHLIVE/Production%20Reports/"
             "Color%20combination%20cost%20sheet_Production&"
             "LoginID=psh45&GUID=cc0170bb-4722-47fa-928e-8d5d6e4c6c03&"
+            "ReportParams="
+        ),
+    },
+    "color_combination_po_wise": {
+        "id": "color_combination_po_wise",
+        "name": "ColorCombination PO Wise",
+        "kind": "po_batch",
+        "custom_report_id": "bb9548d2-1fd3-41a6-9f66-e6a424dd9415",
+        "url": (
+            "https://prosports.worldfashionexchange.com/WFXBase4.0/"
+            "WFXBICustomReportView.aspx?BICustomReportID="
+            "bb9548d2-1fd3-41a6-9f66-e6a424dd9415&Path="
+            "/WFXPSHLIVE/Custom_Reports/Color%20combination%20PO%20WISE&"
             "ReportParams="
         ),
     },

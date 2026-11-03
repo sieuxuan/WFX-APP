@@ -88,7 +88,8 @@ def test_batch_style_picker_and_no_oc_result_are_not_duplicated_or_errors():
                 content="""
                 const $ = s => document.querySelector(s);
                 const escapeHtml = s => String(s || '');
-                const colorReportState = {styleRefs:[{value:'r1',label:'STYLE'}], selected:new Set(['r1'])};
+                let selectedReportId = 'color_combination_production';
+                const colorReportState = {levels:{},styleRefs:[{value:'r1',label:'STYLE'}], selected:new Set(['r1'])};
             """
             )
             page.add_script_tag(path=str(ui / "panel" / "reports.js"))
@@ -109,6 +110,20 @@ def test_batch_style_picker_and_no_oc_result_are_not_duplicated_or_errors():
             assert "lỗi" not in card.inner_text()
             assert (
                 card.locator('[data-color-report-result-action="retry"]').count() == 0
+            )
+            assert page.locator(".color-report-export-mode").count() == 0
+            page.evaluate("""() => {
+                selectedReportId = 'color_combination_po_wise';
+                renderColorReportLevels({levels:{
+                  po_no:{options:[{value:'p1',label:'PO001'}]},
+                  style_ref:{options:[{value:'wrong',label:'WRONG STYLE'}]}
+                }});
+            }""")
+            assert page.locator(".color-report-single-select").input_value() == ""
+            assert "PO001" in page.locator(".color-report-single-select").inner_text()
+            assert (
+                "WRONG STYLE"
+                not in page.locator(".color-report-single-select").inner_text()
             )
         finally:
             browser.close()
@@ -147,7 +162,7 @@ def test_oc_popup_uses_click_handlers_and_restores_all_ocnums():
             browser.close()
 
 
-def test_oc_retry_uses_the_original_selection_and_only_failed_ocnums():
+def test_po_retry_uses_the_original_report_and_only_failed_style_codes():
     ui = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
     html = re.sub(
         r"<script\b[^>]*>[\s\S]*?</script>",
@@ -164,38 +179,40 @@ def test_oc_retry_uses_the_original_selection_and_only_failed_ocnums():
                 const $ = s => document.querySelector(s);
                 const escapeHtml = s => String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;');
                 let colorReportRunActive = false;
+                let selectedReportId = 'color_combination_po_wise';
                 const colorReportState = {styleRefs: [{value:'r1',label:'STYLE'}],
                   selected: new Set(['r1']), outputDir: 'D:/original'};
                 const calls = [];
                 async function call(method, selection, refs, directory) {
                   calls.push({method, selection, refs, directory});
-                  return {ok:true, export_mode:'oc_num', output_dir:directory,
-                    saved:[{style_ref:'STYLE',style_ref_value:'r1',oc_num:'OC001',file_name:'OC001.xlsx'}],
-                    failed:[{style_ref:'STYLE',style_ref_value:'r1',oc_num:'OC002',message:'Error'}]};
+                  return {ok:true, report_id:'color_combination_po_wise', output_dir:directory,
+                    saved:[{po_value:'r1',po_no:'PO',style_ref:'STYLE',style_ref_value:'s1',style_code_value:'c1',file_name:'PO - STYLE - CODE1.xlsx'}],
+                    failed:[{po_value:'r1',po_no:'PO',style_ref:'STYLE',style_ref_value:'s1',style_code_value:'c2',message:'Error'}]};
                 }
                 async function callQuiet() {}
             """
             )
             page.add_script_tag(path=str(ui / "panel" / "reports.js"))
             page.evaluate("""async () => {
-                $('.color-report-export-mode').value = 'oc_num';
                 $('.color-report-level[data-level="buyer"]').innerHTML = '<option value="b1">Buyer 1</option>';
                 await runColorReportBatch();
             }""")
-            assert page.evaluate("calls[0].selection.export_mode") == "oc_num"
+            assert page.evaluate("calls[0].method") == "run_color_po_report_batch"
             assert page.evaluate("calls[0].refs") == ["r1"]
             # Người dùng đổi màn hình/lựa chọn sau lượt tải: Retry vẫn thuộc lượt cũ.
             page.evaluate("""() => {
-                $('.color-report-export-mode').value = 'style';
+                selectedReportId = 'color_combination_production';
                 $('.color-report-level[data-level="buyer"]').innerHTML = '<option value="b2">Buyer 2</option>';
                 colorReportState.outputDir = 'D:/changed';
                 $('[data-color-report-result-action="retry"]').click();
             }""")
             page.wait_for_function("calls.length === 2")
             retry = page.evaluate("calls[1]")
-            assert retry["selection"]["export_mode"] == "oc_num"
+            assert retry["method"] == "run_color_po_report_batch"
             assert retry["selection"]["buyer"] == "b1"
-            assert retry["selection"]["retry_ocnums"] == {"r1": ["OC002"]}
+            assert retry["selection"]["retry_items"] == [
+                {"po_value": "r1", "style_ref_value": "s1", "style_code_value": "c2"}
+            ]
             assert retry["refs"] == ["r1"]
             assert retry["directory"] == "D:/original"
         finally:
