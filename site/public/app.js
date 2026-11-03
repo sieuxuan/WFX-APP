@@ -130,23 +130,30 @@ const TITLES = { "tai-ve": "Tải về", "co-gi-moi": "Có gì mới", "huong-da
 function render(scroll = false) {
   const { view, sub } = parseRoute();
   $$(".view").forEach((v) => { v.hidden = v.dataset.view !== view; });
-  $$("[data-nav]").forEach((a) => {
+  const pane = view === "de-xuat" && sub === "tinh-nang" ? "features" : "list";
+  $$("[data-nav], [data-subnav]").forEach((a) => {
     a.href = href(a.getAttribute("href").split("?")[0]);
-    if (a.dataset.nav === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    const current = a.dataset.nav ? a.dataset.nav === view : a.dataset.subnav === pane;
+    if (current) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
   document.title = `${TITLES[view]} · WFX Smart`;
   if (view === "tai-ve") renderDownload();
   if (view === "co-gi-moi") renderChangelog();
   if (view === "huong-dan") renderManual(sub);
-  if (view === "de-xuat") loadRequests().then(() => syncDetail(sub));
-  else if (detailDialog.open) detailDialog.close();
+  if (view === "de-xuat") {
+    $("#feat-pane").hidden = pane !== "features";
+    $("#req-pane").hidden = pane === "features";
+    if (pane === "features") renderFeatures();
+    loadRequests().then(() => syncDetail(pane === "features" ? "" : sub));
+  } else if (detailDialog.open) detailDialog.close();
   if (scroll && !(view === "de-xuat" && (sub || state.detailId))) window.scrollTo({ top: 0 });
 }
 
 /* ---------------- Dữ liệu ---------------- */
 
 async function loadContent() {
-  const response = await fetch("/content/site.json");
+  // no-cache: hỏi lại máy chủ qua ETag để bản deploy mới không bị ghép với site.json cũ.
+  const response = await fetch("/content/site.json", { cache: "no-cache" });
   if (!response.ok) throw new Error("content " + response.status);
   state.content = await response.json();
   fillModuleSelect();
@@ -344,6 +351,60 @@ $("#manual-search").addEventListener("input", (event) => {
   box.hidden = false;
 });
 $("#manual-results").addEventListener("click", (e) => { if (e.target.closest("a")) { $("#manual-search").value = ""; $("#manual-results").hidden = true; } });
+
+/* ---------------- Đề xuất: tính năng đang có ---------------- */
+
+// Sinh từ mục Hướng dẫn trong app (scripts/export_site_content.py), nên mỗi bản
+// phát hành có mục Hướng dẫn mới là tự hiện ở đây, không phải sửa trang.
+function renderFeatures() {
+  const { module_groups: groups, features, entries } = state.content;
+  if (!features) {
+    fill($("#feat-list"), el("div", { class: "empty" }, el("b", { text: "Chưa tải được danh sách tính năng." }), el("span", { text: "Tải lại trang để lấy bản mới nhất." })));
+    return;
+  }
+  const needle = normalize($("#feat-search").value);
+  const isNew = new Set(features.new_entries);
+  let moduleCount = 0;
+  let featureCount = 0;
+
+  const sections = groups.map((group) => {
+    const blocks = group.modules.map((module) => {
+      const ids = features.modules[module.id] || [];
+      if (!ids.length) return null;
+      const moduleHit = needle && normalize(`${module.name} ${module.description}`).includes(needle);
+      const items = ids.map((id) => entries[id]).filter((entry) => !needle || moduleHit
+        || normalize(`${entry.title} ${entry.summary} ${(features.sub[entry.id] || []).join(" ")}`).includes(needle));
+      if (!items.length) return null;
+      moduleCount += 1;
+      featureCount += items.reduce((n, entry) => n + 1 + (features.sub[entry.id] || []).length, 0);
+      return el("section", { class: "feat-module" },
+        el("div", { class: "feat-head" },
+          el("div", {}, el("h3", { text: module.name }), el("p", { class: "hint", text: module.description })),
+          el("button", { type: "button", class: "btn btn-sm", text: "Đề xuất thêm", title: `Gửi đề xuất cho ${module.name}`,
+            onclick: () => openForm(module.name) })
+        ),
+        el("ul", { class: "feat-items" }, items.map((entry) => el("li", {},
+          el("div", { class: "feat-title" },
+            el("a", { href: href(`/huong-dan/${entry.id}`), text: entry.title }),
+            isNew.has(entry.id) ? el("span", { class: "badge-new", text: `Mới ở ${features.new_version}` }) : null
+          ),
+          entry.summary ? el("p", { class: "hint", text: entry.summary }) : null,
+          features.sub[entry.id] ? el("ul", { class: "feat-sub" }, features.sub[entry.id].map((t) => el("li", { text: t }))) : null
+        )))
+      );
+    }).filter(Boolean);
+    return blocks.length ? el("div", { class: "group" }, el("div", { class: "group-head" }, el("h2", { text: group.name })), ...blocks) : null;
+  });
+
+  fill($("#feat-meta"), needle
+    ? `${featureCount} tính năng khớp trong ${moduleCount} module.`
+    : `Bản ${state.content.version}: ${featureCount} tính năng trong ${moduleCount} module. Bấm tên tính năng để xem hướng dẫn chi tiết.`);
+  fill($("#feat-list"), ...(moduleCount ? sections : [el("div", { class: "empty" },
+    el("b", { text: "Chưa có tính năng nào khớp." }),
+    el("span", { text: "App có thể chưa làm được việc này. Gửi đề xuất để đội phát triển xem xét." }),
+    el("button", { type: "button", class: "btn btn-primary", text: "Gửi đề xuất", onclick: () => openForm() }))]));
+}
+$("#feat-search").addEventListener("input", renderFeatures);
 
 /* ---------------- Đề xuất: danh sách ---------------- */
 
@@ -824,8 +885,13 @@ function setFormMsg(text, kind = "") {
 let formOpenedWith = "";
 const formSnapshot = () => JSON.stringify([...draftFields.map((n) => form.elements[n].value), form.elements.priority.value, state.pending.length]);
 
-function openForm() {
+// moduleName chỉ có khi mở từ nút "Đề xuất thêm" của một module (listener nhận Event).
+function openForm(moduleName) {
   setFormMsg("");
+  if (typeof moduleName === "string" && [...form.elements.module.options].some((o) => o.value === moduleName)) {
+    form.elements.module.value = moduleName;
+    saveDraft();
+  }
   // Tên + bộ phận đã nhập ở ô trả lời cũng dùng cho form gửi.
   if (!form.elements.name.value && state.identity.name) {
     form.elements.name.value = state.identity.name;
