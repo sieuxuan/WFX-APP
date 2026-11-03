@@ -36,7 +36,7 @@ from wfx_panel.automation.runtime import AutomationCancelled, checkpoint
 from wfx_panel.automation.session import _session_is_active
 
 REPORT_ID = "color_combination_production"
-REPORT_NAME = "Color Combination - Production"
+REPORT_NAME = "ColorCombination Style Wise"
 POSTBACK_TIMEOUT_SECONDS = 45.0
 LEVEL_LABELS = {
     "division": "OC Division",
@@ -51,7 +51,7 @@ OC_NUM_LABEL = "OCNum"
 
 # ReportViewer không tạo Select All khi chỉ có một OC. Nhận diện theo nhãn/
 # handler thay vì bỏ checkbox đầu tiên (đó có thể là OC duy nhất).
-_OC_ROWS_JS = r"""root => [...root.querySelectorAll('input[type="checkbox"]')]
+_OC_ROWS_JS = r"""root => [...root.querySelectorAll('input[type="checkbox"], input[type="radio"]')]
   .map(element => {
     const label = ([...(element.labels || [])].map(label => label.textContent).join(' ')
       || element.parentElement?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -350,15 +350,32 @@ def _prepare_style(
     return current, picked
 
 
-def _read_oc_parameter(page: Page) -> dict:
-    """Đọc cả option lẫn lựa chọn thật của popup OCNum, không đoán theo text."""
-    key = resolve_controls(page).get(OC_NUM_LABEL, "")
+def read_parameter_choices(page: Page, label: str) -> dict:
+    """Đọc select/popup ReportViewer; đối chiếu nhãn OCNum và OC Num như nhau."""
+    normalized = re.sub(r"[\s_]", "", label).casefold()
+    controls = resolve_controls(page)
+    key = next(
+        (
+            value
+            for name, value in controls.items()
+            if re.sub(r"[\s_]", "", name).casefold() == normalized
+        ),
+        "",
+    )
+    if key and page.locator(f'[id="{key}"]').evaluate(
+        "element => element.tagName === 'SELECT'"
+    ):
+        options = clean_style_ref_options(read_select_options(page, key))
+        values = page.locator(f'[id="{key}"]').evaluate(
+            "element => [...element.selectedOptions].map(option => option.value)"
+        )
+        return {"key": key, "options": options, "value": values, "native": True}
     button_id = key.removesuffix("_txtValue") + "_ddDropDownButton"
     button = page.locator(f'[id="{button_id}"]')
     if not key or not button.count() or not button.is_enabled():
         raise StyleFailure(
             "COLOR_REPORT_OPTIONS_NOT_READY",
-            "Danh sách OCNum chưa sẵn sàng. Hãy chọn lại style và tải tham số.",
+            f"Danh sách {label} chưa sẵn sàng. Hãy tải lại tham số báo cáo.",
         )
     root_id = key.removesuffix("_txtValue") + "_divDropDown"
     root = page.locator(f'[id="{root_id}"]')
@@ -380,7 +397,15 @@ def _read_oc_parameter(page: Page) -> dict:
     }
 
 
+def _read_oc_parameter(page: Page) -> dict:
+    return read_parameter_choices(page, OC_NUM_LABEL)
+
+
 def _set_oc_parameter(page: Page, parameter: dict, values: list[str]) -> None:
+    if parameter.get("native"):
+        page.locator(f'[id="{parameter["key"]}"]').select_option(values)
+        _wait_postback_settled(page, POSTBACK_TIMEOUT_SECONDS)
+        return
     stem = parameter["key"].removesuffix("_txtValue")
     button = page.locator(f'[id="{stem}_ddDropDownButton"]')
     root = page.locator(f'[id="{stem}_divDropDown"]')
@@ -398,7 +423,9 @@ def _set_oc_parameter(page: Page, parameter: dict, values: list[str]) -> None:
               if (all?.selected) root.ownerDocument.getElementById(all.value).click();
               for (const row of rows.filter(row => !row.select_all)) {
                 const box = root.ownerDocument.getElementById(row.value);
-                if (box.checked !== wanted.has(box.id)) box.click();
+                if (box.type === 'radio') {
+                  if (wanted.has(box.id) && !box.checked) box.click();
+                } else if (box.checked !== wanted.has(box.id)) box.click();
               }
             }""",
             values,

@@ -12,6 +12,7 @@ const BACKEND_PROGRESS_HANDLERS = {
   continue_sale_asn_create: updateSaleAsnProgress,
   skip_sale_asn_create_step: updateSaleAsnProgress,
   run_color_report_batch: updateColorReportProgress,
+  run_color_po_report_batch: updateColorReportProgress,
 };
 
 const moduleActions = {
@@ -144,7 +145,8 @@ const moduleActions = {
     ...expenseInvoiceFilterValues(),
   ),
   "report-shipment-summary": loadShipmentSummaryReport,
-  "report-color-combination": () => loadColorReportOptions(""),
+  "report-color-combination": () => loadColorReportOptions("", "color_combination_production"),
+  "report-color-combination-po": () => loadColorReportOptions("", "color_combination_po_wise"),
   "report-last-month": setReportLastMonth,
   "report-save-parameters": saveSelectedReportParameters,
   "report-export-excel": exportSelectedReport,

@@ -425,6 +425,12 @@ class PanelAPI:
     def load_color_report_options(self, values: Mapping[str, Any] | None=None) -> dict:
         return self._reports.load_color_report_options(values)
 
+    def load_color_po_report_options(self, values: Mapping[str, Any] | None=None) -> dict:
+        return self._reports.load_color_po_report_options(values)
+
+    def run_color_po_report_batch(self, selection: Mapping[str, Any] | None=None, po_values: list[str] | None=None, output_dir: str='') -> dict:
+        return self._reports.run_color_po_report_batch(selection, po_values, output_dir)
+
     def run_color_report_batch(self, selection: Mapping[str, Any] | None=None, style_refs: list[str] | None=None, output_dir: str='') -> dict:
         return self._reports.run_color_report_batch(selection, style_refs, output_dir)
 

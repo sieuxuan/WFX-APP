@@ -19,7 +19,11 @@ function showReportDetail(reportId, title) {
   $(".reports-detail-title").textContent = title;
   $(".report-parameters").hidden = reportId !== "shipment_summary";
   $(".color-report-workspace").hidden =
-    reportId !== "color_combination_production";
+    !["color_combination_production", "color_combination_po_wise"].includes(reportId);
+}
+
+function colorReportIsPo(reportId = selectedReportId) {
+  return reportId === "color_combination_po_wise";
 }
 
 function renderReportParameters(result, section = $(".report-parameters")) {
@@ -161,8 +165,8 @@ function renderColorReportLevels(result) {
     select.value = String(levels[key]?.value || "");
     select.disabled = options.length === 0;
   });
-  colorReportState.styleRefs = Array.isArray(levels.style_ref?.options)
-    ? levels.style_ref.options : [];
+  const choices = colorReportIsPo() ? levels.po_no : levels.style_ref;
+  colorReportState.styleRefs = Array.isArray(choices?.options) ? choices.options : [];
   colorReportState.selected = new Set(
     colorReportState.styleRefs.map((option) => String(option.value)),
   );
@@ -195,7 +199,7 @@ function renderColorReportStyles() {
     const checked = colorReportState.selected.has(String(option.value));
     return `<label><input type="checkbox" class="color-report-style" value="${value}"${checked ? " checked" : ""} /><span>${escapeHtml(option.label)}</span></label>`;
   }).join("");
-  single.innerHTML = ['<option value="">— chọn style —</option>'].concat(
+  single.innerHTML = [`<option value="">— chọn ${colorReportIsPo() ? "PO" : "style"} —</option>`].concat(
     colorReportState.styleRefs.map((option) =>
       `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`),
   ).join("");
@@ -273,16 +277,16 @@ function renderColorReportResult(result) {
     return;
   }
   const failedRows = failed.map((item) =>
-    `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}${item.oc_num ? ` · ${escapeHtml(item.oc_num)}` : ""}</strong><span>${escapeHtml(item.message)}</span></div>`,
+    `<div class="color-report-result-row"><strong>${item.po_no ? `${escapeHtml(item.po_no)} · ` : ""}${escapeHtml(item.style_ref)}${item.style_code ? ` · ${escapeHtml(item.style_code)}` : ""}${item.oc_num ? ` · ${escapeHtml(item.oc_num)}` : ""}</strong><span>${escapeHtml(item.message)}</span></div>`,
   ).join("");
   const savedRows = saved.map((item) =>
-    `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}</strong><span>${escapeHtml(item.file_name)}</span></div>`,
+    `<div class="color-report-result-row"><strong>${item.po_no ? `${escapeHtml(item.po_no)} · ` : ""}${escapeHtml(item.style_ref)}</strong><span>${escapeHtml(item.file_name)}</span></div>`,
   ).join("");
   const skippedRows = skipped.map((item) =>
-    `<div class="color-report-result-row"><strong>${escapeHtml(item.style_ref)}</strong><span>Không tìm thấy OC</span></div>`,
+    `<div class="color-report-result-row"><strong>${item.po_no ? `${escapeHtml(item.po_no)} · ` : ""}${escapeHtml(item.style_ref)}</strong><span>${escapeHtml(item.message || "Không tìm thấy OC")}</span></div>`,
   ).join("");
   card.innerHTML = `
-    <div class="color-report-result-row">${saved.length ? `<span class="chip">${saved.length} thành công</span>` : ""}${failed.length ? `<span class="chip">${failed.length} lỗi</span>` : ""}${skipped.length ? `<span class="chip">${skipped.length} style không tìm thấy OC</span>` : ""}</div>
+    <div class="color-report-result-row">${saved.length ? `<span class="chip">${saved.length} thành công</span>` : ""}${failed.length ? `<span class="chip">${failed.length} lỗi</span>` : ""}${skipped.length ? `<span class="chip">${skipped.length} mục bỏ qua</span>` : ""}</div>
     ${failedRows}
     ${skippedRows}
     ${saved.length ? `<details><summary>${saved.length} báo cáo đã tải</summary>${savedRows}</details>` : ""}
@@ -291,11 +295,18 @@ function renderColorReportResult(result) {
       ${saved.length ? '<button type="button" class="module-secondary-button" data-color-report-result-action="open-dir">Mở thư mục</button>' : ""}
     </div>`;
   card.dataset.failedRefs = JSON.stringify(
-    [...new Set(failed.map((item) => String(item.style_ref_value || item.style_ref)))],
+    [...new Set(failed.map((item) => String(colorReportIsPo(result.report_id)
+      ? item.po_value : (item.style_ref_value || item.style_ref))))],
   );
   const retrySelection = { ...(result.request_selection || {}),
     export_mode: result.export_mode || "style" };
   delete retrySelection.retry_ocnums;
+  delete retrySelection.retry_items;
+  if (colorReportIsPo(result.report_id)) {
+    retrySelection.retry_items = failed.map((item) => Object.fromEntries(
+      ["po_value", "style_ref_value", "style_code_value"].map((key) => [key, String(item[key] || "")]),
+    ));
+  }
   if (retrySelection.export_mode === "oc_num") {
     retrySelection.retry_ocnums = {};
     const wholeStyles = new Set(failed.filter((item) => !item.oc_num)
@@ -309,7 +320,7 @@ function renderColorReportResult(result) {
   }
   card.querySelector('[data-color-report-result-action="retry"]')?.addEventListener(
     "click", () => runColorReportBatch(
-      JSON.parse(card.dataset.failedRefs || "[]"), retrySelection, result.output_dir,
+      JSON.parse(card.dataset.failedRefs || "[]"), retrySelection, result.output_dir, result.report_id,
     ),
   );
   card.querySelector('[data-color-report-result-action="open-dir"]')?.addEventListener(
@@ -318,15 +329,29 @@ function renderColorReportResult(result) {
   card.hidden = false;
 }
 
-async function loadColorReportOptions(fromKey = "") {
+async function loadColorReportOptions(fromKey = "", reportId = "") {
   const revision = ++colorReportOptionsRevision;
+  let useSavedParameters = false;
   if (fromKey) setColorReportLevelsBusy(fromKey);
   if (!fromKey) {
+    const targetId = reportId || (colorReportIsPo() ? selectedReportId : "color_combination_production");
+    if (targetId !== selectedReportId) {
+      setColorReportLevelsBusy("");
+      useSavedParameters = true;
+    }
     showReportDetail(
-      "color_combination_production", "Color Combination - Production",
+      targetId, colorReportIsPo(targetId) ? "ColorCombination PO Wise" : "ColorCombination Style Wise",
     );
+    const label = colorReportIsPo() ? "PO No." : "Style";
+    $(".color-report-style-title").textContent = label;
+    $(".color-report-single-label").textContent = label;
+    $(".color-report-style-filter").placeholder = colorReportIsPo() ? "Lọc PO…" : "Lọc style…";
+    $(".color-report-style-filter").value = "";
+    $(".color-report-style-filter").setAttribute("aria-label", colorReportIsPo() ? "Lọc danh sách PO" : "Lọc danh sách style");
+    $(".color-report-style-list").setAttribute("aria-label", colorReportIsPo() ? "Danh sách PO_No" : "Danh sách BuyerStyleReference");
   }
-  const result = await call("load_color_report_options", colorReportSelection());
+  const result = await call(colorReportIsPo() ? "load_color_po_report_options" : "load_color_report_options",
+    useSavedParameters ? {} : colorReportSelection());
   if (revision !== colorReportOptionsRevision) return result;
   // Kể cả mùa không có style, backend vẫn trả các cấp cascade để user có
   // thể nhìn thấy và chọn lại Season thay vì bị kẹt ở danh sách cũ.
@@ -343,7 +368,7 @@ async function chooseColorReportDir() {
   return result;
 }
 
-async function runColorReportBatch(onlyRefs = null, retrySelection = null, retryOutputDir = null) {
+async function runColorReportBatch(onlyRefs = null, retrySelection = null, retryOutputDir = null, reportId = selectedReportId) {
   const batch = $(".color-report-batch-toggle").checked;
   const refs = onlyRefs || (batch
     ? colorReportState.styleRefs.map((option) => String(option.value))
@@ -352,14 +377,17 @@ async function runColorReportBatch(onlyRefs = null, retrySelection = null, retry
   resetColorReportProgress({ show: true, total: refs.length });
   colorReportRunActive = true;
   const selection = retrySelection || { ...colorReportSelection(),
-    export_mode: $(".color-report-export-mode")?.value || "style" };
+    export_mode: "style" };
   let result = null;
   try {
     result = await call(
-      "run_color_report_batch",
+      colorReportIsPo(reportId) ? "run_color_po_report_batch" : "run_color_report_batch",
       selection, refs, retryOutputDir || colorReportState.outputDir,
     );
-    if (result) result.request_selection = selection;
+    if (result) {
+      result.request_selection = selection;
+      result.report_id ||= reportId;
+    }
     return result;
   } finally {
     colorReportRunActive = false;

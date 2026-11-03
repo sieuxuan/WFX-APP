@@ -91,6 +91,10 @@ from wfx_panel.automation.color_combination import (  # noqa: F401
     load_color_report_options,
     run_color_report_batch,
 )
+from wfx_panel.automation.color_combination_po import (  # noqa: F401
+    load_color_po_report_options,
+    run_color_po_report_batch,
+)
 from wfx_panel.automation.costing import (  # noqa: F401
     COSTING_DETAIL_SELECTOR,
     COSTING_NEW_SELECTOR,
@@ -309,6 +313,8 @@ __all__ = [
     'scan_catalog_style_options',
     'prepare_sale_asn_documents',
     'load_color_report_options',
+    'load_color_po_report_options',
+    'run_color_po_report_batch',
     'run_color_report_batch',
     'load_report_parameters',
     'export_report_excel',

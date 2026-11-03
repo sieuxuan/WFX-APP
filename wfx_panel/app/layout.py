@@ -157,4 +157,6 @@ NOTIFICATION_ACTION_LABELS = {
     "export_report_excel": "Xuất Excel báo cáo",
     "load_color_report_options": "Tải tham số Color Combination",
     "run_color_report_batch": "Tải hàng loạt Color Combination",
+    "load_color_po_report_options": "Tải tham số ColorCombination PO Wise",
+    "run_color_po_report_batch": "Tải ColorCombination PO Wise",
 }

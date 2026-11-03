@@ -316,6 +316,7 @@ const MODULE_RUN_METHODS = new Set([
   "cancel_supplier_invoice", "cancel_supplier_invoice_choice", "open_module_new",
   "load_report_parameters", "export_report_excel",
   "load_color_report_options", "run_color_report_batch",
+  "load_color_po_report_options", "run_color_po_report_batch",
   "open_supplier_category", "find_supplier",
   "find_supplier_in_category", "find_buyer",
   "toggle_company_foc",
@@ -403,6 +404,8 @@ const BUSY_MESSAGES = {
   export_report_excel: "Đang chạy report và export Excel…",
   load_color_report_options: "Đang tải tham số Color Combination…",
   run_color_report_batch: "Đang tải báo cáo theo từng style…",
+  load_color_po_report_options: "Đang tải danh sách PO…",
+  run_color_po_report_batch: "Đang tải PO, Style và StyleCode…",
   sync_reference_data: "Đang đồng bộ Article và Style từ server…",
   publish_reference_data: "Đang publish Article và Style lên server…",
   probe_catalog_data_source: "Đang dò nguồn dữ liệu Catalog…",
@@ -483,6 +486,8 @@ const JOB_METHOD_LABELS = {
   export_report_excel: "Xuất Excel báo cáo",
   load_color_report_options: "Tải tham số Color Combination",
   run_color_report_batch: "Tải hàng loạt Color Combination",
+  load_color_po_report_options: "Tải tham số ColorCombination PO Wise",
+  run_color_po_report_batch: "Tải ColorCombination PO Wise",
 };
 const jobMethodLabel = (method) =>
   JOB_METHOD_LABELS[String(method || "")] || String(method || "Tác vụ");

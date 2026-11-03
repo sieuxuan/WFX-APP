@@ -4,8 +4,8 @@
     "date": "2026-11-02",
     "highlights": [
       {
-        "title": "Color Combination: tách báo cáo theo OCNum",
-        "body": "Reports có lựa chọn xuất theo Style như trước hoặc tách từng OCNum thành file Excel riêng. Tên file có OCNum để dễ gửi cho buyer. Style chưa có OC chỉ hiện Không tìm thấy OC và được bỏ qua. Khi tải hàng loạt, chỉ hiện danh sách Style để tránh trùng ô chọn. Nếu có lỗi, bấm chạy lại để chỉ tải những OC lỗi; các file đã tải vẫn được giữ.",
+        "title": "ColorCombination: tách Style Wise và PO Wise",
+        "body": "Reports có hai báo cáo riêng. Style Wise tải theo style như trước. PO Wise đi từng PO_No, từng BuyerStyleReference và từng StyleCode, chọn hết OC Num tự nạp. Mỗi PO có một thư mục, file mang tên PO - StyleRef - StyleCode. Mục thiếu StyleCode hoặc OC được bỏ qua bình thường; có thể chạy lại riêng các mục lỗi.",
         "entry": "danh-sach-reports"
       },
       {

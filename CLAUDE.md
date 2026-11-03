@@ -406,6 +406,12 @@ Mỗi nút trong module là một flow riêng:
   đang mở và bảng tham số còn sẵn sàng thì phải tái sử dụng DOM hiện tại; khi
   đổi report, điều hướng tab report đó thay vì tạo thêm tab. Probe stale/lỗi
   phải fallback về reload đầy đủ, không được trả thành công từ context cũ.
+- Reports tách `ColorCombination Style Wise` (report cũ, một file mỗi style,
+  StyleCode mới nhất) và `ColorCombination PO Wise` (report
+  `bb9548d2-1fd3-41a6-9f66-e6a424dd9415`). PO Wise chọn PO_No rồi duyệt mọi
+  BuyerStyleReference và mọi StyleCode, chọn hết OC Num tự nạp. Thiếu StyleCode
+  hoặc OC thì bỏ qua bình thường, không gửi telemetry. File nằm trong thư mục
+  con theo PO, tên `PO - StyleRef - StyleCode.xlsx`; không ghi đè file đã có.
 - WebView2 của panel/bubble dùng tối đa 3 renderer. pywebview 5.x luôn gán
   `CoreWebView2CreationProperties.AdditionalBrowserArguments` nên WebView2 bỏ
   qua biến môi trường `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`; sửa props sau

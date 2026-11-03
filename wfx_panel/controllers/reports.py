@@ -18,6 +18,127 @@ class ReportsController:
             panel._base_dir / "report-parameters.json"
         )
 
+    def load_color_po_report_options(
+        self, values: Mapping[str, Any] | None = None
+    ) -> dict:
+        panel = self._panel
+        loader = getattr(panel._login, "load_color_po_report_options", None)
+        if not callable(loader):
+            return {
+                "ok": False,
+                "code": "REPORT_UNAVAILABLE",
+                "message": "Chưa hỗ trợ ColorCombination PO Wise.",
+            }
+        if values is not None and not isinstance(values, Mapping):
+            return {
+                "ok": False,
+                "code": "REPORT_PARAMETERS_INVALID",
+                "message": "Tham số PO Wise không hợp lệ.",
+            }
+        selected = {
+            key: str(value)[:500]
+            for key, value in dict(values or {}).items()
+            if key in {"division", "buyer", "season"}
+            and isinstance(value, (str, int, float))
+            and str(value)
+        }
+        if not values:
+            saved = self._saved_report_parameters("color_combination_po_wise")
+            selected = {
+                key: str(saved[key])
+                for key in ("division", "buyer", "season")
+                if saved.get(key)
+            }
+        return panel._run(
+            "load_color_po_report_options",
+            lambda: loader(selected, panel._log),
+            {"module_id": "reports", "report_id": "color_combination_po_wise"},
+        )
+
+    def run_color_po_report_batch(
+        self,
+        selection: Mapping[str, Any] | None = None,
+        po_values: list[str] | None = None,
+        output_dir: str = "",
+    ) -> dict:
+        panel = self._panel
+        runner = getattr(panel._login, "run_color_po_report_batch", None)
+        if not callable(runner):
+            return {
+                "ok": False,
+                "code": "REPORT_UNAVAILABLE",
+                "message": "Chưa hỗ trợ ColorCombination PO Wise.",
+            }
+        if (selection is not None and not isinstance(selection, Mapping)) or (
+            po_values is not None and not isinstance(po_values, (list, tuple))
+        ):
+            return {
+                "ok": False,
+                "code": "REPORT_PARAMETERS_INVALID",
+                "message": "Lựa chọn PO Wise không hợp lệ.",
+            }
+        values = dict(selection or {})
+        selected = {
+            key: str(value)[:500]
+            for key, value in values.items()
+            if key in {"division", "buyer", "season"}
+            and isinstance(value, (str, int, float))
+        }
+        pos = list(
+            dict.fromkeys(
+                str(value).strip()[:200]
+                for value in (po_values or [])[:500]
+                if str(value).strip()
+            )
+        )
+        retries = values.get("retry_items")
+        if retries is not None:
+            if (
+                not isinstance(retries, list)
+                or len(retries) > 5000
+                or any(
+                    not isinstance(item, Mapping)
+                    or item.get("po_value") not in pos
+                    or any(not isinstance(value, str) for value in item.values())
+                    or (
+                        item.get("style_code_value") and not item.get("style_ref_value")
+                    )
+                    for item in retries
+                )
+            ):
+                return {
+                    "ok": False,
+                    "code": "REPORT_PARAMETERS_INVALID",
+                    "message": "Danh sách mục PO cần chạy lại không hợp lệ.",
+                }
+            selected["retry_items"] = [
+                {
+                    key: str(item.get(key) or "")[:200]
+                    for key in ("po_value", "style_ref_value", "style_code_value")
+                }
+                for item in retries
+            ]
+        self.save_report_parameters(
+            "color_combination_po_wise",
+            {key: value for key, value in selected.items() if key != "retry_items"},
+        )
+        method = "run_color_po_report_batch"
+        return panel._run(
+            method,
+            lambda: runner(
+                selected,
+                pos,
+                str(output_dir or ""),
+                panel._log,
+                progress=panel._progress_for(method),
+            ),
+            {
+                "module_id": "reports",
+                "report_id": "color_combination_po_wise",
+                "po_count": len(pos),
+            },
+        )
+
     def report_catalog(self) -> dict:
         panel = self._panel
         catalog = getattr(panel._login, "report_catalog", None)
