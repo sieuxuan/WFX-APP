@@ -516,6 +516,68 @@ def test_a_second_instance_wakes_the_first_one_and_exits(monkeypatch, main_world
     assert ("clean", "secondary_instance") in main_world
 
 
+class _BusyThenFreeLock(_Lock):
+    """Bản cũ đang thoát: cửa sổ còn đó nên acquire() trả False vài lần đầu."""
+
+    def __init__(self, failures):
+        super().__init__()
+        self.failures = failures
+        self.attempts = 0
+
+    def acquire(self):
+        self.attempts += 1
+        return self.attempts > self.failures
+
+
+def test_relaunch_waits_for_the_dying_instance_instead_of_giving_up(
+    monkeypatch, main_world
+):
+    """Exe khởi động nhanh hơn bản cũ thoát; đo trên bản đóng gói 04/11/2026."""
+    lock = _BusyThenFreeLock(failures=2)
+    monkeypatch.setattr(panel_app, "SingleInstance", lambda _activate: lock)
+    monkeypatch.setattr(
+        panel_app.sys,
+        "argv",
+        ["WFX-Panel.exe", panel_app.webview2_recovery.RECOVERED_ARG],
+    )
+    monkeypatch.setattr(panel_app, "RECOVERED_LOCK_RETRY_SECONDS", 0.001)
+
+    panel_app.main()
+
+    assert lock.attempts == 3
+    assert lock.signalled == 0
+    assert ("run",) in main_world
+
+
+def test_relaunch_stops_waiting_when_another_instance_really_runs(
+    monkeypatch, main_world
+):
+    lock = _Lock(acquired=False)
+    monkeypatch.setattr(panel_app, "SingleInstance", lambda _activate: lock)
+    monkeypatch.setattr(
+        panel_app.sys,
+        "argv",
+        ["WFX-Panel.exe", panel_app.webview2_recovery.RECOVERED_ARG],
+    )
+    monkeypatch.setattr(panel_app, "RECOVERED_LOCK_WAIT_SECONDS", 0.01)
+    monkeypatch.setattr(panel_app, "RECOVERED_LOCK_RETRY_SECONDS", 0.001)
+
+    panel_app.main()
+
+    assert ("run",) not in main_world
+    assert ("clean", "secondary_instance") in main_world
+
+
+def test_normal_second_launch_does_not_wait_for_the_lock(monkeypatch, main_world):
+    lock = _BusyThenFreeLock(failures=1)
+    monkeypatch.setattr(panel_app, "SingleInstance", lambda _activate: lock)
+
+    panel_app.main()
+
+    assert lock.attempts == 1
+    assert ("run",) not in main_world
+
+
 def test_a_crash_in_the_main_loop_is_recorded_and_re_raised(
     monkeypatch, main_world
 ):

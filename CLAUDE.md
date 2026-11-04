@@ -204,6 +204,10 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   `--recovered-from-webview2`: bubble hiện, panel không tự bung, có toast. Tối
   đa 3 lần trong 10 phút (`webview2-restarts.json`), quá thì dừng và báo user
   thoát thủ công. `quit()` đóng cửa sổ có trần 10 giây rồi `os._exit`.
+  Lượt tự mở lại phải thử lấy khóa single-instance lặp lại tối đa 15 giây:
+  exe khởi động nhanh hơn bản cũ thoát, và cửa sổ của bản đang chết làm
+  `_activate_legacy_window` báo nhầm đã có instance khác (nhánh này chỉ chạy
+  với cổng thật nên phải kiểm chứng trên bản đóng gói, không chỉ từ source).
 - Updater chờ instance hiện tại tự đóng 15 giây. Nếu pywebview/WebView2 còn giữ
   process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
   process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo

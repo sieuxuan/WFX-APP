@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import threading
+import time
 
 import keyboard
 import webview
@@ -72,6 +73,8 @@ from wfx_panel.win32_window import (
 
 HOTKEY = hotkey.DEFAULT
 QUIT_DESTROY_TIMEOUT_SECONDS = 10.0
+RECOVERED_LOCK_WAIT_SECONDS = 15.0
+RECOVERED_LOCK_RETRY_SECONDS = 0.25
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
 
@@ -887,11 +890,27 @@ def _sync_packaged_autostart() -> bool | None:
     return actual_autostart
 
 
+def _acquire_instance_lock(lock: SingleInstance) -> bool:
+    """Lấy khóa single-instance; lượt tự mở lại phải chờ bản cũ thoát hẳn.
+
+    Exe khởi động nhanh hơn bản cũ thoát: cửa sổ của bản đang chết làm
+    `acquire()` kết luận đã có instance khác và lượt mở lại tự thoát mất.
+    """
+    if webview2_recovery.RECOVERED_ARG not in sys.argv:
+        return lock.acquire()
+    deadline = time.monotonic() + RECOVERED_LOCK_WAIT_SECONDS
+    while not lock.acquire():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(RECOVERED_LOCK_RETRY_SECONDS)
+    return True
+
+
 def main():
     crash_log.install(prefs.DATA_DIR, app_version=APP_VERSION)
     app = PanelApp()
     lock = SingleInstance(app.activate)
-    if not lock.acquire():
+    if not _acquire_instance_lock(lock):
         # Đã có instance đang chạy: cố bật panel của nó lên rồi luôn thoát.
         # Không chạy tiếp nếu IPC tạm lỗi, nếu không sẽ tạo instance thứ hai.
         lock.signal_existing()
