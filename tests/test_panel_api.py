@@ -3415,6 +3415,7 @@ def test_color_report_remembers_the_cascade_between_sessions(tmp_path):
     api = PanelAPI(login_module=fake, prefs_module=prefs, base_dir=tmp_path)
     api.save_account("psh45", "secret")
 
+    api.save_report_parameters("color_combination_production", {"division": "d1", "buyer": "b1", "season": "s1"})
     api.run_color_report_batch(
         {"division": "d1", "buyer": "b1", "season": "s1"},
         ["GWSD15176"],

@@ -260,6 +260,31 @@ def test_an_empty_payload_with_nothing_saved_sends_nothing(api):
     assert api._login.calls[-1][1] == {}
 
 
+def test_legacy_automatic_parameters_are_not_used_as_user_defaults(api):
+    api._reports._parameter_store.save(
+        "tester", COLOR, {"division": "auto", "buyer": "auto", "season": "auto"}
+    )
+    result = api.load_color_report_options({})
+    assert api._login.calls[-1][1] == {}
+    assert result["saved_parameters"] == {}
+
+
+def test_explicit_save_keeps_choices_and_mode_for_the_next_open(api):
+    values = {
+        "division": "d1",
+        "buyer": "b1",
+        "season": "s1",
+        "batch": False,
+        "single_value": "r2",
+        "selected_values": ["r1", "r2"],
+    }
+    result = api.save_report_parameters(COLOR, values)
+    assert result["saved_parameters"] == values
+    loaded = api.load_color_report_options({})
+    assert loaded["saved_parameters"] == values
+    assert api._login.calls[-1][1] == {"division": "d1", "buyer": "b1", "season": "s1"}
+
+
 # --- chạy hàng loạt -----------------------------------------------------
 
 
@@ -283,10 +308,11 @@ def test_a_style_list_that_is_not_a_list_is_refused(api):
     assert api._login.calls == []
 
 
-def test_a_batch_saves_the_selection_before_it_runs(api, tmp_path):
+def test_a_batch_does_not_replace_the_explicitly_saved_selection(api, tmp_path):
+    api.save_report_parameters(COLOR, {"division": "pinned"})
     api.run_color_report_batch({"division": "d1", "buyer": "b1"}, ["r1"], str(tmp_path))
 
-    assert api._reports._saved_report_parameters(COLOR)["division"] == "d1"
+    assert api._reports._saved_report_parameters(COLOR) == {"division": "pinned"}
 
 
 def test_a_batch_trims_the_style_list_and_drops_blank_entries(api, tmp_path):
@@ -322,8 +348,7 @@ def test_oc_mode_and_retry_filter_reach_automation_without_persisting_retries(
     api.run_color_report_batch(selection, ["r1"], str(tmp_path))
     assert api._login.calls[-1][1] == selection
     saved = api._reports._saved_report_parameters(COLOR)
-    assert saved["export_mode"] == "oc_num"
-    assert "retry_ocnums" not in saved
+    assert saved == {}
 
 
 @pytest.mark.parametrize(

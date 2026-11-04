@@ -104,13 +104,14 @@ def test_dang_dung_division_thi_khong_bao_da_doi():
     assert login.menu_resets == 0
 
 
-def test_doi_division_that_bai_thi_khong_tim_o_division_sai():
-    login = _Login("DIVISION_CHANGE_NOT_CONFIRMED")
+@pytest.mark.parametrize("code", ["DIVISION_CHANGE_NOT_CONFIRMED", "DIVISION_ACCESS_DENIED"])
+def test_doi_division_that_bai_thi_khong_tim_o_division_sai(code):
+    login = _Login(code)
     _panel, result = _search(login, "oc_no", "PSG-ONL-26-170.1")
 
     assert login.calls == [("switch_division", "pssg")]
     assert result["ok"] is False
-    assert result["code"] == "DIVISION_CHANGE_NOT_CONFIRMED"
+    assert result["code"] == code
     assert "PSSG" in result["message"]
     assert result["module"] == "OC List"
 

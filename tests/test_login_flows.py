@@ -63,7 +63,7 @@ class FakeLocator:
     def click(self, timeout=None):
         self.page.actions.append(("click", self.selector))
 
-    def evaluate(self, script, *args):
+    def evaluate(self, script, *args, **kwargs):
         self.page.actions.append(("evaluate", self.selector))
         return None
 
@@ -78,6 +78,9 @@ class FakePage:
         self.frames: list = []
         self._locators = dict(locators or {})
         self.screenshots: list[str] = []
+
+    def is_closed(self):
+        return False
 
     def goto(self, url, wait_until=None, timeout=None):
         self.actions.append(("goto", url))
@@ -718,6 +721,50 @@ def collect_results(api):
     seen: list[tuple[str, dict]] = []
     api.set_result_sink(lambda method, result, elapsed: seen.append((method, result)))
     return seen
+
+
+def test_denied_division_reaches_ui_without_relogin_or_error_report(tmp_path, monkeypatch):
+    from wfx_panel import job_history, telemetry
+
+    api, login = make_api(
+        tmp_path, FakeLogin(admin_modules=list(constants.ADMIN_MODULE_IDS)[:1]),
+        user_id="userA", password="secretA",
+    )
+    api.login()
+    login.calls.clear()
+    seen = collect_results(api)
+    reports = []
+    monkeypatch.setattr(telemetry, "enqueue", lambda *_a, **_k: reports.append(True))
+    message = "Tài khoản WFX hiện tại không có quyền truy cập Division KNIT."
+
+    def deny_division(key, log):
+        login.calls.append(("switch_division", key))
+        return {
+            "ok": False,
+            "code": "DIVISION_ACCESS_DENIED",
+            "message": message,
+            "current_division": "woven",
+            "division_label": "WOVEN",
+            "division_name": "PRO SPORTS - WOVEN HANOI",
+        }
+
+    monkeypatch.setattr(login, "switch_division", deny_division)
+
+    result = api.switch_division("knit")
+
+    assert result["code"] == "DIVISION_ACCESS_DENIED"
+    assert result["message"] == message
+    assert result["current_division"] == "woven"
+    assert result["session_active"] is True
+    assert result["admin_access"] is True
+    assert result["requires_attention"] is False
+    assert login.calls == [("switch_division", "knit")]
+    assert seen[-1][0] == "switch_division"
+    assert seen[-1][1]["message"] == message
+    assert reports == []
+    history = job_history.list_jobs(tmp_path)[0]
+    assert history["code"] == "DIVISION_ACCESS_DENIED"
+    assert history["requires_attention"] is False
 
 
 # ======================================================================

@@ -149,27 +149,44 @@ function setColorReportLevelsBusy(fromKey) {
   });
   colorReportState.styleRefs = [];
   colorReportState.selected = new Set();
+  colorReportState.singleValue = "";
   renderColorReportStyles();
 }
 
 function renderColorReportLevels(result) {
   const levels = result?.levels || {};
+  let upperReady = true;
   ["division", "buyer", "season"].forEach((key) => {
     const select = $(`.color-report-level[data-level="${key}"]`);
     if (!select) return;
-    const options = Array.isArray(levels[key]?.options) ? levels[key].options : [];
+    const options = (Array.isArray(levels[key]?.options) ? levels[key].options : [])
+      .filter((option) => String(option.value || "")
+        && !String(option.label || "").trim().toLowerCase().startsWith("<select"));
     colorReportState.levels[key] = options;
     select.innerHTML = ['<option value="">— chọn —</option>'].concat(
       options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`),
     ).join("");
-    select.value = String(levels[key]?.value || "");
-    select.disabled = options.length === 0;
+    select.value = upperReady ? String(levels[key]?.value || "") : "";
+    select.disabled = !upperReady || options.length === 0;
+    upperReady = upperReady && Boolean(select.value);
   });
   const choices = colorReportIsPo() ? levels.po_no : levels.style_ref;
-  colorReportState.styleRefs = Array.isArray(choices?.options) ? choices.options : [];
+  colorReportState.styleRefs = upperReady && Array.isArray(choices?.options) ? choices.options : [];
+  const saved = result?.saved_parameters || {};
+  const restore = upperReady && ["division", "buyer", "season"].every((key) =>
+    String(saved[key] || "") === $(`.color-report-level[data-level="${key}"]`).value);
+  const savedValues = new Set(restore && Array.isArray(saved.selected_values)
+    ? saved.selected_values.map(String) : []);
   colorReportState.selected = new Set(
-    colorReportState.styleRefs.map((option) => String(option.value)),
+    colorReportState.styleRefs.map((option) => String(option.value))
+      .filter((value) => savedValues.has(value)),
   );
+  colorReportState.singleValue = restore && colorReportState.styleRefs.some(
+    (option) => String(option.value) === String(saved.single_value || ""))
+    ? String(saved.single_value) : "";
+  if (result && Object.hasOwn(result, "saved_parameters")) {
+    $(".color-report-batch-toggle").checked = typeof saved.batch === "boolean" ? saved.batch : true;
+  }
   renderColorReportStyles();
 }
 
@@ -203,6 +220,8 @@ function renderColorReportStyles() {
     colorReportState.styleRefs.map((option) =>
       `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`),
   ).join("");
+  single.value = colorReportState.singleValue || "";
+  single.disabled = colorReportState.styleRefs.length === 0;
   $(".color-report-style-block").hidden = !batch;
   $(".color-report-single-style").hidden = batch;
   list.querySelectorAll(".color-report-style").forEach((box) =>
@@ -458,7 +477,13 @@ async function saveSelectedReportParameters() {
     setStatus("warning", "Hãy chọn báo cáo để tải tham số trước.");
     return null;
   }
-  const values = reportParameterValues();
+  const values = ["color_combination_production", "color_combination_po_wise"].includes(selectedReportId)
+    ? { ...colorReportSelection(),
+      batch: $(".color-report-batch-toggle").checked,
+      selected_values: colorReportState.styleRefs.map((option) => String(option.value))
+        .filter((value) => colorReportState.selected.has(value)),
+      single_value: $(".color-report-single-select").value }
+    : reportParameterValues();
   const result = await call("save_report_parameters", selectedReportId, values);
   if (result?.ok) reportParameterCache.set(selectedReportId, values);
   return result;

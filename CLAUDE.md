@@ -149,6 +149,12 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   đối. `SESSION_RESTORED` phải xóa prompt đăng nhập như các mã đăng nhập khác.
 - Form góp ý chỉ cho gửi từ 5 ký tự và hiển thị bộ đếm trên giới hạn 2.000 ký tự.
 - Bộ chọn Division là segmented control gọn để dành thêm chiều cao cho module.
+- Đổi Division (chủ động hoặc tự đổi theo chứng từ) phải kiểm tra menu Division
+  được WFX cấp cho tài khoản hiện tại trước khi click. Menu đã tải nhưng không
+  có Division đích thì trả `DIVISION_ACCESS_DENIED`, báo rõ Division và hướng
+  dẫn liên hệ quản trị viên; giữ Division hiện tại và dừng flow. Menu chưa đọc
+  được, mất phiên hoặc đóng trình duyệt không được kết luận là thiếu quyền.
+  Thiếu quyền là kết quả nghiệp vụ, không gửi lỗi automation tự động.
 - Chỉ thanh footer dưới cùng hiển thị trạng thái tác vụ; không lặp status bên
   trong màn module. Câu status bị cắt `…` phải đọc được nguyên văn khi hover:
   `setStatus` gắn `data-tooltip` + `data-tooltip-clipped`/`data-tooltip-wide`,
@@ -412,6 +418,10 @@ Mỗi nút trong module là một flow riêng:
   BuyerStyleReference và mọi StyleCode, chọn hết OC Num tự nạp. Thiếu StyleCode
   hoặc OC thì bỏ qua bình thường, không gửi telemetry. File nằm trong thư mục
   con theo PO, tên `PO - StyleRef - StyleCode.xlsx`; không ghi đè file đã có.
+- Style Wise và PO Wise không chọn sẵn OC Division/Buyer/Season hay tích sẵn
+  PO/Style. Chỉ nút `Lưu tham số` mới ghi bộ lựa chọn theo tài khoản + report;
+  chạy tải hoặc chạy lại lỗi không được tự lưu/ghi đè. Bộ tham số tự lưu ở các
+  bản cũ không được khôi phục như lựa chọn người dùng đã lưu chủ động.
 - WebView2 của panel/bubble dùng tối đa 3 renderer. pywebview 5.x luôn gán
   `CoreWebView2CreationProperties.AdditionalBrowserArguments` nên WebView2 bỏ
   qua biến môi trường `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`; sửa props sau
@@ -832,7 +842,12 @@ Các workflow riêng hiện có:
   HS Code/Goods Description/Qty/Price/Carton/NW/GW/CBM/FOB Price/Service Price/Cargo Ready Date/
   Consignee Address/Ship To được phép trống. Nếu cả file không có Cargo Ready
   Date thì giữ trống và không dùng ngày hiện tại; nếu có ngày ở một dòng thì
-  dùng ngày có dữ liệu đầu tiên để điền mọi dòng còn trống. Ba cột Cargo
+  dùng ngày có dữ liệu đầu tiên để điền mọi dòng còn trống. Bước Order Details
+  phải điền Cargo Ready Date cho TẤT CẢ dòng WFX, kể cả nhiều dòng cùng PO và
+  dòng hậu tố `ADD`/`- ADD` không có dòng riêng trong file. Nếu file ghi ngày
+  riêng cho từng PO/Style thì giữ ngày đó; dòng ADD kế thừa ngày của PO gốc,
+  dòng khác dùng ngày có dữ liệu đầu tiên. Không áp dụng copy toàn bảng cho
+  Carton/NW/GW/CBM/FOB Price/Service Price. Ba cột Cargo
   Ready Date/Invoice Date/Shipping Bill Date phải có date validation trong form
   Excel và cho phép để trống. Invoice Date/Shipping Bill Date vẫn kế thừa ngày
   đầu tiên, không có nữa mới dùng ngày hiện tại; Shipping Bill No. trống thì dùng
@@ -844,6 +859,13 @@ Các workflow riêng hiện có:
   thời không làm thay đổi cặp Country Of Destination/Final Destination mặc định.
   Vì Search PO của WFX là tìm chứa chuỗi, kết quả phải được lọc lại theo PO No.
   exact trước khi chọn; `779` không được nhận `779A`.
+  Ô gộp `OC No./Buyer Order Ref.` dạng `PSW-…/PO0003760` phải tách phần
+  Buyer Order Ref sau mã OC để lọc exact. Ưu tiên tổ hợp duy nhất chỉ gồm PO
+  gốc, ví dụ `475 + 1900 = 2375`. Nếu không có tổ hợp đó, được xét thêm đúng
+  hậu tố `ADD`/`- ADD` của cùng PO, ví dụ `1500 + 725 + 150 = 2375`; vẫn phải
+  duy nhất và khớp tổng Qty. Không nhận PO gần giống như `PO0003760A`. Nếu file
+  có dòng ADD riêng thì dành dòng WFX đó cho đúng dòng file, không cộng vào PO
+  gốc. Danh sách chờ chọn phải giữ đúng nhãn ADD, không đổi thành nhãn PO gốc.
   Style từ file là từ khóa gần đúng (ví dụ `M Acel Jacket` phải khớp được
   `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX), không phải mã exact. Sau mỗi lần
   thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay;
@@ -896,7 +918,9 @@ Các workflow riêng hiện có:
   luôn dừng trước Save để user kiểm tra trên WFX.
   Sau bốn bước tạo, task cuối `Check giá / Qty` tự mở Shipment Details rồi map
   PO No.+Style No. theo PO tách từ Order No. dạng mã hệ thống/PO + Article, so
-  sánh Shipping Qty và Price (USD) từng dòng. Đồng thời tổng Qty và Qty×Price
+  sánh Shipping Qty và Price (USD) từng dòng. Khi file không có dòng ADD riêng,
+  phải cộng Shipment Details của ADD cùng PO/Style vào PO gốc; khi có dòng
+  riêng thì đối chiếu riêng, không tính hai lần. Đồng thời tổng Qty và Qty×Price
   file phải được so với Total Quantity, Value In Doc Currency và Net Value In
   Doc Currency ở Summary Total; có nút xuất workbook kết quả và không sửa dữ
   liệu WFX. Panel chỉ rộng 440px nên kết quả trong app phải rút gọn: một hàng
@@ -928,6 +952,10 @@ Các workflow riêng hiện có:
   giữ nguyên các Page đã có trước đó. Khi ghép, tăng chiều cao các hàng wrap text
   theo nội dung và độ rộng cột để không cắt dòng trong Excel; riêng No of Pcs,
   Net Wt, Gross Wt, No of Carton và CBM được nới đủ để thấy trọn header/số liệu.
+  Các dòng detail có Style + PO
+  trong mỗi sheet Invoice/PKL phải cùng chiều cao: tối thiểu 24 pt, tăng đồng
+  loạt nếu nội dung wrap cần nhiều chỗ hơn. Tính lại từ nội dung, không lấy
+  chiều cao SSRS bất thường làm chuẩn; giữ riêng tiêu đề nhóm hàng và footer.
   Mọi sheet đặt A4, giữ hướng dọc/ngang từ report WFX, fit vừa một trang theo
   chiều ngang và tự phân trang theo chiều dọc. Khi copy sheet giữa hai workbook,
   Với Packing List J.Lindeberg (nhận diện bằng header `JL PO#`), gộp dọc Net Wt,

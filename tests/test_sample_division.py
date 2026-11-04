@@ -122,15 +122,16 @@ def test_khong_co_tien_to_thi_khong_cham_division():
     assert [call[0] for call in login.calls] == ["search"]
 
 
-def test_doi_division_that_bai_thi_dung_khong_tim_o_division_sai():
-    login = _Login("DIVISION_OPTION_NOT_FOUND")
+@pytest.mark.parametrize("code", ["DIVISION_OPTION_NOT_FOUND", "DIVISION_ACCESS_DENIED"])
+def test_doi_division_that_bai_thi_dung_khong_tim_o_division_sai(code):
+    login = _Login(code)
     panel = _Panel(login)
 
     result = ModulesController(panel).search_sample(sample_no="PSG-ONL-26-170")
 
     assert [call[0] for call in login.calls] == ["switch_division"]
     assert result["ok"] is False
-    assert result["code"] == "DIVISION_OPTION_NOT_FOUND"
+    assert result["code"] == code
     assert "thuộc Division PSSG" in result["message"]
 
 

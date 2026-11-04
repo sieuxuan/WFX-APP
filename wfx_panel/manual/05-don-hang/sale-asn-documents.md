@@ -32,8 +32,10 @@ Excel để gửi hoặc lưu trữ.
 > báo cáo trong giới hạn ba phút. Bạn không cần bấm nút xuất lần thứ hai.
 
 > [!meo]
-> Khi ghép, ứng dụng tăng chiều cao của các hàng có nội dung wrap để tránh bị
-> cắt chữ khi mở file trong Excel.
+> Các dòng chi tiết Style/PO trong mỗi sheet Invoice và Packing List được cân
+> cùng chiều cao, tối thiểu 24 pt, để dễ đọc và in. Nếu có nội dung xuống dòng,
+> tất cả dòng chi tiết cùng tăng đủ chỗ để không cắt chữ. Tiêu đề nhóm hàng và
+> phần tổng cộng giữ cách trình bày riêng.
 
 > [!meo]
 > Các cột `No of Pcs`, `Net Wt`, `Gross Wt`, `No of Carton` và `CBM` tự được nới

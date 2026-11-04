@@ -51,7 +51,7 @@ class Node:
     def inner_text(self, **_kwargs):
         return self.text
 
-    def evaluate(self, _script, _arg=None):
+    def evaluate(self, _script, _arg=None, **_kwargs):
         self.clicks += 1
 
 
@@ -85,6 +85,9 @@ class SessionPage:
 
     def screenshot(self, **kwargs):
         self.screenshots.append(kwargs)
+
+    def is_closed(self):
+        return False
 
 
 # --- đọc Division từ CompanyName ---------------------------------------
@@ -291,6 +294,89 @@ def test_a_division_link_wfx_does_not_show_is_reported(monkeypatch, clock):
 
     assert result["code"] == "DIVISION_OPTION_NOT_FOUND"
     assert target["label"] in result["message"]
+
+
+def _division_menu():
+    return SessionFrame({
+        'a.hasbookmark[href*="ChangeBaseSetting=1"]': Node(),
+    })
+
+
+def test_a_loaded_menu_without_the_target_reports_access_denied(monkeypatch, clock):
+    target = _division(1)
+    current = _state(_division(0))
+    menu = _division_menu()
+    page = SessionPage(menu, clock=clock)
+    _wire_switch(monkeypatch, page, current=current)
+
+    result = session.switch_division(target["key"])
+
+    assert result["ok"] is False
+    assert result["code"] == "DIVISION_ACCESS_DENIED"
+    assert "không có quyền" in result["message"]
+    assert target["label"] in result["message"]
+    assert "quản trị viên" in result["message"]
+    assert result["current_division"] == current["current_division"]
+    assert all(node.clicks == 0 for node in menu.nodes.values())
+
+
+def test_an_unreadable_frame_does_not_prove_access_denied(monkeypatch, clock):
+    page = SessionPage(_division_menu(), SessionFrame(broken=True), clock=clock)
+    _wire_switch(monkeypatch, page, current=_state(_division(0)))
+
+    result = session.switch_division(_division(1)["key"])
+
+    assert result["code"] == "DIVISION_OPTION_NOT_FOUND"
+
+
+@pytest.mark.parametrize("closed", [False, True])
+def test_a_lost_session_or_closed_page_is_not_access_denied(monkeypatch, clock, closed):
+    page = SessionPage(_division_menu(), clock=clock)
+    page.is_closed = lambda: closed
+    _wire_switch(monkeypatch, page, current=_state(_division(0)))
+    # Lượt đầu còn phiên, đến lúc đọc xong menu thì phiên đã mất.
+    active = iter([True, False])
+    patch_automation(monkeypatch, session, "_session_is_active", lambda _p: next(active))
+
+    result = session.switch_division(_division(1)["key"])
+
+    assert result["code"] == ("CHROME_CLOSED" if closed else "NOT_LOGGED_IN")
+
+
+def test_a_division_link_that_arrives_late_is_allowed(monkeypatch, clock):
+    target = _division(1)
+    link = Node()
+    frame = _division_menu()
+    page = SessionPage(frame, clock=clock)
+    _wire_switch(monkeypatch, page, states=[_state(_division(0)), _state(target)])
+    wait = page.wait_for_timeout
+
+    def load_menu(milliseconds):
+        wait(milliseconds)
+        frame.nodes[_link_selector(target)] = link
+
+    page.wait_for_timeout = load_menu
+
+    result = session.switch_division(target["key"])
+
+    assert result["code"] == "DIVISION_CHANGED"
+    assert link.clicks == 1
+
+
+def test_a_page_closed_during_the_click_is_reported_as_closed(monkeypatch, clock):
+    target = _division(1)
+    link = Node()
+    page = SessionPage(SessionFrame({_link_selector(target): link}), clock=clock)
+    _wire_switch(monkeypatch, page, current=_state(_division(0)))
+
+    def close_page(_script, *, timeout):
+        assert timeout <= 2_000
+        page.is_closed = lambda: True
+        raise PlaywrightError("Target page, context or browser has been closed")
+
+    link.evaluate = close_page
+
+    assert session.switch_division(target["key"])["code"] == "CHROME_CLOSED"
 
 
 def _link_selector(division):

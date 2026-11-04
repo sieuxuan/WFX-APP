@@ -1,5 +1,36 @@
 [
   {
+    "version": "1.1.6",
+    "date": "2026-11-04",
+    "highlights": [
+      {
+        "title": "Sale ASN: tự chọn các dòng có tổng Qty khớp",
+        "body": "Ứng dụng đọc đúng PO trong ô ghép mã OC/PO và ưu tiên tổ hợp chỉ gồm PO gốc. Nếu chưa khớp, ứng dụng xét thêm ADD/- ADD cùng PO để tự chọn tổng đúng, ví dụ 1.500 + 725 + 150 = 2.375. ADD có dòng riêng trong file được giữ riêng để không lấy trùng; bước Check giá / Qty cũng cộng đúng phần ADD.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Cargo Ready Date phủ đủ các dòng PO tách",
+        "body": "Cargo Ready Date được điền cho toàn bộ Order Details, gồm các dòng tách cùng PO và ADD/- ADD. Nếu file có ngày riêng theo PO/Style thì giữ ngày tương ứng; nếu cả file để trống thì ứng dụng không tự lấy ngày hiện tại.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Invoice và Packing List có dòng chi tiết đều nhau",
+        "body": "Các dòng chi tiết Style/PO trong mỗi sheet được cân cùng chiều cao, tối thiểu 24 pt. Khi có nội dung xuống dòng, các dòng chi tiết cùng tăng đủ chỗ để không cắt chữ, giúp file dễ đọc và in hơn.",
+        "entry": "don-hang-sale-asn-documents"
+      },
+      {
+        "title": "ColorCombination chỉ nhớ tham số khi bạn chủ động lưu",
+        "body": "Style Wise và PO Wise không tự chọn sẵn Division, Buyer, Season, PO hoặc Style và không tự lưu sau lượt tải. Bấm Lưu tham số để nhớ đúng bộ lựa chọn của từng báo cáo theo tài khoản; đổi điều kiện sẽ xóa các lựa chọn phụ thuộc đã cũ.",
+        "entry": "danh-sach-reports"
+      },
+      {
+        "title": "Thông báo rõ khi tài khoản thiếu quyền Division",
+        "body": "Ứng dụng kiểm tra Division được WFX cấp cho tài khoản trước khi chuyển. Khi thiếu quyền, ứng dụng giữ Division hiện tại và hướng dẫn liên hệ quản trị viên; trường hợp trang chưa tải xong, hết phiên hoặc đóng trình duyệt được xử lý riêng.",
+        "entry": "bat-dau-division"
+      }
+    ]
+  },
+  {
     "version": "1.1.5",
     "date": "2026-11-02",
     "highlights": [

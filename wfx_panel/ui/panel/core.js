@@ -199,6 +199,7 @@ const colorReportState = {
   levels: { division: [], buyer: [], season: [] },
   styleRefs: [],
   selected: new Set(),
+  singleValue: "",
   outputDir: "",
 };
 let jobs = [];

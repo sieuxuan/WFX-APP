@@ -6,6 +6,7 @@ trong cell action, các PO trước dùng Add & Continue."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from decimal import Decimal
 from typing import Any
@@ -606,6 +607,30 @@ def _unique_dispatched_qty_subset(
     return [dict(candidates[index]) for index in selected]
 
 
+def _po_reference(value: object) -> str:
+    """Tách Buyer Ref khỏi mã OC WFX, giữ nguyên hậu tố ADD."""
+    text = str(value or "").strip()
+    system_no, separator, reference = text.partition("/")
+    if separator and re.fullmatch(r"PS[WKG]-[^/]+", system_no.strip(), flags=re.IGNORECASE):
+        return " ".join(reference.split())
+    return text
+
+
+def _po_reference_matches(value: object, requested_po: str) -> bool:
+    if not requested_po:
+        return False
+    return _fold(value) == requested_po or _fold(_po_reference(value)) == requested_po
+
+
+def _po_search_row(row: dict, source_rows: Sequence[dict]) -> dict:
+    """Không dùng ADD cho PO gốc khi file đã dành một dòng riêng cho ADD."""
+    reserved = tuple(
+        key for source in source_rows
+        if (key := _fold(source.get("po_no"))).endswith(" add")
+    )
+    return {**row, "_reserved_add_refs": reserved} if reserved else dict(row)
+
+
 def _auto_add_po(
     frame: Frame,
     row: dict,
@@ -638,6 +663,8 @@ def _auto_add_po(
     last: list[dict] = []
     label = ""
     for field in enabled:
+        exact: list[dict] = []
+        related_add: list[dict] = []
         active.append(field)
         label = " + ".join(SALE_ASN_PO_SEARCH_LABELS[item] for item in active)
         active_fields = tuple(active)
@@ -663,25 +690,46 @@ def _auto_add_po(
             requested_po = _fold(row.get("po_no"))
             raw_count = len(last)
             raw_candidates = list(last)
-            exact: list[dict] = []
+            reserved_add = set(row.get("_reserved_add_refs") or ())
             for item in last:
                 parsed_po = _fold(item.get("po_no"))
                 cell_values = item.get("cell_values")
                 if not isinstance(cell_values, (list, tuple)):
                     cell_values = ()
                 cell_match = any(
-                    requested_po and _fold(value) == requested_po
+                    _po_reference_matches(value, requested_po)
                     for value in cell_values
                 )
-                if requested_po and (parsed_po == requested_po or cell_match):
+                if _po_reference_matches(item.get("po_no"), requested_po) or cell_match:
                     candidate = dict(item)
                     if parsed_po != requested_po:
                         # Parser cột là thông tin hiển thị; exact cell match mới
                         # là bằng chứng chọn dòng. Chuẩn hóa label gửi về app.
                         candidate["po_no"] = str(row.get("po_no") or "")
                     exact.append(candidate)
-            if exact:
-                last = exact
+                elif not requested_po.endswith(" add"):
+                    add_reference = next((
+                        _po_reference(value)
+                        for value in (item.get("po_no"), *cell_values)
+                        if _fold(_po_reference(value)) == f"{requested_po} add"
+                    ), "")
+                    if add_reference and _fold(add_reference) not in reserved_add:
+                        related_add.append({**item, "po_no": add_reference})
+                    elif add_reference:
+                        # Không để nhánh fallback khi cột PO khó đọc lấy lại
+                        # một dòng ADD đã được dành cho dòng riêng trong file.
+                        raw_candidates.remove(item)
+            if exact or related_add:
+                last = exact + related_add
+                # Một PO gốc duy nhất đã đúng Qty thì vẫn thêm ngay, không để
+                # các dòng ADD làm mất đường nhanh cũ hoặc tạo mơ hồ giả.
+                expected = _decimal_or_none(row.get("qty"))
+                if len(exact) == 1 and (
+                    expected is None
+                    or _decimal_or_none(exact[0].get("dispatched_qty")) == expected
+                ):
+                    last = exact
+                    related_add = []
             else:
                 # WFX có tenant thêm cột checkbox chỉ ở data row, khiến cột
                 # Buyer Order Ref không thể xác định chắc chắn. Không xóa sạch
@@ -696,7 +744,7 @@ def _auto_add_po(
                         "Dispatched Qty."
                     ),
                 )
-            if exact and len(last) != raw_count:
+            if (exact or related_add) and len(last) != raw_count:
                 _write_log(
                     log,
                     (
@@ -716,8 +764,12 @@ def _auto_add_po(
         # chí nhưng còn nhiều dòng (thường là các size), chỉ auto-add khi tổng
         # Dispatched Qty bằng Qty file. Lệch thì giữ popup để user quyết định.
         expected_qty = _decimal_or_none(row.get("qty"))
+        if related_add and expected_qty is None:
+            return False, last, "qty_unavailable:thiếu Qty file để chọn cả PO gốc và ADD"
         if expected_qty is not None and len(last) >= 2:
-            qty_subset = _unique_dispatched_qty_subset(last, expected_qty)
+            qty_subset = _unique_dispatched_qty_subset(exact or last, expected_qty)
+            if qty_subset is None and related_add:
+                qty_subset = _unique_dispatched_qty_subset(last, expected_qty)
             if qty_subset is not None and len(qty_subset) < len(last):
                 last = qty_subset
                 _write_log(

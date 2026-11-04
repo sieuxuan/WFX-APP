@@ -1930,6 +1930,24 @@ def test_price_check_compares_po_style_and_all_summary_totals():
     assert all(item["ok"] for item in summary["checks"].values())
 
 
+@pytest.mark.parametrize("separate_add", [False, True])
+def test_price_check_includes_add_only_when_the_file_has_no_separate_add_row(separate_add):
+    rows = [{"po_no": "PO0003760", "style_no": "F21-0001", "qty": "2375", "price": "16.92"}]
+    if separate_add:
+        rows[0]["qty"] = "2225"
+        rows.append({"po_no": "PO0003760 - ADD", "style_no": "F21-0001", "qty": "150", "price": "16.92"})
+    shipments = [
+        {"po_no": "PO0003760", "article": "F21-0001", "qty": "2225", "price": "16.92"},
+        {"po_no": "PO0003760 - ADD", "article": "F21-0001", "qty": "150", "price": "16.92"},
+    ]
+
+    comparisons, totals = sale_asn_create._price_check_rows(rows, shipments)
+
+    assert all(item["status"] == "ok" for item in comparisons)
+    assert comparisons[0]["system_qty"] == ("2225" if separate_add else "2375")
+    assert totals["file_total_qty"] == "2375"
+
+
 def test_price_check_flags_qty_price_and_summary_mismatches():
     comparisons, totals = sale_asn_create._price_check_rows(
         [

@@ -63,7 +63,6 @@ def _reset_search_po(page) -> None:
 
 
 def read_po_cascade(page, values: Mapping | None) -> dict:
-    _reset_search_po(page)
     levels = read_cascade(page, values)["levels"]
     levels.pop("style_ref", None)
     options = []

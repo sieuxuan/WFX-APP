@@ -115,6 +115,9 @@ def test_batch_style_picker_and_no_oc_result_are_not_duplicated_or_errors():
             page.evaluate("""() => {
                 selectedReportId = 'color_combination_po_wise';
                 renderColorReportLevels({levels:{
+                  division:{value:'d1',options:[{value:'d1',label:'Division'}]},
+                  buyer:{value:'b1',options:[{value:'b1',label:'Buyer'}]},
+                  season:{value:'s1',options:[{value:'s1',label:'Season'}]},
                   po_no:{options:[{value:'p1',label:'PO001'}]},
                   style_ref:{options:[{value:'wrong',label:'WRONG STYLE'}]}
                 }});
@@ -125,6 +128,115 @@ def test_batch_style_picker_and_no_oc_result_are_not_duplicated_or_errors():
                 "WRONG STYLE"
                 not in page.locator(".color-report-single-select").inner_text()
             )
+        finally:
+            browser.close()
+
+
+@pytest.mark.parametrize(
+    "report_id,choice_key",
+    [
+        ("color_combination_production", "style_ref"),
+        ("color_combination_po_wise", "po_no"),
+    ],
+)
+def test_color_parameters_and_choices_restore_only_after_user_saves(
+    report_id, choice_key
+):
+    ui = Path(__file__).resolve().parent.parent / "wfx_panel" / "ui"
+    html = (ui / "index.html").read_text(encoding="utf-8")
+    markup = re.search(
+        r'<section class="color-report-workspace"[\s\S]*?</section>', html
+    )[0]
+    markup = markup.replace(
+        'class="color-report-workspace" hidden', 'class="color-report-workspace"'
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(markup)
+            page.add_script_tag(
+                content="""
+                const $ = s => document.querySelector(s);
+                const escapeHtml = s => String(s || '');
+                let selectedReportId = '';
+                let colorReportRunActive = false;
+                const colorReportState = {levels:{},styleRefs:[],selected:new Set(),singleValue:'',outputDir:'X:/out'};
+                const reportParameterCache = new Map();
+                const calls = [];
+                let userSaved = {};
+                async function call(method, ...args) {
+                  calls.push({method,args});
+                  if (method === 'save_report_parameters') userSaved = structuredClone(args[1]);
+                  return {ok:true,saved:[],failed:[],skipped:[]};
+                }
+            """
+            )
+            page.add_script_tag(path=str(ui / "panel" / "reports.js"))
+            page.evaluate("value => selectedReportId=value", report_id)
+            levels = {
+                key: {
+                    "value": key[0] + "1",
+                    "options": [{"value": key[0] + "1", "label": key}],
+                }
+                for key in ("division", "buyer", "season")
+            }
+            levels[choice_key] = {
+                "options": [
+                    {"value": "r1", "label": "First"},
+                    {"value": "r2", "label": "Second"},
+                ]
+            }
+            stale = {key: dict(value) for key, value in levels.items()}
+            stale["division"] = {**stale["division"], "value": ""}
+            page.evaluate(
+                "levels => renderColorReportLevels({levels,saved_parameters:{}})", stale
+            )
+            for key in ("division", "buyer", "season"):
+                assert (
+                    page.locator(
+                        f'.color-report-level[data-level="{key}"]'
+                    ).input_value()
+                    == ""
+                )
+            assert page.locator(".color-report-style").count() == 0
+            page.evaluate("levels => renderColorReportLevels({levels})", levels)
+            assert page.locator(".color-report-style:checked").count() == 0
+            page.locator('.color-report-style[value="r2"]').check()
+            page.evaluate("saveSelectedReportParameters()")
+            saved = page.evaluate("userSaved")
+            assert saved["selected_values"] == ["r2"]
+            assert (
+                saved["division"] == "d1"
+                and saved["buyer"] == "b1"
+                and saved["season"] == "s1"
+            )
+            page.locator('.color-report-style[value="r1"]').check()
+            page.evaluate("runColorReportBatch()")
+            assert (
+                page.evaluate(
+                    "calls.filter(c=>c.method==='save_report_parameters').length"
+                )
+                == 1
+            )
+            assert page.evaluate("userSaved.selected_values") == ["r2"]
+            page.evaluate(
+                "levels => renderColorReportLevels({levels,saved_parameters:userSaved})",
+                levels,
+            )
+            assert not page.locator('.color-report-style[value="r1"]').is_checked()
+            assert page.locator('.color-report-style[value="r2"]').is_checked()
+            page.evaluate(
+                "$('.color-report-batch-toggle').checked=false; renderColorReportStyles()"
+            )
+            page.locator(".color-report-single-select").select_option("r1")
+            page.evaluate("saveSelectedReportParameters()")
+            page.evaluate(
+                "levels => renderColorReportLevels({levels,saved_parameters:userSaved})",
+                levels,
+            )
+            assert not page.locator(".color-report-batch-toggle").is_checked()
+            assert page.locator(".color-report-single-select").input_value() == "r1"
         finally:
             browser.close()
 

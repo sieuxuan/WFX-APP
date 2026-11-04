@@ -84,8 +84,57 @@ def _needed_row_lines(value: str, capacity: float) -> int:
     )
 
 
+def _report_detail_rows(root: ET.Element, shared_strings: list[str]) -> set[int]:
+    """Nhận diện dòng Style + PO, bỏ tiêu đề nhóm hàng và dừng ở Total.
+
+    SSRS có thể đặt header PO tại G nhưng ô dữ liệu gộp từ F:I, nên đối
+    chiếu cả khoảng cột của ô gộp thay vì chỉ ô bắt đầu.
+    """
+    sheet_data = root.find(_tag(MAIN_NS, "sheetData"))
+    if sheet_data is None:
+        return set()
+    merged_ends = _merged_cell_ends(root)
+    columns: tuple[int, int] | None = None
+    details: set[int] = set()
+    for row in sheet_data.findall(_tag(MAIN_NS, "row")):
+        cells = _cell_map(row)
+        labels = {
+            _report_header_text(_cell_text(cell, shared_strings)): column
+            for column, cell in cells.items()
+        }
+        style_column = next((
+            column for label, column in labels.items()
+            if label in {"style", "style no", "style number"}
+        ), None)
+        po_column = next((
+            column for label, column in labels.items()
+            if label in {"po", "po no", "po no n", "po number", "jl po", "buyer order ref"}
+        ), None)
+        if style_column is not None and po_column is not None:
+            columns = (style_column, po_column)
+            continue
+        if columns is None:
+            continue
+        if labels.keys() & {"total", "grand total", "subtotal", "sub total"}:
+            columns = None
+            continue
+        if row.get("hidden") in {"1", "true"}:
+            continue
+        identities = []
+        for column in columns:
+            identities.append(next((
+                cell for start, cell in cells.items()
+                if start <= column <= merged_ends.get(str(cell.get("r")), start)
+                and _cell_text(cell, shared_strings).strip()
+            ), None))
+        style, po = identities
+        if style is not None and po is not None and style is not po:
+            details.add(int(row.get("r", "0")))
+    return details
+
+
 def _fit_wrapped_report_rows(target: Path) -> None:
-    """Tăng đúng các hàng wrap text để Excel không cắt nội dung report WFX."""
+    """Cân chiều cao dòng chi tiết và chừa đủ chỗ cho nội dung xuống dòng."""
     with ZipFile(target, "r") as source:
         shared_strings = _shared_strings(source)
         wrapped_styles = _wrapped_style_ids(source)
@@ -106,6 +155,9 @@ def _fit_wrapped_report_rows(target: Path) -> None:
             except ValueError:
                 default_height = 15.0
             changed = False
+            detail_rows = _report_detail_rows(root, shared_strings)
+            detail_elements: list[ET.Element] = []
+            detail_height = max(24.0, default_height + 2)
             for row in root.findall(f".//{_tag(MAIN_NS, 'row')}"):
                 row_style = int(row.get("s", "0"))
                 needed_lines = 1
@@ -129,15 +181,24 @@ def _fit_wrapped_report_rows(target: Path) -> None:
                         needed_lines,
                         _needed_row_lines(text, max(1.0, width * 0.95)),
                     )
+                desired = default_height * needed_lines + 2
+                if int(row.get("r", "0")) in detail_rows:
+                    detail_elements.append(row)
+                    detail_height = max(detail_height, desired)
+                    continue
                 if needed_lines <= 1:
                     continue
                 try:
                     current_height = float(row.get("ht", str(default_height)))
                 except ValueError:
                     current_height = default_height
-                desired = default_height * needed_lines + 2
                 if desired > current_height:
                     row.set("ht", f"{desired:g}")
+                    row.set("customHeight", "1")
+                    changed = True
+            for row in detail_elements:
+                if row.get("ht") != f"{detail_height:g}" or row.get("customHeight") != "1":
+                    row.set("ht", f"{detail_height:g}")
                     row.set("customHeight", "1")
                     changed = True
             if changed:
