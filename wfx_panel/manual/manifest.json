@@ -813,8 +813,10 @@
           "title": "Giới hạn cần biết",
           "summary": "Những trường hợp phụ thuộc Windows, quyền và tốc độ WFX.",
           "file": "07-su-co/gioi-han.md",
-          "keywords": ["giới hạn", "quyền quản trị", "chậm"],
-          "covers": {}
+          "keywords": ["giới hạn", "quyền quản trị", "chậm", "biểu tượng trống", "ô màu"],
+          "covers": {
+            "errors": ["WEBVIEW2_PROCESS_FAILED"]
+          }
         }
       ]
     }

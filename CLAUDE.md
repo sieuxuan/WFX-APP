@@ -192,6 +192,18 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   người dùng bấm. Toast native gửi `NIN_BALLOONUSERCLICK` (`0x0405`) chứ không
   phải `WM_LBUTTONUP`, và pystray không xử lý message này, nên
   `_WfxTrayIcon._on_notify` phải tự bắt.
+- WebView2 có thể chết giữa chừng mà pywebview 5.4 không báo: browser process
+  chết làm bubble thành ô một màu `#0f9fb2` (đôi khi đen), `evaluate_js` treo
+  vĩnh viễn và kéo automation worker treo theo, `destroy()` cũng treo.
+  `app/webview2_watchdog.py` đăng ký `ProcessFailed` trên từng cửa sổ và thay
+  `Semaphore` của `edgechromium` để gỡ thread đang kẹt. Fatal là
+  `BrowserProcessExited` ở mọi cửa sổ, hoặc `RenderProcessExited` ở panel/bubble;
+  loại khác chỉ ghi `crash.log`. `app/webview2_recovery.py` chờ flow đang chạy
+  kết thúc (không có trần thời gian: cắt ngang Save/Create Transaction là không
+  biết WFX ghi tới đâu), giữ nguyên Chrome rồi mở lại app với
+  `--recovered-from-webview2`: bubble hiện, panel không tự bung, có toast. Tối
+  đa 3 lần trong 10 phút (`webview2-restarts.json`), quá thì dừng và báo user
+  thoát thủ công. `quit()` đóng cửa sổ có trần 10 giây rồi `os._exit`.
 - Updater chờ instance hiện tại tự đóng 15 giây. Nếu pywebview/WebView2 còn giữ
   process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
   process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo

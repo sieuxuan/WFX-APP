@@ -16,6 +16,7 @@ METHOD_LABELS = {
     "fill_expense_import": "Điền Expense Invoice từ Excel",
     "login": "Đăng nhập WFX",
     "check_session": "Kiểm tra phiên WFX",
+    "webview2_watchdog": "Giám sát giao diện",
     "open_chrome": "Mở trình duyệt làm việc",
     "open_module": "Mở module",
     "prepare_catalog": "Chuẩn bị Catalog",
@@ -123,6 +124,11 @@ ERROR_CODE_INFO = {
     "PANEL_ERROR": (
         "Ứng dụng gặp lỗi khi chạy tác vụ",
         "Mở Log kỹ thuật để xem mã lượt chạy.",
+    ),
+    "WEBVIEW2_PROCESS_FAILED": (
+        "Giao diện ứng dụng bị lỗi",
+        "Ứng dụng tự mở lại sau khi tác vụ đang chạy kết thúc. Nếu không tự mở, "
+        "hãy thoát từ biểu tượng cạnh đồng hồ rồi mở lại.",
     ),
     'SUPPLIER_INVOICE_ACTION_NOT_READY': ('Nút Delete/Cancel chưa sẵn sàng', 'Mở lại Supplier Inv List, tìm đúng invoice rồi thử lại.'),
     'SUPPLIER_INVOICE_CANCEL_FAILED': ('Không thể Cancel Supplier Invoice', 'Mở Log kỹ thuật, kiểm tra đúng invoice và quyền thao tác trên WFX.'),
