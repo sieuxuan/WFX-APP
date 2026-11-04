@@ -926,6 +926,112 @@ def _wire_auto_add(monkeypatch, results, *, added=None):
     return searched, picked
 
 
+@pytest.mark.parametrize("final", [False, True])
+@pytest.mark.parametrize("po_column_readable", [False, True])
+def test_split_dispatch_qty_excludes_add_po_before_finding_the_unique_sum(
+    monkeypatch, final, po_column_readable,
+):
+    candidates = []
+    for index, quantity in enumerate(("475.0000", "1900.0000", "1500.0000", "725.0000", "150.0000")):
+        reference = "PO0003760 - ADD" if index == 4 else "PO0003760"
+        order = f"PSW-TW-26-5029.{6 if index == 4 else 5}/\n{reference}"
+        candidates.append(_candidate(
+            index + 1, f"GDN-{index}",
+            po_no=order if po_column_readable else "PSW-TW-26-5029.5",
+            cell_values=["TW", "F21-0001", order, quantity],
+            dispatched_qty=quantity,
+        ))
+    selected = []
+    table = Node(evaluate_result=lambda spec: selected.append(spec["selection_value"]) or {
+        "ok": True, "value": spec["selection_value"],
+    })
+    action = Node(evaluate_result={"ok": True, "tag": "A"})
+    frame = PopupFrame({
+        PO_RESULTS_TABLE_SELECTOR: table,
+        PO_OK_SELECTOR if final else PO_CONTINUE_SELECTOR: action,
+    })
+    # Dùng Add thật để kiểm cả hai checkbox và đúng một cú Add/OK.
+    patch_automation(monkeypatch, po, "_search_po", lambda *_a, **_k: candidates)
+    patch_automation(monkeypatch, po, "_wait", lambda *_a: None)
+    logs = []
+
+    added, returned, _label = po._auto_add_po(
+        frame,
+        _row(po_no="PO0003760", style_no="F21-0001", qty="2375"),
+        logs.append,
+        final=final,
+    )
+
+    assert added is True
+    assert [item["selection_value"] for item in returned] == ["GDN-0", "GDN-1"]
+    assert selected == ["GDN-0", "GDN-1"]
+    assert len(action.evaluations) == 1
+    assert any("tổng Dispatched Qty 2375 khớp Qty file" in line for line in logs)
+
+
+@pytest.mark.parametrize("add_ref", ["PO0003760 ADD", "PO0003760 - ADD"])
+def test_qty_selection_can_include_add_when_base_po_has_no_matching_sum(monkeypatch, add_ref):
+    candidates = [
+        _candidate(index, str(index), po_no=f"PSW-TW-26-5029.5/{reference}", dispatched_qty=qty)
+        for index, (reference, qty) in enumerate([
+            ("PO0003760", "475"), ("PO0003760", "1500"),
+            ("PO0003760", "725"), (add_ref, "150"),
+            ("PO0003760A", "2375"),
+        ])
+    ]
+    _searched, picked = _wire_auto_add(monkeypatch, candidates)
+
+    added, selected, _reason = po._auto_add_po(
+        PopupFrame(), _row(po_no="PO0003760", qty="2375"), lambda _m: None,
+    )
+
+    assert added is True
+    assert [item["selection_value"] for item in selected] == ["1", "2", "3"]
+    assert picked == [selected]
+    assert selected[-1]["po_no"] == add_ref
+
+
+@pytest.mark.parametrize("only_add", [False, True])
+def test_an_add_po_listed_separately_in_the_file_is_not_consumed_by_the_base(monkeypatch, only_add):
+    candidates = [
+        _candidate(index, str(index), po_no=reference, dispatched_qty=qty)
+        for index, (reference, qty) in enumerate([
+            ("PO0003760", "1500"), ("PO0003760", "725"), ("PO0003760 - ADD", "150"),
+        ])
+    ]
+    if only_add:
+        candidates = candidates[-1:]
+    _searched, picked = _wire_auto_add(monkeypatch, candidates)
+    row = po._po_search_row(
+        _row(po_no="PO0003760", qty="150" if only_add else "2375"),
+        [{"po_no": "PO0003760"}, {"po_no": "PO0003760 - ADD"}],
+    )
+
+    added, _selected, _reason = po._auto_add_po(PopupFrame(), row, lambda _m: None)
+
+    assert added is False
+    assert picked == []
+
+
+def test_an_add_po_does_not_resolve_two_equal_qty_combinations(monkeypatch):
+    candidates = [
+        _candidate(index, str(index), po_no=reference, dispatched_qty=qty)
+        for index, (reference, qty) in enumerate([
+            ("PO0003760", "1500"), ("PO0003760", "725"),
+            ("PO0003760 ADD", "150"), ("PO0003760 - ADD", "150"),
+        ])
+    ]
+    _searched, picked = _wire_auto_add(monkeypatch, candidates)
+
+    added, selected, _reason = po._auto_add_po(
+        PopupFrame(), _row(po_no="PO0003760", qty="2375"), lambda _m: None,
+    )
+
+    assert added is False
+    assert len(selected) == 4
+    assert picked == []
+
+
 def test_a_row_without_a_destination_falls_back_to_searching_by_po(monkeypatch):
     install_fake_clock(monkeypatch, po)
     searched, picked = _wire_auto_add(monkeypatch, [_candidate(0, "11", po_no="779")])

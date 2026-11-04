@@ -195,6 +195,8 @@ ERROR_CODE_INFO = {
     'COMPANY_FOC_NOT_READY': ('Màn cấu hình FOC chưa sẵn sàng', 'Chờ Miscellaneous Settings tải xong rồi thử lại.'),
     'COMPANY_FOC_SAVE_NOT_CONFIRMED': ('WFX chưa xác nhận lưu cấu hình FOC', 'Kiểm tra trạng thái checkbox và bấm Save lại trên WFX.'),
     'DIVISION_CHANGE_FAILED': ('Không thể đổi Division', 'Kiểm tra menu Division và phiên đăng nhập rồi thử lại.'),
+    'DIVISION_ACCESS_DENIED': ('Tài khoản không có quyền truy cập Division', 'Liên hệ quản trị viên WFX để được cấp quyền hoặc chọn Division khác.'),
+    'DIVISION_OPTION_NOT_FOUND': ('Chưa đọc được menu Division', 'Chờ trang WFX tải xong rồi thử lại.'),
     'DIVISION_DETECT_FAILED': ('Không thể nhận diện Division hiện tại', 'Kiểm tra màn Home WFX và đăng nhập lại nếu cần.'),
     'FILTER_RESULTS_NOT_READY': ('Kết quả lọc chưa ổn định', 'Chờ bảng tải xong rồi tìm lại.'),
     'FILTER_VALUE_NOT_CONFIRMED': ('WFX chưa nhận giá trị ô lọc', 'Mở lại ô lọc rồi nhập lại.'),

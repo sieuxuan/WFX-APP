@@ -63,7 +63,7 @@
           "summary": "Chọn đúng Division trước khi thao tác.",
           "file": "01-bat-dau/chon-division.md",
           "keywords": ["woven", "knit", "pssg", "division"],
-          "covers": { "errors": ["DIVISION_CHANGE_NOT_CONFIRMED"] }
+          "covers": { "errors": ["DIVISION_CHANGE_NOT_CONFIRMED", "DIVISION_ACCESS_DENIED", "DIVISION_OPTION_NOT_FOUND"] }
         },
         {
           "id": "bat-dau-trinh-duyet",

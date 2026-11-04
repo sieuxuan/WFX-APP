@@ -32,6 +32,7 @@ from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
 from wfx_panel.automation.sale_asn_create.po import (
     _auto_add_po_with_frame_retry,
     _click_dom_action,
+    _po_search_row,
 )
 from wfx_panel.automation.sale_asn_create.progress import _emit_stage_progress
 from wfx_panel.automation.sale_asn_create.values import (
@@ -62,9 +63,14 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
     const wanted = fold(spec.po_no);
     const wantedStyle = fold(spec.style_no);
     const rows = [...table.querySelectorAll('tr.trContent')];
-    const poCandidates = rows.filter(row =>
+    let poCandidates = rows.filter(row =>
         fold(row.querySelector('#colOrderRefNum')?.textContent) === wanted
     );
+    if (!poCandidates.length && spec.allow_add && !wanted.endsWith(' add')) {
+        poCandidates = rows.filter(row =>
+            fold(row.querySelector('#colOrderRefNum')?.textContent) === `${wanted} add`
+        );
+    }
     const candidates = poCandidates.length > 1 && wantedStyle
         ? poCandidates.filter(row => {
             const styleCell = row.querySelector(
@@ -114,6 +120,26 @@ _READ_ORDER_DETAILS_JS = r"""spec => {
         });
         return output;
     }).filter(row => row.po_no);
+}"""
+
+
+_MARK_CARGO_READY_DATE_CELL_JS = r"""cell => {
+    const row = cell.closest('tr.trContent');
+    if (!row || !cell.isConnected) return {ok: false, reason: 'cell-not-found'};
+    const read = selector => {
+        const target = row.querySelector(selector);
+        return String(target?.querySelector('.clsGridLabelContent, span')
+            ?.getAttribute('title') || target?.getAttribute('title')
+            || target?.textContent || '').trim();
+    };
+    document.querySelectorAll('[data-wfx-sale-asn-target]').forEach(item =>
+        item.removeAttribute('data-wfx-sale-asn-target'));
+    cell.setAttribute('data-wfx-sale-asn-target', '1');
+    return {
+        ok: true,
+        po_no: read('td#colOrderRefNum'),
+        style_no: read('td#colStyle, td#colStyleNo, td#colBuyerStyleRef, td[id*="Style"]'),
+    };
 }"""
 
 
@@ -168,6 +194,8 @@ def _set_order_grid_cell(
     style_no: str,
     column_id: str,
     value: str,
+    *,
+    allow_add: bool = False,
 ) -> None:
     marked = frame.evaluate(
         _MARK_ORDER_GRID_CELL_JS,
@@ -176,6 +204,7 @@ def _set_order_grid_cell(
             "po_no": po_no,
             "style_no": style_no,
             "column_id": column_id,
+            **({"allow_add": True} if allow_add else {}),
         },
     )
     if not marked.get("ok"):
@@ -219,10 +248,19 @@ def _missing_order_rows(
     rows: Sequence[dict],
     present: set[str | tuple[str, str]],
 ) -> list[dict]:
+    separate_pos = {_fold(row.get("po_no")) for row in rows}
     return [
         dict(row)
         for row in rows
-        if _fold(row.get("po_no")) and not _order_row_is_present(row, present)
+        if _fold(row.get("po_no"))
+        and not _order_row_is_present(row, present)
+        and not (
+            not _fold(row.get("po_no")).endswith(" add")
+            and f"{_fold(row.get('po_no'))} add" not in separate_pos
+            and _order_row_is_present(
+                {**row, "po_no": f"{row.get('po_no')} ADD"}, present,
+            )
+        )
     ]
 
 
@@ -378,7 +416,7 @@ def _ensure_order_grid_rows(
         added, candidates, reason, popup_frame = _auto_add_po_with_frame_retry(
             context,
             popup_frame,
-            row,
+            _po_search_row(row, rows),
             log,
             final=final,
             search_fields=search_fields,
@@ -402,12 +440,51 @@ def _ensure_order_grid_rows(
     return refreshed_frame
 
 
+def _fill_order_cargo_ready_dates(
+    frame: Frame,
+    rows: Sequence[dict],
+    log: Callable[[str], None],
+) -> None:
+    dates = [
+        (_fold(row.get("po_no")), _fold(row.get("style_no")), _date_for_wfx(value))
+        for row in rows
+        if (value := str(row.get("cargo_ready_date") or "").strip())
+    ]
+    if not dates:
+        return
+    default_date = dates[0][2]
+    grid_rows = frame.locator(f"{ORDER_GRID_SELECTOR} tr.trContent")
+    cells = grid_rows.locator(f"td#{ORDER_FIELD_COLUMNS['cargo_ready_date']}")
+    count = grid_rows.count()
+    if not count or cells.count() != count:
+        raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cargo-ready-date-cell-not-found")
+    for index in range(count):
+        marked = cells.nth(index).evaluate(_MARK_CARGO_READY_DATE_CELL_JS)
+        if not marked.get("ok"):
+            raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
+        po_key = _fold(marked.get("po_no"))
+        style_key = _fold(marked.get("style_no"))
+        matches = [item for item in dates if item[0] == po_key]
+        if not matches:
+            # PO hậu tố ADD kế thừa ngày của PO gốc nếu file không ghi ngày riêng.
+            matches = [item for item in dates if item[0] == po_key.removesuffix(" add")]
+        if len(matches) > 1 and style_key:
+            matches = [item for item in matches if not item[1] or _order_style_matches(item[1], style_key)]
+        specific_dates = {item[2] for item in matches}
+        if len(specific_dates) > 1:
+            raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cargo-ready-date-ambiguous")
+        value = next(iter(specific_dates), default_date)
+        _edit_marked_table_cell(frame, value)
+    _write_log(log, f"[SALE ASN] Đã điền Cargo Ready Date cho toàn bộ {count} dòng Order Details.")
+
+
 def _fill_order_details(
     frame: Frame,
     rows: Sequence[dict],
     log: Callable[[str], None],
     progress: Callable[..., None] | None = None,
 ) -> None:
+    separate_pos = {_fold(row.get("po_no")) for row in rows}
     for index, row in enumerate(rows, 1):
         _emit_stage_progress(
             progress,
@@ -415,21 +492,22 @@ def _fill_order_details(
             f"Order Details {index}/{len(rows)}",
         )
         for key, column_id in ORDER_FIELD_COLUMNS.items():
+            if key == "cargo_ready_date":
+                continue
             value = str(row.get(key) or "").strip()
             if not value:
                 continue
-            if key == "cargo_ready_date":
-                value = _date_for_wfx(value)
-            else:
-                value = _number_for_wfx(value, integer=key == "carton")
+            value = _number_for_wfx(value, integer=key == "carton")
             _set_order_grid_cell(
                 frame,
                 str(row.get("po_no") or ""),
                 str(row.get("style_no") or ""),
                 column_id,
                 value,
+                allow_add=f"{_fold(row.get('po_no'))} add" not in separate_pos,
             )
         _write_log(log, f"[SALE ASN] Đã điền Order Details cho {row.get('po_no')}.")
+    _fill_order_cargo_ready_dates(frame, rows, log)
 
 
 def scan_sale_asn_order_details(

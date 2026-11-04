@@ -174,6 +174,31 @@ def test_po_folder_name_cannot_escape_output_folder(name, expected):
     assert Path(expected).name == expected
 
 
+def test_opening_po_without_user_parameters_does_not_set_search_po_or_read_stale_pos(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        po,
+        "read_cascade",
+        lambda *_a: {
+            "levels": {
+                **{key: {"value": "", "options": []} for key in po.CASCADE_KEYS},
+                "style_ref": {"options": [{"value": "old", "label": "Old style"}]},
+            }
+        },
+    )
+    monkeypatch.setattr(
+        po,
+        "_reset_search_po",
+        lambda *_a: pytest.fail(
+            "Do not set SearchPO before the user chooses parameters"
+        ),
+    )
+    result = po.read_po_cascade(object(), {})
+    assert result["levels"]["po_no"]["options"] == []
+    assert "style_ref" not in result["levels"]
+
+
 def test_catalog_separates_style_wise_and_po_wise():
     assert (
         REPORTS[po.REPORT_ID]["custom_report_id"]

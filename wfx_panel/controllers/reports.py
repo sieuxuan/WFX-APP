@@ -10,6 +10,11 @@ if TYPE_CHECKING:
 
 from wfx_panel.stores.report_parameters import ReportParameterStore
 
+_COLOR_REPORT_IDS = frozenset(
+    {"color_combination_production", "color_combination_po_wise"}
+)
+_USER_SAVED_MARKER = "__user_saved_parameters__"
+
 
 class ReportsController:
     def __init__(self, panel: PanelAPI) -> None:
@@ -49,9 +54,23 @@ class ReportsController:
                 for key in ("division", "buyer", "season")
                 if saved.get(key)
             }
+        saved_parameters = (
+            self._saved_report_parameters("color_combination_po_wise")
+            if not values
+            else None
+        )
+
+        def action():
+            result = loader(selected, panel._log)
+            return (
+                {**result, "saved_parameters": saved_parameters}
+                if saved_parameters is not None and result.get("ok")
+                else result
+            )
+
         return panel._run(
             "load_color_po_report_options",
-            lambda: loader(selected, panel._log),
+            action,
             {"module_id": "reports", "report_id": "color_combination_po_wise"},
         )
 
@@ -118,10 +137,6 @@ class ReportsController:
                 }
                 for item in retries
             ]
-        self.save_report_parameters(
-            "color_combination_po_wise",
-            {key: value for key, value in selected.items() if key != "retry_items"},
-        )
         method = "run_color_po_report_batch"
         return panel._run(
             method,
@@ -148,7 +163,15 @@ class ReportsController:
     def _saved_report_parameters(self, report_id: str) -> dict[str, Any]:
         panel = self._panel
         account_key = str(panel._account().get("user_id") or "").strip().casefold()
-        return self._parameter_store.load(account_key, str(report_id))
+        saved = self._parameter_store.load(account_key, str(report_id))
+        # Các bản cũ tự lưu sau mỗi lượt chạy. Chỉ khôi phục giá trị mà user
+        # chủ động lưu; không dùng lựa chọn chạy thử làm mặc định.
+        if (
+            report_id in _COLOR_REPORT_IDS
+            and saved.pop(_USER_SAVED_MARKER, False) is not True
+        ):
+            return {}
+        return saved
 
     def load_report_parameters(self, report_id: str) -> dict:
         panel = self._panel
@@ -206,11 +229,16 @@ class ReportsController:
                 "message": "Tham số báo cáo phải là một object hợp lệ.",
             }
         try:
+            stored_values = dict(values or {})
+            if cleaned_id in _COLOR_REPORT_IDS:
+                stored_values[_USER_SAVED_MARKER] = True
             clean_values = self._parameter_store.save(
                 account_key,
                 cleaned_id,
-                dict(values or {}),
+                stored_values,
             )
+            if cleaned_id in _COLOR_REPORT_IDS:
+                clean_values.pop(_USER_SAVED_MARKER, None)
         except OSError as error:
             return {
                 "ok": False,
@@ -278,9 +306,23 @@ class ReportsController:
                 for key in ("division", "buyer", "season")
                 if str(saved.get(key) or "")
             }
+        saved_parameters = (
+            self._saved_report_parameters("color_combination_production")
+            if not values
+            else None
+        )
+
+        def action():
+            result = loader(safe_values, panel._log)
+            return (
+                {**result, "saved_parameters": saved_parameters}
+                if saved_parameters is not None and result.get("ok")
+                else result
+            )
+
         return panel._run(
             "load_color_report_options",
-            lambda: loader(safe_values, panel._log),
+            action,
             {"module_id": "reports", "report_id": "color_combination_production"},
         )
 
@@ -347,14 +389,6 @@ class ReportsController:
                 if str(key) in safe_refs
             }
         method = "run_color_report_batch"
-        self.save_report_parameters(
-            "color_combination_production",
-            {
-                key: value
-                for key, value in safe_selection.items()
-                if key != "retry_ocnums"
-            },
-        )
         return panel._run(
             method,
             lambda: runner(

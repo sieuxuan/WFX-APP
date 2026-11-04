@@ -38,6 +38,8 @@ ACCOUNT_SWITCH_WAIT_SECONDS = 12
 DIVISION_CONFIRM_TIMEOUT_SECONDS = 8
 DIVISION_RETRY_AFTER_SECONDS = 2.5
 DIVISION_ROUTE_SETTLE_SECONDS = 0.75
+DIVISION_MENU_WAIT_SECONDS = 2
+DIVISION_CLICK_TIMEOUT_MS = 2_000
 LOGIN_PAGE_TIMEOUT_MS = 45_000
 AUTH_SURFACE_WAIT_SECONDS = 15
 
@@ -263,6 +265,7 @@ def switch_division(
         )
 
     playwright: Playwright | None = None
+    page: Page | None = None
     try:
         playwright = sync_playwright().start()
         _browser, page = _connect_to_chrome(playwright)
@@ -289,25 +292,56 @@ def switch_division(
             f'[href*="MemberCompanyCode={target["member_company_code"]}"]'
             f'[href*="folderID={target["folder_id"]}"]'
         )
-        actionable = None
-        for frame in page.frames:
-            try:
-                candidate = frame.locator(selector)
-                if candidate.count() > 0:
-                    actionable = candidate.first
-                    break
-            except PlaywrightError:
-                continue
+        # Menu Division do WFX cấp theo tài khoản đang đăng nhập. Chỉ kết
+        # luận thiếu quyền khi đọc được menu, không suy từ frame đang reload.
+        menu_deadline = time.monotonic() + DIVISION_MENU_WAIT_SECONDS
+        while True:
+            actionable = None
+            menu_ready = False
+            menu_error = False
+            for frame in page.frames:
+                try:
+                    candidate = frame.locator(selector)
+                    if candidate.count() > 0:
+                        actionable = candidate.first
+                        break
+                    if frame.locator(
+                        'a.hasbookmark[href*="ChangeBaseSetting=1"]'
+                    ).count() > 0:
+                        menu_ready = True
+                except PlaywrightError:
+                    menu_error = True
+            if actionable is not None or time.monotonic() >= menu_deadline:
+                break
+            _wait(page, 250)
         if actionable is None:
+            if not _chrome_is_ready() or page.is_closed():
+                return _result(
+                    False, "CHROME_CLOSED", "Trình duyệt làm việc đã đóng.",
+                    **_division_state_for_page_placeholder(),
+                )
+            if not _session_is_active(page):
+                return _result(
+                    False, "NOT_LOGGED_IN", "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
+                    **_division_state_for_page_placeholder(),
+                )
+            if menu_ready and not menu_error:
+                message = (
+                    f"Tài khoản WFX hiện tại không có quyền truy cập Division {target['label']}. "
+                    "Vui lòng liên hệ quản trị viên WFX để được cấp quyền hoặc chọn Division khác."
+                )
+                _write_log(log, f"[DIVISION] {message}")
+                return _result(False, "DIVISION_ACCESS_DENIED", message, **current)
             return _result(
                 False,
                 "DIVISION_OPTION_NOT_FOUND",
-                f"Không tìm thấy Division {target['label']} trong menu WFX.",
+                f"Chưa đọc được menu Division {target['label']} trên WFX. "
+                "Chờ trang tải xong rồi thử lại.",
                 **current,
             )
 
         _write_log(log, f"[DIVISION] Đang chuyển sang {target['label']}...")
-        actionable.evaluate("element => element.click()")
+        actionable.evaluate("element => element.click()", timeout=DIVISION_CLICK_TIMEOUT_MS)
         started_wait = time.monotonic()
         deadline = started_wait + DIVISION_CONFIRM_TIMEOUT_SECONDS
         retry_at = started_wait + DIVISION_RETRY_AFTER_SECONDS
@@ -346,7 +380,7 @@ def switch_division(
                         log,
                         f"[DIVISION] WFX phản hồi chậm, thử lại {target['label']}...",
                     )
-                    actionable.evaluate("element => element.click()")
+                    actionable.evaluate("element => element.click()", timeout=DIVISION_CLICK_TIMEOUT_MS)
                     retried = True
             _wait(page, 250)
         return _result(
@@ -356,6 +390,18 @@ def switch_division(
             **_division_state_for_page(page),
         )
     except Exception as exc:
+        if isinstance(exc, PlaywrightError):
+            _write_log(log, f"[DIVISION] {type(exc).__name__}: {exc}")
+            if not _chrome_is_ready() or (page is not None and page.is_closed()):
+                return _result(
+                    False, "CHROME_CLOSED", "Trình duyệt làm việc đã đóng.",
+                    **_division_state_for_page_placeholder(),
+                )
+            if page is not None and not _session_is_active(page):
+                return _result(
+                    False, "NOT_LOGGED_IN", "Phiên WFX đã hết hạn. Hãy đăng nhập lại.",
+                    **_division_state_for_page_placeholder(),
+                )
         return _result(
             False,
             "DIVISION_CHANGE_FAILED",

@@ -112,12 +112,19 @@ def _shipment_rows_by_po(shipment_rows: Sequence[dict]) -> dict[str, list[dict]]
 
 
 def _matching_shipment_rows(
-    group: dict[str, Any], by_po: dict[str, list[dict]]
+    group: dict[str, Any], by_po: dict[str, list[dict]],
+    separate_pos: set[str] | None = None,
 ) -> list[dict]:
-    """Dòng WFX cùng PO và khớp Style; giữ nguyên thứ tự Shipment Details."""
+    """Cộng cả ADD cùng PO gốc, trừ khi file có dòng riêng cho ADD."""
+    wanted = group["folded_po"]
+    references = [wanted]
+    add_ref = f"{wanted} add"
+    if not wanted.endswith(" add") and add_ref not in (separate_pos or set()):
+        references.append(add_ref)
     return [
         item
-        for item in by_po.get(group["folded_po"], ())
+        for reference in references
+        for item in by_po.get(reference, ())
         if _order_style_matches(group["folded_style"], _fold(item.get("article")))
     ]
 
@@ -228,11 +235,14 @@ def _price_check_rows(
     """So sánh file với Shipment Details theo PO trong Order No + Article."""
     groups = _group_file_rows(source_rows)
     by_po = _shipment_rows_by_po(shipment_rows)
+    separate_pos = {key[0] for key in groups}
 
     results: list[dict[str, Any]] = []
     complete_file_rows: list[tuple[Decimal, Decimal]] = []
     for group in groups.values():
-        results.append(_price_check_row(group, _matching_shipment_rows(group, by_po)))
+        results.append(_price_check_row(group, _matching_shipment_rows(
+            group, by_po, separate_pos,
+        )))
         file_qty, file_price = _file_totals(group)
         if file_qty is not None and file_price is not None:
             complete_file_rows.append((file_qty, file_price))

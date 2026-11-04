@@ -71,6 +71,14 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 > mềm khác trong lúc chạy; task không phụ thuộc Chrome đang ở foreground và
 > không phụ thuộc vị trí scroll hiện tại của WFX.
 
+Ứng dụng đọc đúng PO trong ô `OC No./Buyer Order Ref.` dạng `mã OC/PO` trên
+WFX. Với `PO0003760` có Qty `2.375`, ứng dụng ưu tiên chọn `475 + 1.900`.
+Nếu không có tổ hợp khớp từ PO gốc, ứng dụng xét thêm dòng `ADD`/`- ADD` của
+cùng PO để chọn tổng đúng, ví dụ `1.500 + 725 + 150 = 2.375`. Khi có nhiều tổ
+hợp cùng khớp, bạn vẫn cần chọn trong ứng dụng. Nếu file đã có dòng ADD riêng,
+ứng dụng giữ riêng dòng đó để không lấy trùng cho PO gốc. Bước `Check giá / Qty`
+cũng cộng phần ADD vào PO gốc khi file không ghi riêng ADD.
+
 Ứng dụng mặc định tìm PO theo thứ tự `PO` → `Style` → `Destination`. Nếu một
 bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu dùng hết các tiêu chí mà
 vẫn còn nhiều dòng, ứng dụng so `Qty` trong file với `Dispatched Qty`: nếu chỉ
@@ -186,7 +194,10 @@ liệu.
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
 - Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không
   lấy ngày hiện tại. Nếu bạn nhập ngày ở một dòng, ứng dụng dùng ngày có dữ liệu
-  đầu tiên để điền tất cả dòng còn trống.
+  đầu tiên để điền tất cả dòng còn trống. Trên WFX, ngày được điền cho toàn bộ
+  dòng Order Details, kể cả PO tách thành nhiều dòng và các dòng `ADD`/`- ADD`.
+  Nếu file có ngày riêng theo PO/Style, ứng dụng giữ ngày tương ứng; dòng `ADD`
+  dùng ngày của PO gốc khi không có ngày riêng trong file.
 - `Invoice Date` và `Shipping Bill Date` trống vẫn lấy ngày có dữ liệu đầu tiên trong file; nếu cả file không có thì dùng ngày hiện tại.
 - Nếu Shipping Bill No. bị trống, ứng dụng dùng Invoice No.
 - PO luôn được xử lý đúng thứ tự dòng trong file.
@@ -221,8 +232,10 @@ Delivery Terms theo mode đó:
 > Invoice luôn đứng trước PKL. Sau khi lưu thành công, Explorer sẽ tự mở và chọn
 > đúng file vừa lưu. Các cửa sổ Docs/report do chính lượt tải mở sẽ tự đóng; các
 > cửa sổ WFX đã có từ trước vẫn được giữ nguyên. Khung, rich text, merged cell
-> và định dạng gốc của cả Invoice lẫn PKL được giữ nguyên khi ghép. Hàng có nội
-> dung xuống dòng sẽ được tăng chiều cao khi ghép để không bị cắt lúc mở Excel.
+> và định dạng gốc của cả Invoice lẫn PKL được giữ nguyên khi ghép. Các dòng
+> chi tiết Style/PO trong mỗi sheet được cân cùng chiều cao, tối thiểu 24 pt.
+> Nếu có nội dung xuống dòng, tất cả dòng chi tiết cùng tăng đủ chỗ để không
+> bị cắt chữ. Tiêu đề nhóm hàng và phần tổng cộng giữ cách trình bày riêng.
 > Các cột No of Pcs, Net Wt, Gross Wt, No of Carton và CBM cũng được nới để thấy
 > trọn header/số liệu. Mỗi sheet vẫn đặt A4, giữ đúng hướng dọc/ngang từ report
 > WFX và fit vừa một trang theo chiều ngang khi in. Popup Docs/report do lượt

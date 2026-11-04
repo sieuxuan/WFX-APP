@@ -232,9 +232,12 @@ def read_cascade(page: Page, values: Mapping[str, str] | None) -> dict:
     # chỉ có một cấp sẽ làm nó dừng ngay ở cấp trên và luôn trả rỗng.
     options_by_key: dict[str, list] = {}
     levels: dict[str, dict] = {}
+    upper_ready = True
     for key in CASCADE_KEYS:
         label = LEVEL_LABELS[key]
-        options = read_select_options(page, controls.get(label, ""))
+        options = (
+            read_select_options(page, controls.get(label, "")) if upper_ready else []
+        )
         options_by_key[key] = options
         levels[key] = {"options": options, "value": ""}
         target = prune_selection(wanted, options_by_key).get(key, "")
@@ -248,6 +251,7 @@ def read_cascade(page: Page, values: Mapping[str, str] | None) -> dict:
         else:
             # Cấp này không áp được thì các cấp dưới là của lựa chọn khác.
             wanted = {}
+            upper_ready = False
         # Chỉ phản hồi lựa chọn mà app thực sự gửi lên. ReportViewer đôi khi
         # tự chọn option đầu tiên sau postback; nếu trả giá trị đó về UI thì
         # app hiểu nhầm user đã chọn Season và kiểm tra style quá sớm.
@@ -256,8 +260,12 @@ def read_cascade(page: Page, values: Mapping[str, str] | None) -> dict:
     levels["style_ref"] = {
         "options": clean_style_ref_options(
             read_select_options(page, controls.get(style_label, ""))
-        ),
-        "value": read_select_value(page, controls.get(style_label, "")),
+        )
+        if upper_ready
+        else [],
+        "value": read_select_value(page, controls.get(style_label, ""))
+        if upper_ready
+        else "",
     }
     return {"levels": levels}
 
@@ -653,6 +661,12 @@ def run_color_report_batch(
         report_page = _open_report(page, report)
         _attach_dialog_handler(report_page, log)
         cascade = read_cascade(report_page, selection)
+        if not all(cascade["levels"][key]["value"] for key in CASCADE_KEYS):
+            return _result(
+                False,
+                "REPORT_PARAMETERS_INVALID",
+                "Hãy chọn OC Division, Buyer và Season trước khi tải.",
+            )
         style_labels = {
             str(option.get("value")): str(option.get("label") or "")
             for option in cascade["levels"]["style_ref"]["options"]

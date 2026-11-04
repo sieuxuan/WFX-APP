@@ -42,6 +42,7 @@ from wfx_panel.automation.sale_asn_create.po import (
     _add_selected_po_candidates,
     _auto_add_po_with_frame_retry,
     _click_dom_action,
+    _po_search_row,
 )
 from wfx_panel.automation.sale_asn_create.price_check import (
     _check_sale_asn_price_on_page,
@@ -136,7 +137,7 @@ def run_sale_asn_create(
                         timeout_s=15,
                     )
                 for index in range(first_pending, len(rows)):
-                    row = dict(rows[index])
+                    row = _po_search_row(rows[index], rows)
                     _emit_stage_progress(
                         progress,
                         "po",

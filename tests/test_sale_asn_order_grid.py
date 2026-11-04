@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from playwright.sync_api import sync_playwright
 
 import wfx_panel.automation.sale_asn_create.order_details as order_details
 from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
@@ -265,6 +266,15 @@ def test_missing_rows_ignore_lines_that_have_no_po_at_all():
     assert order_details._missing_order_rows(rows, {("779", "")}) == [
         {"po_no": "780"}
     ]
+
+
+def test_add_only_can_cover_the_base_unless_the_file_requests_add_separately():
+    base = {"po_no": "PO0003760", "style_no": "F21-0001"}
+    extra = {"po_no": "PO0003760 - ADD", "style_no": "F21-0001"}
+    present = {order_details._order_row_identity(extra)}
+
+    assert order_details._missing_order_rows([base], present) == []
+    assert order_details._missing_order_rows([base, extra], present) == [base]
 
 
 # --- chờ grid Order Details --------------------------------------------
@@ -564,11 +574,16 @@ def test_a_po_that_needs_the_user_to_choose_keeps_the_popup_open(monkeypatch):
 def test_only_the_columns_with_a_value_are_written(monkeypatch):
     install_fake_clock(monkeypatch, order_details)
     written: list[tuple[str, str]] = []
+    cargo_rows = []
+    patch_automation(
+        monkeypatch, order_details, "_fill_order_cargo_ready_dates",
+        lambda _frame, rows, _log: cargo_rows.extend(rows),
+    )
     patch_automation(
         monkeypatch,
         order_details,
         "_set_order_grid_cell",
-        lambda _frame, _po, _style, column_id, value: written.append(
+        lambda _frame, _po, _style, column_id, value, **_k: written.append(
             (column_id, value)
         ),
     )
@@ -594,14 +609,97 @@ def test_only_the_columns_with_a_value_are_written(monkeypatch):
     assert written == [
         ("colTotalNoOfCartons", "5"),
         ("colTotalVolume", "1.25"),
-        ("colFFDate1", "01 Mar 2026"),
     ]
+    assert cargo_rows[0]["cargo_ready_date"] == "2026-03-01"
     assert stages[0][0][0] == "order_details"
     # UI đọc hậu tố n/m để hiện bộ đếm, nên định dạng này là hợp đồng.
     assert stages[0][0][1].endswith("1/1")
     assert stages[0][0][2:] == (2, 5)
     assert stages[0][1] == {"state": "active"}
     assert lines == ["[SALE ASN] Đã điền Order Details cho 779."]
+
+
+@pytest.mark.parametrize("date_case", ["common", "later_row", "per_po", "blank"])
+def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case):
+    rows = [
+        {"po_no": "PO0003760", "style_no": "F21-0001", "cargo_ready_date": "2026-10-26"},
+        {"po_no": "PO0003762", "style_no": "S22-0001", "cargo_ready_date": ""},
+    ]
+    if date_case == "later_row":
+        rows[0]["cargo_ready_date"] = ""
+        rows[1]["cargo_ready_date"] = "2026-10-26"
+    elif date_case == "per_po":
+        rows[1]["cargo_ready_date"] = "2026-10-27"
+    elif date_case == "blank":
+        rows[0]["cargo_ready_date"] = ""
+    identities = [
+        ("PO0003760", "F21-0001"),
+        ("PO0003760", "F21-0001"),
+        ("PO0003760 - ADD", "F21-0001"),
+        ("PO0003762", "S22-0001"),
+        ("PO0003762- ADD", "S22-0001"),
+    ]
+    markup = "".join(
+        f'<tr class="trContent"><td id="colOrderRefNum">{po}</td>'
+        f'<td id="colStyle">TW-{style}-MEN PANTS</td>'
+        '<td id="colTotalNoOfCartons"><input value="5"></td>'
+        '<td id="colFFDate1"><input value="01 Jan 2020"></td></tr>'
+        for po, style in identities
+    )
+    logs = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(
+                f'<table id="gridOrderDetails_tblGridContent"><tbody>{markup}</tbody></table>'
+                '<table id="other-grid"><tr class="trContent">'
+                '<td id="colFFDate1"><input value="untouched"></td></tr></table>'
+            )
+
+            order_details._fill_order_details(page, rows, logs.append)
+
+            actual = page.locator(f"{ORDER_GRID_SELECTOR} td#colFFDate1 input").evaluate_all(
+                "inputs => inputs.map(input => input.value)"
+            )
+            expected = ["26 Oct 2026"] * 5
+            if date_case == "per_po":
+                expected[3:] = ["27 Oct 2026"] * 2
+            elif date_case == "blank":
+                expected = ["01 Jan 2020"] * 5
+            assert actual == expected
+            assert page.locator("#other-grid input").input_value() == "untouched"
+            assert page.locator(f"{ORDER_GRID_SELECTOR} td#colTotalNoOfCartons input").evaluate_all(
+                "inputs => inputs.every(input => input.value === '5')"
+            )
+            if date_case != "blank":
+                assert any("toàn bộ 5 dòng Order Details" in line for line in logs)
+        finally:
+            browser.close()
+
+
+def test_order_details_can_fill_the_add_row_when_the_base_has_no_separate_wfx_row():
+    rows = [{
+        "po_no": "PO0003760", "style_no": "F21-0001", "carton": "95",
+        "cargo_ready_date": "2026-10-26",
+    }]
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(
+                '<table id="gridOrderDetails_tblGridContent"><tr class="trContent">'
+                '<td id="colOrderRefNum">PO0003760 - ADD</td><td id="colStyle">F21-0001</td>'
+                '<td id="colTotalNoOfCartons"><input value="0"></td>'
+                '<td id="colFFDate1"><input value=""></td></tr></table>'
+            )
+
+            order_details._fill_order_details(page, rows, lambda _m: None)
+
+            assert page.locator("td#colTotalNoOfCartons input").input_value() == "95"
+            assert page.locator("td#colFFDate1 input").input_value() == "26 Oct 2026"
+        finally:
+            browser.close()
 
 
 # --- xuất Order Details đang mở ----------------------------------------

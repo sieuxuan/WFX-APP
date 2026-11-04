@@ -382,6 +382,21 @@ def test_read_cascade_does_not_treat_wfx_default_season_as_user_selection(
     assert levels["season"]["value"] == ""
 
 
+def test_fresh_cascade_never_exposes_values_or_styles_from_the_previous_report(
+    monkeypatch,
+):
+    page = _CascadePage()
+    page.selected.update({"OC Division": "d1", "Buyer": "b1", "Season": "s1"})
+    _install_cascade_fakes(monkeypatch, page)
+    levels = color_combination.read_cascade(page, {})["levels"]
+    assert levels["division"]["value"] == ""
+    assert levels["division"]["options"]
+    assert levels["buyer"] == {"options": [], "value": ""}
+    assert levels["season"] == {"options": [], "value": ""}
+    assert levels["style_ref"] == {"options": [], "value": ""}
+    assert page.settled == 0
+
+
 def test_run_one_style_saves_the_native_download_under_the_style_name(
     monkeypatch, tmp_path
 ):

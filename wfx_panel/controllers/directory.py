@@ -130,6 +130,8 @@ class DirectoryController:
                     "message": "Phiên bản tự động hóa chưa hỗ trợ đổi Division.",
                 }
             result = panel._login.switch_division(division_key, panel._log)
+            if result.get("code") == "DIVISION_ACCESS_DENIED":
+                return {**result, **panel._admin_state()}
             return panel._with_admin_access(result)
 
         return panel._run(

@@ -1,3 +1,4 @@
+import pytest
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
@@ -260,6 +261,64 @@ def test_merge_sale_asn_reports_expands_wrapped_rows_that_would_be_cut_off(tmp_p
     workbook = load_workbook(target, data_only=False)
     assert workbook["Invoice"].row_dimensions[2].height > 15
     assert workbook["Packing"].row_dimensions[2].height > 15
+    workbook.close()
+
+
+def _uneven_detail_report(path, title, *, long_color=False):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = title
+    sheet["B1"] = title
+    sheet.row_dimensions[1].height = 40
+    sheet["C2"] = "Style"
+    sheet["G2"] = "PO No.n"
+    sheet.row_dimensions[2].height = 19
+    sheet.merge_cells("C2:F2")
+    sheet.merge_cells("G2:I2")
+    for column in "CDEFGHIJKL":
+        sheet.column_dimensions[column].width = 7
+    for row, height in ((4, 22.75), (5, 32), (7, 70), (8, 18)):
+        sheet[f"C{row}"] = "F21-0001"
+        sheet[f"F{row}"] = f"PO000{3760 + row}"
+        sheet[f"K{row}"] = "DEEP\nGREY\nMELANGE" if long_color and row == 5 else "SAND"
+        sheet[f"M{row}"] = 425
+        sheet.row_dimensions[row].height = height
+        for first, last in (("C", "E"), ("F", "I"), ("K", "L")):
+            sheet.merge_cells(f"{first}{row}:{last}{row}")
+            sheet[f"{first}{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+    # Mô phỏng tiêu đề nhóm hàng xen giữa các PO và footer cùng cột dữ liệu.
+    for row in (3, 6):
+        sheet.merge_cells(f"C{row}:L{row}")
+        sheet[f"C{row}"] = "MEN PANTS"
+        sheet.row_dimensions[row].height = 22.75
+    sheet["F9"] = "Total"
+    sheet["M9"] = "=SUM(M4:M8)"
+    sheet.row_dimensions[9].height = 32
+    sheet["C10"] = "* TOTAL NET WEIGHT"
+    sheet["G10"] = 753.7
+    sheet.row_dimensions[10].height = 18
+    sheet.print_area = "B1:M10"
+    workbook.save(path)
+    workbook.close()
+
+
+@pytest.mark.parametrize("long_color", [False, True])
+def test_exported_detail_rows_have_one_height_across_goods_groups(tmp_path, long_color):
+    packing, invoice, target = (tmp_path / name for name in ("pkl.xlsx", "invoice.xlsx", "out.xlsx"))
+    _uneven_detail_report(packing, "Packing List", long_color=long_color)
+    _uneven_detail_report(invoice, "Commercial Invoice", long_color=long_color)
+
+    merge_sale_asn_reports(packing, invoice, target)
+
+    workbook = load_workbook(target)
+    for sheet in workbook:
+        heights = {sheet.row_dimensions[row].height for row in (4, 5, 7, 8)}
+        assert heights == ({47} if long_color else {24})
+        assert [sheet.row_dimensions[row].height for row in (1, 2, 3, 6, 9, 10)] == [40, 19, 22.75, 22.75, 32, 18]
+        assert sheet["M9"].value == "=SUM(M4:M8)"
+        assert sheet["G10"].value == 753.7
+        assert "F4:I4" in {str(item) for item in sheet.merged_cells.ranges}
+        assert str(sheet.print_area).endswith("!$B$1:$M$10")
     workbook.close()
 
 

@@ -284,6 +284,9 @@ function bind() {
   $(".color-report-batch-toggle")?.addEventListener(
     "change", renderColorReportStyles,
   );
+  $(".color-report-single-select")?.addEventListener("change", (event) => {
+    colorReportState.singleValue = event.target.value;
+  });
   $$(".module-filter-button").forEach((button) =>
     button.addEventListener("click", () => setModuleFilterKind(
       button.dataset.filterGroup,

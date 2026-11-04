@@ -1,5 +1,5 @@
 """Thông tin phiên bản phát hành của WFX Smart."""
 
-APP_VERSION = "1.1.5"
-DISPLAY_VERSION = "1.1.5"
+APP_VERSION = "1.1.6"
+DISPLAY_VERSION = "1.1.6"
 RELEASE_TAG = f"v{APP_VERSION}"

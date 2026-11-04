@@ -25,7 +25,8 @@ Báo cáo theo style, mỗi file gộp tất cả OC của style đó.
 
 1. Mở `Reports` rồi bấm `ColorCombination Style Wise`.
 2. Chọn `OC Division`, `Buyer`, `Season`.
-3. Chọn các mục trong danh sách `Style`. Dùng ô lọc và `Chọn tất cả` để chọn nhanh.
+3. Chọn các mục trong danh sách `Style`; ứng dụng không tự tích sẵn. Dùng ô lọc
+   và `Chọn tất cả` để chọn nhanh.
 4. Bấm `Chọn…` để chỉ định thư mục lưu.
 5. Bấm `Tải báo cáo`. Mỗi style có một file `BuyerStyleReference - StyleCode.xlsx`.
 
@@ -41,7 +42,7 @@ BuyerStyleReference và từng StyleCode; mỗi file gồm toàn bộ OC của �
 
 1. Mở `Reports` rồi bấm `ColorCombination PO Wise`.
 2. Chọn `OC Division`, `Buyer`, `Season`. Chờ danh sách PO nạp xong.
-3. Chọn các mục trong danh sách `PO No.`; mặc định chọn tất cả. Gõ vào ô `Lọc PO…`
+3. Chọn các mục trong danh sách `PO No.`; ứng dụng không tự tích sẵn. Gõ vào ô `Lọc PO…`
    nếu muốn chọn một nhóm. Tắt `Tải hàng loạt` để chỉ chọn một PO.
 4. Bấm `Chọn…` để chọn thư mục gốc lưu báo cáo.
 5. Bấm `Tải báo cáo`. Ứng dụng tự duyệt hết BuyerStyleReference và StyleCode
@@ -65,7 +66,11 @@ BuyerStyleReference và từng StyleCode; mỗi file gồm toàn bộ OC của �
 > [!meo]
 > Bấm `Stop` để dừng; các file đã tải vẫn được giữ.
 > File trùng tên được thêm `(2)`, `(3)` để tránh ghi đè.
-> Thư mục gốc được nhớ cho lần sau. Hai báo cáo nhớ bộ tham số riêng theo tài khoản.
+> Các trường ban đầu để trống; bạn tự chọn OC Division, Buyer, Season và PO/Style.
+> Bấm `Lưu tham số` để chủ động giữ bộ lựa chọn, chế độ hàng loạt hoặc một mục cho lần sau.
+> Khi mở lại, ứng dụng chỉ khôi phục bộ tham số bạn đã bấm lưu. Tải báo cáo không tự lưu
+> hoặc ghi đè bộ tham số đó. Các lựa chọn tự lưu từ bản cũ không được dùng làm mặc định.
+> Thư mục gốc được nhớ cho lần sau. Hai báo cáo lưu tham số riêng theo tài khoản.
 
 > [!loi]
 > Tham số chưa nạp xong: chờ WFX ổn định rồi chọn lại OC Division.

@@ -36,8 +36,11 @@ def api(tmp_path):
 
 def test_po_parameters_are_remembered_separately_from_style_wise(api, tmp_path):
     api.save_report_parameters("color_combination_production", {"division": "old"})
+    api.save_report_parameters(PO, {"division": "new", "buyer": "b", "season": "s"})
     api.run_color_po_report_batch(
-        {"division": "new", "buyer": "b", "season": "s"}, ["p1"], str(tmp_path)
+        {"division": "other", "buyer": "other", "season": "other"},
+        ["p1"],
+        str(tmp_path),
     )
     api.load_color_po_report_options({})
     assert api._login.calls[-1] == (
@@ -67,6 +70,24 @@ def test_explicit_clear_does_not_restore_previous_po_cascade(api):
     api.save_report_parameters(PO, {"division": "1", "buyer": "b1", "season": "s1"})
     api.load_color_po_report_options({"division": "", "buyer": "", "season": ""})
     assert api._login.calls[-1] == ("po_options", {})
+
+
+def test_po_run_without_manual_save_does_not_create_defaults(api, tmp_path):
+    api.run_color_po_report_batch(
+        {"division": "1", "buyer": "b1", "season": "s1"}, ["p1"], str(tmp_path)
+    )
+    api.load_color_po_report_options({})
+    assert api._login.calls[-1] == ("po_options", {})
+    assert api._reports._saved_report_parameters(PO) == {}
+
+
+def test_po_ignores_legacy_auto_saved_parameters(api):
+    api._reports._parameter_store.save(
+        "tester", PO, {"division": "1", "buyer": "auto", "season": "auto"}
+    )
+    result = api.load_color_po_report_options({})
+    assert api._login.calls[-1] == ("po_options", {})
+    assert result["saved_parameters"] == {}
 
 
 @pytest.mark.parametrize(
