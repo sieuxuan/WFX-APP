@@ -228,6 +228,36 @@ def test_the_popup_is_reopened_between_pos_but_not_after_the_last_one(
     assert reopened == [1, 2]
 
 
+def test_separate_color_choices_survive_a_manual_checkpoint_without_readding(monkeypatch, clock):
+    rows = [
+        {**_rows()[0], "source_row": 2, "qty": "15"},
+        {**_rows()[0], "source_row": 3, "qty": "117"},
+    ]
+    first = {"selection_name": "optShipmentId", "selection_value": "774_1001", "dispatched_qty": "15"}
+    second = {"selection_name": "optShipmentId", "selection_value": "774_1002", "dispatched_qty": "117"}
+    bindings = {}
+    searched = []
+    ticked = []
+
+    def auto_add(_context, popup, row, _log, **_kwargs):
+        searched.append(row)
+        return (True, [first], "PO", popup) if row["source_row"] == 2 else (False, [second], "ambiguous", popup)
+
+    _wire_flow(monkeypatch, clock, _auto_add_po_with_frame_retry=auto_add,
+               _add_selected_po_candidates=lambda _f, _r, choices, _l, **_k: ticked.append(choices))
+    pending = _run(rows=rows, line_bindings=bindings)
+    assert pending["code"] == "SALE_ASN_PO_SELECTION_REQUIRED"
+    assert bindings[2]["candidates"] == [first]
+    assert ("optShipmentId", "774_1001", "") in searched[1]["_used_line_selections"]
+
+    finished = _run(rows=rows, start_index=1, line_bindings=bindings,
+                    selected_po_row=rows[1], selected_po_candidates=[second], selected_po_final=True)
+    assert finished["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert ticked == [[second]]
+    assert len(searched) == 2
+    assert bindings[3]["candidates"] == [second]
+
+
 def test_rows_the_user_chose_in_the_app_are_ticked_then_the_run_continues(
     monkeypatch, clock
 ):

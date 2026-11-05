@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from wfx_panel.panel_api import PanelAPI
 
 from wfx_panel import constants
+from wfx_panel.automation.sale_asn_create.line_mapping import _separate_line_groups
 from wfx_panel.controllers.document_division import (
     align_division,
     with_document_division_state,
@@ -297,6 +298,8 @@ class SaleASNController:
             "search_fields": po_search_fields,
             "progress": panel._progress_for(method),
         }
+        if _separate_line_groups(document["rows"]):
+            runner_kwargs["line_bindings"] = review.setdefault("line_bindings", {})
         if selected_candidates:
             runner_kwargs.update(
                 selected_po_row=dict(review.get("pending_po_row") or {}),

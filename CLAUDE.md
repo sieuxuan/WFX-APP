@@ -843,15 +843,22 @@ Các workflow riêng hiện có:
   `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
   `Destination`, `FTY`, `Consignee Address`, `Ship To`, `Shipping Mode`; bỏ
   `SEASON`/cột `DESCRIPTION` cũ. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
-  đúng thứ tự dòng. Một PO có thể có nhiều Style; chỉ cặp PO No. + Style No. trùng
-  hoàn toàn là lỗi. Style No./PO No./FTY bắt buộc, Destination là tùy chọn;
+  đúng thứ tự dòng. Một PO có thể có nhiều Style. Các dòng ghi đủ PO No. + Style
+  No. giống nhau (ví dụ khác màu) phải giữ riêng Qty, Price, FOB Price, Service
+  Price, Carton/NW/GW/CBM và ngày của từng dòng; không báo lỗi trùng hoặc tự gộp.
+  Các dòng lặp cặp PO + Style bắt buộc có Qty > 0 để đối chiếu riêng.
+  Style No./PO No./FTY bắt buộc, Destination là tùy chọn;
   riêng dòng trống cả Style No. và PO No. nhưng có Qty là dòng tách màu:
   cộng Qty vào PO/Style gần nhất phía trên, không tạo dòng automation mới,
   giữ thông tin khác của dòng cha. Hỗ trợ nhiều dòng màu liên tiếp, bỏ qua
   dòng hoàn toàn trống; Qty vẫn phải là số nguyên không âm và tổng không
   vượt giới hạn số. Dòng Qty chưa có cha đủ PO/Style phải báo lỗi dòng.
-  Tổng Qty dùng xuyên suốt tìm PO và Check giá/Qty. Dòng có đủ PO/Style
-  trùng cặp vẫn là lỗi, không tự gộp.
+  Tổng Qty dùng xuyên suốt tìm PO và Check giá/Qty. Chỉ dòng để trống cả PO và
+  Style mới dùng luật cộng Qty; dòng ghi đủ PO/Style luôn giữ giá và Qty riêng.
+  Với cặp PO + Style lặp, mỗi dòng Excel được gắn với lựa chọn OC/GDN riêng;
+  không dùng lại bản ghi đã thêm cho dòng khác. Binding giữ trong review qua
+  checkpoint và retry; trước khi điền phải xác nhận identity và tổng Qty trên
+  các dòng Order Details. Thiếu hoặc nhiều đáp án thì dừng, không ghi đè màu khác.
   Shipping Mode chỉ
   bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
   nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;
@@ -913,10 +920,13 @@ Các workflow riêng hiện có:
   xóa selection khiến WFX báo `Please select a record`. Sau click `OK`, popup
   có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
   trang Sale ASN chính rồi điền 7 cột Order Details, map Style gần đúng để điền
-  HS Code/Goods Description. Khi Order Details có nhiều dòng cùng PO + Style,
+  HS Code/Goods Description. Khi file chỉ có một dòng cho PO + Style nhưng
+  Order Details có nhiều dòng cùng cặp đó,
   chỉ điền Carton/NW/GW/CBM/FOB Price/Service Price vào dòng khớp trên cùng;
-  không phân bổ hoặc nhân bản số sang các dòng phía dưới. Cargo Ready Date
-  vẫn điền cho toàn bộ dòng theo quy tắc ngày chung. Style Details phải map bằng cột Style, không dùng
+  không phân bổ hoặc nhân bản số sang các dòng phía dưới. Khi file có nhiều
+  dòng cùng PO + Style thì mỗi dòng ghi vào các OC đã gắn riêng, không cùng ghi
+  đè lên dòng đầu. Cargo Ready Date theo đúng dòng đã gắn nếu có ngày riêng;
+  các dòng khác vẫn theo quy tắc ngày chung. Style Details phải map bằng cột Style, không dùng
   Style Description. Khi WFX có nhiều dòng cùng khớp mạnh một Style (ví dụ các
   biến thể SLIM FIT/CLASSIC FIT), áp dụng cùng dữ liệu Style cho tất cả; chỉ
   dừng ambiguous khi nhiều kết quả chỉ khớp token yếu. Sau đó điền Shipping
@@ -939,8 +949,11 @@ Các workflow riêng hiện có:
   PO No.+Style No. theo PO tách từ Order No. dạng mã hệ thống/PO + Article, so
   sánh Shipping Qty và Price (USD) từng dòng. Khi file không có dòng ADD riêng,
   phải cộng Shipment Details của ADD cùng PO/Style vào PO gốc; khi có dòng
-  riêng thì đối chiếu riêng, không tính hai lần. Đồng thời tổng Qty và Qty×Price
-  file phải được so với Total Quantity, Value In Doc Currency và Net Value In
+  riêng thì đối chiếu riêng, không tính hai lần. Khi file lặp PO + Style, phải
+  giữ kết quả riêng theo từng dòng: không gộp mất giá khác nhau,
+  không dùng một dòng Shipment Details cho hai dòng file. Các OC đã gắn ở Order
+  Details là bằng chứng ưu tiên khi so khớp; tổng tiền là tổng Qty×Price từng dòng.
+  Tổng Qty và Qty×Price file phải được so với Total Quantity, Value In Doc Currency và Net Value In
   Doc Currency ở Summary Total; có nút xuất workbook kết quả và không sửa dữ
   liệu WFX. Panel chỉ rộng 440px nên kết quả trong app phải rút gọn: một hàng
   chip `n khớp`/`n lệch`/`Summary ✓|✕`, chỉ dòng `status != "ok"` và các

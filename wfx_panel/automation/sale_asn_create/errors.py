@@ -72,16 +72,21 @@ def _po_selection_result(
         {**dict(candidate), "candidate_id": str(index)}
         for index, candidate in enumerate(candidates[:20])
     ]
+    row_label = f"Dòng {row.get('source_row')} · PO {row.get('po_no')}"
+    if row.get("_separate_line"):
+        row_label += f" · Qty {row.get('qty')}"
+        if row.get("fob_price"):
+            row_label += f" · FOB Price {row['fob_price']}"
     if reason.startswith(("qty_mismatch:", "qty_unavailable:")):
         detail = reason.split(":", 1)[1]
         message = (
-            f"Dòng {row.get('source_row')} · PO {row.get('po_no')}: {detail}. "
+            f"{row_label}: {detail}. "
             "Hãy chọn các dòng cần thêm ngay trong ứng dụng; automation sẽ tự "
             "tick và tiếp tục trên WFX."
         )
     else:
         message = (
-            f"Dòng {row.get('source_row')} · PO {row.get('po_no')} có nhiều lựa chọn. "
+            f"{row_label} có nhiều lựa chọn. "
             "Hãy chọn dòng cần thêm ngay trong ứng dụng."
         )
     return _result(

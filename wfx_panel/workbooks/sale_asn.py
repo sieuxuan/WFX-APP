@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -411,7 +412,6 @@ def read_sale_asn_workbook(
         first_values["Shipping Bill No"] = first_values["Invoice No"]
 
     rows: list[SaleASNRow] = []
-    seen_po_styles: set[tuple[str, str]] = set()
     invoice_values: set[str] = set()
     for raw in raw_rows:
         source_row = int(raw["source_row"])
@@ -430,14 +430,6 @@ def read_sale_asn_workbook(
         shipping_mode = first_values["Shipping Mode"]
         if require_style and not style_no:
             errors.append(f"A{source_row}: Style No bắt buộc.")
-        po_style_key = (po_no.casefold(), style_no.casefold())
-        if po_style_key in seen_po_styles:
-            errors.append(
-                f"A{source_row}: PO No + Style No bị trùng "
-                f"({po_no} + {style_no})."
-            )
-        else:
-            seen_po_styles.add(po_style_key)
         if require_factory and not factory:
             errors.append(f"Q{source_row}: FTY bắt buộc.")
 
@@ -504,6 +496,12 @@ def read_sale_asn_workbook(
             )
         )
 
+    group_counts = Counter((row.po_no.casefold(), row.style_no.casefold()) for row in rows)
+    for row in rows:
+        if group_counts[(row.po_no.casefold(), row.style_no.casefold())] > 1 and (
+            not row.qty or Decimal(row.qty) <= 0
+        ):
+            errors.append(f"C{row.source_row}: các dòng cùng PO + Style cần Qty lớn hơn 0 để chọn riêng từng dòng.")
     if require_invoice and len(invoice_values) > 1:
         errors.append("File chỉ được chứa một Invoice No.")
     factories = {row.factory.casefold() for row in rows if row.factory}

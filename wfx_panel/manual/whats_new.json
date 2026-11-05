@@ -4,6 +4,11 @@
     "date": "2026-11-05",
     "highlights": [
       {
+        "title": "Sale ASN giữ riêng các dòng màu cùng PO và Style",
+        "body": "Cho phép nhiều dòng Excel cùng PO + Style và giữ Qty, Price, FOB Price cùng các số liệu riêng của từng dòng. Ứng dụng nhớ OC/GDN đã chọn để không thêm trùng hoặc ghi đè giá khi chạy tiếp sau lỗi. Check giá / Qty giữ riêng từng dòng và tính tổng tiền theo Qty × Price tương ứng. Các dòng này cần Qty lớn hơn 0; khi chưa xác định được lựa chọn duy nhất, ứng dụng chờ bạn chọn.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
         "title": "Sale ASN: tự chọn các dòng có tổng Qty khớp",
         "body": "Ứng dụng đọc đúng PO trong ô ghép mã OC/PO và ưu tiên tổ hợp chỉ gồm PO gốc. Nếu chưa khớp, ứng dụng xét thêm ADD/- ADD cùng PO để tự chọn tổng đúng, ví dụ 1.500 + 725 + 150 = 2.375. ADD có dòng riêng trong file được giữ riêng để không lấy trùng; bước Check giá / Qty cũng cộng đúng phần ADD.",
         "entry": "don-hang-sale-asn"
