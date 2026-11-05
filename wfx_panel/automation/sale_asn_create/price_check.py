@@ -13,8 +13,15 @@ from wfx_panel.automation.sale_asn_create.constants import (
     SUMMARY_TOTAL_GRID_SELECTOR,
 )
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
+from wfx_panel.automation.sale_asn_create.line_mapping import (
+    _line_group,
+    _separate_line_groups,
+)
 from wfx_panel.automation.sale_asn_create.order_details import _order_style_matches
-from wfx_panel.automation.sale_asn_create.po import _click_dom_action
+from wfx_panel.automation.sale_asn_create.po import (
+    _click_dom_action,
+    _unique_dispatched_qty_subset,
+)
 from wfx_panel.automation.sale_asn_create.values import (
     _decimal_display,
     _decimal_or_none,
@@ -68,17 +75,21 @@ def _shipment_order_po(value: object) -> str:
 QTY_PRICE_TOLERANCE = Decimal("0.0001")
 
 
-def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple[str, str], dict[str, Any]]:
-    """Gộp dòng file theo cặp PO No. + Style No. đã chuẩn hoá."""
-    groups: dict[tuple[str, str], dict[str, Any]] = {}
-    for source in source_rows:
+def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple, dict[str, Any]]:
+    """Giữ từng dòng màu riêng khi PO + Style lặp, kể cả khác giá."""
+    groups: dict[tuple, dict[str, Any]] = {}
+    separate = _separate_line_groups(source_rows)
+    for index, source in enumerate(source_rows):
         po_no = str(source.get("po_no") or "").strip()
         style_no = str(source.get("style_no") or "").strip()
         folded_po, folded_style = _fold(po_no), _fold(style_no)
         if not folded_po or not folded_style:
             continue
+        key = (folded_po, folded_style)
+        source_row = int(source.get("source_row") or index + 2)
+        separate_line = _line_group(source) in separate
         group = groups.setdefault(
-            (folded_po, folded_style),
+            (*key, source_row) if separate_line else key,
             {
                 "po_no": po_no,
                 "style_no": style_no,
@@ -87,6 +98,8 @@ def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple[str, str], dict[
                 "source_rows": [],
                 "qty_values": [],
                 "price_values": [],
+                "separate_line": separate_line,
+                "binding_id": source_row,
             },
         )
         group["source_rows"].append(int(source.get("source_row") or 0))
@@ -231,6 +244,8 @@ def _price_check_row(group: dict[str, Any], matched: list[dict]) -> dict[str, An
 def _price_check_rows(
     source_rows: Sequence[dict],
     shipment_rows: Sequence[dict],
+    *,
+    line_bindings: dict | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str | bool]]:
     """So sánh file với Shipment Details theo PO trong Order No + Article."""
     groups = _group_file_rows(source_rows)
@@ -239,10 +254,35 @@ def _price_check_rows(
 
     results: list[dict[str, Any]] = []
     complete_file_rows: list[tuple[Decimal, Decimal]] = []
+    used: set[int] = set()
+    indices = {id(item): index for index, item in enumerate(shipment_rows)}
     for group in groups.values():
-        results.append(_price_check_row(group, _matching_shipment_rows(
+        matched = _matching_shipment_rows(
             group, by_po, separate_pos,
-        )))
+        )
+        ambiguous = False
+        if group["separate_line"]:
+            matched = [item for item in matched if indices[id(item)] not in used]
+            binding = (line_bindings or {}).get(group["binding_id"]) or {}
+            refs = {_fold(target.get("oc_no")) for target in binding.get("targets", ()) if target.get("oc_no")}
+            refs = refs or set(binding.get("oc_refs") or ())
+            if refs:
+                matched = [item for item in matched if _fold(str(item.get("order_no") or "").partition("/")[0]) in refs]
+            candidates = [{**item, "dispatched_qty": item.get("qty"), "_shipment_index": indices[id(item)]}
+                          for item in matched if _decimal_or_none(item.get("qty")) != 0]
+            file_qty, file_price = _file_totals(group)
+            if not refs and file_price is not None:
+                priced = [item for item in candidates if _decimal_or_none(item.get("price")) == file_price]
+                if priced:
+                    candidates = priced
+            chosen = _unique_dispatched_qty_subset(candidates, file_qty)
+            ambiguous = bool(candidates) and chosen is None
+            matched = chosen or []
+            used.update(item["_shipment_index"] for item in matched)
+        comparison = _price_check_row(group, matched)
+        if ambiguous:
+            comparison.update(status="system_price_ambiguous", message="Chưa xác định được các dòng Shipment Details riêng cho dòng màu/giá này.")
+        results.append(comparison)
         file_qty, file_price = _file_totals(group)
         if file_qty is not None and file_price is not None:
             complete_file_rows.append((file_qty, file_price))
@@ -295,6 +335,8 @@ def _check_sale_asn_price_on_page(
     page: Page,
     rows: Sequence[dict],
     log: Callable[[str], None],
+    *,
+    line_bindings: dict | None = None,
 ) -> dict[str, Any]:
     """Đối chiếu ngay trên form vừa tạo, không mở một flow/nút riêng."""
 
@@ -317,7 +359,7 @@ def _check_sale_asn_price_on_page(
     summary = summary_grid.evaluate(_READ_ASN_SUMMARY_TOTAL_JS)
     if not isinstance(summary, dict):
         raise RuntimeError("SALE_ASN_SUMMARY_TOTAL_EMPTY")
-    comparisons, file_totals = _price_check_rows(rows, shipment_rows)
+    comparisons, file_totals = _price_check_rows(rows, shipment_rows, line_bindings=line_bindings)
     summary_check = _summary_price_check(file_totals, summary)
     matched = sum(item["status"] == "ok" for item in comparisons)
     attention = len(comparisons) - matched

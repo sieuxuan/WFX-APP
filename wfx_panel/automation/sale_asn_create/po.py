@@ -35,6 +35,7 @@ from wfx_panel.automation.sale_asn_create.errors import (
     _POFrameChanged,
 )
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
+from wfx_panel.automation.sale_asn_create.line_mapping import _selection_identity
 from wfx_panel.automation.sale_asn_create.values import (
     _decimal_display,
     _decimal_or_none,
@@ -159,12 +160,23 @@ _SELECT_PO_ROW_JS = r"""(root, spec) => {
     const selector =
         'input[type="checkbox"][name="optShipmentId"], '
         + 'input[type="checkbox"], input[type="radio"]';
-    const matchesIdentity = control => Boolean(control)
+    const matches = (control, identity) => Boolean(control)
         && control.isConnected
-        && String(control.value || '') === String(spec.selection_value || '')
-        && (!spec.selection_name || control.name === spec.selection_name)
-        && (!spec.selection_order_id
-            || control.getAttribute('orderid') === spec.selection_order_id);
+        && String(control.value || '') === String(identity.selection_value || '')
+        && (!identity.selection_name || control.name === identity.selection_name)
+        && (!identity.selection_order_id
+            || control.getAttribute('orderid') === identity.selection_order_id);
+    const matchesIdentity = control => matches(control, spec);
+    const selectedRows = spec.selected_rows || [spec];
+    const inSelectionGroup = control => selectedRows.some(identity =>
+        !identity.selection_name || control.name === identity.selection_name);
+    for (const control of root.querySelectorAll(selector)) {
+        if (control.type === 'checkbox' && control.checked && inSelectionGroup(control)
+            && !selectedRows.some(identity => matches(control, identity))) {
+            control.click();
+            if (control.checked) return {ok: false, reason: 'checkbox-not-cleared'};
+        }
+    }
     const rows = [...root.querySelectorAll(':scope > tbody > tr, :scope > tr')];
     const rowIndex = Number(spec.row_index);
     const expectedRow = Number.isInteger(rowIndex) ? rows[rowIndex] : null;
@@ -183,6 +195,10 @@ _SELECT_PO_ROW_JS = r"""(root, spec) => {
     }
     action.scrollIntoView({block: 'center', inline: 'nearest'});
     if (!action.checked) action.click();
+    if (spec.verify_selection && !selectedRows.every(identity =>
+        [...root.querySelectorAll(selector)].some(control => control.checked && matches(control, identity)))) {
+        return {ok: false, reason: 'checkbox-selection-incomplete'};
+    }
     return {
         ok: Boolean(action.checked),
         reason: action.checked ? '' : 'checkbox-not-checked',
@@ -512,7 +528,10 @@ def _add_selected_po_candidates(
     if not candidates:
         raise RuntimeError("SALE_ASN_PO_SELECTION_REQUIRED")
     selected_values: list[str] = []
-    for chosen in candidates:
+    selected_rows = [{key: str(candidate.get(key) or "") for key in (
+        "selection_name", "selection_value", "selection_order_id",
+    )} for candidate in candidates]
+    for index, chosen in enumerate(candidates):
         selected = frame.locator(PO_RESULTS_TABLE_SELECTOR).first.evaluate(
             _SELECT_PO_ROW_JS,
             {
@@ -520,6 +539,8 @@ def _add_selected_po_candidates(
                 "selection_name": str(chosen.get("selection_name") or ""),
                 "selection_value": str(chosen.get("selection_value") or ""),
                 "selection_order_id": str(chosen.get("selection_order_id") or ""),
+                "selected_rows": selected_rows,
+                "verify_selection": index == len(candidates) - 1,
             },
         )
         if not selected.get("ok"):
@@ -686,6 +707,9 @@ def _auto_add_po(
                 last = _search_po(frame, row, fields=active_fields)
         else:
             last = _search_po(frame, row, fields=active_fields)
+        excluded = {tuple(identity) for identity in row.get("_used_line_selections", ())}
+        if excluded:
+            last = [candidate for candidate in last if _selection_identity(candidate) not in excluded]
         if "po" in active_fields:
             requested_po = _fold(row.get("po_no"))
             raw_count = len(last)

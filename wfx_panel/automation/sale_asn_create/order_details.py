@@ -29,14 +29,20 @@ from wfx_panel.automation.sale_asn_create.constants import (
 )
 from wfx_panel.automation.sale_asn_create.errors import _POSelectionRequired
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
+from wfx_panel.automation.sale_asn_create.line_mapping import (
+    _line_group,
+    _separate_line_groups,
+)
 from wfx_panel.automation.sale_asn_create.po import (
     _auto_add_po_with_frame_retry,
     _click_dom_action,
     _po_search_row,
+    _unique_dispatched_qty_subset,
 )
 from wfx_panel.automation.sale_asn_create.progress import _emit_stage_progress
 from wfx_panel.automation.sale_asn_create.values import (
     _date_for_wfx,
+    _decimal_or_none,
     _fold,
     _number_for_wfx,
     _table_value_matches,
@@ -79,6 +85,7 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
             return matchesStyle(wantedStyle, fold(cellText(styleCell)));
         })
         : poCandidates;
+    if (spec.row_id) candidates = candidates.filter(row => row.id === spec.row_id);
     if (spec.first_match && candidates.length > 1) {
         candidates = candidates.slice(0, 1);
     }
@@ -116,6 +123,12 @@ _READ_ORDER_DETAILS_JS = r"""spec => {
         const output = {
             po_no: readCell(row.querySelector('td#colOrderRefNum')),
         };
+        if (spec.line_details) Object.assign(output, {
+            row_id: row.id,
+            style_no: readCell(row.querySelector('td#colStyle, td#colStyleNo, td#colBuyerStyleRef, td[id*="Style"]')),
+            qty: readCell(row.querySelector('td#colTotalShippingQty')),
+            oc_no: readCell(row.querySelector('td#colProformaInvoiceNum')),
+        });
         Object.entries(spec.columns || {}).forEach(([key, columnId]) => {
             output[key] = readCell(
                 [...row.children].find(cell => cell.id === columnId)
@@ -140,6 +153,7 @@ _MARK_CARGO_READY_DATE_CELL_JS = r"""cell => {
     cell.setAttribute('data-wfx-sale-asn-target', '1');
     return {
         ok: true,
+        row_id: row.id,
         po_no: read('td#colOrderRefNum'),
         style_no: read('td#colStyle, td#colStyleNo, td#colBuyerStyleRef, td[id*="Style"]'),
     };
@@ -200,6 +214,7 @@ def _set_order_grid_cell(
     *,
     allow_add: bool = False,
     first_match: bool = False,
+    row_id: str = "",
 ) -> None:
     marked = frame.evaluate(
         _MARK_ORDER_GRID_CELL_JS,
@@ -210,6 +225,7 @@ def _set_order_grid_cell(
             "column_id": column_id,
             **({"allow_add": True} if allow_add else {}),
             **({"first_match": True} if first_match else {}),
+            **({"row_id": row_id} if row_id else {}),
         },
     )
     if not marked.get("ok"):
@@ -445,10 +461,113 @@ def _ensure_order_grid_rows(
     return refreshed_frame
 
 
+def _resolve_separate_order_lines(
+    frame: Frame, rows: Sequence[dict], bindings: dict
+) -> dict:
+    """Gắn từng dòng màu với các OC đã chọn; kiểm tra hết trước khi ghi ô."""
+    groups = _separate_line_groups(rows)
+    if not groups:
+        return {}
+    records = (
+        frame.evaluate(
+            _READ_ORDER_DETAILS_JS,
+            {
+                "table": ORDER_GRID_SELECTOR,
+                "columns": ORDER_FIELD_COLUMNS,
+                "line_details": True,
+            },
+        )
+        or []
+    )
+    separate_pos = {_fold(row.get("po_no")) for row in rows}
+    targets: dict[int, list[dict]] = {}
+    used: set[str] = set()
+    for row in rows:
+        if _line_group(row) not in groups:
+            continue
+        source_row = int(row["source_row"])
+        wanted_po, wanted_style = _line_group(row)
+        matches = [
+            record
+            for record in records
+            if (
+                _fold(record.get("po_no")) == wanted_po
+                or (
+                    f"{wanted_po} add" not in separate_pos
+                    and _fold(record.get("po_no")) == f"{wanted_po} add"
+                )
+            )
+            and (
+                not wanted_style
+                or _order_style_matches(wanted_style, _fold(record.get("style_no")))
+            )
+            and record.get("row_id")
+            and str(record["row_id"]) not in used
+        ]
+        binding = bindings.get(source_row) or {}
+        chosen_ids = {
+            str(candidate.get("selection_value") or "").rpartition("_")[2]
+            for candidate in binding.get("candidates", ())
+        }
+        stored_ids = {str(target["row_id"]) for target in binding.get("targets", ())}
+        known_ids = (
+            chosen_ids
+            if chosen_ids
+            and chosen_ids.issubset({str(item["row_id"]) for item in matches})
+            else stored_ids
+        )
+        refs = set(binding.get("oc_refs") or ())
+        if known_ids:
+            chosen = [item for item in matches if str(item["row_id"]) in known_ids]
+            if {str(item["row_id"]) for item in chosen} != known_ids:
+                chosen = []
+        elif refs:
+            chosen = [item for item in matches if _fold(item.get("oc_no")) in refs]
+            if {_fold(item.get("oc_no")) for item in chosen} != refs:
+                chosen = []
+        else:
+            candidates = [
+                {**item, "dispatched_qty": item.get("qty")} for item in matches
+            ]
+            chosen = _unique_dispatched_qty_subset(
+                candidates, _decimal_or_none(row.get("qty"))
+            )
+            if chosen is None and row.get("fob_price"):
+                priced = [
+                    item
+                    for item in candidates
+                    if _table_value_matches(
+                        str(row["fob_price"]), str(item.get("fob_price") or "")
+                    )
+                ]
+                chosen = _unique_dispatched_qty_subset(
+                    priced, _decimal_or_none(row.get("qty"))
+                )
+        quantities = [_decimal_or_none(item.get("qty")) for item in chosen or ()]
+        expected = _decimal_or_none(row.get("qty"))
+        if (
+            not chosen
+            or expected is None
+            or any(value is None for value in quantities)
+            or sum(quantities) != expected
+        ):
+            raise RuntimeError(
+                f"SALE_ASN_TABLE_MAPPING_FAILED:Dòng {source_row} · {row.get('po_no')} + {row.get('style_no')}: "
+                "chưa xác định được các dòng WFX riêng có tổng Qty khớp; không ghi đè lên dòng màu khác."
+            )
+        targets[source_row] = chosen
+        used.update(str(item["row_id"]) for item in chosen)
+    for source_row, chosen in targets.items():
+        bindings.setdefault(source_row, {})["targets"] = chosen
+    return targets
+
+
 def _fill_order_cargo_ready_dates(
     frame: Frame,
     rows: Sequence[dict],
     log: Callable[[str], None],
+    *,
+    line_targets: dict | None = None,
 ) -> None:
     dates = [
         (_fold(row.get("po_no")), _fold(row.get("style_no")), _date_for_wfx(value))
@@ -458,6 +577,11 @@ def _fill_order_cargo_ready_dates(
     if not dates:
         return
     default_date = dates[0][2]
+    dates_by_target = {
+        str(target["row_id"]): _date_for_wfx(str(row["cargo_ready_date"]))
+        for row in rows if row.get("cargo_ready_date")
+        for target in (line_targets or {}).get(int(row.get("source_row") or 0), ())
+    }
     grid_rows = frame.locator(f"{ORDER_GRID_SELECTOR} tr.trContent")
     cells = grid_rows.locator(f"td#{ORDER_FIELD_COLUMNS['cargo_ready_date']}")
     count = grid_rows.count()
@@ -469,6 +593,9 @@ def _fill_order_cargo_ready_dates(
             raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
         po_key = _fold(marked.get("po_no"))
         style_key = _fold(marked.get("style_no"))
+        if (specific := dates_by_target.get(str(marked.get("row_id") or ""))):
+            _edit_marked_table_cell(frame, specific)
+            continue
         matches = [item for item in dates if item[0] == po_key]
         if not matches:
             # PO hậu tố ADD kế thừa ngày của PO gốc nếu file không ghi ngày riêng.
@@ -488,8 +615,11 @@ def _fill_order_details(
     rows: Sequence[dict],
     log: Callable[[str], None],
     progress: Callable[..., None] | None = None,
+    *,
+    line_bindings: dict | None = None,
 ) -> None:
     separate_pos = {_fold(row.get("po_no")) for row in rows}
+    targets = _resolve_separate_order_lines(frame, rows, line_bindings if line_bindings is not None else {})
     for index, row in enumerate(rows, 1):
         _emit_stage_progress(
             progress,
@@ -511,9 +641,11 @@ def _fill_order_details(
                 value,
                 allow_add=f"{_fold(row.get('po_no'))} add" not in separate_pos,
                 first_match=True,
+                **({"row_id": str(targets[int(row["source_row"])][0]["row_id"])}
+                   if int(row.get("source_row") or 0) in targets else {}),
             )
         _write_log(log, f"[SALE ASN] Đã điền Order Details cho {row.get('po_no')}.")
-    _fill_order_cargo_ready_dates(frame, rows, log)
+    _fill_order_cargo_ready_dates(frame, rows, log, **({"line_targets": targets} if targets else {}))
 
 
 def scan_sale_asn_order_details(

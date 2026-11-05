@@ -298,6 +298,34 @@ def test_discarding_a_token_that_never_existed_reports_nothing_removed(api):
 # --- chạy review --------------------------------------------------------
 
 
+def test_separate_lines_keep_their_binding_state_when_resuming(api, tmp_path, monkeypatch):
+    document = _document(rows=[
+        {"source_row": 2, "po_no": "PO133360", "style_no": "GMPA14590", "qty": "15"},
+        {"source_row": 3, "po_no": "PO133360", "style_no": "GMPA14590", "qty": "117"},
+    ])
+    _wire_read(monkeypatch, document)
+    monkeypatch.setattr(api, "_run", lambda _m, action, _request=None: action())
+    prepared = api.prepare_sale_asn_create(str(_source(tmp_path)), "BUYER", ["po", "order_details"])
+    seen = []
+
+    def runner(*_args, **kwargs):
+        state = kwargs["line_bindings"]
+        seen.append(state)
+        if len(seen) == 1:
+            state[2] = {"candidates": [{"selection_value": "774_1001"}]}
+            return {"ok": False, "code": "SALE_ASN_TABLE_MAPPING_FAILED", "resumable": True,
+                    "resume_stage": "order_details", "message": "retry"}
+        assert state[2]["candidates"][0]["selection_value"] == "774_1001"
+        return {"ok": True, "code": "SALE_ASN_FORM_COMPLETED", "message": "done"}
+
+    api._login.run_sale_asn_create = runner
+    api.start_sale_asn_create(prepared["review_token"])
+    result = api.continue_sale_asn_create(prepared["review_token"])
+
+    assert result["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert seen[0] is seen[1]
+
+
 @pytest.mark.parametrize("buyer", ["ONEILL", "  oneill  "])
 @pytest.mark.parametrize("stage", ["po", "shipping_info"])
 @pytest.mark.parametrize("continuing", [False, True])

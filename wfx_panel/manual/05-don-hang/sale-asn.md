@@ -24,6 +24,9 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
    PO/Style gần nhất phía trên, ví dụ `264` và `84` thành `348`, rồi import
    bằng tổng đó. Các thông tin khác lấy từ dòng có PO/Style. Dòng chỉ có Qty
    phải nằm sau một dòng có đủ PO và Style.
+   Nếu từng màu có giá riêng, hãy ghi đủ `PO No` và `Style No` trên mỗi dòng.
+   Ứng dụng giữ riêng Qty, giá và các số liệu của từng dòng, kể cả PO + Style
+   giống nhau; không dùng dòng chỉ có Qty trong trường hợp cần giữ giá riêng.
 6. Bấm `Chọn file & kiểm tra`.
 7. Kiểm tra Invoice No., số PO, số Style và các dữ liệu cần điền trong thẻ review.
    Từ lúc này, ô Buyer, nút chọn file và `Tùy chọn nâng cao` thu lại thành một
@@ -173,7 +176,12 @@ liệu.
 - Với mỗi dòng có PO, `Style No` và `FTY` là dữ liệu bắt buộc. `Destination` có
   thể để trống.
 - `Style No` được dùng như từ khóa tìm gần đúng. Ví dụ `M Acel Jacket` có thể khớp với Style `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX.
-- Một `PO No` có thể xuất hiện ở nhiều dòng khi mỗi dòng là một `Style No` khác nhau. Chỉ cặp `PO No` + `Style No` trùng hoàn toàn mới bị báo lỗi.
+- Cho phép nhiều dòng cùng `PO No` + `Style No`, ví dụ khác màu hoặc giá.
+  Mỗi dòng phải có `Qty` lớn hơn 0. Ứng dụng giữ nguyên từng dòng và chọn các
+  bản ghi WFX riêng; không cộng Qty hoặc lấy giá của dòng đầu thay cho dòng sau.
+  Ví dụ `GMPA14590` + `PO133360`: Qty `15`, FOB `24.08` và Qty `117`, FOB
+  `23.04` được giữ thành hai dòng riêng. Khi không có lựa chọn duy nhất, ứng
+  dụng chờ bạn chọn; di chuột lên lựa chọn để đọc đầy đủ thông tin OC/GDN.
 - Form có 22 cột và không còn `SEASON` hoặc cột `DESCRIPTION` cũ. Thứ tự cột là:
   `Style No`, `PO No`, `Qty`, `Price`, `Carton`, `NW`, `GW`, `CBM`, `FOB Price`,
   `Service Price`, `Cargo Ready Date`, `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`,
@@ -192,9 +200,13 @@ liệu.
   cho tất cả các dòng cùng Style đó.
 - Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
-- Nếu WFX tách cùng PO và Style thành nhiều dòng Order Details, ứng dụng điền
+- Nếu file chỉ có một dòng cho PO + Style và WFX tách thành nhiều dòng Order Details, ứng dụng điền
   `Carton`, `NW`, `GW`, `CBM`, `FOB Price` và `Service Price` vào dòng khớp trên
   cùng. Các dòng phía dưới giữ nguyên, không tự chia hoặc nhân đôi số liệu.
+  Nếu file có nhiều dòng cùng PO + Style, ứng dụng điền từng dòng vào đúng OC
+  đã chọn riêng, giữ giá riêng và không ghi đè lên cùng một dòng WFX. Khi chạy
+  tiếp sau lỗi, ứng dụng vẫn nhớ các dòng đã chọn và không thêm trùng.
+  Bước `Check giá / Qty` cũng đối chiếu riêng từng dòng khi có `Price`.
 - Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không
   lấy ngày hiện tại. Nếu bạn nhập ngày ở một dòng, ứng dụng dùng ngày có dữ liệu
   đầu tiên để điền tất cả dòng còn trống. Trên WFX, ngày được điền cho toàn bộ

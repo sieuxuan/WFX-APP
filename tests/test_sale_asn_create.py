@@ -251,18 +251,19 @@ def test_reader_allows_one_po_to_have_multiple_styles(tmp_path):
     ]
 
 
-def test_reader_rejects_only_duplicate_po_and_style_pair(tmp_path):
+def test_reader_preserves_duplicate_po_and_style_pair_as_separate_lines(tmp_path):
     rows = _valid_rows()
     rows[1]["PO No"] = rows[0]["PO No"]
     rows[1]["Style No"] = rows[0]["Style No"]
+    rows[0]["Qty"], rows[1]["Qty"] = 15, 117
     source = tmp_path / "invalid.xlsx"
     _input_workbook(source, rows)
 
-    with pytest.raises(SaleASNWorkbookError) as raised:
-        read_sale_asn_workbook(source)
+    document = read_sale_asn_workbook(source)
 
-    assert raised.value.code == "SALE_ASN_FILE_VALIDATION_FAILED"
-    assert any("PO No + Style No bị trùng" in error for error in raised.value.errors)
+    assert len(document["rows"]) == 2
+    assert [row["source_row"] for row in document["rows"]] == [2, 3]
+    assert [row["po_no"] for row in document["rows"]] == [rows[0]["PO No"]] * 2
 
 
 def test_reader_relaxes_fields_when_continuing_only_order_details(tmp_path):

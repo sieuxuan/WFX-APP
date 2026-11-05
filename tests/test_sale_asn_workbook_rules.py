@@ -1,7 +1,7 @@
 """Đọc form 22 cột Sale ASN: giá trị, ngày, và các luật một-Invoice-một-FTY.
 
 CLAUDE.md: mỗi file chỉ chứa một Invoice No. và một FTY; chỉ cặp PO No. + Style
-No. trùng hoàn toàn là lỗi; Shipping Mode chỉ bắt buộc và chỉ được đọc ở dòng dữ
+No. trùng được giữ riêng theo dòng; Shipping Mode chỉ bắt buộc và chỉ được đọc ở dòng dữ
 liệu đầu tiên; nếu cả file không có Cargo Ready Date thì giữ trống chứ không
 dùng ngày hiện tại.
 """
@@ -259,11 +259,20 @@ def test_a_valid_file_reports_its_totals(tmp_path):
     assert document["file_name"] == "Sale ASN.xlsx"
 
 
-def test_two_rows_with_the_same_po_and_style_are_refused(tmp_path):
-    with pytest.raises(SaleASNWorkbookError) as error:
-        _read(tmp_path, _row(), _row())
+def test_two_rows_with_the_same_po_and_style_are_kept_separate(tmp_path):
+    document = _read(tmp_path, _row(Qty=15, **{"FOB Price": 24.08}), _row(Qty=117, **{"FOB Price": 23.04}))
 
-    assert any("trùng" in item for item in error.value.errors)
+    assert [row["qty"] for row in document["rows"]] == ["15", "117"]
+    assert [row["fob_price"] for row in document["rows"]] == ["24.08", "23.04"]
+    assert [row["source_row"] for row in document["rows"]] == [2, 3]
+
+
+@pytest.mark.parametrize("qty", [None, 0])
+def test_separate_color_rows_need_positive_qty_to_map_each_line(tmp_path, qty):
+    with pytest.raises(SaleASNWorkbookError) as error:
+        _read(tmp_path, _row(Qty=qty), _row(Qty=117))
+
+    assert any("C2" in item and "Qty" in item for item in error.value.errors)
 
 
 def test_one_po_with_two_styles_is_allowed(tmp_path):

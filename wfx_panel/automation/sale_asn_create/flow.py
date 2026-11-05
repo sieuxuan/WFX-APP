@@ -31,6 +31,12 @@ from wfx_panel.automation.sale_asn_create.form import (
     _open_new_form,
     _refresh_existing_new_form,
 )
+from wfx_panel.automation.sale_asn_create.line_mapping import (
+    _line_group,
+    _remember_line_selection,
+    _separate_line_groups,
+    _used_line_selections,
+)
 from wfx_panel.automation.sale_asn_create.order_details import (
     _ensure_order_grid_rows,
     _ensure_po_popup_for_next_row,
@@ -70,12 +76,16 @@ def run_sale_asn_create(
     selected_po_row: dict | None = None,
     selected_po_candidates: Sequence[dict] = (),
     selected_po_final: bool = False,
+    line_bindings: dict | None = None,
 ) -> dict[str, Any]:
     playwright = None
     current_stage = str(stage or "po")
     add_po_selected = current_stage == "po"
     shipping_warnings: list[str] = []
     price_check: dict[str, Any] | None = None
+    bindings = line_bindings if line_bindings is not None else {}
+    separate_groups = _separate_line_groups(rows)
+    line_options = {"line_bindings": bindings} if separate_groups else {}
     try:
         if add_po_selected and not buyer.strip():
             return _result(False, "SALE_ASN_BUYER_REQUIRED", "Hãy chọn Buyer trước khi chạy.")
@@ -98,6 +108,7 @@ def run_sale_asn_create(
                 "Đang mở Add Order Details",
             )
             if start_index <= 0 and not selected_po_candidates:
+                bindings.clear()
                 main_frame = _refresh_existing_new_form(page, log)
                 if main_frame is None:
                     main_frame = _open_new_form(page, xpath, log)
@@ -120,6 +131,8 @@ def run_sale_asn_create(
                     log,
                     final=selected_po_final,
                 )
+                if _line_group(selected_row) in separate_groups:
+                    _remember_line_selection(bindings, selected_row, selected_po_candidates)
                 first_pending = min(len(rows), first_pending + 1)
                 if first_pending < len(rows):
                     popup_frame = _ensure_po_popup_for_next_row(
@@ -138,6 +151,9 @@ def run_sale_asn_create(
                     )
                 for index in range(first_pending, len(rows)):
                     row = _po_search_row(rows[index], rows)
+                    if _line_group(row) in separate_groups:
+                        row["_separate_line"] = True
+                        row["_used_line_selections"] = _used_line_selections(bindings, int(row["source_row"]))
                     _emit_stage_progress(
                         progress,
                         "po",
@@ -165,6 +181,8 @@ def run_sale_asn_create(
                             completed=index,
                             total=len(rows),
                         )
+                    if _line_group(row) in separate_groups:
+                        _remember_line_selection(bindings, row, candidates)
                     if not final_pending:
                         popup_frame = _ensure_po_popup_for_next_row(
                             context,
@@ -189,7 +207,7 @@ def run_sale_asn_create(
                     step,
                     "Đang đối chiếu Shipment Details và Summary Total",
                 )
-                price_check = _check_sale_asn_price_on_page(page, rows, log)
+                price_check = _check_sale_asn_price_on_page(page, rows, log, **line_options)
                 _emit_stage_progress(
                     progress,
                     step,
@@ -245,7 +263,7 @@ def run_sale_asn_create(
                             "SALE_ASN_ORDER_ROWS_NOT_FOUND:"
                             + ", ".join(missing_pos[:10])
                         )
-                _fill_order_details(main_frame, rows, log, progress)
+                _fill_order_details(main_frame, rows, log, progress, **line_options)
             elif step == "style_details":
                 _fill_style_details(main_frame, rows, log, progress)
             elif step == "shipping_info":

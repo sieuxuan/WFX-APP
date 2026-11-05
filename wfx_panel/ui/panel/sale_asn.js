@@ -265,7 +265,8 @@ function renderSaleAsnCandidates(candidates) {
       const style = escapeHtml(cell(item?.style_no));
       const qty = escapeHtml(cell(item?.dispatched_qty));
       const candidateId = escapeHtml(cell(item?.candidate_id));
-      return `<li><label><input class="sale-asn-candidate-select" type="checkbox" value="${candidateId}" />`
+      const detail = escapeHtml(cell(item?.text) || [cell(item?.po_no), cell(item?.style_no), cell(item?.dispatched_qty)].join(" · "));
+      return `<li><label title="${detail}"><input class="sale-asn-candidate-select" type="checkbox" value="${candidateId}" />`
         + `<b>${po}</b>`
         + (style ? `<span>${style}</span>` : "")
         + (qty ? `<em>${qty}</em>` : "")
