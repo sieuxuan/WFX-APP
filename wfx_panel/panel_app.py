@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import threading
+import time
 
 import keyboard
 import webview
@@ -15,7 +16,7 @@ from wfx_panel import (
     prefs,
     updater,
 )
-from wfx_panel.app import webview2_args
+from wfx_panel.app import webview2_args, webview2_recovery
 from wfx_panel.app.background import BackgroundLoopController
 from wfx_panel.app.bridges import (  # noqa: F401
     _BubbleBridge,
@@ -59,6 +60,7 @@ from wfx_panel.app.manual_window import ManualWindowController
 from wfx_panel.app.notifications import NotificationController
 from wfx_panel.app.placement import PanelPlacementController
 from wfx_panel.app.tray import TrayController
+from wfx_panel.app.webview2_watchdog import WebView2Watchdog
 from wfx_panel.assets.generate_icon import build_icon
 from wfx_panel.panel_api import PanelAPI
 from wfx_panel.single_instance import SingleInstance
@@ -70,6 +72,9 @@ from wfx_panel.win32_window import (
 )
 
 HOTKEY = hotkey.DEFAULT
+QUIT_DESTROY_TIMEOUT_SECONDS = 10.0
+RECOVERED_LOCK_WAIT_SECONDS = 15.0
+RECOVERED_LOCK_RETRY_SECONDS = 0.25
 UI_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "index.html"
 BUBBLE_INDEX = prefs.RESOURCE_DIR / "wfx_panel" / "ui" / "bubble.html"
 
@@ -124,6 +129,9 @@ class PanelApp:
         ]
         self._always_on_top = preferences["always_on_top"]
         self._start_hidden = preferences["start_hidden"]
+        # Tự mở lại sau lỗi WebView2: bubble hiện lại nhưng không bung panel
+        # che mất cửa sổ người dùng đang làm.
+        self._recovered_launch = webview2_recovery.RECOVERED_ARG in sys.argv
         self.bubble_window = None
         self.bubble_menu_window = None
         # Hộp thoại file và cửa sổ Manual sống trong controller riêng để
@@ -547,7 +555,12 @@ class PanelApp:
             state = self.api.get_initial_state()
             import json
             self.window.evaluate_js(f"window.wfxBootstrap({json.dumps(state, ensure_ascii=False)})")
-            if not self._start_hidden:
+            if self._recovered_launch:
+                self._notify_native(
+                    webview2_recovery.RECOVERED_MESSAGE,
+                    webview2_recovery.TOAST_TITLE,
+                )
+            elif not self._start_hidden:
                 self.show_panel()
             threading.Thread(
                 target=self.api.flush_error_reports,
@@ -579,7 +592,7 @@ class PanelApp:
             # mặc định — nếu không cập nhật footer ở đây, người dùng sẽ thấy
             # trạng thái treo vĩnh viễn mà không biết vì sao.
             self._set_status("error", message)
-            if not self._start_hidden:
+            if not self._start_hidden and not self._recovered_launch:
                 self.show_panel()
 
         # Hotkey có thể đã đăng ký xong hoặc chưa tại thời điểm này (background()
@@ -604,9 +617,10 @@ class PanelApp:
     def _note_tray_context_menu(self) -> None:
         return self._tray._note_tray_context_menu()
 
-    def quit(self, close_browser: bool = False):
+    def release_for_exit(self, reason: str, close_browser: bool = False) -> None:
+        """Nhả mọi thứ dùng chung trước khi process kết thúc, trừ các cửa sổ."""
         self._quitting = True
-        crash_log.clean_shutdown("user_exit")
+        crash_log.clean_shutdown(reason)
         self._stop_status.set()
         shutdown = getattr(self.api, "shutdown", None)
         if callable(shutdown):
@@ -619,21 +633,38 @@ class PanelApp:
             self.lock.close()
         if self.tray:
             self.tray.stop()
+
+    def quit(self, close_browser: bool = False):
+        self.release_for_exit("user_exit", close_browser)
         # pywebview (winforms) chỉ gọi Application.Exit khi BrowserView.instances
         # rỗng. Bỏ sót BẤT KỲ cửa sổ nào — kể cả bubble menu ẩn ở -32000 và cửa
         # sổ Manual — là vòng lặp thông điệp không bao giờ kết thúc, webview.start()
         # không trả về và process vẫn sống sau khi user bấm Thoát.
-        for window in (
+        windows = (
             self.bubble_menu_window,
             self.manual_window,
             self.bubble_window,
             self.window,
-        ):
-            if window is not None:
-                try:
-                    window.destroy()
-                except Exception:
-                    pass
+        )
+
+        def destroy_windows() -> None:
+            for window in windows:
+                if window is not None:
+                    try:
+                        window.destroy()
+                    except Exception:
+                        pass
+
+        # Sau khi WebView2 chết, destroy() có thể treo mãi; khi đó không còn gì
+        # cần dọn nên thoát thẳng, không để process ma chạy ngầm.
+        worker = threading.Thread(
+            target=destroy_windows, name="wfx-quit-destroy", daemon=True
+        )
+        worker.start()
+        worker.join(QUIT_DESTROY_TIMEOUT_SECONDS)
+        if worker.is_alive():
+            crash_log.record("QUIT_FORCED_EXIT")
+            os._exit(0)
 
     def _bubble_start_position(self) -> tuple[int, int]:
         return self._bubble._bubble_start_position()
@@ -810,8 +841,25 @@ class PanelApp:
         # UI là file đóng gói và state thật nằm trong prefs/.env riêng. Dùng
         # WebView riêng tư để bản app mới không tái sử dụng HTML/CSS/zoom cache
         # của bản cũ — nguyên nhân từng làm UI khác index.html và bị tràn.
+        _install_webview2_watchdog(webview2_recovery.WebView2Recovery(self).handle)
         _install_webview2_arguments()
         webview.start(background, private_mode=True)
+
+
+def _install_webview2_watchdog(on_fatal) -> bool:
+    """Bắt WebView2 chết; thiếu watchdog thì app vẫn chạy như trước."""
+    if os.name != "nt":
+        return False
+    try:
+        from webview.platforms import edgechromium
+
+        installed = WebView2Watchdog(on_fatal).install(edgechromium)
+    except Exception as exc:  # WebView2/pythonnet thiếu: pywebview tự fallback.
+        crash_log.record("WEBVIEW2_WATCHDOG_SKIPPED", error=type(exc).__name__)
+        return False
+    if not installed:
+        crash_log.record("WEBVIEW2_WATCHDOG_SKIPPED", error="unsupported_pywebview")
+    return installed
 
 
 def _install_webview2_arguments() -> bool:
@@ -842,11 +890,27 @@ def _sync_packaged_autostart() -> bool | None:
     return actual_autostart
 
 
+def _acquire_instance_lock(lock: SingleInstance) -> bool:
+    """Lấy khóa single-instance; lượt tự mở lại phải chờ bản cũ thoát hẳn.
+
+    Exe khởi động nhanh hơn bản cũ thoát: cửa sổ của bản đang chết làm
+    `acquire()` kết luận đã có instance khác và lượt mở lại tự thoát mất.
+    """
+    if webview2_recovery.RECOVERED_ARG not in sys.argv:
+        return lock.acquire()
+    deadline = time.monotonic() + RECOVERED_LOCK_WAIT_SECONDS
+    while not lock.acquire():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(RECOVERED_LOCK_RETRY_SECONDS)
+    return True
+
+
 def main():
     crash_log.install(prefs.DATA_DIR, app_version=APP_VERSION)
     app = PanelApp()
     lock = SingleInstance(app.activate)
-    if not lock.acquire():
+    if not _acquire_instance_lock(lock):
         # Đã có instance đang chạy: cố bật panel của nó lên rồi luôn thoát.
         # Không chạy tiếp nếu IPC tạm lỗi, nếu không sẽ tạo instance thứ hai.
         lock.signal_existing()
