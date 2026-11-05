@@ -192,6 +192,9 @@ liệu.
   cho tất cả các dòng cùng Style đó.
 - Ba cột `Cargo Ready Date`, `Invoice Date` và `Shipping Bill Date` cho phép chọn
   ngày và sẽ báo nếu giá trị không phải ngày hợp lệ.
+- Nếu WFX tách cùng PO và Style thành nhiều dòng Order Details, ứng dụng điền
+  `Carton`, `NW`, `GW`, `CBM`, `FOB Price` và `Service Price` vào dòng khớp trên
+  cùng. Các dòng phía dưới giữ nguyên, không tự chia hoặc nhân đôi số liệu.
 - Nếu cả file không có `Cargo Ready Date`, ứng dụng giữ trống toàn bộ và không
   lấy ngày hiện tại. Nếu bạn nhập ngày ở một dòng, ứng dụng dùng ngày có dữ liệu
   đầu tiên để điền tất cả dòng còn trống. Trên WFX, ngày được điền cho toàn bộ
