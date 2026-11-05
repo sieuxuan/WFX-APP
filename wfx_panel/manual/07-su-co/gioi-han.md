@@ -28,3 +28,4 @@ Windows và trạng thái WFX.
 |---|---|
 | Phím tắt không mở bảng điều khiển | Dùng biểu tượng nổi hoặc biểu tượng WFX Smart cạnh đồng hồ. |
 | Tác vụ chờ lâu | Đọc dòng trạng thái, chờ WFX ổn định và chỉ bấm Stop khi bạn muốn dừng an toàn. |
+| Biểu tượng nổi thành ô màu trống, không còn hình | Giao diện bị lỗi. Ứng dụng tự mở lại sau khi tác vụ đang chạy kết thúc và không đóng trình duyệt làm việc. Nếu không tự mở, bấm chuột phải biểu tượng cạnh đồng hồ, chọn Thoát rồi mở lại. |

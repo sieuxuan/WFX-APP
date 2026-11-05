@@ -8,6 +8,8 @@ phải nói rõ thay vì treo ở "Đang kiểm tra...".
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 import wfx_panel.panel_app as panel_app
@@ -89,6 +91,30 @@ def _logs(app, monkeypatch):
 
 
 # --- khởi động ----------------------------------------------------------
+
+
+def test_relaunch_after_webview2_failure_shows_bubble_but_not_the_panel(
+    app, monkeypatch
+):
+    """Tự mở lại không được bung panel che cửa sổ người dùng đang làm."""
+    monkeypatch.setattr(
+        panel_app.prefs,
+        "load_account",
+        lambda: {"user_id": "", "password": ""},
+    )
+    shown = []
+    notified = []
+    app._recovered_launch = True
+    app._start_hidden = False
+    app._placement.show_panel = lambda: shown.append(True) or {"ok": True}
+    monkeypatch.setattr(
+        app, "_notify_native", lambda message, title: notified.append(message)
+    )
+
+    app._startup()
+
+    assert shown == []
+    assert notified == [panel_app.webview2_recovery.RECOVERED_MESSAGE]
 
 
 def test_a_saved_account_is_logged_in_automatically(app, monkeypatch):
@@ -435,3 +461,43 @@ def test_saving_sale_asn_documents_without_a_folder_says_so_in_the_log(
     )
 
     assert any("[SALE ASN]" in line for line in app.api.logs)
+
+
+def test_quit_force_exits_when_a_window_cannot_be_destroyed(app, monkeypatch):
+    """Sau khi WebView2 chết, destroy() treo mãi và process thành process ma."""
+    release = threading.Event()
+    exits = []
+
+    class StuckWindow:
+        def destroy(self):
+            release.wait(5)
+
+    app.window = StuckWindow()
+    app.tray = None
+    app.lock = None
+    monkeypatch.setattr(panel_app.keyboard, "remove_hotkey", lambda _hotkey: None)
+    monkeypatch.setattr(panel_app, "QUIT_DESTROY_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(panel_app.os, "_exit", exits.append)
+
+    app.quit()
+    release.set()
+
+    assert exits == [0]
+
+
+def test_quit_does_not_force_exit_when_windows_close_normally(app, monkeypatch):
+    exits = []
+
+    class Window:
+        def destroy(self):
+            return None
+
+    app.window = Window()
+    app.tray = None
+    app.lock = None
+    monkeypatch.setattr(panel_app.keyboard, "remove_hotkey", lambda _hotkey: None)
+    monkeypatch.setattr(panel_app.os, "_exit", exits.append)
+
+    app.quit()
+
+    assert exits == []
