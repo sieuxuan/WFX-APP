@@ -678,6 +678,49 @@ def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case):
             browser.close()
 
 
+def test_order_details_fills_only_the_top_matching_po_style_row_even_on_retry():
+    rows = [{
+        "po_no": "PO0003791", "style_no": "S25-0125", "qty": "55",
+        "carton": "2", "nw": "26", "gw": "28.4", "cbm": "0.167504",
+        "fob_price": "17", "service_price": "0.5", "cargo_ready_date": "2026-10-25",
+    }]
+    expected = {
+        "colTotalNoOfCartons": "2", "colTotalNetWeight": "26",
+        "colTotalGrossWeight": "28.4", "colTotalVolume": "0.1675",
+        "colFFTextField1": "17", "colFFTextField2": "0.5",
+    }
+    markup = ""
+    for row_id, style, quantity in (
+        ("other-style", "S25-0000", 100),
+        ("33709", "S25-0125", 28),
+        ("33710", "S25-0125", 27),
+    ):
+        markup += (
+            f'<tr class="trContent" id="{row_id}"><td id="colOrderRefNum">PO0003791</td>'
+            f'<td id="colStyle">TW-{style}-BC2 BOOTCUT WERKPANT-MEN PANTS</td>'
+            f'<td id="colTotalShippingQty"><span title="{quantity}.0000">{quantity}.0000</span></td>'
+            + "".join(f'<td id="{column}"><input value="0"></td>' for column in expected)
+            + '<td id="colFFDate1"><input value=""></td></tr>'
+        )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(f'<table id="gridOrderDetails_tblGridContent">{markup}</table>')
+            for _attempt in range(2):
+                order_details._fill_order_details(page, rows, lambda _m: None)
+
+                for column, value in expected.items():
+                    assert page.locator(f'tr[id="33709"] td#{column} input').input_value() == value
+                    assert page.locator(f'tr[id="33710"] td#{column} input').input_value() == "0"
+                    assert page.locator(f'tr[id="other-style"] td#{column} input').input_value() == "0"
+                assert page.locator("td#colFFDate1 input").evaluate_all(
+                    "inputs => inputs.every(input => input.value === '25 Oct 2026')"
+                )
+        finally:
+            browser.close()
+
+
 def test_order_details_can_fill_the_add_row_when_the_base_has_no_separate_wfx_row():
     rows = [{
         "po_no": "PO0003760", "style_no": "F21-0001", "carton": "95",

@@ -1,7 +1,7 @@
 [
   {
     "version": "1.1.6",
-    "date": "2026-11-04",
+    "date": "2026-11-05",
     "highlights": [
       {
         "title": "Sale ASN: tự chọn các dòng có tổng Qty khớp",
@@ -9,8 +9,8 @@
         "entry": "don-hang-sale-asn"
       },
       {
-        "title": "Cargo Ready Date phủ đủ các dòng PO tách",
-        "body": "Cargo Ready Date được điền cho toàn bộ Order Details, gồm các dòng tách cùng PO và ADD/- ADD. Nếu file có ngày riêng theo PO/Style thì giữ ngày tương ứng; nếu cả file để trống thì ứng dụng không tự lấy ngày hiện tại.",
+        "title": "Order Details điền đúng khi PO có nhiều dòng",
+        "body": "Khi cùng PO và Style có nhiều dòng Order Details, ứng dụng điền carton, trọng lượng, thể tích và giá vào dòng khớp trên cùng, không phân bổ hoặc nhân đôi số liệu. Cargo Ready Date vẫn điền cho toàn bộ dòng tách và ADD/- ADD; giữ ngày riêng theo PO/Style nếu file có ghi, và không tự lấy ngày hiện tại khi cả file để trống.",
         "entry": "don-hang-sale-asn"
       },
       {

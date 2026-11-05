@@ -897,7 +897,10 @@ Các workflow riêng hiện có:
   xóa selection khiến WFX báo `Please select a record`. Sau click `OK`, popup
   có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
   trang Sale ASN chính rồi điền 7 cột Order Details, map Style gần đúng để điền
-  HS Code/Goods Description. Style Details phải map bằng cột Style, không dùng
+  HS Code/Goods Description. Khi Order Details có nhiều dòng cùng PO + Style,
+  chỉ điền Carton/NW/GW/CBM/FOB Price/Service Price vào dòng khớp trên cùng;
+  không phân bổ hoặc nhân bản số sang các dòng phía dưới. Cargo Ready Date
+  vẫn điền cho toàn bộ dòng theo quy tắc ngày chung. Style Details phải map bằng cột Style, không dùng
   Style Description. Khi WFX có nhiều dòng cùng khớp mạnh một Style (ví dụ các
   biến thể SLIM FIT/CLASSIC FIT), áp dụng cùng dữ liệu Style cho tất cả; chỉ
   dừng ambiguous khi nhiều kết quả chỉ khớp token yếu. Sau đó điền Shipping

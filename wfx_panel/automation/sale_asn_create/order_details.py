@@ -71,7 +71,7 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
             fold(row.querySelector('#colOrderRefNum')?.textContent) === `${wanted} add`
         );
     }
-    const candidates = poCandidates.length > 1 && wantedStyle
+    let candidates = poCandidates.length > 1 && wantedStyle
         ? poCandidates.filter(row => {
             const styleCell = row.querySelector(
                 'td#colStyle, td#colStyleNo, td#colBuyerStyleRef, td[id*="Style"]'
@@ -79,6 +79,9 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
             return matchesStyle(wantedStyle, fold(cellText(styleCell)));
         })
         : poCandidates;
+    if (spec.first_match && candidates.length > 1) {
+        candidates = candidates.slice(0, 1);
+    }
     if (candidates.length !== 1) {
         return {ok: false, reason: 'row-ambiguous', count: candidates.length};
     }
@@ -196,6 +199,7 @@ def _set_order_grid_cell(
     value: str,
     *,
     allow_add: bool = False,
+    first_match: bool = False,
 ) -> None:
     marked = frame.evaluate(
         _MARK_ORDER_GRID_CELL_JS,
@@ -205,6 +209,7 @@ def _set_order_grid_cell(
             "style_no": style_no,
             "column_id": column_id,
             **({"allow_add": True} if allow_add else {}),
+            **({"first_match": True} if first_match else {}),
         },
     )
     if not marked.get("ok"):
@@ -505,6 +510,7 @@ def _fill_order_details(
                 column_id,
                 value,
                 allow_add=f"{_fold(row.get('po_no'))} add" not in separate_pos,
+                first_match=True,
             )
         _write_log(log, f"[SALE ASN] Đã điền Order Details cho {row.get('po_no')}.")
     _fill_order_cargo_ready_dates(frame, rows, log)
