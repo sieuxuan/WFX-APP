@@ -11,6 +11,8 @@ moi ma reportable con thieu mapping.
 from __future__ import annotations
 
 METHOD_LABELS = {
+    "export_gmpo": "Xuất Excel GMPO",
+    "import_gmpo": "Nhập Order Qty GMPO",
     "prepare_payment_request": "In ĐNTT",
     "export_payment_request": "Xuất Excel ĐNTT",
     "fill_expense_import": "Điền Expense Invoice từ Excel",
@@ -80,6 +82,12 @@ METHOD_LABELS = {
 }
 
 ERROR_CODE_INFO = {
+    "GMPO_TAB_REQUIRED": ("Cần mở tab Blanket GMPO", "Chỉ để tab GMPO cần xử lý rồi thử lại."),
+    "GMPO_GRID_NOT_READY": ("Chưa đọc được Order Details", "Kiểm tra bảng đã tải xong và xác nhận ô đang sửa trên WFX."),
+    "GMPO_FILE_INVALID": ("File GMPO chưa hợp lệ", "Dùng file .xlsx do WFX Smart xuất và kiểm tra dòng hoặc cột trong thông báo."),
+    "GMPO_EXPORT_FAILED": ("Chưa xuất được Excel GMPO", "Đóng file Excel đích và kiểm tra quyền ghi vào thư mục lưu."),
+    "GMPO_IMPORT_CONFLICT": ("Số lượng chưa thể nhập vào GMPO", "Mở đúng đơn và đối chiếu số lượng với bảng WFX."),
+    "GMPO_APPLY_FAILED": ("Chưa điền xong Order Qty", "Kiểm tra những ô đã điền trên WFX trước khi bấm Save hoặc thử lại."),
     "PAYMENT_REQUEST_SELECTION_REQUIRED": (
         "Cần chọn một chứng từ để in ĐNTT",
         "Nhập đúng Invoice No. hoặc chọn duy nhất một dòng trên WFX, để trống ô invoice rồi bấm In ĐNTT.",

@@ -52,6 +52,7 @@ MODULE_GROUPS = [
         "modules": [
             {"name": "Catalog", "id": "0003_6200", "icon": "CA"},
             {"name": "OC List", "id": "0004_0050_0020", "icon": "OC"},
+            {"name": "GMPO", "id": "gmpo", "icon": "GM"},
             {"name": "Sample Order", "id": "0004_0056_4070", "icon": "SL"},
             {"name": "Sale ASN", "id": "0004_0070_0020", "icon": "AS"},
             {

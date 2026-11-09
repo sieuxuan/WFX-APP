@@ -206,6 +206,12 @@ Reject lần lượt toàn bộ PO trong thẻ New hoặc Revision đang mở.
 
 Dùng để làm gì Reject lần lượt toàn bộ PO trong thẻ New hoặc Revision đang mở trên WFX. Các bước Mở EDI Buyer PO trên WFX. Chọn đúng thẻ New hoặc Revision cần xử lý. Mở module OC List trong WFX Smart. Bấm Reject All · tab đang mở . Đọc cảnh báo rồi xác nhận Reject toàn bộ. Chờ ứng dụng xử lý hết từng PO. Lưu ý Reject không thể hoàn tác. Ứng dụng chỉ xử lý thẻ đang mở và không tự chuyển sang thẻ còn lại. Lưu ý Ứng dụng chỉ chuyển sang PO tiếp theo sau khi PO hiện tại đã rời khỏi bảng. Gặp lỗi thì sao Hiện tượng Cách xử lý Không xác định được thẻ đang mở Chọn lại thẻ New hoặc Revision trên WFX rồi bấm Reject All · tab đang mở lại. PO chưa rời khỏi bảng Kiểm tra kết quả Reject trên WFX trước khi chạy lại. WFX báo không Reject được PO Thẻ kết quả ghi nguyên văn thông báo của WFX và số PO đã Reject xong. Kiểm tra PO được báo trên WFX rồi chạy lại. Không đọc được kết quả Reject Không chạy lại ngay. Kiểm tra PO còn xuất hiện trong thẻ đang mở hay không. Màn Reject chưa sẵn sàng Chờ EDI Buyer PO tải xong rồi thử lại.
 
+### Xuất và nhập số lượng GMPO
+
+Xuất Order Details ra Excel và điền lại Order Qty theo PO, màu và size.
+
+Dùng để làm gì Xuất bảng Order Details của Blanket GMPO sang Excel để chỉnh số lượng theo PO, màu và size. Các bước Mở bảng Order Details của Blanket GMPO trong trình duyệt làm việc. Vào module GMPO và bấm Xuất Excel GMPO . Chọn nơi lưu file Excel. Sửa các ô màu xanh trong cột Order Qty của từng size rồi lưu file. Ô trống sẽ được bỏ qua. Nhập 0 nếu muốn điền số lượng bằng 0. Mở lại đúng tab Blanket GMPO và bấm Nhập Order Qty . Chọn file Excel đã chỉnh. Kiểm tra số lượng và Total Qty trên WFX, sau đó bấm Save trên WFX. Lưu ý Lưu ý Giữ nguyên tên cột và thông tin nhận diện dòng trong file. Giá, ngày giao và các cột khác dùng để đối chiếu. GMPO dạng Packing Kit hỗ trợ xuất Excel. Gặp lỗi thì sao Gặp lỗi thì sao Nếu số lượng đã thay đổi trên WFX, hãy xuất lại Excel từ đúng đơn. Nếu WFX báo chỉ điền được một phần, kiểm tra các ô đã điền trên WFX trước khi lưu hoặc nhập lại.
+
 ### (GDN) Dispatch
 
 Tạo Dispatch từ Invoice GRN sau thời gian chờ bắt buộc.
@@ -418,6 +424,12 @@ Dùng để làm gì Nhận biết những trường hợp WFX Smart cần thêm
 | `GDN_TRANSACTION_FAILED` | WFX báo lỗi khi tạo GDN Dispatch | Xem lỗi WFX và Log kỹ thuật trước khi xử lý lại invoice. |
 | `GDN_TRANSACTION_UNCONFIRMED` | Chưa xác nhận được kết quả GDN Dispatch | Đừng chạy lại. Kiểm tra transaction mới nhất trên WFX. |
 | `GDN_WORKBOOK_RELOAD_FAILED` | Không reload được file XLSX GDN | Kiểm tra file report tải về và dung lượng thư mục tạm. |
+| `GMPO_APPLY_FAILED` | Chưa điền xong Order Qty | Kiểm tra những ô đã điền trên WFX trước khi bấm Save hoặc thử lại. |
+| `GMPO_EXPORT_FAILED` | Chưa xuất được Excel GMPO | Đóng file Excel đích và kiểm tra quyền ghi vào thư mục lưu. |
+| `GMPO_FILE_INVALID` | File GMPO chưa hợp lệ | Dùng file .xlsx do WFX Smart xuất và kiểm tra dòng hoặc cột trong thông báo. |
+| `GMPO_GRID_NOT_READY` | Chưa đọc được Order Details | Kiểm tra bảng đã tải xong và xác nhận ô đang sửa trên WFX. |
+| `GMPO_IMPORT_CONFLICT` | Số lượng chưa thể nhập vào GMPO | Mở đúng đơn và đối chiếu số lượng với bảng WFX. |
+| `GMPO_TAB_REQUIRED` | Cần mở tab Blanket GMPO | Chỉ để tab GMPO cần xử lý rồi thử lại. |
 | `GRN_CONTINUE_FAILED` | Chưa mở được GRN sau Sourcing ASN | Kiểm tra Sourcing ASN đã Confirm rồi bấm Tiếp tục làm GRN lại. |
 | `GRN_FINALIZE_FAILED` | Chưa mở được New GRN | Kiểm tra Site và dòng PO trên GRN Pending rồi thử lại. |
 | `GRN_PREPARE_FAILED` | Chưa chuẩn bị được luồng nhập kho | Kiểm tra RMPO, Supplier và màn hình WFX rồi thử lại. |

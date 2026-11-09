@@ -32,6 +32,7 @@ from wfx_panel.controllers import (
     SessionController,
     SettingsController,
 )
+from wfx_panel.controllers.gmpo import GMPOController
 from wfx_panel.run_engine import AutomationRunEngine
 from wfx_panel.run_policy import (  # noqa: F401
     AUTO_RELOGIN_EXCLUDED_METHODS,
@@ -101,6 +102,7 @@ class PanelAPI:
         self._inventory = InventoryController(self)
         self._reports = ReportsController(self)
         self._finance = FinanceController(self)
+        self._gmpo = GMPOController(self)
         self._directory = DirectoryController(self)
         self._settings = SettingsController(self)
         self._jobs = JobsController(self)
@@ -406,6 +408,12 @@ class PanelAPI:
 
     def open_module(self, module_id: str) -> dict:
         return self._modules.open_module(module_id)
+
+    def export_gmpo(self, file_path: str) -> dict:
+        return self._gmpo.export(file_path)
+
+    def import_gmpo(self, file_path: str) -> dict:
+        return self._gmpo.import_quantities(file_path)
 
     def report_catalog(self) -> dict:
         return self._reports.report_catalog()
