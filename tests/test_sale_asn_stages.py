@@ -492,7 +492,7 @@ class ShippingFrame:
         self.clock.advance(float(milliseconds) / 1_000.0)
 
 
-def _fill(monkeypatch, row, outcomes):
+def _fill(monkeypatch, row, outcomes, *, division=None):
     clock = FakeClock()
     written: list[tuple[str, str]] = []
 
@@ -505,7 +505,12 @@ def _fill(monkeypatch, row, outcomes):
 
     patch_automation(monkeypatch, shipping, "_set_control", set_control)
     lines: list[str] = []
-    warnings = shipping._fill_shipping(ShippingFrame(clock), row, lines.append)
+    frame = ShippingFrame(clock)
+    frame.page = object()
+    monkeypatch.setattr(shipping, "_division_state_for_page", lambda page: {
+        "current_division": division if page is frame.page else None,
+    })
+    warnings = shipping._fill_shipping(frame, row, lines.append)
     return warnings, written, lines
 
 
@@ -743,7 +748,9 @@ def test_shipment_rows_without_a_readable_po_are_indexed_out():
     ("file_row", "shipment_rows", "status"),
     [
         (_file_row(qty=""), [_shipment()], "file_value_missing"),
-        (_file_row(price=""), [_shipment()], "file_value_missing"),
+        (_file_row(price=""), [_shipment(price="")], "ok"),
+        (_file_row(price=""), [_shipment(qty="9")], "mismatch"),
+        (_file_row(price="0"), [_shipment()], "mismatch"),
         (_file_row(), [_shipment(order_no="SO-9/PO-9")], "shipment_not_found"),
         (_file_row(), [_shipment(qty="")], "system_value_missing"),
         (_file_row(), [_shipment(price="")], "system_value_missing"),
@@ -766,23 +773,37 @@ def test_every_comparison_outcome_is_named_for_the_user(
     assert comparisons[0]["message"]
 
 
+@pytest.mark.parametrize("wfx_total_qty", ["20", "19"])
+def test_blank_price_skips_summary_values_but_checks_qty_and_other_prices(wfx_total_qty):
+    comparisons, totals = price_check._price_check_rows(
+        [_file_row(price=""), _file_row(po_no="PO-2", row=3)],
+        [_shipment(price=""), _shipment(order_no="SO-2/PO-2", price="3")],
+    )
+    summary = price_check._summary_price_check(totals, {
+        "total_quantity": wfx_total_qty,
+        "value_in_doc_currency": "30",
+        "net_value_in_doc_currency": "30",
+    })
+
+    assert comparisons[0]["status"] == "ok"
+    assert comparisons[0]["qty_ok"] is True
+    assert "price_ok" not in comparisons[0]
+    assert comparisons[1]["price_ok"] is False
+    assert summary["checks"]["total_quantity"]["expected"] == "20"
+    assert summary["ok"] is (wfx_total_qty == "20")
+    assert summary["checks"]["value_in_doc_currency"]["skipped"] is True
+    assert summary["checks"]["net_value_in_doc_currency"]["skipped"] is True
+
+
 # --- phần còn lại của Shipping Info -------------------------------------
 
 
-def test_the_shipping_field_table_only_uses_the_two_kinds_of_key_it_handles():
-    """Sentinel mới mà quên xử lý sẽ bị điền thẳng tên khóa vào form WFX."""
-
-    from wfx_panel.automation.sale_asn_create.constants import SHIPPING_FIELDS
-
-    for _selector, key, _mode in SHIPPING_FIELDS:
-        if key.startswith("__"):
-            assert key[2:].strip(), f"hằng số rỗng: {key!r}"
-        else:
-            assert not key.startswith("_"), f"khóa lạ: {key!r}"
-
-
+@pytest.mark.parametrize("division, consignor", [
+    ("pssg", "BILL-ADD - Billing Address"),
+    ("woven", "BILL-ADD - PSHK"),
+])
 def test_a_complete_row_fills_shipping_info_without_a_single_warning(
-    monkeypatch,
+    monkeypatch, division, consignor,
 ):
     complete = {
         "shipping_mode": "COURIER",
@@ -797,13 +818,13 @@ def test_a_complete_row_fills_shipping_info_without_a_single_warning(
     }
 
     warnings, written, lines = _fill(
-        monkeypatch, complete, lambda _selector, _value: {"ok": True}
+        monkeypatch, complete, lambda _selector, _value: {"ok": True}, division=division,
     )
 
     assert warnings == []
     assert lines[-1] == "[SALE ASN] Đã điền Shipping Info; chưa bấm Save."
     values = dict(written)
-    assert values["#ddlConsignorAddress"] == "BILL-ADD - PSHK"
+    assert values["#ddlConsignorAddress"] == consignor
     assert values["#ddlDeliveryTerms"] == "EXW"
     assert values["#Cell_InvoiceDate"] == "01 Mar 2026"
 

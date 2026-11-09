@@ -45,6 +45,7 @@ from wfx_panel.automation.sale_asn_create.values import (
     _decimal_or_none,
     _fold,
     _number_for_wfx,
+    _po_key,
     _table_value_matches,
 )
 
@@ -53,6 +54,7 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
     const fold = value => clean(value).toLocaleLowerCase('en')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, ' ').trim();
+    const poKey = value => fold(clean(value).replace(/^po ([0-9]+(?: *- *add| +add)?)$/i, '$1'));
     const table = document.querySelector(spec.table);
     if (!table) return {ok: false, reason: 'order-grid-not-found'};
     const cellText = cell => clean(
@@ -66,15 +68,16 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
         return (` ${actualStyle} `).includes(` ${wantedStyle} `)
             || (` ${wantedStyle} `).includes(` ${actualStyle} `);
     };
-    const wanted = fold(spec.po_no);
+    const wanted = poKey(spec.po_no);
     const wantedStyle = fold(spec.style_no);
     const rows = [...table.querySelectorAll('tr.trContent')];
+    const rowPoKey = row => poKey(cellText(row.querySelector('#colOrderRefNum')));
     let poCandidates = rows.filter(row =>
-        fold(row.querySelector('#colOrderRefNum')?.textContent) === wanted
+        rowPoKey(row) === wanted
     );
     if (!poCandidates.length && spec.allow_add && !wanted.endsWith(' add')) {
         poCandidates = rows.filter(row =>
-            fold(row.querySelector('#colOrderRefNum')?.textContent) === `${wanted} add`
+            rowPoKey(row) === `${wanted} add`
         );
     }
     let candidates = poCandidates.length > 1 && wantedStyle
@@ -234,7 +237,7 @@ def _set_order_grid_cell(
 
 
 def _order_row_identity(row: dict) -> tuple[str, str]:
-    return _fold(row.get("po_no")), _fold(row.get("style_no"))
+    return _po_key(row.get("po_no")), _fold(row.get("style_no"))
 
 
 def _order_style_matches(wanted: str, actual: str) -> bool:
@@ -269,15 +272,15 @@ def _missing_order_rows(
     rows: Sequence[dict],
     present: set[str | tuple[str, str]],
 ) -> list[dict]:
-    separate_pos = {_fold(row.get("po_no")) for row in rows}
+    separate_pos = {_po_key(row.get("po_no")) for row in rows}
     return [
         dict(row)
         for row in rows
-        if _fold(row.get("po_no"))
+        if (po_key := _po_key(row.get("po_no")))
         and not _order_row_is_present(row, present)
         and not (
-            not _fold(row.get("po_no")).endswith(" add")
-            and f"{_fold(row.get('po_no'))} add" not in separate_pos
+            not po_key.endswith(" add")
+            and f"{po_key} add" not in separate_pos
             and _order_row_is_present(
                 {**row, "po_no": f"{row.get('po_no')} ADD"}, present,
             )
@@ -294,7 +297,7 @@ def _wait_order_grid(
 ) -> set[tuple[str, str]]:
     table = frame.locator(ORDER_GRID_SELECTOR).first
     table.wait_for(state="visible", timeout=int(timeout_s * 1_000))
-    expected = [dict(row) for row in rows if _fold(row.get("po_no"))]
+    expected = [dict(row) for row in rows if _po_key(row.get("po_no"))]
     deadline = time.monotonic() + timeout_s
     present: set[tuple[str, str]] = set()
     while time.monotonic() < deadline:
@@ -322,7 +325,7 @@ def _wait_order_grid(
                     )
                     or []
                 )
-                if _fold(item.get("po_no"))
+                if _po_key(item.get("po_no"))
             }
         except PlaywrightError:
             # Grid WFX có thể thay tbody khi request Add Order hoàn tất. Locator
@@ -479,7 +482,7 @@ def _resolve_separate_order_lines(
         )
         or []
     )
-    separate_pos = {_fold(row.get("po_no")) for row in rows}
+    separate_pos = {_po_key(row.get("po_no")) for row in rows}
     targets: dict[int, list[dict]] = {}
     used: set[str] = set()
     for row in rows:
@@ -491,10 +494,10 @@ def _resolve_separate_order_lines(
             record
             for record in records
             if (
-                _fold(record.get("po_no")) == wanted_po
+                _po_key(record.get("po_no")) == wanted_po
                 or (
                     f"{wanted_po} add" not in separate_pos
-                    and _fold(record.get("po_no")) == f"{wanted_po} add"
+                    and _po_key(record.get("po_no")) == f"{wanted_po} add"
                 )
             )
             and (
@@ -570,7 +573,7 @@ def _fill_order_cargo_ready_dates(
     line_targets: dict | None = None,
 ) -> None:
     dates = [
-        (_fold(row.get("po_no")), _fold(row.get("style_no")), _date_for_wfx(value))
+        (_po_key(row.get("po_no")), _fold(row.get("style_no")), _date_for_wfx(value))
         for row in rows
         if (value := str(row.get("cargo_ready_date") or "").strip())
     ]
@@ -591,7 +594,7 @@ def _fill_order_cargo_ready_dates(
         marked = cells.nth(index).evaluate(_MARK_CARGO_READY_DATE_CELL_JS)
         if not marked.get("ok"):
             raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
-        po_key = _fold(marked.get("po_no"))
+        po_key = _po_key(marked.get("po_no"))
         style_key = _fold(marked.get("style_no"))
         if (specific := dates_by_target.get(str(marked.get("row_id") or ""))):
             _edit_marked_table_cell(frame, specific)
@@ -618,7 +621,7 @@ def _fill_order_details(
     *,
     line_bindings: dict | None = None,
 ) -> None:
-    separate_pos = {_fold(row.get("po_no")) for row in rows}
+    separate_pos = {_po_key(row.get("po_no")) for row in rows}
     targets = _resolve_separate_order_lines(frame, rows, line_bindings if line_bindings is not None else {})
     for index, row in enumerate(rows, 1):
         _emit_stage_progress(
@@ -639,7 +642,7 @@ def _fill_order_details(
                 str(row.get("style_no") or ""),
                 column_id,
                 value,
-                allow_add=f"{_fold(row.get('po_no'))} add" not in separate_pos,
+                allow_add=f"{_po_key(row.get('po_no'))} add" not in separate_pos,
                 first_match=True,
                 **({"row_id": str(targets[int(row["source_row"])][0]["row_id"])}
                    if int(row.get("source_row") or 0) in targets else {}),

@@ -23,6 +23,7 @@ from wfx_panel.automation.sale_asn_create.constants import (
 from wfx_panel.automation.sale_asn_create.errors import _shipping_warning
 from wfx_panel.automation.sale_asn_create.form import _set_control
 from wfx_panel.automation.sale_asn_create.values import _date_for_wfx
+from wfx_panel.automation.session import _division_state_for_page
 
 
 def _fill_shipping(
@@ -42,7 +43,9 @@ def _fill_shipping(
         warnings.append(warning)
         _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")
         mapped = {}
-    shipping_values = {**first_row, **mapped}
+    division = _division_state_for_page(frame.page).get("current_division")
+    consignor_address = "BILL-ADD - Billing Address" if division == "pssg" else "BILL-ADD - PSHK"
+    shipping_values = {**first_row, **mapped, "consignor_address": consignor_address}
     destination_is_blank = not str(shipping_values.get("destination") or "").strip()
     destination_country_confirmed: bool | None = None
     for selector, key, mode in SHIPPING_FIELDS:
@@ -68,17 +71,10 @@ def _fill_shipping(
                 "Country Of Destination mặc định vì không chọn được country.",
             )
             continue
-        # `__` mở đầu nghĩa là hằng số điền thẳng (Consignor Address), phần còn
-        # lại là khóa đọc từ file. `tests/test_sale_asn_stages.py` canh để không
-        # ai thêm sentinel mới mà quên xử lý ở đây.
-        value = (
-            key[2:]
-            if key.startswith("__")
-            else str(shipping_values.get(key) or "")
-        )
+        value = str(shipping_values.get(key) or "")
         if key in {"invoice_date", "shipping_bill_date"}:
             value = _date_for_wfx(value)
-        if not value.strip() and not key.startswith("__"):
+        if not value.strip():
             warning = f"{label}: file không có dữ liệu"
             warnings.append(warning)
             _write_log(log, f"[SALE ASN] Shipping Info bỏ qua {warning}.")

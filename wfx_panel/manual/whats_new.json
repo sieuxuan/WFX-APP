@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.1.7",
+    "date": "2026-11-09",
+    "highlights": [
+      {
+        "title": "Sale ASN nhận đúng PO dạng số trong Order Details",
+        "body": "Mã số trong Excel như 19942 khớp với PO 19942 trên WFX. Ứng dụng nhận ra dòng đã được thêm và tiếp tục điền Order Details.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Sale ASN tự bỏ qua kiểm tra giá khi Price trống",
+        "body": "Dòng trống Price chỉ đối chiếu Qty. Nếu có dòng trống Price, Summary Total vẫn đối chiếu tổng Qty và file xuất đánh dấu hai mục tổng tiền là bỏ qua.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Sale ASN chọn đúng Consignor Address ở PSSG",
+        "body": "Shipping Info tự chọn BILL-ADD - Billing Address khi Division đang là PSSG.",
+        "entry": "don-hang-sale-asn"
+      }
+    ]
+  },
+  {
     "version": "1.1.6",
     "date": "2026-11-05",
     "highlights": [

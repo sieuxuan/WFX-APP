@@ -748,16 +748,18 @@ def write_sale_asn_price_check_workbook(
     for key, label in summary_labels.items():
         check = checks.get(key) if isinstance(checks.get(key), dict) else {}
         ok = bool(check.get("ok"))
+        skipped = bool(check.get("skipped"))
         summary.append(
             [
                 label,
                 str(check.get("expected") or ""),
                 str(check.get("actual") or ""),
-                "KHỚP" if ok else "CẦN KIỂM TRA",
+                "BỎ QUA" if skipped else "KHỚP" if ok else "CẦN KIỂM TRA",
             ]
         )
-        for cell in summary[summary.max_row]:
-            cell.fill = ok_fill if ok else attention_fill
+        if not skipped:
+            for cell in summary[summary.max_row]:
+                cell.fill = ok_fill if ok else attention_fill
     for column, width in {"A": 32, "B": 22, "C": 22, "D": 20}.items():
         summary.column_dimensions[column].width = width
     summary.auto_filter.ref = "A3:D6"

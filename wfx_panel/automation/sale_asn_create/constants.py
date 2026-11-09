@@ -142,7 +142,7 @@ SHIPPING_FIELDS = (
     ("#Cell_ShipDate", "shipping_bill_date", "value"),
     ("#Cell_DestinationCountry", "destination", "exact"),
     ("#Cell_FinalDestination", "destination", "exact"),
-    ("#ddlConsignorAddress", "__BILL-ADD - PSHK", "exact"),
+    ("#ddlConsignorAddress", "consignor_address", "exact"),
     (CONSIGNEE_ADDRESS_SELECTOR, "consignee_address", "closest"),
     (SHIP_TO_SELECTOR, "ship_to", "closest"),
     (SHIPMENT_MODE_SELECTOR, "shipping_mode", "exact"),

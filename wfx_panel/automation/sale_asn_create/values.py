@@ -23,6 +23,13 @@ def _fold(value: object) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text.casefold()).split())
 
 
+def _po_key(value: object) -> str:
+    """Match numeric buyer references with or without WFX's `PO ` prefix."""
+    text = str(value or "").strip()
+    prefixed = re.fullmatch(r"po\s+([0-9]+(?:\s*-\s*add|\s+add)?)", text, re.IGNORECASE)
+    return _fold(prefixed[1] if prefixed else text)
+
+
 def _style_similarity(source: str, candidate: str) -> int:
     left, right = _fold(source), _fold(candidate)
     if not left or not right:
