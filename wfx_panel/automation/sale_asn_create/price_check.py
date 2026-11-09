@@ -26,6 +26,7 @@ from wfx_panel.automation.sale_asn_create.values import (
     _decimal_display,
     _decimal_or_none,
     _fold,
+    _po_key,
     _table_value_matches,
 )
 
@@ -82,7 +83,7 @@ def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple, dict[str, Any]]
     for index, source in enumerate(source_rows):
         po_no = str(source.get("po_no") or "").strip()
         style_no = str(source.get("style_no") or "").strip()
-        folded_po, folded_style = _fold(po_no), _fold(style_no)
+        folded_po, folded_style = _line_group(source)
         if not folded_po or not folded_style:
             continue
         key = (folded_po, folded_style)
@@ -117,7 +118,7 @@ def _shipment_rows_by_po(shipment_rows: Sequence[dict]) -> dict[str, list[dict]]
     """
     index: dict[str, list[dict]] = {}
     for item in shipment_rows:
-        folded_po = _fold(_shipment_order_po(item.get("order_no") or item.get("po_no")))
+        folded_po = _po_key(_shipment_order_po(item.get("order_no") or item.get("po_no")))
         if not folded_po:
             continue
         index.setdefault(folded_po, []).append(item)
@@ -157,20 +158,22 @@ def _file_totals(group: dict[str, Any]) -> tuple[Decimal | None, Decimal | None]
 def _compare_qty_and_price(
     result: dict[str, Any],
     file_qty: Decimal,
-    file_price: Decimal,
+    file_price: Decimal | None,
     system_qty: Decimal,
-    system_price: Decimal,
+    system_price: Decimal | None,
 ) -> None:
     """Ghi kết luận khớp/lệch vào ``result``."""
     qty_ok = abs(file_qty - system_qty) <= QTY_PRICE_TOLERANCE
-    price_ok = abs(file_price - system_price) <= QTY_PRICE_TOLERANCE
     result["qty_ok"] = qty_ok
-    result["price_ok"] = price_ok
-    if qty_ok and price_ok:
+    if file_price is not None and system_price is not None:
+        result["price_ok"] = abs(file_price - system_price) <= QTY_PRICE_TOLERANCE
+    else:
+        result["message"] = "Khớp Qty."
+    if qty_ok and result.get("price_ok", True):
         return
     differences = [
         label
-        for label, ok in (("Qty", qty_ok), ("Price", price_ok))
+        for label, ok in (("Qty", qty_ok), ("Price", result.get("price_ok", True)))
         if not ok
     ]
     result.update(
@@ -211,10 +214,10 @@ def _price_check_row(group: dict[str, Any], matched: list[dict]) -> dict[str, An
         "status": "ok",
         "message": "Khớp Qty và Price.",
     }
-    if file_qty is None or file_price is None:
+    if file_qty is None:
         result.update(
             status="file_value_missing",
-            message="File thiếu Qty hoặc Price, chưa thể đối chiếu dòng này.",
+            message="File thiếu Qty, chưa thể đối chiếu dòng này.",
         )
         return result
     if not matched:
@@ -223,20 +226,21 @@ def _price_check_row(group: dict[str, Any], matched: list[dict]) -> dict[str, An
             message="Không tìm thấy PO trong Order No + Article tương ứng trên WFX.",
         )
         return result
-    if system_qty is None or not system_prices:
+    if system_qty is None or (file_price is not None and not system_prices):
         result.update(
             status="system_value_missing",
-            message="Shipment Details thiếu Shipping Qty hoặc Price (USD).",
+            message=("Shipment Details thiếu Shipping Qty." if system_qty is None
+                     else "Shipment Details thiếu Price (USD)."),
         )
         return result
-    if len(system_prices) != 1:
+    if file_price is not None and len(system_prices) > 1:
         result.update(
             status="system_price_ambiguous",
             message="WFX có nhiều Price (USD) cho cùng PO + Style.",
         )
         return result
     _compare_qty_and_price(
-        result, file_qty, file_price, system_qty, next(iter(system_prices))
+        result, file_qty, file_price, system_qty, next(iter(system_prices), None)
     )
     return result
 
@@ -253,10 +257,13 @@ def _price_check_rows(
     separate_pos = {key[0] for key in groups}
 
     results: list[dict[str, Any]] = []
+    file_quantities: list[Decimal] = []
     complete_file_rows: list[tuple[Decimal, Decimal]] = []
+    file_price_missing = False
     used: set[int] = set()
     indices = {id(item): index for index, item in enumerate(shipment_rows)}
     for group in groups.values():
+        file_qty, file_price = _file_totals(group)
         matched = _matching_shipment_rows(
             group, by_po, separate_pos,
         )
@@ -270,7 +277,6 @@ def _price_check_rows(
                 matched = [item for item in matched if _fold(str(item.get("order_no") or "").partition("/")[0]) in refs]
             candidates = [{**item, "dispatched_qty": item.get("qty"), "_shipment_index": indices[id(item)]}
                           for item in matched if _decimal_or_none(item.get("qty")) != 0]
-            file_qty, file_price = _file_totals(group)
             if not refs and file_price is not None:
                 priced = [item for item in candidates if _decimal_or_none(item.get("price")) == file_price]
                 if priced:
@@ -283,16 +289,19 @@ def _price_check_rows(
         if ambiguous:
             comparison.update(status="system_price_ambiguous", message="Chưa xác định được các dòng Shipment Details riêng cho dòng màu/giá này.")
         results.append(comparison)
-        file_qty, file_price = _file_totals(group)
+        if file_qty is not None:
+            file_quantities.append(file_qty)
+        file_price_missing |= file_price is None
         if file_qty is not None and file_price is not None:
             complete_file_rows.append((file_qty, file_price))
 
     every_file_row_complete = len(complete_file_rows) == len(groups)
-    total_qty = sum((qty for qty, _price in complete_file_rows), Decimal("0"))
+    total_qty = sum(file_quantities, Decimal("0"))
     total_value = sum((qty * price for qty, price in complete_file_rows), Decimal("0"))
     return results, {
         "file_values_complete": every_file_row_complete,
-        "file_total_qty": _decimal_display(total_qty) if every_file_row_complete else "",
+        "file_price_missing": file_price_missing,
+        "file_total_qty": _decimal_display(total_qty) if len(file_quantities) == len(groups) else "",
         "file_total_value": (
             _decimal_display(total_value) if every_file_row_complete else ""
         ),
@@ -320,14 +329,17 @@ def _summary_price_check(
             "actual": str(summary.get("net_value_in_doc_currency") or ""),
         },
     }
-    for check in checks.values():
-        check["ok"] = values_complete and _table_value_matches(
-            check["expected"], check["actual"]
-        )
+    for key, check in checks.items():
+        if key != "total_quantity" and file_totals.get("file_price_missing"):
+            check["skipped"] = True
+        else:
+            check["ok"] = bool(check["expected"]) and _table_value_matches(
+                check["expected"], check["actual"]
+            )
     return {
         "file_values_complete": values_complete,
         "checks": checks,
-        "ok": values_complete and all(item["ok"] for item in checks.values()),
+        "ok": all(item.get("skipped") or item.get("ok") for item in checks.values()),
     }
 
 

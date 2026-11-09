@@ -39,7 +39,7 @@ from wfx_panel.automation.sale_asn_create.line_mapping import _selection_identit
 from wfx_panel.automation.sale_asn_create.values import (
     _decimal_display,
     _decimal_or_none,
-    _fold,
+    _po_key,
 )
 
 _PO_RESULTS_JS = r"""root => {
@@ -640,14 +640,14 @@ def _po_reference(value: object) -> str:
 def _po_reference_matches(value: object, requested_po: str) -> bool:
     if not requested_po:
         return False
-    return _fold(value) == requested_po or _fold(_po_reference(value)) == requested_po
+    return _po_key(value) == requested_po or _po_key(_po_reference(value)) == requested_po
 
 
 def _po_search_row(row: dict, source_rows: Sequence[dict]) -> dict:
     """Không dùng ADD cho PO gốc khi file đã dành một dòng riêng cho ADD."""
     reserved = tuple(
         key for source in source_rows
-        if (key := _fold(source.get("po_no"))).endswith(" add")
+        if (key := _po_key(source.get("po_no"))).endswith(" add")
     )
     return {**row, "_reserved_add_refs": reserved} if reserved else dict(row)
 
@@ -711,12 +711,12 @@ def _auto_add_po(
         if excluded:
             last = [candidate for candidate in last if _selection_identity(candidate) not in excluded]
         if "po" in active_fields:
-            requested_po = _fold(row.get("po_no"))
+            requested_po = _po_key(row.get("po_no"))
             raw_count = len(last)
             raw_candidates = list(last)
             reserved_add = set(row.get("_reserved_add_refs") or ())
             for item in last:
-                parsed_po = _fold(item.get("po_no"))
+                parsed_po = _po_key(item.get("po_no"))
                 cell_values = item.get("cell_values")
                 if not isinstance(cell_values, (list, tuple)):
                     cell_values = ()
@@ -735,9 +735,9 @@ def _auto_add_po(
                     add_reference = next((
                         _po_reference(value)
                         for value in (item.get("po_no"), *cell_values)
-                        if _fold(_po_reference(value)) == f"{requested_po} add"
+                        if _po_key(_po_reference(value)) == f"{requested_po} add"
                     ), "")
-                    if add_reference and _fold(add_reference) not in reserved_add:
+                    if add_reference and _po_key(add_reference) not in reserved_add:
                         related_add.append({**item, "po_no": add_reference})
                     elif add_reference:
                         # Không để nhánh fallback khi cột PO khó đọc lấy lại

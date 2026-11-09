@@ -594,7 +594,7 @@ function saleAsnPriceRow(item) {
   };
   return `<li data-tone="${tone}">${head}<div class="sale-asn-price-row-diff">`
     + cell("Qty", item.qty_ok !== false, item.file_qty, item.system_qty)
-    + cell("Price", item.price_ok !== false, item.file_price, systemPrice)
+    + (item.file_price ? cell("Price", item.price_ok !== false, item.file_price, systemPrice) : "")
     + "</div></li>";
 }
 
@@ -606,9 +606,9 @@ function renderSaleAsnPriceCheck(result) {
   const attention = comparisons.filter((item) => item.status !== "ok");
   const summaryChecks = result.summary?.checks || {};
   const summaryOk = Object.keys(SALE_ASN_SUMMARY_LABELS)
-    .every((key) => summaryChecks[key]?.ok);
+    .every((key) => summaryChecks[key]?.ok || summaryChecks[key]?.skipped);
   const summaryFailed = Object.keys(SALE_ASN_SUMMARY_LABELS)
-    .filter((key) => summaryChecks[key] && !summaryChecks[key].ok);
+    .filter((key) => summaryChecks[key] && !summaryChecks[key].skipped && !summaryChecks[key].ok);
 
   const chips = [
     `<span class="sale-asn-price-chip" data-tone="${matched.length ? "ok" : "muted"}">${matched.length} khớp</span>`,

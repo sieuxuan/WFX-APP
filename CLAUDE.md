@@ -882,6 +882,8 @@ Các workflow riêng hiện có:
   thời không làm thay đổi cặp Country Of Destination/Final Destination mặc định.
   Vì Search PO của WFX là tìm chứa chuỗi, kết quả phải được lọc lại theo PO No.
   exact trước khi chọn; `779` không được nhận `779A`.
+  Với Buyer Ref chỉ gồm số, `PO 19942` trên WFX khớp `19942` trong file ở
+  các bước tìm PO, Order Details và Check giá / Qty. Giữ nguyên hậu tố ADD.
   Ô gộp `OC No./Buyer Order Ref.` dạng `PSW-…/PO0003760` phải tách phần
   Buyer Order Ref sau mã OC để lọc exact. Ưu tiên tổ hợp duy nhất chỉ gồm PO
   gốc, ví dụ `475 + 1900 = 2375`. Nếu không có tổ hợp đó, được xét thêm đúng
@@ -930,7 +932,8 @@ Các workflow riêng hiện có:
   Style Description. Khi WFX có nhiều dòng cùng khớp mạnh một Style (ví dụ các
   biến thể SLIM FIT/CLASSIC FIT), áp dụng cùng dữ liệu Style cho tất cả; chỉ
   dừng ambiguous khi nhiều kết quả chỉ khớp token yếu. Sau đó điền Shipping
-  Info với Consignor Address `BILL-ADD - PSHK`,
+  Info với Consignor Address `BILL-ADD - Billing Address` khi Division đang là
+  PSSG và `BILL-ADD - PSHK` ở các Division khác,
   Factory theo FTY bằng lựa chọn gần đúng tốt nhất, không phân biệt hoa/thường,
   và bỏ qua mọi option Factory có dấu chấm ở cuối. Không tự điền Notify 1.
   Shipment Mode phải
@@ -955,7 +958,9 @@ Các workflow riêng hiện có:
   Details là bằng chứng ưu tiên khi so khớp; tổng tiền là tổng Qty×Price từng dòng.
   Tổng Qty và Qty×Price file phải được so với Total Quantity, Value In Doc Currency và Net Value In
   Doc Currency ở Summary Total; có nút xuất workbook kết quả và không sửa dữ
-  liệu WFX. Panel chỉ rộng 440px nên kết quả trong app phải rút gọn: một hàng
+  liệu WFX. Dòng trống Price chỉ đối chiếu Qty. Nếu thiếu Price ở bất kỳ dòng nào,
+  chỉ đối chiếu Total Quantity trong Summary Total và đánh dấu hai mục tiền là bỏ qua.
+  Panel chỉ rộng 440px nên kết quả trong app phải rút gọn: một hàng
   chip `n khớp`/`n lệch`/`Summary ✓|✕`, chỉ dòng `status != "ok"` và các
   Summary lệch hiện sẵn dạng `File → WFX`, dòng khớp nằm trong `<details>`.
   Dòng không so được Qty/Price (`shipment_not_found`, `file_value_missing`,

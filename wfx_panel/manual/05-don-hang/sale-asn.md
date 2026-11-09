@@ -46,7 +46,8 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
     No., số cảnh báo Shipping Info, kết quả đối chiếu và các nút xuất.
 11. Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm
     `Save`.
-12. Nếu đã nhập `Qty` và `Price`, bước `Check giá / Qty` tự chạy trước Save.
+12. Bước `Check giá / Qty` tự chạy trước Save. Dòng trống `Price` chỉ đối chiếu
+    `Qty`. Nếu có dòng trống `Price`, `Summary Total` chỉ đối chiếu tổng Qty.
     Ứng dụng đối chiếu từng `PO No` + `Style No` trong file với `PO` được tách từ
     `Order No.` dạng `mã hệ thống/PO` + `Article` ở `Shipment Details`, sau đó tổng
     kết `Total Quantity`, `Value In Doc Currency` và `Net Value In Doc Currency`
@@ -117,7 +118,10 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
   thẻ file quay lại với nút `Bắt đầu tạo Sale ASN`. Bấm lại để chạy tiếp cùng
   file đó; không cần chọn file lại từ đầu.
 
-Riêng trong `Shipping Info`, từng trường được xử lý độc lập. `Consignee Address`
+Trong `Shipping Info`, Division PSSG dùng `BILL-ADD - Billing Address` cho
+`Consignor Address`. Các Division khác dùng `BILL-ADD - PSHK`.
+
+Từng trường được xử lý độc lập. `Consignee Address`
 và `Ship To` có thể nhập gần đúng với nội dung trong danh sách WFX; ứng dụng chọn
 dòng gần nhất duy nhất. Nếu không có dòng phù hợp, ứng dụng bỏ qua để bạn tự điền.
 Với `FTY`, bạn có thể nhập phần tên gần đúng, ví dụ `giao thuy`. Ứng dụng tìm
@@ -169,6 +173,8 @@ liệu.
 ## Quy tắc của file Excel
 
 - Mỗi file chỉ chứa một Invoice No. và một FTY.
+- Với PO dạng số, ứng dụng đối chiếu được cả khi WFX hiển thị thêm tiền tố `PO `,
+  ví dụ `19942` trong Excel khớp với `PO 19942` trên WFX.
 - Dòng có `PO No` là một dòng import. Dòng trống cả `PO No` và `Style No`
   nhưng có `Qty` được cộng vào PO/Style gần nhất phía trên; không tạo thêm
   dòng import. Dòng hoàn toàn trống hoặc ghi chú có tên ở ô Style mà không có

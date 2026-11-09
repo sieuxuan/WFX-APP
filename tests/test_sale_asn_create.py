@@ -1656,6 +1656,8 @@ def test_shipping_info_skips_failed_field_and_continues(monkeypatch):
             return None
 
     class FakeFrame:
+        page = type("FakePage", (), {"frames": []})()
+
         def locator(self, selector):
             assert selector == "#tabShippingInfo"
             return FakeTab()
@@ -1766,6 +1768,8 @@ def test_shipping_keeps_default_final_destination_when_country_is_not_found(
             return None
 
     class FakeFrame:
+        page = type("FakePage", (), {"frames": []})()
+
         def locator(self, selector):
             assert selector == "#tabShippingInfo"
             return FakeTab()
@@ -1815,6 +1819,8 @@ def test_shipping_keeps_destination_defaults_when_file_destination_is_blank(monk
             return None
 
     class FakeFrame:
+        page = type("FakePage", (), {"frames": []})()
+
         def locator(self, _selector):
             return FakeTab()
 

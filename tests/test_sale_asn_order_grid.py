@@ -620,10 +620,14 @@ def test_only_the_columns_with_a_value_are_written(monkeypatch):
 
 
 @pytest.mark.parametrize("date_case", ["common", "later_row", "per_po", "blank"])
-def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case):
+@pytest.mark.parametrize("file_pos, wfx_pos", [
+    (("PO0003760", "PO0003762"), ("PO0003760", "PO0003762")),
+    (("19942", "19949"), ("PO 19942", "PO 19949")),
+])
+def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case, file_pos, wfx_pos):
     rows = [
-        {"po_no": "PO0003760", "style_no": "F21-0001", "cargo_ready_date": "2026-10-26"},
-        {"po_no": "PO0003762", "style_no": "S22-0001", "cargo_ready_date": ""},
+        {"po_no": file_pos[0], "style_no": "F21-0001", "cargo_ready_date": "2026-10-26", "carton": "35"},
+        {"po_no": file_pos[1], "style_no": "S22-0001", "cargo_ready_date": "", "carton": "8"},
     ]
     if date_case == "later_row":
         rows[0]["cargo_ready_date"] = ""
@@ -633,11 +637,11 @@ def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case):
     elif date_case == "blank":
         rows[0]["cargo_ready_date"] = ""
     identities = [
-        ("PO0003760", "F21-0001"),
-        ("PO0003760", "F21-0001"),
-        ("PO0003760 - ADD", "F21-0001"),
-        ("PO0003762", "S22-0001"),
-        ("PO0003762- ADD", "S22-0001"),
+        (wfx_pos[0], "F21-0001"),
+        (wfx_pos[0], "F21-0001"),
+        (f"{wfx_pos[0]} - ADD", "F21-0001"),
+        (wfx_pos[1], "S22-0001"),
+        (f"{wfx_pos[1]}- ADD", "S22-0001"),
     ]
     markup = "".join(
         f'<tr class="trContent"><td id="colOrderRefNum">{po}</td>'
@@ -657,6 +661,7 @@ def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case):
                 '<td id="colFFDate1"><input value="untouched"></td></tr></table>'
             )
 
+            order_details._wait_order_grid(page, rows, timeout_s=1)
             order_details._fill_order_details(page, rows, logs.append)
 
             actual = page.locator(f"{ORDER_GRID_SELECTOR} td#colFFDate1 input").evaluate_all(
@@ -670,8 +675,8 @@ def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case):
             assert actual == expected
             assert page.locator("#other-grid input").input_value() == "untouched"
             assert page.locator(f"{ORDER_GRID_SELECTOR} td#colTotalNoOfCartons input").evaluate_all(
-                "inputs => inputs.every(input => input.value === '5')"
-            )
+                "inputs => inputs.map(input => input.value)"
+            ) == ["35", "5", "5", "8", "5"]
             if date_case != "blank":
                 assert any("toàn bộ 5 dòng Order Details" in line for line in logs)
         finally:

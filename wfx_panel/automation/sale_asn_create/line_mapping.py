@@ -6,11 +6,11 @@ import re
 from collections import Counter
 from collections.abc import Sequence
 
-from wfx_panel.automation.sale_asn_create.values import _fold
+from wfx_panel.automation.sale_asn_create.values import _fold, _po_key
 
 
 def _line_group(row: dict) -> tuple[str, str]:
-    return _fold(row.get("po_no")), _fold(row.get("style_no"))
+    return _po_key(row.get("po_no")), _fold(row.get("style_no"))
 
 
 def _separate_line_groups(rows: Sequence[dict]) -> set[tuple[str, str]]:
@@ -36,14 +36,14 @@ def _remember_line_selection(
     bindings: dict, row: dict, candidates: Sequence[dict]
 ) -> None:
     references: set[str] = set()
-    wanted_po = _fold(row.get("po_no"))
+    wanted_po = _po_key(row.get("po_no"))
     for candidate in candidates:
         values = candidate.get("cell_values") or ()
         for value in (candidate.get("po_no"), *values):
             prefix, separator, reference = str(value or "").partition("/")
             if (
                 separator
-                and _fold(reference) in {wanted_po, f"{wanted_po} add"}
+                and _po_key(reference) in {wanted_po, f"{wanted_po} add"}
                 and re.fullmatch(r"PS[WKG]-[^/]+", prefix.strip(), flags=re.IGNORECASE)
             ):
                 references.add(_fold(prefix))
