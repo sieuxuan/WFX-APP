@@ -437,6 +437,22 @@
           }
         },
         {
+          "id": "don-hang-gmpo",
+          "title": "Xuất và nhập số lượng GMPO",
+          "summary": "Xuất Order Details ra Excel và điền lại Order Qty theo PO, màu và size.",
+          "file": "05-don-hang/gmpo.md",
+          "keywords": ["gmpo", "blanket gmpo", "excel", "order qty", "số lượng"],
+          "covers": {
+            "modules": ["gmpo"],
+            "actions": ["gmpo-export", "gmpo-import"],
+            "settings": [],
+            "errors": [
+              "GMPO_TAB_REQUIRED", "GMPO_GRID_NOT_READY", "GMPO_FILE_INVALID",
+              "GMPO_EXPORT_FAILED", "GMPO_IMPORT_CONFLICT", "GMPO_APPLY_FAILED"
+            ]
+          }
+        },
+        {
           "id": "don-hang-gdn-dispatch",
           "title": "(GDN) Dispatch",
           "summary": "Tạo Dispatch từ Invoice GRN sau thời gian chờ bắt buộc.",

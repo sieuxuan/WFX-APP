@@ -7,6 +7,7 @@ let MODULE_GROUPS = [
   { name: "Operation", accent: "cyan", modules: [
     { name: "Catalog", id: "0003_6200", icon: "CA", kind: "catalog", description: "Quản lý Style, làm và tra cứu Costing, BOM." },
     { name: "OC List", id: "0004_0050_0020", icon: "OC", kind: "oc", description: "Quản lý, tạo mới và điều chỉnh đơn đặt hàng OC." },
+    { name: "GMPO", id: "gmpo", icon: "GM", kind: "gmpo", description: "Xuất Order Details và nhập Order Qty trên tab Blanket GMPO đang mở." },
     { name: "Sample Order", id: "0004_0056_4070", icon: "SL", kind: "sample", description: "Quản lý và tạo mới đơn hàng mẫu." },
     { name: "Sale ASN", id: "0004_0070_0020", icon: "AS", kind: "sale_asn", description: "Tạo và tra cứu thông báo giao hàng Sale ASN." },
     { name: "(GDN) Dispatch", id: "gdn_dispatch", icon: "GD", kind: "gdn_dispatch", description: "Tạo phiếu xuất kho GDN từ Invoice GRN." },
@@ -331,6 +332,8 @@ const MODULE_RUN_METHODS = new Set([
   "download_style_template",
 ]);
 const BUSY_MESSAGES = {
+  export_gmpo: "Đang xuất Order Details từ tab GMPO…",
+  import_gmpo: "Đang kiểm tra và điền Order Qty trên WFX…",
   download_expense_template: "Đang lưu mẫu Expense Invoice…",
   review_expense_import: "Đang kiểm tra file Expense Invoice…",
   fill_expense_import: "Đang điền Expense Invoice trên WFX…",

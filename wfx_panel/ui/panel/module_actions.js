@@ -15,7 +15,17 @@ const BACKEND_PROGRESS_HANDLERS = {
   run_color_po_report_batch: updateColorReportProgress,
 };
 
+async function chooseGmpoFile(save) {
+  const selected = await callQuiet("choose_gmpo_file", save);
+  if (selected?.ok) {
+    return save ? call("export_gmpo", selected.file_path) : call("import_gmpo", selected.file_path);
+  }
+  if (selected && selected.code !== "GMPO_FILE_CANCELLED") handleResult(selected);
+}
+
 const moduleActions = {
+  "gmpo-export": () => chooseGmpoFile(true),
+  "gmpo-import": () => chooseGmpoFile(false),
   "oc-list": () => selectedModule && runSelectedModuleAction("open_module", selectedModule.id),
   "oc-template": async () => {
     const result = await call("download_oc_template");

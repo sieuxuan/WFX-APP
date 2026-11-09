@@ -232,9 +232,9 @@ def test_bang_ma_loi_co_chi_muc_tim_kiem_khong_dau():
 
 
 def test_helper_trich_dung_so_luong_hien_co():
-    assert len(surface.module_ids()) == 19
+    assert len(surface.module_ids()) == 20
     assert "0003_6200" in surface.module_ids()
-    assert len(surface.module_actions()) == 87
+    assert len(surface.module_actions()) == 89
     assert surface.catalog_actions() == {
         "browse",
         "find",

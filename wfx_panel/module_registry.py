@@ -51,6 +51,19 @@ class OCListModule(ModuleController):
     description = "Quản lý, tạo mới và điều chỉnh đơn đặt hàng OC."
 
 
+class GMPOModule(ModuleController):
+    module_id = "gmpo"
+    kind = "gmpo"
+    description = "Xuất Order Details và nhập Order Qty trên tab Blanket GMPO đang mở."
+
+    def open(self, login_module: Any, log: Callable[[str], None]) -> dict:
+        from wfx_panel.automation.gmpo import run_gmpo
+
+        result = run_gmpo(log)
+        result.pop("snapshot", None)
+        return result
+
+
 class SampleListModule(ModuleController):
     module_id = "0004_0056_4070"
     kind = "sample"
@@ -166,6 +179,7 @@ class SupplierListModule(ModuleController):
 CONTROLLER_TYPES = (
     CatalogModule,
     OCListModule,
+    GMPOModule,
     SampleListModule,
     SaleASNModule,
     GDNDispatchModule,

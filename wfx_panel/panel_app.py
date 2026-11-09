@@ -254,6 +254,9 @@ class PanelApp:
     def choose_costing_import_file(self) -> dict:
         return self._dialogs.choose_costing_import_file()
 
+    def choose_gmpo_file(self, save: bool) -> dict:
+        return self._dialogs.choose_gmpo_file(save)
+
     def choose_costing_export_file(self, style_name: str, file_format: str='xlsx') -> dict:
         return self._dialogs.choose_costing_export_file(style_name, file_format)
 
@@ -726,6 +729,7 @@ class PanelApp:
         self.api.download_expense_template = self.download_expense_template  # type: ignore[attr-defined]
         self.api.export_expense_format = self.export_expense_format  # type: ignore[attr-defined]
         self.api.choose_expense_import_file = self.choose_expense_import_file  # type: ignore[attr-defined]
+        self.api.choose_gmpo_file = self.choose_gmpo_file  # type: ignore[attr-defined]
         self.api.download_sale_asn_template = self.download_sale_asn_template  # type: ignore[attr-defined]
         self.api.save_sale_asn_continue_template = (  # type: ignore[attr-defined]
             self.save_sale_asn_continue_template

@@ -34,6 +34,26 @@ class FileDialogController:
     def __init__(self, app: PanelApp) -> None:
         self._app = app
 
+    def choose_gmpo_file(self, save: bool) -> dict:
+        window = self._app.window
+        if window is None:
+            return {"ok": False, "code": "GMPO_FILE_INVALID", "message": "Cửa sổ chọn file chưa sẵn sàng."}
+        try:
+            selected = window.create_file_dialog(
+                webview.SAVE_DIALOG if save else webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Excel workbook (*.xlsx)",),
+                **({"save_filename": "GMPO-Order-Details.xlsx"} if save else {}),
+            )
+            if not selected:
+                return {"ok": False, "code": "GMPO_FILE_CANCELLED"}
+            path = _dialog_selected_path(selected)
+            if save:
+                path = path.with_suffix(".xlsx")
+            return {"ok": True, "file_path": str(path)}
+        except (OSError, ValueError, webview.WebViewException):
+            return {"ok": False, "code": "GMPO_FILE_INVALID", "message": "Không mở được cửa sổ chọn file GMPO."}
+
     def _save_expense_export(self, target: Path, result: dict) -> dict:
         try:
             save_expense_template(target, result.get("options"))
