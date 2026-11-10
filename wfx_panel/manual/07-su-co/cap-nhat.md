@@ -8,7 +8,7 @@ Cập nhật WFX Smart lên bản mới để nhận tính năng và sửa lỗi
 2. Bấm `Kiểm tra ngay` tại phần Cập nhật tự động.
 3. Nếu có phiên bản mới, đóng Cài đặt và đọc dải thông báo trên bảng điều khiển.
 4. Bấm `Cập nhật ngay` trên dải thông báo.
-5. Chờ ứng dụng tải bản mới và tự đóng.
+5. Theo dõi tiến trình tải và cài bản mới trong cửa sổ cập nhật WFX Smart.
 6. Chờ ứng dụng tự mở lại.
 7. Kiểm tra phiên bản ở góc trên bảng điều khiển.
 

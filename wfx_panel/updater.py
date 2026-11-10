@@ -955,7 +955,8 @@ $form.ShowDialog() | Out-Null
     helper.write_text(content, encoding="utf-8-sig")
     creation_flags = 0
     if os.name == "nt":
-        creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        # The helper owns a WinForms progress dialog and needs no console.
+        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     try:
         subprocess.Popen(
             [
