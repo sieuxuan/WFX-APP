@@ -35,10 +35,14 @@ from wfx_panel.automation.sale_asn_create.errors import (
     _POFrameChanged,
 )
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
-from wfx_panel.automation.sale_asn_create.line_mapping import _selection_identity
+from wfx_panel.automation.sale_asn_create.line_mapping import (
+    _order_style_matches,
+    _selection_identity,
+)
 from wfx_panel.automation.sale_asn_create.values import (
     _decimal_display,
     _decimal_or_none,
+    _fold,
     _po_key,
 )
 
@@ -604,14 +608,21 @@ def _unique_dispatched_qty_subset(
     if any(value is None or value <= 0 for value in quantities):
         return None
 
+    states = _qty_subsets(quantities, expected_qty)
+    selected = states.get(expected_qty) if states is not None else None
+    return [dict(candidates[index]) for index in selected] if selected else None
+
+
+def _qty_subsets(
+    quantities: Sequence[Decimal], max_qty: Decimal,
+) -> dict[Decimal, tuple[int, ...] | None] | None:
     # value None đánh dấu tổng này có từ hai tổ hợp trở lên.
     states: dict[Decimal, tuple[int, ...] | None] = {Decimal("0"): ()}
     for index, quantity in enumerate(quantities):
-        assert quantity is not None
         updated = dict(states)
         for total, subset in states.items():
             combined = total + quantity
-            if combined > expected_qty:
+            if combined > max_qty:
                 continue
             proposed = None if subset is None else (*subset, index)
             if combined not in updated:
@@ -622,10 +633,33 @@ def _unique_dispatched_qty_subset(
         if len(states) > 4096:
             return None
 
-    selected = states.get(expected_qty)
-    if not selected:
+    return states
+
+
+def _combined_po_candidate(
+    row: dict, candidates: Sequence[dict], expected_qty: Decimal, *, searched_style: bool,
+) -> dict | None:
+    total_qty = expected_qty + row["_next_line_qty"]
+    wanted_po, wanted_style = _po_key(row.get("po_no")), _fold(row.get("style_no"))
+    quantities = [
+        _decimal_or_none(candidate.get("dispatched_qty"))
+        for candidate in candidates
+    ]
+    if any(qty is None or qty <= 0 for qty in quantities):
         return None
-    return [dict(candidates[index]) for index in selected]
+    single_line_states = _qty_subsets(quantities, expected_qty)
+    if single_line_states is None or expected_qty in single_line_states:
+        return None
+    matches = [
+        candidate
+        for candidate, qty in zip(candidates, quantities, strict=True)
+        if qty == total_qty
+        and _po_reference_matches(candidate.get("po_no"), wanted_po)
+        and (searched_style or _order_style_matches(wanted_style, _fold(candidate.get("style_no"))))
+    ]
+    if len(matches) != 1:
+        return None
+    return {**matches[0], "_combined_member": int(row["source_row"]) + 1}
 
 
 def _po_reference(value: object) -> str:
@@ -683,6 +717,7 @@ def _auto_add_po(
     active: list[str] = []
     last: list[dict] = []
     label = ""
+    expected_qty = _decimal_or_none(row.get("qty"))
     for field in enabled:
         exact: list[dict] = []
         related_add: list[dict] = []
@@ -747,10 +782,9 @@ def _auto_add_po(
                 last = exact + related_add
                 # Một PO gốc duy nhất đã đúng Qty thì vẫn thêm ngay, không để
                 # các dòng ADD làm mất đường nhanh cũ hoặc tạo mơ hồ giả.
-                expected = _decimal_or_none(row.get("qty"))
                 if len(exact) == 1 and (
-                    expected is None
-                    or _decimal_or_none(exact[0].get("dispatched_qty")) == expected
+                    expected_qty is None
+                    or _decimal_or_none(exact[0].get("dispatched_qty")) == expected_qty
                 ):
                     last = exact
                     related_add = []
@@ -781,19 +815,35 @@ def _auto_add_po(
         if not last:
             # Mỗi lượt chỉ thêm điều kiện nên 0 kết quả không thể tăng lại.
             break
-        if len(last) > 1 and field != enabled[-1]:
+        more_filters = field != enabled[-1]
+        if row.get("_next_line_qty") and expected_qty is not None and expected_qty > 0:
+            if field == "po" and "style" in enabled and len(last) == 1:
+                dispatched = _decimal_or_none(last[0].get("dispatched_qty"))
+                if dispatched is not None and dispatched != expected_qty:
+                    continue
+            if not more_filters or field == "style":
+                combined = _combined_po_candidate(
+                    row, last, expected_qty, searched_style="style" in active_fields,
+                )
+                if combined is not None:
+                    final_combined = final or bool(row.get("_next_line_is_last"))
+                    _write_log(
+                        log,
+                        f"[SALE ASN] Dòng {row.get('source_row')} + {combined['_combined_member']}: "
+                        f"khớp một dòng WFX có Dispatched Qty {combined['dispatched_qty']}; thêm một lần.",
+                    )
+                    _add_selected_po_candidates(frame, row, [combined], log, final=final_combined)
+                    return True, [combined], label
+        if len(last) > 1 and more_filters and field != "style":
             continue
 
-        # Qty trong file vẫn được kiểm ngay tại Add PO. Nếu đã dùng hết tiêu
-        # chí nhưng còn nhiều dòng (thường là các size), chỉ auto-add khi tổng
-        # Dispatched Qty bằng Qty file. Lệch thì giữ popup để user quyết định.
-        expected_qty = _decimal_or_none(row.get("qty"))
-        if related_add and expected_qty is None:
-            return False, last, "qty_unavailable:thiếu Qty file để chọn cả PO gốc và ADD"
-        if expected_qty is not None and len(last) >= 2:
+        if len(last) >= 2:
             qty_subset = _unique_dispatched_qty_subset(exact or last, expected_qty)
             if qty_subset is None and related_add:
                 qty_subset = _unique_dispatched_qty_subset(last, expected_qty)
+            # Sau Style, chỉ bỏ qua Destination nếu Qty xác định đúng một dòng.
+            if more_filters and len(qty_subset or ()) != 1:
+                continue
             if qty_subset is not None and len(qty_subset) < len(last):
                 last = qty_subset
                 _write_log(
@@ -804,6 +854,8 @@ def _auto_add_po(
                         f"{len(last)} dòng theo Dispatched Qty; tự chọn."
                     ),
                 )
+        if related_add and expected_qty is None:
+            return False, last, "qty_unavailable:thiếu Qty file để chọn cả PO gốc và ADD"
         all_dispatched_qty = [
             _decimal_or_none(item.get("dispatched_qty")) for item in last
         ]

@@ -83,10 +83,20 @@ hợp cùng khớp, bạn vẫn cần chọn trong ứng dụng. Nếu file đã
 ứng dụng giữ riêng dòng đó để không lấy trùng cho PO gốc. Bước `Check giá / Qty`
 cũng cộng phần ADD vào PO gốc khi file không ghi riêng ADD.
 
+Nếu WFX có một dòng tổng, ứng dụng có thể thêm dòng đó một lần cho hai dòng
+Excel liền kề có cùng PO và Style. Ví dụ hai dòng có Qty 74 và 364 khớp với
+một dòng WFX có Qty 438. Các dòng nằm cách nhau vẫn được
+tìm theo Qty riêng. Bước `Check giá / Qty` tính tiền theo Qty và giá gốc của
+từng dòng Excel. Nếu WFX chỉ hiện một giá cho dòng tổng, ứng dụng báo cần
+kiểm tra giá khi Excel có hai giá khác nhau.
+
 Ứng dụng mặc định tìm PO theo thứ tự `PO` → `Style` → `Destination`. Nếu một
-bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu dùng hết các tiêu chí mà
-vẫn còn nhiều dòng, ứng dụng so `Qty` trong file với `Dispatched Qty`: nếu chỉ
-có một dòng hoặc một tập dòng duy nhất cho tổng đúng, ứng dụng tự chọn tập đó;
+bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu sau bước `Style` có
+nhiều dòng và `Qty` trong file xác định được đúng một dòng theo
+`Dispatched Qty`, ứng dụng thêm dòng đó ngay và bỏ qua `Destination`.
+Nếu dùng hết các tiêu chí mà vẫn còn nhiều dòng, ứng dụng so `Qty` trong file
+với `Dispatched Qty`. Nếu chỉ có một dòng hoặc một tập dòng duy nhất cho tổng
+đúng, ứng dụng tự chọn tập đó;
 nếu tổng toàn bộ dòng đúng thì tự chọn tất cả. Chỉ khi thiếu Qty, không có tập
 khớp hoặc có nhiều tập cùng khớp, các dòng phù hợp mới hiện thành checkbox ngay
 trong ứng dụng. Bạn chọn dòng cần thêm rồi bấm `Thêm

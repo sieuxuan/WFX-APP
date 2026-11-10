@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Sequence
 from decimal import Decimal
 from typing import Any
@@ -14,10 +15,11 @@ from wfx_panel.automation.sale_asn_create.constants import (
 )
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
 from wfx_panel.automation.sale_asn_create.line_mapping import (
+    _combined_line_owners,
     _line_group,
+    _order_style_matches,
     _separate_line_groups,
 )
-from wfx_panel.automation.sale_asn_create.order_details import _order_style_matches
 from wfx_panel.automation.sale_asn_create.po import (
     _click_dom_action,
     _unique_dispatched_qty_subset,
@@ -76,7 +78,9 @@ def _shipment_order_po(value: object) -> str:
 QTY_PRICE_TOLERANCE = Decimal("0.0001")
 
 
-def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple, dict[str, Any]]:
+def _group_file_rows(
+    source_rows: Sequence[dict], combined_owners: dict[int, int] | None = None,
+) -> dict[tuple, dict[str, Any]]:
     """Giữ từng dòng màu riêng khi PO + Style lặp, kể cả khác giá."""
     groups: dict[tuple, dict[str, Any]] = {}
     separate = _separate_line_groups(source_rows)
@@ -89,8 +93,9 @@ def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple, dict[str, Any]]
         key = (folded_po, folded_style)
         source_row = int(source.get("source_row") or index + 2)
         separate_line = _line_group(source) in separate
+        binding_id = (combined_owners or {}).get(source_row, source_row)
         group = groups.setdefault(
-            (*key, source_row) if separate_line else key,
+            (*key, binding_id) if separate_line else key,
             {
                 "po_no": po_no,
                 "style_no": style_no,
@@ -100,7 +105,7 @@ def _group_file_rows(source_rows: Sequence[dict]) -> dict[tuple, dict[str, Any]]
                 "qty_values": [],
                 "price_values": [],
                 "separate_line": separate_line,
-                "binding_id": source_row,
+                "binding_id": binding_id,
             },
         )
         group["source_rows"].append(int(source.get("source_row") or 0))
@@ -152,6 +157,8 @@ def _file_totals(group: dict[str, Any]) -> tuple[Decimal | None, Decimal | None]
         else None
     )
     prices = {value for value in group["price_values"] if value is not None}
+    if len(qty_values) > 1 and None in group["price_values"]:
+        return file_qty, None
     return file_qty, next(iter(prices)) if len(prices) == 1 else None
 
 
@@ -242,6 +249,25 @@ def _price_check_row(group: dict[str, Any], matched: list[dict]) -> dict[str, An
     _compare_qty_and_price(
         result, file_qty, file_price, system_qty, next(iter(system_prices), None)
     )
+    if (
+        result["qty_ok"] and len(group["source_rows"]) > 1
+        and file_price is None and None not in group["price_values"]
+    ):
+        file_qty_by_price: Counter[Decimal] = Counter()
+        for price, qty in zip(group["price_values"], group["qty_values"], strict=True):
+            file_qty_by_price[price] += qty
+        system_qty_by_price: Counter[Decimal | None] = Counter()
+        for item, qty in zip(matched, system_qty_values, strict=True):
+            system_qty_by_price[_decimal_or_none(item.get("price"))] += qty
+        if file_qty_by_price == system_qty_by_price:
+            result.update(price_ok=True, message="Khớp Qty theo từng Price.")
+        else:
+            prices = ", ".join(_decimal_display(price) for price in sorted(file_qty_by_price))
+            result.update(
+                status="system_price_ambiguous",
+                price_ok=False,
+                message=f"Khớp tổng Qty {result['file_qty']}. Cần kiểm tra Qty theo từng giá Excel ({prices}) trên WFX.",
+            )
     return result
 
 
@@ -252,7 +278,7 @@ def _price_check_rows(
     line_bindings: dict | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str | bool]]:
     """So sánh file với Shipment Details theo PO trong Order No + Article."""
-    groups = _group_file_rows(source_rows)
+    groups = _group_file_rows(source_rows, _combined_line_owners(line_bindings or {}))
     by_po = _shipment_rows_by_po(shipment_rows)
     separate_pos = {key[0] for key in groups}
 
@@ -291,11 +317,14 @@ def _price_check_rows(
         results.append(comparison)
         if file_qty is not None:
             file_quantities.append(file_qty)
-        file_price_missing |= file_price is None
-        if file_qty is not None and file_price is not None:
-            complete_file_rows.append((file_qty, file_price))
+        for qty, price in zip(group["qty_values"], group["price_values"], strict=True):
+            file_price_missing |= price is None
+            if qty is not None and price is not None:
+                complete_file_rows.append((qty, price))
 
-    every_file_row_complete = len(complete_file_rows) == len(groups)
+    every_file_row_complete = len(complete_file_rows) == sum(
+        len(group["source_rows"]) for group in groups.values()
+    )
     total_qty = sum(file_quantities, Decimal("0"))
     total_value = sum((qty * price for qty, price in complete_file_rows), Decimal("0"))
     return results, {

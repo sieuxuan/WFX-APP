@@ -12,6 +12,7 @@ from decimal import Decimal
 import pytest
 
 import wfx_panel.automation.sale_asn_create.flow as flow
+import wfx_panel.automation.sale_asn_create.po as po
 import wfx_panel.automation.sale_asn_create.price_check as price_check
 import wfx_panel.automation.sale_asn_create.shipping as shipping
 from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
@@ -107,6 +108,84 @@ def _run(**kwargs):
 
 
 # --- kiểm tra đầu vào ---------------------------------------------------
+
+
+@pytest.mark.parametrize("tail_qty", [None, "287"])
+def test_adjacent_rows_use_one_combined_po_and_a_later_row_keeps_its_qty(
+    monkeypatch, clock, tail_qty,
+):
+    rows = [
+        {"source_row": 5, "po_no": "PO-123", "style_no": "Test   Pant", "qty": "74", "destination": "US"},
+        {"source_row": 6, "po_no": "PO-123", "style_no": "Test Pant", "qty": "364"},
+    ]
+    if tail_qty:
+        rows.append({**rows[1], "source_row": 9, "qty": tail_qty})
+    candidates = [
+        {"po_no": "PO-123", "selection_value": qty, "dispatched_qty": qty}
+        for qty in ["438", *([tail_qty] if tail_qty else [])]
+    ]
+    searches = []
+    adds = []
+    bindings = {}
+    _wire_flow(monkeypatch, clock, _auto_add_po_with_frame_retry=po._auto_add_po_with_frame_retry)
+
+    def search(_frame, row, *, fields):
+        searches.append((row["source_row"], fields))
+        return [] if "destination" in fields else candidates
+
+    monkeypatch.setattr(po, "_search_po", search)
+    monkeypatch.setattr(
+        po, "_add_selected_po_candidates",
+        lambda _f, _r, chosen, _l, *, final: adds.append((chosen[0]["selection_value"], final)),
+    )
+    result = _run(rows=rows, line_bindings=bindings)
+
+    assert result["ok"] and result["code"] == "SALE_ASN_FORM_COMPLETED"
+    assert adds == ([("438", False), ("287", True)] if tail_qty else [("438", True)])
+    assert searches[:2] == [(5, ("po",)), (5, ("po", "style"))]
+    assert all(source_row != 6 and "destination" not in fields for source_row, fields in searches)
+    assert bindings[6]["combined_into"] == 5
+
+
+@pytest.mark.parametrize("intervening_style", [None, "Other Pant"])
+def test_nonadjacent_rows_are_not_combined(monkeypatch, clock, intervening_style):
+    rows = [
+        {"source_row": 5, "po_no": "PO-123", "style_no": "Test Pant", "qty": "74"},
+        {"source_row": 7, "po_no": "PO-123", "style_no": "Test Pant", "qty": "364"},
+    ]
+    if intervening_style:
+        rows.insert(1, {**rows[0], "source_row": 6, "style_no": intervening_style})
+    _wire_flow(monkeypatch, clock, _auto_add_po_with_frame_retry=po._auto_add_po_with_frame_retry)
+    monkeypatch.setattr(po, "_search_po", lambda *_a, **_k: [
+        {"po_no": "PO-123", "selection_value": "438", "dispatched_qty": "438"},
+    ])
+    monkeypatch.setattr(po, "_add_selected_po_candidates", lambda *_a, **_k: pytest.fail("Unexpected Add"))
+
+    assert _run(rows=rows)["code"] == "SALE_ASN_PO_QTY_MISMATCH"
+
+
+@pytest.mark.parametrize("separate", [False, True])
+def test_an_adjacent_pair_keeps_individual_matches_and_never_guesses_between_totals(
+    monkeypatch, clock, separate,
+):
+    rows = [
+        {"source_row": 5, "po_no": "PO-123", "style_no": "Test Pant", "qty": "74"},
+        {"source_row": 6, "po_no": "PO-123", "style_no": "Test Pant", "qty": "364"},
+    ]
+    quantities = ["438", "74", "364"] if separate else ["438", "438"]
+    candidates = [
+        {"po_no": "PO-123", "selection_value": str(index), "dispatched_qty": qty}
+        for index, qty in enumerate(quantities)
+    ]
+    _wire_flow(monkeypatch, clock, _auto_add_po_with_frame_retry=po._auto_add_po_with_frame_retry)
+    monkeypatch.setattr(po, "_search_po", lambda *_a, **_k: candidates)
+    adds = []
+    monkeypatch.setattr(po, "_add_selected_po_candidates", lambda _f, _r, chosen, _l, **_k: adds.extend(chosen))
+
+    result = _run(rows=rows)
+
+    assert result["code"] == ("SALE_ASN_FORM_COMPLETED" if separate else "SALE_ASN_PO_SELECTION_REQUIRED")
+    assert [item["dispatched_qty"] for item in adds] == (["74", "364"] if separate else [])
 
 
 def test_adding_po_without_a_buyer_never_opens_the_browser(monkeypatch, clock):

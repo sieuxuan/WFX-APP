@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.1.8",
+    "date": "2026-11-10",
+    "highlights": [
+      {
+        "title": "Sale ASN ưu tiên dòng khớp Qty sau khi lọc Style",
+        "body": "Nếu Qty trong Excel xác định được đúng một dòng WFX sau bước Style, ứng dụng thêm ngay và bỏ qua Destination.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Sale ASN nhận một dòng WFX cho hai dòng Excel liền kề",
+        "body": "Khi hai dòng liền kề cùng PO và Style chỉ khớp với một dòng WFX theo tổng Qty, ứng dụng thêm dòng tổng một lần. Các dòng ở xa vẫn được xử lý riêng. Tổng tiền vẫn tính theo Qty và giá của từng dòng Excel.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Xuất và nhập số lượng GMPO bằng Excel",
+        "body": "Xuất Order Details của Blanket GMPO, sửa Order Qty theo PO, màu và size rồi nhập lại vào WFX để kiểm tra trước khi lưu.",
+        "entry": "don-hang-gmpo"
+      }
+    ]
+  },
+  {
     "version": "1.1.7",
     "date": "2026-11-09",
     "highlights": [
