@@ -855,10 +855,15 @@ Các workflow riêng hiện có:
   vượt giới hạn số. Dòng Qty chưa có cha đủ PO/Style phải báo lỗi dòng.
   Tổng Qty dùng xuyên suốt tìm PO và Check giá/Qty. Chỉ dòng để trống cả PO và
   Style mới dùng luật cộng Qty; dòng ghi đủ PO/Style luôn giữ giá và Qty riêng.
-  Với cặp PO + Style lặp, mỗi dòng Excel được gắn với lựa chọn OC/GDN riêng;
-  không dùng lại bản ghi đã thêm cho dòng khác. Binding giữ trong review qua
-  checkpoint và retry; trước khi điền phải xác nhận identity và tổng Qty trên
-  các dòng Order Details. Thiếu hoặc nhiều đáp án thì dừng, không ghi đè màu khác.
+  Với cặp PO + Style lặp, ưu tiên tìm OC/GDN riêng theo Qty từng dòng. Khi
+  không có cách khớp riêng cho dòng hiện tại, được dùng một OC/GDN duy nhất
+  có Dispatched Qty bằng tổng của đúng hai dòng Excel liền kề cùng PO + Style,
+  ví dụ `74 + 364 = 438`. Không gộp qua dòng trống hoặc dòng khác. Thêm
+  OC/GDN tổng đúng một lần và đánh dấu đã xử lý cả hai dòng trong review.
+  Binding giữ qua checkpoint và retry. Trước khi điền Order Details, xác
+  nhận identity và tổng Qty trên WFX. Nếu WFX giữ một dòng tổng, cộng các số
+  liệu đóng gói và giữ nguyên các ô giá hoặc ngày có dữ liệu khác nhau giữa
+  hai dòng. Nếu WFX tách ra, chỉ điền riêng khi xác định được đích bằng Qty.
   Shipping Mode chỉ
   bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
   nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;
@@ -893,9 +898,11 @@ Các workflow riêng hiện có:
   gốc. Danh sách chờ chọn phải giữ đúng nhãn ADD, không đổi thành nhãn PO gốc.
   Style từ file là từ khóa gần đúng (ví dụ `M Acel Jacket` phải khớp được
   `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX), không phải mã exact. Sau mỗi lần
-  thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay;
-  nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì dùng Qty file và Dispatched
-  Qty để tìm một dòng hoặc một tập dòng duy nhất có tổng khớp. Khi chỉ có một
+  thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay. Sau bước Style,
+  nếu Qty file xác định duy nhất một dòng theo Dispatched Qty thì add dòng đó
+  ngay và bỏ qua Destination. Nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì
+  dùng Qty file và Dispatched Qty để tìm một dòng hoặc một tập dòng duy nhất
+  có tổng khớp. Khi chỉ có một
   đáp án thì tự select tập đó rồi Add & Continue/OK đúng một lần; tổng của toàn
   bộ kết quả khớp cũng là một đáp án hợp lệ. Nếu WFX không đọc được Buyer Order
   Ref exact thì không được xóa sạch kết quả trước khi lớp Qty này chạy. Khi
@@ -953,8 +960,10 @@ Các workflow riêng hiện có:
   sánh Shipping Qty và Price (USD) từng dòng. Khi file không có dòng ADD riêng,
   phải cộng Shipment Details của ADD cùng PO/Style vào PO gốc; khi có dòng
   riêng thì đối chiếu riêng, không tính hai lần. Khi file lặp PO + Style, phải
-  giữ kết quả riêng theo từng dòng: không gộp mất giá khác nhau,
-  không dùng một dòng Shipment Details cho hai dòng file. Các OC đã gắn ở Order
+  giữ kết quả riêng theo từng dòng, trừ cặp liền kề đã được thêm bằng một
+  OC/GDN tổng. Với cặp đó, đối chiếu tổng Qty một lần và kiểm Qty theo từng
+  giá nếu Shipment Details có đủ dữ liệu. Nếu WFX gộp thành một giá, báo cần
+  kiểm tra giá riêng. Các OC đã gắn ở Order
   Details là bằng chứng ưu tiên khi so khớp; tổng tiền là tổng Qty×Price từng dòng.
   Tổng Qty và Qty×Price file phải được so với Total Quantity, Value In Doc Currency và Net Value In
   Doc Currency ở Summary Total; có nút xuất workbook kết quả và không sửa dữ

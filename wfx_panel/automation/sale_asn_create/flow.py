@@ -38,6 +38,7 @@ from wfx_panel.automation.sale_asn_create.line_mapping import (
     _used_line_selections,
 )
 from wfx_panel.automation.sale_asn_create.order_details import (
+    _combined_order_rows,
     _ensure_order_grid_rows,
     _ensure_po_popup_for_next_row,
     _fill_order_details,
@@ -60,6 +61,7 @@ from wfx_panel.automation.sale_asn_create.progress import (
 )
 from wfx_panel.automation.sale_asn_create.shipping import _fill_shipping
 from wfx_panel.automation.sale_asn_create.style_details import _fill_style_details
+from wfx_panel.automation.sale_asn_create.values import _decimal_or_none
 
 
 def run_sale_asn_create(
@@ -151,15 +153,29 @@ def run_sale_asn_create(
                     )
                 for index in range(first_pending, len(rows)):
                     row = _po_search_row(rows[index], rows)
+                    final_pending = index == len(rows) - 1
                     if _line_group(row) in separate_groups:
+                        source_row = int(row["source_row"])
+                        if bindings.get(source_row, {}).get("combined_into"):
+                            continue
                         row["_separate_line"] = True
-                        row["_used_line_selections"] = _used_line_selections(bindings, int(row["source_row"]))
+                        row["_used_line_selections"] = _used_line_selections(bindings, source_row)
+                        if not final_pending:
+                            next_row = rows[index + 1]
+                            if (
+                                next_row.get("source_row") == source_row + 1
+                                and _line_group(next_row) == _line_group(row)
+                                and source_row + 1 not in bindings
+                                and (qty := _decimal_or_none(next_row.get("qty"))) is not None
+                                and qty > 0
+                            ):
+                                row["_next_line_qty"] = qty
+                                row["_next_line_is_last"] = index == len(rows) - 2
                     _emit_stage_progress(
                         progress,
                         "po",
                         f"Thêm PO {index + 1}/{len(rows)}",
                     )
-                    final_pending = index == len(rows) - 1
                     added, candidates, reason, popup_frame = (
                         _auto_add_po_with_frame_retry(
                             context,
@@ -183,6 +199,10 @@ def run_sale_asn_create(
                         )
                     if _line_group(row) in separate_groups:
                         _remember_line_selection(bindings, row, candidates)
+                        final_pending = final_pending or (
+                            row.get("_next_line_is_last")
+                            and bindings.get(source_row + 1, {}).get("combined_into") == source_row
+                        )
                     if not final_pending:
                         popup_frame = _ensure_po_popup_for_next_row(
                             context,
@@ -243,7 +263,7 @@ def run_sale_asn_create(
                     main_frame = _ensure_order_grid_rows(
                         context,
                         main_frame,
-                        rows,
+                        _combined_order_rows(rows, bindings),
                         log,
                         search_fields,
                     )

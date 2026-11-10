@@ -281,3 +281,75 @@ def test_binding_reads_the_oc_for_this_po_and_ignores_slashes_in_a_style():
     candidate["cell_values"].insert(0, "PSG-STYLE/MODEL")
     _remember_line_selection(state, _rows()[0], [candidate])
     assert state[2]["oc_refs"] == ["psg rr 26 5000 1"]
+
+
+def _combined_rows_and_bindings():
+    rows = _rows()
+    rows[0].update(qty="74", price="24.26", fob_price="24.26")
+    rows[1].update(qty="364", price="23.46", fob_price="23.46", carton="9")
+    candidate = _candidate("1001", 438, "PSG-RR-26-5000.1")
+    bindings = {}
+    _remember_line_selection(bindings, rows[0], [{**candidate, "_combined_member": 3}])
+    return rows, bindings
+
+
+@pytest.mark.parametrize("split_in_order_grid", [False, True])
+def test_combined_order_details_uses_the_actual_grid_layout(monkeypatch, split_in_order_grid):
+    rows, bindings = _combined_rows_and_bindings()
+    quantities = ["74", "364"] if split_in_order_grid else ["438"]
+
+    class Frame:
+        def evaluate(self, *_args):
+            return [
+                {
+                    "row_id": str(index + 1002) if split_in_order_grid else "1001",
+                    "po_no": "PO133360",
+                    "style_no": "GMPA14590",
+                    "oc_no": "PSG-RR-26-5000.1",
+                    "qty": qty,
+                }
+                for index, qty in enumerate(quantities)
+            ]
+
+    writes = []
+    dates = []
+    monkeypatch.setattr(
+        order_details, "_set_order_grid_cell",
+        lambda _f, _p, _s, col, value, *, row_id, **_k: writes.append((row_id, col, value)),
+    )
+    monkeypatch.setattr(
+        order_details, "_fill_order_cargo_ready_dates",
+        lambda _f, order_rows, _l, **_k: dates.extend(order_rows),
+    )
+
+    order_details._fill_order_details(Frame(), rows, lambda _m: None, line_bindings=bindings)
+
+    if split_in_order_grid:
+        assert ("1002", "colFFTextField1", "24.26") in writes
+        assert ("1003", "colFFTextField1", "23.46") in writes
+        assert dates == rows
+    else:
+        assert ("1001", "colTotalNoOfCartons", "15") in writes
+        assert all(row_id == "1001" and col != "colFFTextField1" for row_id, col, _ in writes)
+        assert len(dates) == 1 and dates[0]["_skip_cargo_ready_date"]
+    assert [row["qty"] for row in rows] == ["74", "364"]
+
+
+@pytest.mark.parametrize("wfx_split_by_price", [False, True])
+def test_combined_price_check_uses_original_qty_times_price(wfx_split_by_price):
+    rows, bindings = _combined_rows_and_bindings()
+    shipment = {"order_no": "PSG-RR-26-5000.1/PO133360", "article": "GMPA14590"}
+    if wfx_split_by_price:
+        shipments = [{**shipment, "qty": row["qty"], "price": row["price"]} for row in rows]
+    else:
+        shipments = [{**shipment, "qty": "438", "price": "23.46"}]
+    comparisons, totals = price_check._price_check_rows(rows, shipments, line_bindings=bindings)
+
+    assert len(comparisons) == 1
+    comparison = comparisons[0]
+    assert comparison["source_rows"] == [2, 3]
+    assert comparison["qty_ok"] is True
+    assert comparison["price_ok"] is wfx_split_by_price
+    assert comparison["status"] == ("ok" if wfx_split_by_price else "system_price_ambiguous")
+    assert totals["file_total_qty"] == "438"
+    assert totals["file_total_value"] == "10334.68"

@@ -30,7 +30,9 @@ from wfx_panel.automation.sale_asn_create.constants import (
 from wfx_panel.automation.sale_asn_create.errors import _POSelectionRequired
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
 from wfx_panel.automation.sale_asn_create.line_mapping import (
+    _combined_line_owners,
     _line_group,
+    _order_style_matches,
     _separate_line_groups,
 )
 from wfx_panel.automation.sale_asn_create.po import (
@@ -42,6 +44,7 @@ from wfx_panel.automation.sale_asn_create.po import (
 from wfx_panel.automation.sale_asn_create.progress import _emit_stage_progress
 from wfx_panel.automation.sale_asn_create.values import (
     _date_for_wfx,
+    _decimal_display,
     _decimal_or_none,
     _fold,
     _number_for_wfx,
@@ -238,14 +241,6 @@ def _set_order_grid_cell(
 
 def _order_row_identity(row: dict) -> tuple[str, str]:
     return _po_key(row.get("po_no")), _fold(row.get("style_no"))
-
-
-def _order_style_matches(wanted: str, actual: str) -> bool:
-    if not wanted or not actual:
-        return False
-    if wanted == actual:
-        return True
-    return f" {wanted} " in f" {actual} " or f" {actual} " in f" {wanted} "
 
 
 def _order_row_is_present(
@@ -464,12 +459,46 @@ def _ensure_order_grid_rows(
     return refreshed_frame
 
 
+def _combined_order_rows(rows: Sequence[dict], bindings: dict) -> Sequence[dict]:
+    """Chuẩn bị một dòng Order Details cho mỗi dòng tổng WFX đã thêm."""
+    owners = _combined_line_owners(bindings)
+    if not owners:
+        return rows
+    members_by_owner: dict[int, list[dict]] = {}
+    for row in rows:
+        if (owner := owners.get(row.get("source_row"))) is not None:
+            members_by_owner.setdefault(owner, []).append(row)
+    result = []
+    for row in rows:
+        source_row = row.get("source_row")
+        if source_row in owners:
+            continue
+        if not (members := members_by_owner.get(source_row)):
+            result.append(row)
+            continue
+        combined = {**row, "_combined_order_line": True}
+        parts = [row, *members]
+        for field in ("qty", "carton", "nw", "gw", "cbm"):
+            values = [
+                value for item in parts
+                if (value := _decimal_or_none(item.get(field))) is not None
+            ]
+            combined[field] = _decimal_display(sum(values)) if values else ""
+        for field in ("fob_price", "service_price", "cargo_ready_date"):
+            values = {item[field] for item in parts if item.get(field)}
+            combined[field] = next(iter(values)) if len(values) == 1 else ""
+            if field == "cargo_ready_date" and len(values) > 1:
+                combined["_skip_cargo_ready_date"] = True
+        result.append(combined)
+    return result
+
+
 def _resolve_separate_order_lines(
     frame: Frame, rows: Sequence[dict], bindings: dict
 ) -> dict:
     """Gắn từng dòng màu với các OC đã chọn; kiểm tra hết trước khi ghi ô."""
     groups = _separate_line_groups(rows)
-    if not groups:
+    if not groups and not any(row.get("_combined_order_line") for row in rows):
         return {}
     records = (
         frame.evaluate(
@@ -486,7 +515,7 @@ def _resolve_separate_order_lines(
     targets: dict[int, list[dict]] = {}
     used: set[str] = set()
     for row in rows:
-        if _line_group(row) not in groups:
+        if _line_group(row) not in groups and not row.get("_combined_order_line"):
             continue
         source_row = int(row["source_row"])
         wanted_po, wanted_style = _line_group(row)
@@ -585,6 +614,11 @@ def _fill_order_cargo_ready_dates(
         for row in rows if row.get("cargo_ready_date")
         for target in (line_targets or {}).get(int(row.get("source_row") or 0), ())
     }
+    skipped_targets = {
+        str(target["row_id"])
+        for row in rows if row.get("_skip_cargo_ready_date")
+        for target in (line_targets or {}).get(int(row["source_row"]), ())
+    }
     grid_rows = frame.locator(f"{ORDER_GRID_SELECTOR} tr.trContent")
     cells = grid_rows.locator(f"td#{ORDER_FIELD_COLUMNS['cargo_ready_date']}")
     count = grid_rows.count()
@@ -596,6 +630,8 @@ def _fill_order_cargo_ready_dates(
             raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
         po_key = _po_key(marked.get("po_no"))
         style_key = _fold(marked.get("style_no"))
+        if str(marked.get("row_id") or "") in skipped_targets:
+            continue
         if (specific := dates_by_target.get(str(marked.get("row_id") or ""))):
             _edit_marked_table_cell(frame, specific)
             continue
@@ -610,7 +646,14 @@ def _fill_order_cargo_ready_dates(
             raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cargo-ready-date-ambiguous")
         value = next(iter(specific_dates), default_date)
         _edit_marked_table_cell(frame, value)
-    _write_log(log, f"[SALE ASN] Đã điền Cargo Ready Date cho toàn bộ {count} dòng Order Details.")
+    if skipped_targets:
+        _write_log(
+            log,
+            f"[SALE ASN] Đã điền Cargo Ready Date cho {count - len(skipped_targets)} dòng Order Details; "
+            "giữ ngày trên các dòng tổng có ngày Excel khác nhau.",
+        )
+    else:
+        _write_log(log, f"[SALE ASN] Đã điền Cargo Ready Date cho toàn bộ {count} dòng Order Details.")
 
 
 def _fill_order_details(
@@ -622,12 +665,39 @@ def _fill_order_details(
     line_bindings: dict | None = None,
 ) -> None:
     separate_pos = {_po_key(row.get("po_no")) for row in rows}
-    targets = _resolve_separate_order_lines(frame, rows, line_bindings if line_bindings is not None else {})
-    for index, row in enumerate(rows, 1):
+    bindings = line_bindings if line_bindings is not None else {}
+    combined_rows = _combined_order_rows(rows, bindings)
+    targets = _resolve_separate_order_lines(frame, combined_rows, bindings)
+    source_rows = {row.get("source_row"): row for row in rows}
+    fill_rows = []
+    for row in combined_rows:
+        if not row.get("_combined_order_line"):
+            fill_rows.append(row)
+            continue
+        source_row = int(row["source_row"])
+        chosen = targets[source_row]
+        if len(chosen) == 1:
+            fill_rows.append(row)
+            continue
+        # Một checkbox có thể bung thành các dòng riêng sau khi thêm vào WFX.
+        # Ghi theo Qty của từng dòng Excel nếu nhận diện được cả hai đích.
+        first, second = source_rows[source_row], source_rows[source_row + 1]
+        candidates = [{**item, "dispatched_qty": item.get("qty")} for item in chosen]
+        first_targets = _unique_dispatched_qty_subset(candidates, _decimal_or_none(first["qty"]))
+        if not first_targets:
+            raise RuntimeError(
+                f"SALE_ASN_TABLE_MAPPING_FAILED:Dòng {source_row}–{source_row + 1} · "
+                f"{row['po_no']}: không xác định được đích riêng trong Order Details."
+            )
+        first_ids = {item["row_id"] for item in first_targets}
+        targets[source_row] = first_targets
+        targets[source_row + 1] = [item for item in chosen if item["row_id"] not in first_ids]
+        fill_rows.extend((first, second))
+    for index, row in enumerate(fill_rows, 1):
         _emit_stage_progress(
             progress,
             "order_details",
-            f"Order Details {index}/{len(rows)}",
+            f"Order Details {index}/{len(fill_rows)}",
         )
         for key, column_id in ORDER_FIELD_COLUMNS.items():
             if key == "cargo_ready_date":
@@ -648,7 +718,7 @@ def _fill_order_details(
                    if int(row.get("source_row") or 0) in targets else {}),
             )
         _write_log(log, f"[SALE ASN] Đã điền Order Details cho {row.get('po_no')}.")
-    _fill_order_cargo_ready_dates(frame, rows, log, **({"line_targets": targets} if targets else {}))
+    _fill_order_cargo_ready_dates(frame, fill_rows, log, **({"line_targets": targets} if targets else {}))
 
 
 def scan_sale_asn_order_details(

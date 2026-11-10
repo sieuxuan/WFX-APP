@@ -13,6 +13,12 @@ def _line_group(row: dict) -> tuple[str, str]:
     return _po_key(row.get("po_no")), _fold(row.get("style_no"))
 
 
+def _order_style_matches(wanted: str, actual: str) -> bool:
+    if not wanted or not actual:
+        return False
+    return f" {wanted} " in f" {actual} " or f" {actual} " in f" {wanted} "
+
+
 def _separate_line_groups(rows: Sequence[dict]) -> set[tuple[str, str]]:
     return {
         key
@@ -47,9 +53,20 @@ def _remember_line_selection(
                 and re.fullmatch(r"PS[WKG]-[^/]+", prefix.strip(), flags=re.IGNORECASE)
             ):
                 references.add(_fold(prefix))
-    bindings[int(row["source_row"])] = {
+    source_row = int(row["source_row"])
+    bindings[source_row] = {
         "candidates": [dict(candidate) for candidate in candidates],
         "oc_refs": sorted(references),
+    }
+    if len(candidates) == 1 and (member := candidates[0].get("_combined_member")):
+        bindings[member] = {"combined_into": source_row}
+
+
+def _combined_line_owners(bindings: dict) -> dict[int, int]:
+    return {
+        int(source_row): binding["combined_into"]
+        for source_row, binding in bindings.items()
+        if "combined_into" in binding
     }
 
 

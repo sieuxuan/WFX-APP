@@ -927,6 +927,51 @@ def _wire_auto_add(monkeypatch, results, *, added=None):
 
 
 @pytest.mark.parametrize("final", [False, True])
+def test_a_unique_qty_match_after_style_is_added_before_destination(monkeypatch, final):
+    matching = _candidate(1, "MATCH", po_no="779", dispatched_qty="131.0000")
+    other_color = _candidate(2, "OTHER", po_no="779", dispatched_qty="49")
+    other_style = _candidate(3, "OTHER-STYLE", po_no="779", dispatched_qty="131")
+    similar_po = _candidate(4, "SIMILAR-PO", po_no="779A", dispatched_qty="131")
+    searched, picked = _wire_auto_add(monkeypatch, {
+        ("po",): [matching, other_color, other_style, similar_po],
+        ("po", "style"): [matching, other_color, similar_po],
+        ("po", "style", "destination"): [],
+    })
+
+    added, selected, label = po._auto_add_po(
+        PopupFrame(), _row(qty="131"), lambda _m: None, final=final,
+    )
+
+    assert added is True
+    assert label == "PO + Style"
+    assert searched == [("po",), ("po", "style")]
+    assert selected == [matching]
+    assert picked == [[matching]]
+
+
+@pytest.mark.parametrize(("quantities", "expected_added"), [(("100", "100"), False), (("40", "60"), True)])
+def test_destination_is_still_used_without_a_unique_single_qty_match(
+    monkeypatch, quantities, expected_added,
+):
+    first = _candidate(1, "FIRST", po_no="779", dispatched_qty=quantities[0])
+    second = _candidate(2, "SECOND", po_no="779", dispatched_qty=quantities[1])
+    searched, picked = _wire_auto_add(monkeypatch, {
+        ("po",): [first, second],
+        ("po", "style"): [first, second],
+        ("po", "style", "destination"): [first, second],
+    })
+
+    added, selected, _label = po._auto_add_po(
+        PopupFrame(), _row(qty="100"), lambda _m: None,
+    )
+
+    assert searched == [("po",), ("po", "style"), ("po", "style", "destination")]
+    assert selected == [first, second]
+    assert added is expected_added
+    assert picked == ([[first, second]] if added else [])
+
+
+@pytest.mark.parametrize("final", [False, True])
 @pytest.mark.parametrize("po_column_readable", [False, True])
 def test_split_dispatch_qty_excludes_add_po_before_finding_the_unique_sum(
     monkeypatch, final, po_column_readable,
