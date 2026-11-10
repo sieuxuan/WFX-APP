@@ -66,7 +66,11 @@ _READ_JS = rf"""table => {{
                 editable: record.IsEditable == 1 && Boolean(editing || label?.classList.contains('lblEditable')),
             }};
         }}
-        return {{identity: identity(record), values, qty}};
+        return {{
+            identity: identity(record), values, qty,
+            total_qty: String(record.TotalQty),
+            qty_factor: Number(record.PrePack) * Number(record.Carton),
+        }};
     }});
     if (data.some(row => !row)) return null;
     return {{
