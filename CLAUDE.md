@@ -217,7 +217,8 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
 - Updater chờ instance hiện tại tự đóng 15 giây. Nếu pywebview/WebView2 còn giữ
   process cha, helper chỉ được force-stop đúng PID sau khi xác minh đường dẫn
   process trùng exact `WFX-Panel.exe` đang cập nhật; tuyệt đối không kill theo
-  tên process. Chỉ tải/thay file sau khi PID đã biến mất.
+  tên process. Chỉ tải/thay file sau khi PID đã biến mất. Khởi chạy helper
+  PowerShell với `CREATE_NO_WINDOW` để chỉ hiện cửa sổ tiến trình WinForms.
 - Settings hiển thị nút `Kiểm tra ngay` cạnh trạng thái cập nhật tự động để
   người dùng chủ động kiểm tra release mới, ngoài lịch nền mỗi 4 giờ.
 - Tài khoản có quyền quản trị chỉ thấy công tắc `Chế độ quản trị`. Thẻ `Dữ liệu

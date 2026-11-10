@@ -267,6 +267,9 @@ def test_schedule_update_downloads_verifies_and_rolls_back(monkeypatch, tmp_path
     assert helper.parent.name.startswith("wfx-panel-update-123-")
     assert launched
     if os.name == "nt":
+        assert launched[0][1]["creationflags"] == (
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        )
         parsed = real_popen(
             [
                 "powershell",
