@@ -127,14 +127,15 @@ _SET_STYLE_FIELD_JS = """spec => {
     if (control.tagName === 'SELECT') {
         const options = [...control.options];
         const exact = options.filter(option =>
-            folded(option.textContent) === folded(wanted)
-            || folded(option.value) === folded(wanted)
+            option.value && !option.disabled && !option.closest('optgroup[disabled]')
+            && (folded(option.textContent) === folded(wanted)
+                || folded(option.value) === folded(wanted))
         );
         if (exact.length !== 1) {
             return {
                 ok: false,
                 reason: exact.length ? 'ambiguous-option' : 'option-not-found',
-                options: options.map(option => clean(option.textContent)).filter(Boolean).slice(0, 30),
+                id: control.id,
             };
         }
         control.value = exact[0].value;
@@ -210,7 +211,8 @@ _READ_STYLE_OPTIONS_JS = """spec => {
 _HYDRATE_STYLE_OPTIONS_JS = """spec => {
     for (const id of spec.ids || []) {
         const control = document.getElementById(id);
-        if (!control || control.disabled || control.tagName !== 'SELECT') continue;
+        if (!control || control.disabled || control.tagName !== 'SELECT'
+            || !control.onmousedown) continue;
         control.dispatchEvent(new MouseEvent('mousedown', {
             bubbles: true,
             cancelable: true,
@@ -260,7 +262,7 @@ STYLE_FIELDS = (
     (
         "internal_style_ref",
         "Internal Style Ref",
-        ("txtInternalStyleRef", "txtArticleName", "txtInternalReference"),
+        ("txtInternalStyleRef", "txt7740019", "txtInternalReference"),
         ("Internal Style Ref", "Internal Style Reference"),
     ),
 )
@@ -282,7 +284,7 @@ FIXED_STYLE_FIELDS = (
     (
         "Color Definition",
         "Single Colors",
-        ("ddlColorDefinition", "ddlColourDefinition"),
-        ("Color Definition", "Colour Definition"),
+        ("ddlColorType", "ddlColorDefinition", "ddlColourDefinition"),
+        ("Color Definition", "Colour Definition", "Color Definition (Always Single Color)"),
     ),
 )

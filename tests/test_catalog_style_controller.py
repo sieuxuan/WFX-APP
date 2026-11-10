@@ -103,6 +103,7 @@ def test_a_valid_file_returns_a_token_and_the_rows_the_user_will_see(
 
     assert result["code"] == "STYLE_IMPORT_REVIEW_READY"
     assert result["row_count"] == 2
+    assert "2 dòng dữ liệu" in result["message"]
     assert result["requires_manual_save"] is True
     assert result["group"]["path_label"] == "Master / SS26"
     assert [row["source_row"] for row in result["rows"]] == [2, 3]
@@ -125,6 +126,7 @@ def test_a_workbook_with_cell_errors_is_reported_with_every_line(
 
     assert result["code"] == "STYLE_FILE_INVALID"
     assert result["errors"] == ["Dòng 3: thiếu Buyer Style Ref."]
+    assert "Dòng 3: thiếu Buyer Style Ref." in result["message"]
     assert result["file_name"] == "Style.xlsx"
     assert api._catalog.style.imports == {}
 

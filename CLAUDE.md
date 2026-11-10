@@ -187,12 +187,14 @@ có mục hướng dẫn phủ thì `tests/test_manual.py` sẽ đỏ. Cách vi�
   WebView2 hidden và vẫn lưu ở Notification Center. Nếu tray chưa sẵn sàng,
   giữ thông báo mới nhất rồi phát ngay sau callback setup. Settings có nút thử
   toast; toast không được lấy focus.
-  MỌI flow qua `_run()` đều phải phát toast khi xong (thành công hay cần kiểm
-  tra); `_on_result` dùng danh sách loại trừ `SILENT_RESULT_METHODS` trong
-  `app/layout.py`, không dùng danh sách cho phép, để flow mới không bị sót. Chỉ
-  kiểm tra phiên nền, `auto_prepare_catalog`, `switch_division`, bước dạo đầu
+  Mặc định flow qua `_run()` phát toast khi xong (thành công hay cần kiểm tra).
+  `_on_result` dùng danh sách loại trừ `SILENT_RESULT_METHODS` trong
+  `app/layout.py`, không dùng danh sách cho phép, để flow mới không bị sót.
+  Kiểm tra phiên nền, `auto_prepare_catalog`, `switch_division`, bước dạo đầu
   `inspect_active_catalog_costing` và `cancel_oc_upload_review` được im lặng.
-  Flow còn lại phải có nhãn trong `NOTIFICATION_ACTION_LABELS`;
+  Riêng Tạo Style dùng panel cho kiểm tra file, quét dropdown và các lượt chuẩn
+  bị thành công hoặc đã dừng. Windows chỉ báo lỗi khi chuẩn bị Style. Flow còn
+  lại phải có nhãn trong `NOTIFICATION_ACTION_LABELS`;
   `tests/test_notifications_controller.py` quét AST mọi lời gọi `_run()` để canh.
   Bấm vào THÂN toast phải mở lại panel qua `show_from_tray()`, vì đó là lý do
   người dùng bấm. Toast native gửi `NIN_BALLOONUSERCLICK` (`0x0405`) chứ không
@@ -528,6 +530,16 @@ Các workflow riêng hiện có:
   Colors. Toggle `Tự động Save` luôn mặc định off: khi off, app dừng trước Save
   và chỉ sang dòng kế sau khi user xác nhận đã tự kiểm tra/Save trên WFX; khi on,
   automation click đúng Save một lần sau khi điền xong rồi chuyển sang dòng kế.
+  Chuẩn bị dòng kế là thao tác riêng. Nếu lỗi của dòng xảy ra trước Save và có
+  thể tiếp tục, user được thử lại hoặc bỏ qua dòng đó. Cuối lượt báo số dòng app
+  đã bấm Save, số dòng user xác nhận Save và số dòng bỏ qua kèm lý do theo dòng
+  Excel. Màn Tạo Style chỉ hiện phần chọn Group/file hoặc phần xử lý từng dòng.
+  Trong danh sách, hiển thị thứ tự Style cùng số dòng Excel và chỉ dẫn của bước
+  hiện tại. Tổng kết hiện cuối lượt, với lý do bỏ qua trong phần mở rộng. Footer
+  dùng cho tác vụ đang chạy và kết quả kiểm tra file lỗi, không lặp bước xử lý
+  đã hiện trong danh sách. Dropdown WFX nạp
+  khi mở phải được kích hoạt và chờ option khớp trước
+  khi kết luận không điền được trường.
   Group dùng picker có tìm kiếm theo tên/đường dẫn thay cho select dài; nút quét
   Group là icon nhỏ nằm cùng hàng. Form Excel có dropdown từ snapshot GitHub/cache
   30 ngày cho Material Type, Buyer, Division, Product Group, Color Card, Size
@@ -543,7 +555,9 @@ Các workflow riêng hiện có:
   Không dùng `expect_page` chờ blocking khi mở New: WFX đặt tên cửa sổ
   `CatalogDetail` nên từ dòng thứ hai trở đi `window.open` tái dùng cửa sổ đang
   mở và Chromium không phát page event, làm mỗi dòng mất trọn timeout. Frame scan
-  là nguồn xác nhận và nhận được cả hai trường hợp.
+  là nguồn xác nhận và nhận được cả hai trường hợp. Sau khi xác định popup chứa
+  form chọn New/Copy, mọi lần tìm editor, đọc dropdown, điền và Save chỉ dùng
+  các frame thuộc popup đó, kể cả khi WFX tải lại editor sau Material Type.
 - Costing file chỉ áp dụng cho Apparel và luôn chạy hai phase:
   1. scan live + validate file + dry-run, cache plan bằng opaque token tối đa
      15 phút, chưa ghi WFX;

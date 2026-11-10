@@ -29,17 +29,20 @@ def _frame_with_visible_locator(
     context: Any,
     selector: str,
     timeout_s: float,
+    *,
+    page: Page | None = None,
 ) -> tuple[Page, Frame, Any]:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        for page in reversed(context.pages):
-            for frame in reversed(page.frames):
+        pages = (page,) if page is not None else reversed(context.pages)
+        for candidate_page in pages:
+            for frame in reversed(candidate_page.frames):
                 try:
                     locator = frame.locator(selector)
                     for index in range(locator.count()):
                         candidate = locator.nth(index)
                         if candidate.is_visible():
-                            return page, frame, candidate
+                            return candidate_page, frame, candidate
                 except PlaywrightError:
                     continue
         if context.pages:
@@ -47,11 +50,14 @@ def _frame_with_visible_locator(
     raise PlaywrightTimeoutError(f"Không tìm thấy control: {selector}")
 
 
-def _article_left_frame(context: Any, timeout_s: float = 20) -> Frame:
+def _article_left_frame(
+    context: Any, timeout_s: float = 20, *, page: Page | None = None
+) -> Frame:
     _page, frame, _locator = _frame_with_visible_locator(
         context,
         f"xpath={NEW_STYLE_XPATH}",
         timeout_s,
+        page=page,
     )
     return frame
 
@@ -121,7 +127,7 @@ def _open_style_choice(context: Any, link: Any, timeout_s: float = 12) -> Frame:
         raise PlaywrightTimeoutError("Không đọc được URL New của Catalog Group.")
     popup = context.new_page()
     popup.goto(target_url, wait_until="domcontentloaded", timeout=20_000)
-    return _article_left_frame(context, timeout_s=20)
+    return _article_left_frame(context, page=popup)
 
 
 def _close_pages_opened_since(context: Any, known: set) -> None:
@@ -143,38 +149,34 @@ def _close_pages_opened_since(context: Any, known: set) -> None:
             continue
 
 
-def _style_editor_frame(context: Any, timeout_s: float = 35) -> Frame:
+def _style_editor_frame(page: Page, timeout_s: float = 35) -> Frame:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        for page in reversed(context.pages):
-            for frame in reversed(page.frames):
-                try:
-                    title = frame.locator("#titlebarArticle")
-                    material = frame.locator(
-                        "#ddlMaterialType, #select2-ddlMaterialType-container"
-                    )
-                    if title.count() and material.count():
-                        return frame
-                except PlaywrightError:
-                    continue
-        if context.pages:
-            _wait(context.pages[0], 150)
+        for frame in reversed(page.frames):
+            try:
+                title = frame.locator("#titlebarArticle")
+                material = frame.locator(
+                    "#ddlMaterialType, #select2-ddlMaterialType-container"
+                )
+                if title.count() and material.count():
+                    return frame
+            except PlaywrightError:
+                continue
+        _wait(page, 150)
     raise PlaywrightTimeoutError("Form Article chưa sẵn sàng.")
 
 
-def _copy_result_frame(context: Any, timeout_s: float = 25) -> Frame:
+def _copy_result_frame(page: Page, timeout_s: float = 25) -> Frame:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        for page in reversed(context.pages):
-            for frame in reversed(page.frames):
-                try:
-                    candidates = frame.evaluate(_COPY_RESULTS_JS)
-                    if candidates:
-                        return frame
-                    if frame.locator(f"xpath={COPY_AS_VARIANT_XPATH}").count():
-                        return frame
-                except PlaywrightError:
-                    continue
-        if context.pages:
-            _wait(context.pages[0], 150)
+        for frame in reversed(page.frames):
+            try:
+                candidates = frame.evaluate(_COPY_RESULTS_JS)
+                if candidates:
+                    return frame
+                if frame.locator(f"xpath={COPY_AS_VARIANT_XPATH}").count():
+                    return frame
+            except PlaywrightError:
+                continue
+        _wait(page, 150)
     raise PlaywrightTimeoutError("Kết quả tìm Style nguồn chưa sẵn sàng.")

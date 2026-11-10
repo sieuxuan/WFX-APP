@@ -63,10 +63,13 @@ class StyleImportController:
             try:
                 rows = read_style_workbook(source)
             except StyleWorkbookError as error:
+                message = error.message
+                if error.errors:
+                    message = f"{message} {error.errors[0]}"
                 return {
                     "ok": False,
                     "code": error.code,
-                    "message": error.message,
+                    "message": message,
                     "errors": list(error.errors),
                     "file_name": source.name,
                 }
@@ -92,8 +95,8 @@ class StyleImportController:
                 "ok": True,
                 "code": "STYLE_IMPORT_REVIEW_READY",
                 "message": (
-                    f"File hợp lệ: {len(rows)} dòng. App sẽ chuẩn bị từng dòng "
-                    "theo chế độ Save đang chọn."
+                    f"File hợp lệ, có {len(rows)} dòng dữ liệu. "
+                    "Có thể bắt đầu chuẩn bị Style."
                 ),
                 "review_token": token,
                 "file_name": source.name,
@@ -118,7 +121,7 @@ class StyleImportController:
         return {
             "ok": True,
             "code": "STYLE_IMPORT_CANCELLED",
-            "message": "Đã hủy danh sách Tạo Style; WFX chưa được Save.",
+            "message": "Đã đóng danh sách Tạo Style.",
         }
 
     def ensure_style_options(self, group_id: str, force: bool = False) -> dict:

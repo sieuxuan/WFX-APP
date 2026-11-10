@@ -8,16 +8,24 @@ khi muốn app Save ngay sau khi điền xong từng dòng.
 
 1. Mở module Catalog.
 2. Chọn tab `Tạo Style`.
-3. Bấm nút làm mới nhỏ cạnh `Group bắt buộc` nếu cây Group chưa hiện.
+3. Bấm nút làm mới nhỏ cạnh `Group đích` nếu cây Group chưa hiện.
 4. Mở ô chọn Group, gõ tên hoặc đường dẫn để tìm rồi chọn đúng một Group Apparel.
-5. Bấm `Tải form Excel`.
+5. Bấm `Tải mẫu Excel`.
 6. Điền dữ liệu trong sheet `Tạo Style` rồi lưu file.
-7. Bấm `Chọn file & kiểm tra` và chọn file vừa lưu.
-8. Đọc dòng đang chờ rồi bấm `Chuẩn bị dòng đầu tiên`.
-9. Nếu `Tự động Save` đang tắt, kiểm tra toàn bộ trường trên WFX, tự bấm `Save`,
-   rồi chọn `Tôi đã Save · Chuẩn bị dòng tiếp theo`.
-10. Nếu `Tự động Save` đang bật, app Save đúng một lần sau khi điền xong và nút
-    chuẩn bị chuyển thẳng sang dòng kế tiếp.
+7. Bấm `Chọn file Excel` và chọn file vừa lưu.
+8. Bấm `Chuẩn bị Style`. Nếu có lỗi, xem hướng dẫn ngay dưới dòng đang xử lý.
+   Chọn `Thử lại` hoặc `Bỏ qua` khi nút xuất hiện. Khi bỏ qua, đừng Save bản nháp
+   của dòng đó trên WFX.
+9. Nếu `Tự động Save` đang tắt, kiểm tra các trường trên WFX, tự bấm `Save`,
+   rồi chọn `Xác nhận đã Save`. Nếu gặp lỗi khi Save thủ công, có thể
+   chọn `Bỏ qua, chưa Save` sau khi xác nhận Style chưa được lưu. Nếu bật
+   `Tự động Save`, app bấm Save sau khi điền xong.
+10. Bấm `Chuẩn bị Style` để xử lý dòng tiếp theo. Cuối lượt, xem tổng kết và
+    mở mục `Bỏ qua` để đọc lý do của từng dòng.
+
+`Style 1/1 · Dòng Excel 2` nghĩa là file có một Style, lấy dữ liệu ở hàng 2.
+Tiến độ và tổng kết nằm trong màn Tạo Style. Windows báo khi gặp lỗi trong lúc
+chuẩn bị Style.
 
 ## Cách điền file
 
@@ -46,7 +54,7 @@ Card, Size Range và Season có dropdown lấy từ cache dùng chung. Sub-Categ
 > đã chọn vẫn dùng để quét WFX khi cần làm mới trực tiếp.
 
 > [!luuy]
-> Bấm `Tải form Excel` sẽ hỏi nơi lưu file ngay. Nếu dữ liệu dropdown đã quá 30
+> Bấm `Tải mẫu Excel` sẽ hỏi nơi lưu file ngay. Nếu dữ liệu dropdown đã quá 30
 > ngày, app lấy danh sách mới sau khi bạn chọn xong nơi lưu, nên bước này có thể
 > chờ thêm một lúc. Lúc quét, app tự mở rồi tự đóng một cửa sổ Style trên trình
 > duyệt làm việc; cửa sổ đó chỉ để đọc danh sách và không ghi gì lên WFX.
@@ -64,4 +72,6 @@ Card, Size Range và Season có dropdown lấy từ cache dùng chung. Sub-Categ
 | New báo thiếu trường | Điền đủ các cột từ Material Type đến Internal Style Ref. |
 | Không tìm thấy Style nguồn | Kiểm tra `Style copy` theo đúng Article Name trong danh sách Apparel. |
 | Một danh sách Style nguồn xuất hiện | Chọn đúng dòng theo Article Code hoặc Article Name. |
-| Không điền được một trường | Giữ nguyên màn hình WFX, chụp ảnh lỗi trong Lịch sử và gửi cho nhóm hỗ trợ. |
+| WFX chỉ hiện Material Type | Chờ app chuẩn bị dòng và đưa cửa sổ Style cần kiểm tra lên trước. |
+| Không điền được một trường | Kiểm tra giá trị trong Excel với dropdown WFX. Có thể thử lại hoặc bỏ qua dòng và xử lý dòng kế tiếp. |
+| Lỗi trong bước Save tự động | Kiểm tra Style đã xuất hiện trên WFX chưa trước khi chạy lại dòng đó. |

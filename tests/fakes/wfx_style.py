@@ -46,7 +46,7 @@ class SelectField:
             return {
                 "ok": False,
                 "reason": "ambiguous-option" if exact else "option-not-found",
-                "options": list(self.options[:30]),
+                "id": self.control_id,
             }
         self.value = exact[0]
         return {"ok": True, "id": self.control_id, "tag": "SELECT", "value": exact[0]}
@@ -80,6 +80,7 @@ class FakeStyleEditorFrame:
         self.fields = dict(fields)
         self.save = FakeNode()
         self.applied: list[tuple[str, str]] = []
+        self.lazy_options: dict[str, list[str]] = {}
 
     # --- bề mặt Frame ---------------------------------------------------
 
@@ -109,8 +110,13 @@ class FakeStyleEditorFrame:
             if outcome.get("ok"):
                 self.applied.append((field.control_id, wanted))
             return outcome
-        if "option.textContent" in script or "spec.ids" in script:
-            # _READ_STYLE_OPTIONS_JS / _HYDRATE_STYLE_OPTIONS_JS
+        if "MouseEvent('mousedown'" in script:
+            field = self._field_for(arg or {})
+            if not isinstance(field, SelectField) or field.control_id not in self.lazy_options:
+                return False
+            field.options = self.lazy_options.pop(field.control_id)
+            return True
+        if "option.textContent" in script:
             field = self._field_for(arg or {})
             if field is None:
                 return []
@@ -275,6 +281,8 @@ class FakeStylePage:
     def __init__(self, clock: FakeClock, frames: list[Any]) -> None:
         self.clock = clock
         self.frames = frames
+        for frame in frames:
+            frame.page = self
         self.bring_to_front_calls = 0
         self.closed = False
 

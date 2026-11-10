@@ -9,7 +9,7 @@ from playwright.sync_api import Error as PlaywrightError
 from tests.fakes.automation_boundary import wire_automation
 from tests.fakes.module_reflection import module_source, module_trees, patch_automation
 from tests.fakes.wfx_dom import install_fake_clock
-from tests.fakes.wfx_style import StyleWorld, build_style_fields
+from tests.fakes.wfx_style import FakeStylePage, StyleWorld, build_style_fields
 from wfx_panel.automation import bulk_style, catalog, runtime
 
 
@@ -43,7 +43,7 @@ def test_style_automation_only_saves_when_auto_save_is_enabled():
     source = inspect.getsource(bulk_style.prepare_catalog_style_row)
     assert "titlebarArticle" not in source
     assert "if saved:" in source
-    assert "_save_style(context, log)" in source
+    assert "_save_style(popup, log)" in source
     assert "requires_manual_save=not saved" in source
     assert bulk_style.SAVE_STYLE_XPATH.endswith("/span/div[1]/a")
 
@@ -320,7 +320,9 @@ def test_auto_save_off_stops_before_save(monkeypatch, world):
     assert result["saved"] is False
     assert result["requires_manual_save"] is True
     assert world.save_clicks == 0, "Save khi user chưa bật toggle là tạo Style ngoài ý muốn"
-    assert "tự bấm Save" in result["message"]
+    assert result["message"] == (
+        "Đã chuẩn bị 1 Style từ dòng Excel 4. Hãy kiểm tra rồi tự bấm Save trên WFX."
+    )
 
 
 def test_auto_save_on_clicks_save_exactly_once(monkeypatch, world):
@@ -331,6 +333,9 @@ def test_auto_save_on_clicks_save_exactly_once(monkeypatch, world):
     assert result["code"] == "STYLE_FORM_READY"
     assert result["saved"] is True
     assert result["requires_manual_save"] is False
+    assert result["message"] == (
+        "Đã chuẩn bị 1 Style từ dòng Excel 4. App đã bấm Save trên WFX."
+    )
     assert world.save_clicks == 1, "Save hai lần có thể sinh Style trùng"
 
 
@@ -346,7 +351,7 @@ def test_save_is_never_interrupted_by_a_stop_request(monkeypatch, world):
     world.open_style_form()
     runtime.RUNTIME._cancel.set()
     try:
-        bulk_style._save_style(world.context, log)
+        bulk_style._save_style(world.popup_page, log)
     finally:
         runtime.RUNTIME._cancel.clear()
 
@@ -398,11 +403,25 @@ def test_missing_option_names_the_field_instead_of_failing_at_save(
     world = StyleWorld(clock, fields=build_style_fields({"ddlSeason": ["FW26"]}))
     _wire(monkeypatch, world)
 
-    result = _prepare(world, dict(VALID_NEW_ROW))
+    result = _prepare(world, dict(VALID_NEW_ROW), auto_save=True)
 
     assert result["ok"] is False
     assert result["code"] == "STYLE_FIELD_NOT_AVAILABLE"
-    assert "Season" in result["message"]
+    assert result["failure_step"] == "Điền dữ liệu"
+    assert result["can_skip"] is True
+    assert "Season" in result["message"] and "SS27" in result["message"]
+    assert world.save_clicks == 0
+
+
+def test_prepare_loads_lazy_buyer_options_before_selecting(monkeypatch, clock):
+    world = StyleWorld(clock, fields=build_style_fields({"ddlBuyer": []}))
+    world.editor.lazy_options["ddlBuyer"] = ["TARGET", "TRUEWERK"]
+    _wire(monkeypatch, world)
+
+    result = _prepare(world, {**VALID_NEW_ROW, "buyer": "TARGET"})
+
+    assert result["code"] == "STYLE_FORM_READY"
+    assert world.applied_value("ddlBuyer") == "TARGET"
     assert world.save_clicks == 0
 
 
@@ -480,6 +499,7 @@ def test_multiple_source_styles_stop_for_the_user_to_choose(monkeypatch, world):
     assert result["code"] == "STYLE_COPY_MULTIPLE_RESULTS"
     assert len(result["choices"]) == 2
     assert result["source_row"] == 7
+    assert "Dòng Excel 7 có 2 Style nguồn phù hợp." in result["message"]
     assert world.choice.clicked_copy_index is None
     assert world.save_clicks == 0
 
@@ -674,9 +694,31 @@ def test_one_call_prepares_exactly_one_row_and_returns_to_the_user(
 
     assert result["source_row"] == 4
     assert world.group.opened_popup == 1, "Mỗi lượt chỉ được mở New đúng một lần"
-    assert world.group_page.bring_to_front_calls == 1, (
-        "Phải đưa WFX lên trước để người dùng kiểm tra dòng vừa chuẩn bị"
+    assert world.popup_page.bring_to_front_calls == 1, (
+        "Phải đưa đúng popup lên trước để người dùng kiểm tra dòng vừa chuẩn bị"
     )
+
+
+def test_prepare_and_save_stay_in_the_popup_that_opened_the_editor(monkeypatch, world, clock):
+    other = StyleWorld(clock)
+    other.editor.ready = True
+    unrelated_popup = FakeStylePage(clock, [other.editor])
+    open_popup = world.group.on_new_click
+
+    def open_two_popups():
+        open_popup()
+        world.context.pages.append(unrelated_popup)
+
+    world.group.on_new_click = open_two_popups
+    _wire(monkeypatch, world)
+
+    result = _prepare(world, dict(VALID_NEW_ROW), auto_save=True)
+
+    assert result["code"] == "STYLE_FORM_READY"
+    assert world.applied_value("ddlBuyer") == VALID_NEW_ROW["buyer"]
+    assert world.save_clicks == 1
+    assert other.editor.applied == []
+    assert other.save_clicks == 0
 
 
 # --- Lượt quét dropdown -------------------------------------------------

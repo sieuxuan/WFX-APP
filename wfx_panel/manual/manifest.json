@@ -227,7 +227,8 @@
               "template",
               "import",
               "cancel",
-              "prepare-row"
+              "prepare-row",
+              "skip-row"
             ],
             "errors": [
               "STYLE_COPY_CHOICE_INVALID",
