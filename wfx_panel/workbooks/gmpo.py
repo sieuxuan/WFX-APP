@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -19,6 +20,18 @@ from openpyxl.utils.exceptions import InvalidFileException
 _SHEET = "GMPO"
 _BASELINE = "_WFX_GMPO"
 _VERSION = "WFX GMPO v1"
+_ROW_KEY = "Mã dòng"
+_TOTAL_QTY = "coltotalqty"
+_TOTAL_VALUE = "coltotalvalue"
+_OMITTED_COLUMNS = {
+    "colgmpono",
+    "colcostprofitcenter",
+    "colpackingcodesku",
+    "colpackingtype",
+    "colpackingoption",
+    "colprepack",
+    "colcarton",
+}
 _IDENTITY = {
     "colbuyerorderref": "Buyer Order Ref",
     "colstyle": "Style",
@@ -44,20 +57,41 @@ def _text(cell, value: str) -> None:
     cell.data_type = "s"
 
 
+def _total_qty_formula(
+    row: dict, size_cells: list[tuple[str, Decimal]]
+) -> str | Decimal:
+    original_total = quantity(row["total_qty"])
+    factor = row["qty_factor"]
+    if not size_cells or factor is None or not math.isfinite(factor):
+        return original_total
+    # Match the native editor's quantity delta. A cleared cell is skipped on import.
+    differences = ",".join(
+        f'IF({address}="",0,{address}-{original})' for address, original in size_cells
+    )
+    return f"=ROUND({original_total}+{factor}*SUM({differences}),4)"
+
+
 def write_workbook(path: Path, snapshot: dict) -> None:
     book = Workbook()
+    book.calculation.calcMode = "auto"
     sheet = book.active
     sheet.title = _SHEET
     baseline = book.create_sheet(_BASELINE)
     baseline.sheet_state = "veryHidden"
     baseline.append([_VERSION, snapshot["scope"]])
-    columns = ["Order ID", "Mã dòng"] + [
+    columns = []
+    for column in snapshot["columns"]:
+        if column["id"] not in _OMITTED_COLUMNS:
+            columns.append(column)
+        if column["id"] == _TOTAL_VALUE:
+            break
+    headers = [_ROW_KEY] + [
         f"Order Qty - {column['label']}"
         if column["size"]
         else _IDENTITY.get(column["id"], column["label"])
-        for column in snapshot["columns"]
+        for column in columns
     ]
-    for index, label in enumerate(columns, 1):
+    for index, label in enumerate(headers, 1):
         cell = sheet.cell(1, index)
         _text(cell, label)
         cell.fill = PatternFill(
@@ -68,14 +102,14 @@ def write_workbook(path: Path, snapshot: dict) -> None:
             16, len(label) + 4
         )
 
-    for index, column in enumerate(snapshot["columns"], 3):
+    for index, column in enumerate(columns, 2):
         width = max(len(row["values"][column["id"]]) for row in snapshot["rows"])
         dim = sheet.column_dimensions[get_column_letter(index)]
         dim.width = min(62, max(dim.width, width + 3))
 
     qty_headers = {
         f"Order Qty - {column['label']}": column["size"]
-        for column in snapshot["columns"]
+        for column in columns
         if column["size"]
     }
     baseline.append(
@@ -84,8 +118,7 @@ def write_workbook(path: Path, snapshot: dict) -> None:
     baseline.append([None, None, None, *qty_headers])
     for number, row in enumerate(snapshot["rows"], 2):
         key = row_key(row["identity"])
-        _text(sheet.cell(number, 1), row["identity"][0])
-        _text(sheet.cell(number, 2), key)
+        _text(sheet.cell(number, 1), key)
         baseline.append(
             [
                 key,
@@ -99,19 +132,26 @@ def write_workbook(path: Path, snapshot: dict) -> None:
                 ),
             ]
         )
-        for index, column in enumerate(snapshot["columns"], 3):
+        size_cells = []
+        total_cell = None
+        for index, column in enumerate(columns, 2):
             cell = sheet.cell(number, index)
             size = column["size"]
-            if not size:
+            if column["id"] == _TOTAL_QTY:
+                total_cell = cell
+            elif not size:
                 _text(cell, row["values"][column["id"]])
             elif size in row["qty"]:
                 cell.value = quantity(row["qty"][size]["value"])
+                size_cells.append((cell.coordinate, cell.value))
                 decimals = row["qty"][size]["decimals"]
                 cell.number_format = "0." + "0" * decimals if decimals else "0"
                 if row["qty"][size]["editable"] and not snapshot["kit"]:
                     cell.fill = PatternFill("solid", fgColor="DCF3E9")
+        if total_cell is not None:
+            total_cell.value = _total_qty_formula(row, size_cells)
 
-    sheet.column_dimensions["B"].hidden = True
+    sheet.column_dimensions["A"].hidden = True
     sheet.freeze_panes = "C2"
     sheet.auto_filter.ref = sheet.dimensions
     with TemporaryDirectory(prefix=".wfx-gmpo-", dir=path.parent) as folder:
@@ -184,7 +224,7 @@ def _read_changes(book) -> tuple[str, list[dict]]:
         or set(qty_columns.values()) != set(size_headers)
         or len(set(size_headers)) != len(size_codes)
         or len(set(size_codes)) != len(size_codes)
-        or headers[:2] != ("Order ID", "Mã dòng")
+        or headers.count(_ROW_KEY) != 1
     ):
         raise ValueError(
             "Các cột Order Qty đã thay đổi. Hãy dùng đúng cấu trúc file xuất."
@@ -195,17 +235,22 @@ def _read_changes(book) -> tuple[str, list[dict]]:
             "File GMPO thiếu cột nhận diện PO, Style hoặc Color. Hãy xuất lại file."
         )
     references = {key: headers.index(label) for key, label in _IDENTITY.items()}
+    key_column = headers.index(_ROW_KEY)
+    legacy_order_column = headers.index("Order ID") if "Order ID" in headers else None
     changes = []
     seen = set()
     for number, row in enumerate(visible, 2):
         if not any(value is not None for value in row):
             continue
-        order, key = row[:2]
+        key = row[key_column]
         if key not in originals or key in seen:
             raise ValueError(f"Dòng Excel {number} thiếu mã dòng hoặc bị trùng.")
         seen.add(key)
         identity, reference, original = originals[key]
-        if str(order) != identity[0] or any(
+        if (
+            legacy_order_column is not None
+            and str(row[legacy_order_column]) != identity[0]
+        ) or any(
             str(row[index] or "") != reference[key] for key, index in references.items()
         ):
             raise ValueError(
