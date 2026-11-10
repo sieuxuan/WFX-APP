@@ -161,12 +161,14 @@ def _merge_jl_packing_sheet(root: ET.Element, shared_strings: list[str]) -> bool
     return True
 
 
-def _merge_jl_packing_measurements(target: Path) -> None:
+def _merge_jl_packing_measurements(target: Path, *, members: set[str] | None = None) -> None:
     """Áp dụng gộp tổng J.Lindeberg, chỉ cho sheet có đủ header đặc trưng."""
     with ZipFile(target, "r") as source:
         shared_strings = _shared_strings(source)
         replacements: dict[str, bytes] = {}
         for info in source.infolist():
+            if members is not None and info.filename not in members:
+                continue
             if not re.fullmatch(r"xl/worksheets/sheet\d+\.xml", info.filename):
                 continue
             root = _xml(source.read(info.filename))
@@ -370,12 +372,14 @@ def _merge_truewerk_packing_sheet(
     return True
 
 
-def _merge_truewerk_packing_measurements(target: Path) -> None:
+def _merge_truewerk_packing_measurements(target: Path, *, members: set[str] | None = None) -> None:
     """Áp dụng gộp bốn cột tổng PO/PO ADD cho Packing List TRUEWERK."""
     with ZipFile(target, "r") as source:
         shared_strings = _shared_strings(source)
         replacements: dict[str, bytes] = {}
         for info in source.infolist():
+            if members is not None and info.filename not in members:
+                continue
             if not re.fullmatch(r"xl/worksheets/sheet\d+\.xml", info.filename):
                 continue
             root = _xml(source.read(info.filename))

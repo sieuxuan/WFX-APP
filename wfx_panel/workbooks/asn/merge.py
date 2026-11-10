@@ -8,6 +8,7 @@ from zipfile import BadZipFile
 
 from openpyxl import load_workbook
 
+from wfx_panel.workbooks.asn.invoice import _merge_invoice_measurements
 from wfx_panel.workbooks.asn.layout import (
     _fit_packing_measurement_columns,
     _fit_reports_to_a4,
@@ -43,11 +44,14 @@ def merge_sale_asn_reports(
     buyer_key = " ".join(str(buyer_name or "").split()).casefold()
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        _merge_packages(packing_path, buyer_path, target, invoice_label)
+        packing_members = _merge_packages(
+            packing_path, buyer_path, target, invoice_label,
+            adjust_invoice_sheet=_merge_invoice_measurements,
+        )
         if buyer_key == _JL_BUYER:
-            _merge_jl_packing_measurements(target)
+            _merge_jl_packing_measurements(target, members=packing_members)
         elif buyer_key == _TRUEWERK_BUYER:
-            _merge_truewerk_packing_measurements(target)
+            _merge_truewerk_packing_measurements(target, members=packing_members)
         _fit_packing_measurement_columns(target)
         _fit_wrapped_report_rows(target)
         _fit_reports_to_a4(target)
