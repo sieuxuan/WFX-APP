@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.1.9",
+    "date": "2026-11-10",
+    "highlights": [
+      {
+        "title": "Tạo Style xử lý từng dòng và báo cáo lỗi cuối lượt",
+        "body": "Ứng dụng điền đúng cửa sổ Style và chờ WFX tải danh sách. Màn hình chỉ hiện thao tác cần làm, cho phép bỏ qua dòng lỗi và xem lý do trong tổng kết.",
+        "entry": "catalog-tao-style-hang-loat"
+      },
+      {
+        "title": "File Excel GMPO gọn hơn và tổng số lượng tự tính lại",
+        "body": "Khi sửa số lượng theo size trong file xuất, Excel tự cập nhật tổng số lượng của dòng.",
+        "entry": "don-hang-gmpo"
+      },
+      {
+        "title": "Invoice Sale ASN gộp số đo cho các dòng lặp",
+        "body": "File Commercial Invoice gộp các số đo đóng gói lặp lại theo dòng hàng để tránh tính trùng.",
+        "entry": "don-hang-sale-asn-documents"
+      },
+      {
+        "title": "Cập nhật ứng dụng gọn hơn",
+        "body": "Khi cập nhật, Windows chỉ hiện cửa sổ tiến trình của WFX Smart.",
+        "entry": "su-co-cap-nhat"
+      }
+    ]
+  },
+  {
     "version": "1.1.8",
     "date": "2026-11-10",
     "highlights": [

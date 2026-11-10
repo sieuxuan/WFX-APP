@@ -5,10 +5,10 @@ from wfx_panel.version import APP_VERSION, DISPLAY_VERSION, RELEASE_TAG
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_public_version_is_1_1_8():
-    assert APP_VERSION == "1.1.8"
-    assert DISPLAY_VERSION == "1.1.8"
-    assert RELEASE_TAG == "v1.1.8"
+def test_public_version_is_1_1_9():
+    assert APP_VERSION == "1.1.9"
+    assert DISPLAY_VERSION == "1.1.9"
+    assert RELEASE_TAG == "v1.1.9"
 
 
 def test_windows_build_embeds_release_version():
