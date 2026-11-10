@@ -47,6 +47,12 @@ Excel để gửi hoặc lưu trữ.
 > một trang theo chiều ngang khi in.
 
 > [!meo]
+> Trong Commercial Invoice, các dòng liền nhau cùng PO và Style được gộp dọc
+> bốn cột Net Wt, Gross Wt, No of Carton và CBM nếu cả bốn số liệu giống nhau.
+> Màu, Qty và phần tổng vẫn giữ số gốc. Sheet có công thức giữ nguyên từng ô
+> để bảo toàn số liệu tính toán.
+
+> [!meo]
 > Với Packing List J.Lindeberg có header `JL PO#`, các dòng liền nhau cùng PO và
 > Style sẽ tự gộp dọc Net Wt, Gross Wt, No of Carton và CBM khi số liệu giống nhau.
 

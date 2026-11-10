@@ -1004,7 +1004,10 @@ Các workflow riêng hiện có:
   loạt nếu nội dung wrap cần nhiều chỗ hơn. Tính lại từ nội dung, không lấy
   chiều cao SSRS bất thường làm chuẩn; giữ riêng tiêu đề nhóm hàng và footer.
   Mọi sheet đặt A4, giữ hướng dọc/ngang từ report WFX, fit vừa một trang theo
-  chiều ngang và tự phân trang theo chiều dọc. Khi copy sheet giữa hai workbook,
+  chiều ngang và tự phân trang theo chiều dọc. Với Commercial Invoice, gộp
+  dọc Net Wt, Gross Wt, No of Carton và CBM khi các dòng liền nhau cùng PO +
+  Style lặp lại đủ cả bốn số liệu. Giữ riêng màu, Qty và giữ nguyên phần tổng.
+  Chỉ áp dụng cho sheet lấy từ Buyer Invoice và bỏ qua sheet có công thức.
   Với Packing List J.Lindeberg (nhận diện bằng header `JL PO#`), gộp dọc Net Wt,
   Gross Wt, No of Carton và CBM cho các dòng liền nhau có cùng JL PO# + Style No;
   chỉ gộp khi giá trị cột đó giống nhau để không làm mất số liệu.
@@ -1019,7 +1022,7 @@ Các workflow riêng hiện có:
   kể cả BIRDDOGS có report dùng bộ header giống TRUEWERK, phải giữ nguyên từng dòng.
   Nếu file đích cùng tên đang mở/khóa trong Excel, không báo lỗi hoặc bắt tải lại:
   tự lưu sibling kế tiếp theo dạng `Invoice (2).xlsx` và trả đúng tên đã lưu.
-  phải tạo merged range trước rồi mới phục hồi style từng ô để không mất border/
+  Khi copy sheet giữa hai workbook, phải tạo merged range trước rồi mới phục hồi style từng ô để không mất border/
   khung report do WFX xuất; style của row/column dimension phải được ánh xạ lại
   theo thuộc tính, không được mang nguyên style index từ workbook nguồn sang.
 - `(GDN) Dispatch`: UI phải cảnh báo và bắt user xác nhận GRN nhập kho thành

@@ -451,3 +451,70 @@ def test_merge_sale_asn_reports_does_not_apply_truewerk_merge_to_birddogs(tmp_pa
     assert sheet["J4"].value == 0
     assert sheet["J5"].value == 1485.2
     workbook.close()
+@pytest.mark.parametrize("width", [1, 2])
+def test_commercial_invoice_merges_duplicate_packing_totals_by_adjacent_po_and_style(tmp_path, width):
+    packing = tmp_path / "packing.xlsx"
+    invoice = tmp_path / "invoice.xlsx"
+    target = tmp_path / "combined.xlsx"
+    columns = list(range(9, 9 + 4 * width, width))
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Commercial Invoice"
+    sheet.append(["Commercial Invoice"])
+    sheet.append(["PO No.", "Style No.", "Description", "Color", None, None, None, "No. of Pcs"])
+    for column, header in zip(columns, ("Net Wt (KGS)", "Gross Wt (KGS)", "No. of Cartons", "CBM"), strict=True):
+        sheet.cell(2, column, header)
+    detail = [
+        ("PO-10", "STYLE-1", "White", 141, (94.8, 109.8, 10, 0.48)),
+        ("PO-10", "STYLE-1", "Pink", 60, ("94.80", "109.80", 10, 0.48)),
+        ("PO-10", "STYLE-1", "Blue", 86, (94.8, 109.8, 10, 0.48)),
+        ("PO-11", "STYLE-1", "White", 14, (94.8, 109.8, 10, 0.48)),
+        ("PO-10", "STYLE-1", "Gray", 2, (94.8, 109.8, 10, 0.48)),
+        ("PO-10", "STYLE-1", "Red", 2, (94.8, 109.8, 10, 0.50)),
+        ("PO-10", "STYLE-2", "Black", 4, (94.8, 109.8, 10, 0.50)),
+    ]
+    for row, (po, style, color, qty, numbers) in enumerate(detail, start=3):
+        for column, value in ((1, po), (2, style), (4, color), (8, qty)):
+            sheet.cell(row, column, value)
+        for column, number in zip(columns, numbers, strict=True):
+            cell = sheet.cell(row, column, number)
+            cell.number_format = "0.00"
+            cell.border = Border(bottom=Side(style="thin"))
+            if width > 1:
+                sheet.merge_cells(start_row=row, start_column=column, end_row=row, end_column=column + width - 1)
+    sheet["A10"] = "Total"
+    sheet["H10"] = 309
+    for column, number in zip(columns, (474, 549, 50, 2.44), strict=True):
+        sheet.cell(10, column, number)
+    formula_sheet = workbook.copy_worksheet(sheet)
+    formula_sheet.title = "Invoice Formula"
+    formula_sheet["I10"] = "=SUM(I3:I9)"
+    workbook.save(invoice)
+    del workbook[formula_sheet.title]
+    sheet.title = "Packing List"
+    workbook.save(packing)
+    workbook.close()
+
+    merge_sale_asn_reports(packing, invoice, target, buyer_name="J.LINDEBERG")
+
+    output = load_workbook(target)
+    try:
+        assert output.sheetnames == ["Commercial Invoice", "Packing List", "Invoice Formula"]
+        exported = output["Commercial Invoice"]
+        merged = {
+            (span.min_col, span.max_col, span.min_row, span.max_row)
+            for span in exported.merged_cells.ranges
+            if span.min_row != span.max_row
+        }
+        assert merged == {(column, column + width - 1, 3, 5) for column in columns}
+        assert [exported.cell(row, 8).value for row in range(3, 6)] == [141, 60, 86]
+        assert [exported.cell(row, 4).value for row in range(3, 6)] == ["White", "Pink", "Blue"]
+        assert [exported.cell(3, column).value for column in columns] == [94.8, 109.8, 10, 0.48]
+        assert [exported.cell(10, column).value for column in columns] == [474, 549, 50, 2.44]
+        assert exported["I3"].number_format == "0.00"
+        assert exported["I5"].border.bottom.style == "thin"
+        assert output["Packing List"]["I4"].value == "94.80"
+        assert output["Invoice Formula"]["I4"].value == "94.80"
+        assert output["Invoice Formula"]["I10"].value == "=SUM(I3:I9)"
+    finally:
+        output.close()

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path, PurePosixPath
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -328,7 +329,9 @@ def _merge_packages(
     buyer_path: Path,
     target: Path,
     invoice_label: str,
-) -> None:
+    *,
+    adjust_invoice_sheet: Callable[[ET.Element, list[str]], bool] | None = None,
+) -> set[str]:
     with ZipFile(buyer_path) as buyer_zip, ZipFile(packing_path) as packing_zip:
         buyer_workbook = _xml(buyer_zip.read("xl/workbook.xml"))
         packing_workbook = _xml(packing_zip.read("xl/workbook.xml"))
@@ -480,11 +483,18 @@ def _merge_packages(
             ),
             "xl/styles.xml": merged_styles,
         }
+        if adjust_invoice_sheet is not None:
+            invoice_strings = _shared_strings(buyer_zip)
+            for _sheet, member in buyer_records:
+                root = _xml(buyer_zip.read(member))
+                if adjust_invoice_sheet(root, invoice_strings):
+                    replacements[member] = _xml_bytes(root)
         with ZipFile(target, "w", compression=ZIP_DEFLATED) as output_zip:
             for info in buyer_zip.infolist():
                 output_zip.writestr(info, replacements.get(info.filename, buyer_zip.read(info)))
             for _sheet, member, data in packing_output:
                 output_zip.writestr(member, data)
+        return {member for _sheet, member, _data in packing_output}
 
 
 def _shared_strings(archive: ZipFile) -> list[str]:
