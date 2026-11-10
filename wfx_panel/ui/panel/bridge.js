@@ -3,14 +3,21 @@
 // Một phần của panel UI — các file trong thư mục này chia chung global
 // scope và chạy theo đúng thứ tự index.html khai báo.
 
-function handleResult(result) {
+function handleResult(result, method = result?.method) {
   if (!result) return;
   const cancelled = result.code === "ACTION_CANCELLED";
-  setStatus(
-    ["COLOR_REPORT_OC_NOT_FOUND", "COLOR_PO_REPORT_EMPTY"].includes(result.code) ? "neutral"
-      : (cancelled ? "warning" : (result.ok ? "success" : "error")),
-    result.message || "",
-  );
+  const styleResultInPanel = result.code === "STYLE_IMPORT_REVIEW_READY"
+    || method === "scan_catalog_style_options"
+    || (method === "prepare_catalog_style_row" && catalogStyleReview);
+  if (styleResultInPanel) {
+    setStatus("neutral", "");
+  } else {
+    setStatus(
+      ["COLOR_REPORT_OC_NOT_FOUND", "COLOR_PO_REPORT_EMPTY"].includes(result.code) ? "neutral"
+        : (cancelled ? "warning" : (result.ok ? "success" : "error")),
+      result.message || "",
+    );
+  }
   if (result.code?.startsWith?.("GDN_")) {
     finishGdnProgress(result);
   }
@@ -210,7 +217,7 @@ async function call(method, ...args) {
       );
       return null;
     }
-    handleResult(result);
+    handleResult(result, method);
     return result;
   } catch (error) {
     setStatus("error", String(error));

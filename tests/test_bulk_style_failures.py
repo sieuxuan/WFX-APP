@@ -141,6 +141,22 @@ def test_a_form_that_never_becomes_ready_is_reported_as_such(
     assert "chưa sẵn sàng" in result["message"]
 
 
+def test_save_timeout_asks_to_check_wfx_before_retrying(monkeypatch, world):  # noqa: F811
+    _wire(monkeypatch, world)
+
+    def timeout_after_save(*_args):
+        raise PlaywrightTimeoutError("Save timeout")
+
+    patch_automation(monkeypatch, bulk_style, "_save_style", timeout_after_save)
+
+    result = _prepare(world, auto_save=True)
+
+    assert result["ok"] is False
+    assert result["save_uncertain"] is True
+    assert result["can_skip"] is False
+    assert "Hãy kiểm tra Style trên WFX trước khi chạy lại." in result["message"]
+
+
 def test_an_unexpected_failure_while_preparing_a_row_is_a_technical_error(
     monkeypatch, world  # noqa: F811
 ):

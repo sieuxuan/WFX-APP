@@ -99,6 +99,37 @@ def test_the_toast_title_names_the_flow_that_finished(app):
     assert app.tray.sent[0][1].startswith(NOTIFICATION_ACTION_LABELS[method])
 
 
+@pytest.mark.parametrize(
+    ("method", "code", "ok"),
+    [
+        ("review_catalog_style_import", "STYLE_IMPORT_REVIEW_READY", True),
+        ("review_catalog_style_import", "STYLE_FILE_INVALID", False),
+        ("scan_catalog_style_options", "STYLE_OPTIONS_SCAN_FAILED", False),
+        ("prepare_catalog_style_row", "STYLE_FORM_READY", True),
+        ("prepare_catalog_style_row", "STYLE_COPY_MULTIPLE_RESULTS", True),
+        ("prepare_catalog_style_row", "ACTION_CANCELLED", False),
+    ],
+)
+def test_style_workflow_keeps_routine_results_in_the_panel(app, method, code, ok):
+    app.tray = FakeTray()
+    app._tray_ready.set()
+
+    assert not app._show_notification({"ok": ok, "code": code}, method=method)
+    assert app.tray.sent == []
+
+
+def test_style_preparation_failure_notifies_when_wfx_is_open(app):
+    app.tray = FakeTray()
+    app._tray_ready.set()
+    message = "Không điền được Buyer."
+
+    assert app._show_notification(
+        {"ok": False, "code": "STYLE_FIELD_NOT_AVAILABLE", "message": message},
+        method="prepare_catalog_style_row",
+    )
+    assert app.tray.sent == [(message, "Chuẩn bị Style · Cần kiểm tra")]
+
+
 def test_a_result_without_a_message_still_says_something(app):
     app.tray = FakeTray()
     app._tray_ready.set()

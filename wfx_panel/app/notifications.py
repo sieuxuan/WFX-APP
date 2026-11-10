@@ -53,6 +53,14 @@ class NotificationController:
         app = self._app
         if not app._toast_enabled:
             return False
+        # Style có danh sách tương tác trong panel. Khi mở WFX chỉ ngắt người
+        # dùng bằng toast nếu lượt chuẩn bị cần xử lý lỗi.
+        if method in {"review_catalog_style_import", "scan_catalog_style_options"}:
+            return False
+        if method == "prepare_catalog_style_row" and (
+            result.get("ok") or result.get("code") == "ACTION_CANCELLED"
+        ):
+            return False
         action_label = NOTIFICATION_ACTION_LABELS.get(method, "WFX Smart")
         status_label = "Hoàn thành" if result.get("ok") else "Cần kiểm tra"
         return self._notify_native(

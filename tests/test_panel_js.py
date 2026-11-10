@@ -171,7 +171,8 @@ def test_wires_bulk_style_review_and_manual_save_flow():
     ]:
         assert f'"{method}"' in JS
     assert "STYLE_COPY_MULTIPLE_RESULTS" in JS
-    assert "Tôi đã Save · Chuẩn bị dòng tiếp theo" in JS
+    assert "Xác nhận đã Save" in JS
+    assert '"skip-row": () => skipCatalogStyleRow()' in JS
     assert "catalogStyleAutoSave" in JS
     assert 'download_style_template", groupId' in JS
 
@@ -767,7 +768,7 @@ def test_catalog_costing_switches_to_dedicated_workspace_after_upload():
         : JS.index("async function applyCatalogCosting()")
     ]
     result_block = JS[
-        JS.index("function handleResult(result)")
+        JS.index("function handleResult(")
         : JS.index("window.wfxHandleBackendResult")
     ]
     assert 'showCatalogSpace("costing", { focus: false })' in import_block

@@ -260,54 +260,58 @@
           <div class="catalog-space-panel catalog-style-workspace" data-catalog-space-panel="styles" role="tabpanel" hidden>
             <section class="catalog-style-card" aria-labelledby="catalog-style-title">
               <div class="catalog-costing-heading">
-                <span>
-                  <strong id="catalog-style-title">Tạo Style Apparel hàng loạt</strong>
-                  <small class="catalog-style-mode-copy">Chuẩn bị từng dòng và dừng trước Save</small>
-                </span>
+                <strong id="catalog-style-title">Tạo Style Apparel</strong>
                 <label class="catalog-style-autosave toggle-row" data-tooltip="Bật để app bấm Save sau khi điền xong từng Style">
                   <span>Tự động Save</span>
                   <input class="catalog-style-autosave-input" type="checkbox" />
                   <i aria-hidden="true"></i>
                 </label>
               </div>
-              <input class="catalog-style-group" type="hidden" value="" />
-              <div class="catalog-style-group-row">
-                <span>Group bắt buộc</span>
-                <div class="catalog-style-group-controls">
-                  <button type="button" class="catalog-style-group-summary" aria-expanded="false">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
-                    <strong class="catalog-style-group-current">Chọn Group Apparel…</strong>
-                  </button>
-                  <button type="button" class="catalog-style-refresh" data-style-action="refresh-groups" data-tooltip="Quét lại Group" aria-label="Quét lại Group">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
-                  </button>
+              <div class="catalog-style-setup">
+                <input class="catalog-style-group" type="hidden" value="" />
+                <div class="catalog-style-group-row">
+                  <span>Group đích</span>
+                  <div class="catalog-style-group-controls">
+                    <button type="button" class="catalog-style-group-summary" aria-expanded="false">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+                      <strong class="catalog-style-group-current">Chọn Group Apparel…</strong>
+                    </button>
+                    <button type="button" class="catalog-style-refresh" data-style-action="refresh-groups" data-tooltip="Quét lại Group" aria-label="Quét lại Group">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="catalog-style-group-picker" hidden>
+                  <div class="catalog-folder-search-box">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                    <input class="catalog-style-group-search" type="search" autocomplete="off" placeholder="Tìm tên Group hoặc đường dẫn…" />
+                  </div>
+                  <div class="catalog-style-group-list" role="listbox" aria-label="Chọn Group Apparel"></div>
+                </div>
+                <div class="catalog-style-file-actions">
+                  <button type="button" data-style-action="template">Tải mẫu Excel</button>
+                  <button type="button" class="catalog-primary-action" data-style-action="import">Chọn file Excel</button>
                 </div>
               </div>
-              <div class="catalog-style-group-picker" hidden>
-                <div class="catalog-folder-search-box">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-                  <input class="catalog-style-group-search" type="search" autocomplete="off" placeholder="Tìm tên Group hoặc đường dẫn…" />
-                </div>
-                <div class="catalog-style-group-list" role="listbox" aria-label="Chọn Group Apparel"></div>
-              </div>
-              <div class="catalog-style-file-actions">
-                <button type="button" data-style-action="template">Tải form Excel</button>
-                <button type="button" class="catalog-primary-action" data-style-action="import">Chọn file &amp; kiểm tra</button>
-              </div>
-              <p class="catalog-style-note">New: điền đủ. Copy: chỉ đổi ô có dữ liệu.<br />Purchase UOM, Price Per, Color Definition: cố định.</p>
-              <div class="catalog-style-review" aria-live="polite" hidden>
-                <div class="catalog-costing-plan-heading">
+              <div class="catalog-style-review" hidden>
+                <div class="catalog-costing-plan-heading catalog-style-review-heading">
                   <span>
-                    <strong>Danh sách chuẩn bị</strong>
-                    <small class="catalog-style-review-file"></small>
+                    <strong class="catalog-style-progress" role="status"></strong>
+                    <small class="catalog-style-review-file" data-tooltip-clipped></small>
                   </span>
-                  <button type="button" data-style-action="cancel" aria-label="Hủy danh sách Tạo Style"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+                  <button type="button" data-style-action="cancel" aria-label="Đóng danh sách Tạo Style"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
                 </div>
-                <div class="catalog-style-progress"></div>
                 <div class="catalog-style-row-summary"></div>
-                <div class="catalog-style-copy-choices" hidden></div>
-                <button type="button" class="catalog-style-prepare" data-style-action="prepare-row">Chuẩn bị dòng đầu tiên</button>
-                <small class="catalog-style-save-reminder">Kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.</small>
+                <p class="catalog-style-instruction" role="status" hidden></p>
+                <div class="catalog-style-copy-choices" aria-label="Style nguồn" hidden></div>
+                <div class="catalog-style-row-actions">
+                  <button type="button" class="catalog-style-prepare" data-style-action="prepare-row">Chuẩn bị Style</button>
+                  <button type="button" data-style-action="skip-row" hidden>Bỏ qua</button>
+                </div>
+                <details class="catalog-style-skipped" hidden>
+                  <summary></summary>
+                  <ul></ul>
+                </details>
               </div>
             </section>
           </div>

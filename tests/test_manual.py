@@ -257,6 +257,7 @@ def test_helper_trich_dung_so_luong_hien_co():
         "import",
         "cancel",
         "prepare-row",
+        "skip-row",
     }
     assert surface.settings_controls() == {
         "focus-chrome-input",

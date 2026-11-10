@@ -118,12 +118,6 @@ function bind() {
   );
   $(".catalog-style-autosave-input")?.addEventListener("change", (event) => {
     catalogStyleAutoSave = event.target.checked === true;
-    $(".catalog-style-mode-copy").textContent = catalogStyleAutoSave
-      ? "Chuẩn bị từng dòng và tự Save sau khi điền"
-      : "Chuẩn bị từng dòng và dừng trước Save";
-    $(".catalog-style-save-reminder").textContent = catalogStyleAutoSave
-      ? "App tự bấm Save. Chỉ bật khi đã kiểm tra file Excel."
-      : "Kiểm tra trên WFX và tự bấm Save rồi mới tiếp tục.";
     renderCatalogStyleReview();
   });
   $(".catalog-style-copy-choices")?.addEventListener("click", (event) => {

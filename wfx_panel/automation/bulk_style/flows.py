@@ -70,10 +70,11 @@ def scan_catalog_style_options(
         # Anchor href="#" dùng chung class với toolbar khác; click chính TD có
         # onclick="New()" mới ổn định trên WFX cũ.
         choice_frame = _open_style_choice(context, new_link)
+        popup = choice_frame.page
         choice_frame.locator(f"xpath={NEW_STYLE_XPATH}").first.evaluate(
             "element => element.click()"
         )
-        editor = _style_editor_frame(context)
+        editor = _style_editor_frame(popup)
         fields: dict[str, list[dict[str, str]]] = {}
         specs = {key: (label, ids, labels) for key, label, ids, labels in STYLE_FIELDS}
         fields["material_type"] = _read_style_options(
@@ -94,7 +95,7 @@ def scan_catalog_style_options(
             fields["material_type"][0],
         )
         _set_field(
-            context,
+            popup,
             specs["material_type"][0],
             material.get("value") or material["label"],
             specs["material_type"][1],
@@ -103,12 +104,12 @@ def scan_catalog_style_options(
         )
         for key in ("buyer", "division"):
             label, ids, labels = specs[key]
-            options = _field_options_with_wait(context, ids)
+            options = _field_options_with_wait(popup, ids)
             fields[key] = options
             if options:
                 first = options[0]
                 _set_field(
-                    context,
+                    popup,
                     label,
                     first.get("value") or first["label"],
                     ids,
@@ -119,22 +120,21 @@ def scan_catalog_style_options(
         product_spec = ("product_group", *specs["product_group"])
         subcategory_spec = ("sub_category", *specs["sub_category"])
         fields["product_group"] = _field_options_with_wait(
-            context, product_spec[2]
+            popup, product_spec[2]
         )
         dependencies: dict[str, list[dict[str, str]]] = {}
         for option in fields.get("product_group", [])[:500]:
             label = option["label"]
             try:
                 _set_field(
-                    context,
+                    popup,
                     product_spec[1],
                     option.get("value") or label,
                     product_spec[2],
                     product_spec[3],
                     lambda _message: None,
                 )
-                editor = _style_editor_frame(context)
-                values = _field_options_with_wait(context, subcategory_spec[2])
+                values = _field_options_with_wait(popup, subcategory_spec[2])
                 if values:
                     dependencies[label] = values
             except (RuntimeError, PlaywrightError, PlaywrightTimeoutError):
@@ -142,7 +142,7 @@ def scan_catalog_style_options(
         if fields["product_group"]:
             first_product = fields["product_group"][0]
             _set_field(
-                context,
+                popup,
                 product_spec[1],
                 first_product.get("value") or first_product["label"],
                 product_spec[2],
@@ -153,7 +153,7 @@ def scan_catalog_style_options(
             if first_subcategories:
                 first_subcategory = first_subcategories[0]
                 _set_field(
-                    context,
+                    popup,
                     subcategory_spec[1],
                     first_subcategory.get("value") or first_subcategory["label"],
                     subcategory_spec[2],
@@ -161,7 +161,7 @@ def scan_catalog_style_options(
                     lambda _message: None,
                 )
         for key in ("color_card", "size_range", "season"):
-            fields[key] = _field_options_with_wait(context, specs[key][1])
+            fields[key] = _field_options_with_wait(popup, specs[key][1])
         missing = [
             label
             for key, label in (
@@ -215,7 +215,6 @@ def scan_catalog_style_options(
 
 
 def _prepare_copy(
-    context: Any,
     frame: Frame,
     row: dict[str, Any],
     copy_choice: int | None,
@@ -231,17 +230,19 @@ def _prepare_copy(
     search.wait_for(state="visible", timeout=5_000)
     search.click()
     _write_log(log, "[STYLE COPY] Đang tìm bằng ArticleCode/Name.")
-    result_frame = _copy_result_frame(context)
+    result_frame = _copy_result_frame(frame.page)
     choices = list(result_frame.evaluate(_COPY_RESULTS_JS) or [])
     if not choices:
         raise RuntimeError("STYLE_COPY_NOT_FOUND")
     if len(choices) > 1 and copy_choice is None:
+        source_row = int(row.get("source_row") or 0)
         return _result(
             True,
             "STYLE_COPY_MULTIPLE_RESULTS",
-            f"Có {len(choices)} Style nguồn. Hãy chọn đúng một Style trong app.",
+            f"Dòng Excel {source_row} có {len(choices)} Style nguồn phù hợp. "
+            "Hãy chọn một Style nguồn để tiếp tục.",
             choices=choices,
-            source_row=int(row.get("source_row") or 0),
+            source_row=source_row,
         )
     # Lựa chọn rõ ràng của người dùng luôn phải được xác thực lại với tập kết
     # quả HIỆN TẠI. Trước đây nhánh `len(choices) == 1` bỏ qua `copy_choice`,
@@ -301,20 +302,24 @@ def prepare_catalog_style_row(
         )
 
     playwright: Playwright | None = None
+    step = "Mở form WFX"
+    saving = False
+    save_check_message = "Chưa xác nhận được kết quả Save. Hãy kiểm tra Style trên WFX trước khi chạy lại."
     try:
         playwright = sync_playwright().start()
         browser, page = _active_wfx_page(playwright, log)
         context = browser.contexts[0]
         _owner, _frame, new_link = _new_style_link(context, 12)
         choice_frame = _open_style_choice(context, new_link)
+        popup = choice_frame.page
         _write_log(log, "[STYLE] Đã mở New trong Group đã chọn.")
 
         if kind == "new":
             new_button = choice_frame.locator(f"xpath={NEW_STYLE_XPATH}").first
             new_button.evaluate("element => element.click()")
         else:
+            step = "Chọn Style nguồn"
             pending = _prepare_copy(
-                context,
                 choice_frame,
                 row,
                 copy_choice,
@@ -323,20 +328,25 @@ def prepare_catalog_style_row(
             if pending is not None:
                 return pending
 
-        _style_editor_frame(context)
-        filled = _fill_style_editor(context, row, log)
+        step = "Mở form WFX"
+        _style_editor_frame(popup)
+        step = "Điền dữ liệu"
+        filled = _fill_style_editor(popup, row, log)
         saved = bool(auto_save)
         if saved:
-            _save_style(context, log)
-        page.bring_to_front()
+            step = "Save trên WFX"
+            saving = True
+            _save_style(popup, log)
+            page.bring_to_front()
+        else:
+            popup.bring_to_front()
         source_row = int(row.get("source_row") or 0)
         return _result(
             True,
             "STYLE_FORM_READY",
             (
-                f"Đã chuẩn bị dòng {source_row} trên WFX"
-                + (" và Save tự động." if saved else " và dừng trước Save. ")
-                + ("" if saved else "Hãy kiểm tra rồi tự bấm Save.")
+                f"Đã chuẩn bị 1 Style từ dòng Excel {source_row}. "
+                + ("App đã bấm Save trên WFX." if saved else "Hãy kiểm tra rồi tự bấm Save trên WFX.")
             ),
             source_row=source_row,
             style_type="New" if kind == "new" else "Copy",
@@ -347,6 +357,7 @@ def prepare_catalog_style_row(
     except RuntimeError as exc:
         raw = str(exc)
         code, _, detail = raw.partition(":")
+        field, _, value = detail.partition(":")
         messages = {
             # PanelAPI khớp đúng hai mã này để tự mở lại trình duyệt và đăng
             # nhập lại. Gộp chúng vào STYLE_PREPARE_FAILED là mất hẳn cơ chế
@@ -360,23 +371,41 @@ def prepare_catalog_style_row(
                 f"Dòng New còn thiếu trường bắt buộc: {detail}."
             ),
             "STYLE_FIELD_NOT_AVAILABLE": (
-                f"Không điền được trường {detail.split(':', 1)[0] or 'Style'} "
-                "trên form WFX."
+                f"Không điền được trường {field or 'Style'} trên form WFX."
+                + (f" Giá trị trong Excel: {value}." if value else "")
             ),
         }
         if code in messages:
-            return _result(False, code, messages[code])
+            return _result(
+                False, code, save_check_message if saving else messages[code],
+                failure_step=step,
+                can_skip=not saving and code not in {"CHROME_CLOSED", "NOT_LOGGED_IN"},
+                save_uncertain=saving,
+            )
         message = f"Không chuẩn bị được Style: {_first_line(exc)}"
         _write_log(log, message)
-        return _result(False, "STYLE_PREPARE_FAILED", message)
+        return _result(
+            False, "STYLE_PREPARE_FAILED", save_check_message if saving else message,
+            failure_step=step,
+            save_uncertain=saving,
+        )
     except PlaywrightTimeoutError as exc:
         message = f"Màn hình Tạo Style chưa sẵn sàng: {_first_line(exc)}"
         _write_log(log, message)
-        return _result(False, "STYLE_FORM_NOT_READY", message)
+        return _result(
+            False, "STYLE_FORM_NOT_READY", save_check_message if saving else message,
+            failure_step=step,
+            can_skip=not saving,
+            save_uncertain=saving,
+        )
     except Exception as exc:
         message = f"{type(exc).__name__}: {_first_line(exc)}"
         _write_log(log, message)
-        return _result(False, "STYLE_PREPARE_FAILED", message)
+        return _result(
+            False, "STYLE_PREPARE_FAILED", save_check_message if saving else message,
+            failure_step=step,
+            save_uncertain=saving,
+        )
     finally:
         if playwright is not None:
             playwright.stop()

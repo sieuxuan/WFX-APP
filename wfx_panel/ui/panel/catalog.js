@@ -265,8 +265,13 @@ function resetCatalogStyleReview() {
   catalogStyleReview = null;
   catalogStyleRowIndex = 0;
   catalogStyleAwaitingSave = false;
+  catalogStyleRowFailure = null;
+  catalogStyleOutcomes = [];
   const review = $(".catalog-style-review");
   if (review) review.hidden = true;
+  $(".catalog-style-setup").hidden = false;
+  $(".catalog-style-autosave").hidden = false;
+  $(".catalog-style-skipped").open = false;
   const choices = $(".catalog-style-copy-choices");
   if (choices) {
     choices.hidden = true;
@@ -285,38 +290,62 @@ function renderCatalogStyleReview() {
   if (!review || !catalogStyleReview) return;
   const row = currentCatalogStyleRow();
   const count = Number(catalogStyleReview.row_count || catalogStyleReview.rows.length);
+  const skipped = catalogStyleOutcomes.filter((item) => item.status === "skipped");
+  const autoSaved = catalogStyleOutcomes.filter((item) => item.status === "auto").length;
+  const confirmed = catalogStyleOutcomes.filter((item) => item.status === "manual").length;
+  const choosingSource = !$(".catalog-style-copy-choices").hidden;
+  const failure = catalogStyleRowFailure;
+  $(".catalog-style-setup").hidden = true;
+  $(".catalog-style-autosave").hidden = !row;
   review.hidden = false;
-  $(".catalog-style-review-file").textContent =
-    `${catalogStyleReview.file_name} · ${catalogStyleReview.group.path_label}`;
+  const file = $(".catalog-style-review-file");
+  file.textContent = [catalogStyleReview.file_name, catalogStyleReview.group.path_label]
+    .filter(Boolean).join(" · ");
+  file.dataset.tooltip = file.textContent;
+  const close = $('[data-style-action="cancel"]');
+  const closeLabel = row ? "Đóng danh sách" : "Đóng báo cáo";
+  close.setAttribute("aria-label", closeLabel);
+  close.dataset.tooltip = closeLabel;
   $(".catalog-style-progress").textContent = row
-    ? `Dòng ${catalogStyleRowIndex + 1}/${count} · Excel ${row.source_row}`
-    : `Hoàn tất ${count}/${count} dòng`;
-  $(".catalog-style-row-summary").textContent = row
+    ? `Style ${catalogStyleRowIndex + 1}/${count} · Dòng Excel ${row.source_row}`
+    : `Đã xử lý ${catalogStyleOutcomes.length}/${count} dòng`;
+  const summary = $(".catalog-style-row-summary");
+  summary.textContent = row
     ? [
-        row.type,
-        row.style_copy ? `Nguồn: ${row.style_copy}` : "Tạo mới",
+        row.type === "Copy" ? `Sao chép từ ${row.style_copy}` : "Tạo mới",
         row.buyer_style_ref ? `Buyer Ref: ${row.buyer_style_ref}` : "",
         row.internal_style_ref ? `Internal Ref: ${row.internal_style_ref}` : "",
       ].filter(Boolean).join(" · ")
-    : (catalogStyleAutoSave
-      ? "Đã xong. Các Style được Save tự động."
-      : "Đã xong. Tự bấm Save trên WFX để lưu.");
-  const button = $(".catalog-style-prepare");
-  if (!row) {
-    button.textContent = "Đã hoàn tất";
-    button.disabled = true;
-  } else if (catalogStyleAwaitingSave) {
-    button.textContent = catalogStyleRowIndex + 1 >= count
-      ? "Tôi đã Save · Hoàn tất"
-      : "Tôi đã Save · Chuẩn bị dòng tiếp theo";
-    button.disabled = false;
-  } else {
-    button.textContent = catalogStyleRowIndex === 0
-      ? (catalogStyleAutoSave ? "Chuẩn bị & Save dòng đầu tiên" : "Chuẩn bị dòng đầu tiên")
-      : (catalogStyleAutoSave ? "Chuẩn bị & Save dòng này" : "Chuẩn bị dòng này");
-    button.disabled = false;
+    : [
+        autoSaved ? `App đã bấm Save ${autoSaved} dòng` : "",
+        confirmed ? `Bạn đã xác nhận Save ${confirmed} dòng` : "",
+      ].filter(Boolean).join(" · ");
+  summary.hidden = !summary.textContent;
+  const instruction = $(".catalog-style-instruction");
+  instruction.textContent = failure?.message || (choosingSource
+    ? "Chọn Style nguồn để tiếp tục."
+    : (catalogStyleAwaitingSave ? "Kiểm tra bản nháp và bấm Save trên WFX." : ""));
+  instruction.hidden = !instruction.textContent;
+  instruction.classList.toggle("has-error", Boolean(failure));
+  const report = $(".catalog-style-skipped");
+  report.hidden = Boolean(row) || !skipped.length;
+  if (!report.hidden) {
+    report.querySelector("summary").textContent = `Bỏ qua ${skipped.length} dòng`;
+    report.querySelector("ul").replaceChildren(...skipped.map((item) => {
+      const entry = document.createElement("li");
+      entry.textContent = `Dòng Excel ${item.sourceRow} · ${item.reason}`;
+      return entry;
+    }));
   }
-  renderCatalogStyleGroups();
+  const skip = $('[data-style-action="skip-row"]');
+  skip.hidden = !catalogStyleAwaitingSave && !failure?.canSkip;
+  skip.textContent = catalogStyleAwaitingSave ? "Bỏ qua, chưa Save" : "Bỏ qua";
+  const button = $(".catalog-style-prepare");
+  button.hidden = !row || choosingSource || Boolean(failure?.saveUncertain);
+  button.textContent = catalogStyleAwaitingSave ? "Xác nhận đã Save"
+    : (failure ? "Thử lại" : (catalogStyleAutoSave ? "Chuẩn bị và Save" : "Chuẩn bị Style"));
+  $(".catalog-style-row-actions").hidden = button.hidden && skip.hidden;
+  syncCatalogStepButtons();
 }
 
 async function downloadCatalogStyleTemplate() {
@@ -326,9 +355,7 @@ async function downloadCatalogStyleTemplate() {
     $(".catalog-style-group-summary")?.focus();
     return null;
   }
-  const result = await call("download_style_template", groupId);
-  if (result) handleResult(result);
-  return result;
+  return call("download_style_template", groupId);
 }
 
 async function importCatalogStyles() {
@@ -349,9 +376,8 @@ async function importCatalogStyles() {
     groupId,
   );
   if (result?.code === "STYLE_IMPORT_REVIEW_READY") {
+    resetCatalogStyleReview();
     catalogStyleReview = result;
-    catalogStyleRowIndex = 0;
-    catalogStyleAwaitingSave = false;
     renderCatalogStyleReview();
   }
   return result;
@@ -359,9 +385,8 @@ async function importCatalogStyles() {
 
 async function cancelCatalogStyleReview() {
   const token = String(catalogStyleReview?.review_token || "");
-  if (token) await callQuiet("clear_catalog_style_import", token);
   resetCatalogStyleReview();
-  setStatus("warning", "Đã hủy danh sách Tạo Style; app chưa Save trên WFX.");
+  if (token) await callQuiet("clear_catalog_style_import", token);
 }
 
 function renderCatalogStyleCopyChoices(result) {
@@ -374,57 +399,61 @@ function renderCatalogStyleCopyChoices(result) {
     )}</button>`
   )).join("");
   host.hidden = !choices.length;
-  $(".catalog-style-prepare").disabled = Boolean(choices.length);
+}
+
+async function finishCatalogStyleRow(status, reason = "") {
+  catalogStyleOutcomes.push({ sourceRow: currentCatalogStyleRow().source_row, status, reason });
+  catalogStyleAwaitingSave = false;
+  catalogStyleRowFailure = null;
+  catalogStyleRowIndex += 1;
+  renderCatalogStyleCopyChoices(null);
+  renderCatalogStyleReview();
+  if (!currentCatalogStyleRow()) {
+    await callQuiet("clear_catalog_style_import", catalogStyleReview.review_token);
+  }
+}
+
+async function skipCatalogStyleRow() {
+  if (!currentCatalogStyleRow() || (!catalogStyleAwaitingSave && !catalogStyleRowFailure?.canSkip)) return;
+  await finishCatalogStyleRow("skipped", catalogStyleRowFailure?.message || "Bạn xác nhận dòng này chưa Save.");
 }
 
 async function prepareCatalogStyleRow(copyChoice = null) {
-  if (!catalogStyleReview) return null;
-  if (catalogStyleAwaitingSave) {
-    catalogStyleAwaitingSave = false;
-    catalogStyleRowIndex += 1;
-    if (!currentCatalogStyleRow()) {
-      await callQuiet(
-        "clear_catalog_style_import",
-        catalogStyleReview.review_token,
-      );
-      renderCatalogStyleReview();
-      setStatus("success", "Đã hoàn tất danh sách. App không tự Save Style nào.");
-      return null;
-    }
-    renderCatalogStyleReview();
-  }
+  const review = catalogStyleReview;
   const row = currentCatalogStyleRow();
-  if (!row) return null;
+  if (!row || catalogStyleRowFailure?.saveUncertain) return null;
+  if (catalogStyleAwaitingSave) {
+    await finishCatalogStyleRow("manual");
+    return null;
+  }
+  catalogStyleRowFailure = null;
+  renderCatalogStyleCopyChoices(null);
+  renderCatalogStyleReview();
   const result = await call(
     "prepare_catalog_style_row",
-    catalogStyleReview.review_token,
+    review.review_token,
     row.source_row,
     copyChoice,
     catalogStyleAutoSave,
   );
+  if (review !== catalogStyleReview || row !== currentCatalogStyleRow()) return result;
   if (result?.code === "STYLE_COPY_MULTIPLE_RESULTS") {
     renderCatalogStyleCopyChoices(result);
   } else if (result?.code === "STYLE_FORM_READY") {
-    const choices = $(".catalog-style-copy-choices");
-    choices.hidden = true;
-    choices.innerHTML = "";
-    if (catalogStyleAutoSave && result?.saved === true) {
-      catalogStyleRowIndex += 1;
-      if (!currentCatalogStyleRow()) {
-        await callQuiet(
-          "clear_catalog_style_import",
-          catalogStyleReview.review_token,
-        );
-        renderCatalogStyleReview();
-        setStatus("success", "Đã chuẩn bị và Save toàn bộ danh sách Style.");
-        return result;
-      }
-      catalogStyleAwaitingSave = false;
-    } else {
-      catalogStyleAwaitingSave = true;
+    if (result.saved === true) {
+      await finishCatalogStyleRow("auto");
+      return result;
     }
-    renderCatalogStyleReview();
+    catalogStyleAwaitingSave = true;
+  } else if (result && !result.ok) {
+    const saveUncertain = result.save_uncertain === true;
+    catalogStyleRowFailure = {
+      canSkip: result.can_skip === true && !saveUncertain,
+      saveUncertain,
+      message: result.message || "Chưa chuẩn bị được Style.",
+    };
   }
+  renderCatalogStyleReview();
   return result;
 }
 
@@ -434,6 +463,7 @@ const styleActions = {
   import: () => importCatalogStyles(),
   cancel: () => cancelCatalogStyleReview(),
   "prepare-row": () => prepareCatalogStyleRow(),
+  "skip-row": () => skipCatalogStyleRow(),
 };
 
 function toggleCatalogFolder(nodeId) {

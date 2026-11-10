@@ -380,10 +380,11 @@ function syncCatalogStepButtons() {
     $(".catalog-style-group-search").disabled = styleGroupLocked;
   }
   if ($(".catalog-style-autosave-input")) {
-    $(".catalog-style-autosave-input").disabled = busy;
+    $(".catalog-style-autosave-input").disabled = busy || catalogStyleAwaitingSave;
   }
   $$("[data-style-action]").forEach((button) => {
-    button.disabled = busy || catalogFolderScanning;
+    const needsGroup = ["import", "template"].includes(button.dataset.styleAction);
+    button.disabled = busy || catalogFolderScanning || (needsGroup && !catalogStyleGroupId);
   });
   $$("[data-costing-action]").forEach((button) => {
     button.disabled = busy || catalogFolderScanning;

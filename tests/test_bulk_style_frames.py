@@ -303,7 +303,7 @@ def test_the_editor_frame_needs_both_the_title_and_the_material_dropdown(clock):
     )
     page = StylePage(half, full, clock=clock)
 
-    assert frames._style_editor_frame(Context(page)) is full
+    assert frames._style_editor_frame(page) is full
 
 
 def test_a_form_that_never_finishes_loading_is_reported(clock):
@@ -312,7 +312,7 @@ def test_a_form_that_never_finishes_loading_is_reported(clock):
     )
 
     with pytest.raises(PlaywrightTimeoutError, match="Form Article"):
-        frames._style_editor_frame(Context(page), timeout_s=1)
+        frames._style_editor_frame(page, timeout_s=1)
 
 
 def test_a_detached_frame_does_not_stop_the_editor_search(clock):
@@ -321,7 +321,7 @@ def test_a_detached_frame_does_not_stop_the_editor_search(clock):
     )
     page = StylePage(full, StyleFrame(broken=True), clock=clock)
 
-    assert frames._style_editor_frame(Context(page)) is full
+    assert frames._style_editor_frame(page) is full
 
 
 # --- frame kết quả Copy -------------------------------------------------
@@ -333,7 +333,7 @@ def test_a_frame_listing_copy_candidates_is_the_result_frame(clock):
     )
     page = StylePage(frame, clock=clock)
 
-    assert frames._copy_result_frame(Context(page)) is frame
+    assert frames._copy_result_frame(page) is frame
 
 
 def test_a_frame_showing_copy_as_variant_also_counts_even_with_no_result(clock):
@@ -344,7 +344,7 @@ def test_a_frame_showing_copy_as_variant_also_counts_even_with_no_result(clock):
     )
     page = StylePage(frame, clock=clock)
 
-    assert frames._copy_result_frame(Context(page)) is frame
+    assert frames._copy_result_frame(page) is frame
 
 
 def test_a_frame_with_neither_is_not_the_result_frame(clock):
@@ -352,7 +352,7 @@ def test_a_frame_with_neither_is_not_the_result_frame(clock):
     page = StylePage(frame, clock=clock)
 
     with pytest.raises(PlaywrightTimeoutError, match="Style nguồn"):
-        frames._copy_result_frame(Context(page), timeout_s=1)
+        frames._copy_result_frame(page, timeout_s=1)
 
 
 def test_a_detached_frame_does_not_stop_the_copy_result_search(clock):
@@ -361,4 +361,4 @@ def test_a_detached_frame_does_not_stop_the_copy_result_search(clock):
     )
     page = StylePage(good, StyleFrame(broken=True), clock=clock)
 
-    assert frames._copy_result_frame(Context(page)) is good
+    assert frames._copy_result_frame(page) is good

@@ -1190,14 +1190,7 @@ body.compact-mode .compact-launcher .compact-mark {
       background: var(--surface);
       box-shadow: var(--shadow-sm);
     }
-    .catalog-style-heading small,
-    .catalog-style-card .catalog-costing-heading small {
-      display: block;
-      margin-top: 2px;
-      color: var(--text-3);
-      font-size: 12px;
-      font-weight: 500;
-    }
+    .catalog-style-card [hidden] { display: none !important; }
     .catalog-style-autosave {
       flex: 0 0 auto;
       display: flex;
@@ -1335,7 +1328,8 @@ body.compact-mode .compact-launcher .compact-mark {
     }
     .catalog-style-file-actions button,
     .catalog-style-refresh,
-    .catalog-style-prepare {
+    .catalog-style-prepare,
+    [data-style-action="skip-row"] {
       min-height: 34px;
       padding: 6px 9px;
       color: var(--text-2);
@@ -1352,14 +1346,21 @@ body.compact-mode .compact-launcher .compact-mark {
       border-color: transparent;
       background: var(--accent-grad);
     }
-    .catalog-style-note,
-    .catalog-style-save-reminder {
-      display: block;
-      margin: 8px 0 0;
-      color: var(--text-3);
+    .catalog-style-instruction {
+      margin: 0 0 8px;
+      color: var(--text-2);
       font-size: 12px;
       line-height: 1.4;
     }
+    .catalog-style-instruction.has-error {
+      padding: 7px 9px;
+      border-radius: 7px;
+      background: var(--warn-soft);
+    }
+    .catalog-style-skipped { margin-top: 8px; color: var(--text-2); font-size: 12px; }
+    .catalog-style-skipped summary { cursor: pointer; font-weight: 750; }
+    .catalog-style-skipped ul { margin: 6px 0 0; padding-inline-start: 20px; }
+    .catalog-style-skipped li + li { margin-top: 4px; }
     .catalog-style-review {
       margin-top: 10px;
       padding: 9px;
@@ -1367,11 +1368,11 @@ body.compact-mode .compact-launcher .compact-mark {
       border-radius: 10px;
       background: var(--accent-soft);
     }
-    .catalog-style-progress {
-      margin-top: 8px;
-      color: var(--accent-strong);
-      font-size: 12px;
-      font-weight: 800;
+    .catalog-style-review-heading > span { min-width: 0; }
+    .catalog-style-review-heading .catalog-style-review-file {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .catalog-style-row-summary {
       margin: 5px 0 8px;
@@ -1384,7 +1385,6 @@ body.compact-mode .compact-launcher .compact-mark {
       gap: 5px;
       margin-bottom: 8px;
     }
-    .catalog-style-copy-choices[hidden] { display: none !important; }
     .catalog-style-copy-choices button {
       padding: 6px 8px;
       overflow: hidden;
@@ -1396,7 +1396,8 @@ body.compact-mode .compact-launcher .compact-mark {
       border-radius: 7px;
       background: var(--surface);
     }
-    .catalog-style-prepare { width: 100%; }
+    .catalog-style-row-actions { display: flex; gap: 6px; }
+    .catalog-style-prepare { flex: 1; }
     .catalog-style-card button:disabled,
     .catalog-style-card select:disabled { cursor: not-allowed; opacity: .45; }
     .catalog-costing-hero {

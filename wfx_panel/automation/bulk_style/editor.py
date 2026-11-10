@@ -7,6 +7,7 @@ from typing import Any
 from wfx_panel.automation._common import (
     Callable,
     Frame,
+    Page,
     PlaywrightError,
     _wait,
     _write_log,
@@ -25,7 +26,7 @@ from wfx_panel.automation.runtime import cancellation_deferred
 
 
 def _set_field(
-    context: Any,
+    page: Page,
     label: str,
     value: str,
     ids: tuple[str, ...],
@@ -34,9 +35,10 @@ def _set_field(
 ) -> dict[str, Any]:
     deadline = time.monotonic() + 18
     last: dict[str, Any] = {"ok": False, "reason": "not-found"}
+    hydrated = False
     while time.monotonic() < deadline:
-        frame = _style_editor_frame(context, timeout_s=2)
         try:
+            frame = _style_editor_frame(page, timeout_s=2)
             last = frame.evaluate(
                 _SET_STYLE_FIELD_JS,
                 {"ids": list(ids), "labels": list(labels), "value": value},
@@ -45,21 +47,25 @@ def _set_field(
                 _write_log(log, f"[STYLE] Đã điền {label}.")
                 _wait(frame, 350)
                 return last
-            if last.get("reason") in {"option-not-found", "ambiguous-option"}:
+            if last.get("reason") == "ambiguous-option":
                 break
+            if last.get("reason") == "option-not-found" and not hydrated:
+                control_id = last.get("id")
+                if not control_id:
+                    break
+                hydrated = bool(frame.evaluate(
+                    _HYDRATE_STYLE_OPTIONS_JS, {"ids": [control_id]}
+                ))
+                if not hydrated:
+                    break
         except PlaywrightError:
             pass
-        if context.pages:
-            _wait(context.pages[0], 150)
-    detail = ", ".join(last.get("options") or [])
-    raise RuntimeError(
-        f"STYLE_FIELD_NOT_AVAILABLE:{label}"
-        + (f":{detail}" if detail else "")
-    )
+        _wait(page, 150)
+    raise RuntimeError(f"STYLE_FIELD_NOT_AVAILABLE:{label}:{value}")
 
 
 def _fill_style_editor(
-    context: Any,
+    page: Page,
     row: dict[str, Any],
     log: Callable[[str], None],
 ) -> list[str]:
@@ -71,17 +77,17 @@ def _fill_style_editor(
             if kind == "new":
                 raise RuntimeError(f"STYLE_REQUIRED_FIELD_MISSING:{label}")
             continue
-        _set_field(context, label, value, ids, labels, log)
+        _set_field(page, label, value, ids, labels, log)
         filled.append(label)
     for label, value, ids, labels in FIXED_STYLE_FIELDS:
-        _set_field(context, label, value, ids, labels, log)
+        _set_field(page, label, value, ids, labels, log)
         filled.append(label)
     return filled
 
 
-def _save_style(context: Any, log: Callable[[str], None]) -> None:
+def _save_style(page: Page, log: Callable[[str], None]) -> None:
     """Click đúng Save của Article editor một lần khi user đã bật Auto Save."""
-    frame = _style_editor_frame(context)
+    frame = _style_editor_frame(page)
     save = frame.locator(f"xpath={SAVE_STYLE_XPATH}").first
     save.wait_for(state="visible", timeout=8_000)
     # Từ lúc click tới lúc WFX ghi xong là đoạn KHÔNG được ngắt. `_wait()` gọi
@@ -91,8 +97,7 @@ def _save_style(context: Any, log: Callable[[str], None]) -> None:
     with cancellation_deferred():
         save.click()
         _write_log(log, "[STYLE] Đã bấm Save theo lựa chọn Tự động Save.")
-        if context.pages:
-            _wait(context.pages[0], 800)
+        _wait(page, 800)
 
 
 def _read_style_options(frame: Frame, ids: tuple[str, ...]) -> list[dict[str, str]]:
@@ -111,14 +116,14 @@ def _read_style_options(frame: Frame, ids: tuple[str, ...]) -> list[dict[str, st
 
 
 def _field_options_with_wait(
-    context: Any,
+    page: Page,
     ids: tuple[str, ...],
     timeout_s: float = 8,
 ) -> list[dict[str, str]]:
     deadline = time.monotonic() + timeout_s
     hydrated = False
     while time.monotonic() < deadline:
-        frame = _style_editor_frame(context, timeout_s=2)
+        frame = _style_editor_frame(page, timeout_s=2)
         options = _read_style_options(frame, ids)
         if options:
             return options
@@ -129,6 +134,5 @@ def _field_options_with_wait(
                 )
             except PlaywrightError:
                 pass
-        if context.pages:
-            _wait(context.pages[0], 180)
+        _wait(page, 180)
     return []
