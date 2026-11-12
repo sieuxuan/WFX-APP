@@ -40,8 +40,8 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
 9. Theo dõi thẻ `Tiến độ Sale ASN`: năm bước `Thêm PO`, `Order Details`,
    `Style Details`, `Shipping Info` và bước cuối `Check giá / Qty` sáng dần theo
    đúng bước ứng dụng đang làm.
-   Ba bước đầu hiện thêm số dòng đang xử lý, ví dụ `Order Details 5/12`, nên bạn
-   biết ứng dụng đang chạy tới đâu chứ không phải đứng im.
+   Ba bước đầu hiện thêm số dòng đang xử lý. Khi thêm PO, thanh trạng thái dưới
+   cùng hiện cả mã PO, ví dụ `Thêm PO PO0003760 · 5/12`.
 10. Khi hoàn tất, ứng dụng tự đưa thẻ kết quả vào tầm nhìn. Thẻ này hiện Invoice
     No., số cảnh báo Shipping Info, kết quả đối chiếu và các nút xuất.
 11. Sau khi ứng dụng điền xong, kiểm tra toàn bộ Sale ASN trên WFX rồi tự bấm
@@ -227,6 +227,8 @@ liệu.
   lấy ngày hiện tại. Nếu bạn nhập ngày ở một dòng, ứng dụng dùng ngày có dữ liệu
   đầu tiên để điền tất cả dòng còn trống. Trên WFX, ngày được điền cho toàn bộ
   dòng Order Details, kể cả PO tách thành nhiều dòng và các dòng `ADD`/`- ADD`.
+  Khi cả bảng dùng chung một ngày, ứng dụng dùng nút `Copy Below` cạnh ô ngày
+  đầu tiên để điền nhanh các dòng bên dưới.
   Nếu file có ngày riêng theo PO/Style, ứng dụng giữ ngày tương ứng; dòng `ADD`
   dùng ngày của PO gốc khi không có ngày riêng trong file.
 - `Invoice Date` và `Shipping Bill Date` trống vẫn lấy ngày có dữ liệu đầu tiên trong file; nếu cả file không có thì dùng ngày hiện tại.

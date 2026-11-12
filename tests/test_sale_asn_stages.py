@@ -341,6 +341,7 @@ def test_rows_the_user_chose_in_the_app_are_ticked_then_the_run_continues(
     monkeypatch, clock
 ):
     ticked: list[tuple] = []
+    po_progress: list[str] = []
     _wire_flow(
         monkeypatch,
         clock,
@@ -360,10 +361,14 @@ def test_rows_the_user_chose_in_the_app_are_ticked_then_the_run_continues(
         selected_po_row={"po_no": "PO-0"},
         selected_po_candidates=[{"row_index": 0}],
         selected_po_final=False,
+        progress=lambda stage, message, *_a, **_k: (
+            po_progress.append(message) if stage == "po" else None
+        ),
     )
 
     assert result["code"] == "SALE_ASN_FORM_COMPLETED"
     assert ticked == [("PO-0", 1, False)]
+    assert po_progress[-2:] == ["Thêm PO PO-0 · 1/2", "Thêm PO PO-1 · 2/2"]
 
 
 def test_the_last_chosen_row_finishes_the_po_stage_without_reopening_the_popup(

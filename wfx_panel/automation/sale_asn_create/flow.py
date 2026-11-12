@@ -121,6 +121,11 @@ def run_sale_asn_create(
             first_pending = max(0, int(start_index))
             if selected_po_candidates:
                 selected_row = dict(selected_po_row or {})
+                _emit_stage_progress(
+                    progress,
+                    "po",
+                    f"Thêm PO {selected_row.get('po_no', '')} · {first_pending + 1}/{len(rows)}",
+                )
                 _popup_page, selected_frame = _frame_with_selector(
                     context,
                     PO_POPUP_SELECTOR,
@@ -174,7 +179,7 @@ def run_sale_asn_create(
                     _emit_stage_progress(
                         progress,
                         "po",
-                        f"Thêm PO {index + 1}/{len(rows)}",
+                        f"Thêm PO {row.get('po_no', '')} · {index + 1}/{len(rows)}",
                     )
                     added, candidates, reason, popup_frame = (
                         _auto_add_po_with_frame_retry(

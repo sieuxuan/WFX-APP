@@ -831,7 +831,8 @@ Các workflow riêng hiện có:
   `wfxHandleBackendProgress` rẽ đúng thẻ, không đè thẻ GDN. Mọi bước chạy theo
   vòng lặp từng dòng (`po`, `order_details`, `style_details`) phải kết thúc
   message bằng `n/m`; UI đọc đúng hậu tố đó để hiện bộ đếm, nên không được đổi
-  định dạng này khi thêm bước mới.
+  định dạng này khi thêm bước mới. Khi thêm PO tự động hoặc sau khi user chọn
+  dòng, footer phải hiện mã PO đang xử lý trước bộ đếm.
   Lựa chọn bước được nhớ qua `prefs.sale_asn_stages`; `_clean_sale_asn_stages`
   luôn trả về đủ bốn bước khi danh sách rỗng hoặc hỏng, vì lưu trạng thái rỗng
   sẽ khiến user mở app ra mà không chạy được gì. Hộp thoại chọn file nhớ thư mục
@@ -889,8 +890,10 @@ Các workflow riêng hiện có:
   phải điền Cargo Ready Date cho TẤT CẢ dòng WFX, kể cả nhiều dòng cùng PO và
   dòng hậu tố `ADD`/`- ADD` không có dòng riêng trong file. Nếu file ghi ngày
   riêng cho từng PO/Style thì giữ ngày đó; dòng ADD kế thừa ngày của PO gốc,
-  dòng khác dùng ngày có dữ liệu đầu tiên. Không áp dụng copy toàn bảng cho
-  Carton/NW/GW/CBM/FOB Price/Service Price. Ba cột Cargo
+  dòng khác dùng ngày có dữ liệu đầu tiên. Khi mọi dòng dùng chung một ngày,
+  điền ô đầu rồi dùng `Copy Below` (`#imgCopyBelowFFDate1`) và kiểm tra đủ các
+  dòng. Nếu nút không có hoặc chưa copy đủ, điền từng ô còn thiếu. Không áp
+  dụng copy toàn bảng cho Carton/NW/GW/CBM/FOB Price/Service Price. Ba cột Cargo
   Ready Date/Invoice Date/Shipping Bill Date phải có date validation trong form
   Excel và cho phép để trống. Invoice Date/Shipping Bill Date vẫn kế thừa ngày
   đầu tiên, không có nữa mới dùng ngày hiện tại; Shipping Bill No. trống thì dùng

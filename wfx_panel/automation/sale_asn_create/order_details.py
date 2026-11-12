@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from playwright.sync_api import Locator
+
 from wfx_panel.automation._common import (
     Frame,
     PlaywrightError,
@@ -166,6 +168,16 @@ _MARK_CARGO_READY_DATE_CELL_JS = r"""cell => {
 }"""
 
 
+_READ_TABLE_CELL_JS = """cell => {
+    const editor = cell.querySelector(
+        'input:not([type="hidden"]), textarea, [contenteditable="true"]'
+    );
+    if (editor) return editor.value || editor.textContent || '';
+    const label = cell.querySelector('.lblEditable, .lblEditDatePicker, .clsGridLabelContent');
+    return label?.getAttribute('title') || label?.textContent || cell.textContent || '';
+}"""
+
+
 def _edit_marked_table_cell(frame: Frame, value: str) -> str:
     target = frame.locator("[data-wfx-sale-asn-target='1']").first
     target.scroll_into_view_if_needed(timeout=3_000)
@@ -189,22 +201,7 @@ def _edit_marked_table_cell(frame: Frame, value: str) -> str:
     deadline = time.monotonic() + 3
     actual = ""
     while time.monotonic() < deadline:
-        actual = str(
-            target.evaluate(
-                """cell => {
-                    const editor = cell.querySelector(
-                        'input:not([type="hidden"]), textarea, [contenteditable="true"]'
-                    );
-                    if (editor) return editor.value || editor.textContent || '';
-                    const label = cell.querySelector(
-                        '.lblEditable, .lblEditDatePicker, .clsGridLabelContent'
-                    );
-                    return label?.getAttribute('title')
-                        || label?.textContent || cell.textContent || '';
-                }"""
-            )
-            or ""
-        ).strip()
+        actual = str(target.evaluate(_READ_TABLE_CELL_JS) or "").strip()
         if _table_value_matches(value, actual):
             return actual
         _wait(frame, 120)
@@ -594,6 +591,28 @@ def _resolve_separate_order_lines(
     return targets
 
 
+def _copy_cargo_ready_date(frame: Frame, cells: Locator, value: str, count: int) -> Sequence[int]:
+    """Trả về chỉ số các ô còn cần điền sau khi thử Copy Below."""
+    all_rows = range(count)
+    first = cells.first
+    copy_below = first.locator("a#imgCopyBelowFFDate1:visible:not([aria-disabled='true'])")
+    if not copy_below.count():
+        return all_rows
+    marked = first.evaluate(_MARK_CARGO_READY_DATE_CELL_JS)
+    if not marked.get("ok"):
+        return all_rows
+    _edit_marked_table_cell(frame, value)
+    if not copy_below.count():
+        return all_rows
+    _click_dom_action(copy_below)
+
+    # WFX cập nhật đồng bộ và chỉ copy vào các dòng ParentRow.
+    actual = cells.evaluate_all(f"cells => cells.map({_READ_TABLE_CELL_JS})")
+    if len(actual) != count:
+        raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cargo-ready-date-cell-not-found")
+    return [index for index, date in enumerate(actual) if not _table_value_matches(value, date)]
+
+
 def _fill_order_cargo_ready_dates(
     frame: Frame,
     rows: Sequence[dict],
@@ -624,7 +643,10 @@ def _fill_order_cargo_ready_dates(
     count = grid_rows.count()
     if not count or cells.count() != count:
         raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cargo-ready-date-cell-not-found")
-    for index in range(count):
+    indexes: Sequence[int] = range(count)
+    if count > 1 and not skipped_targets and all(date == default_date for _, _, date in dates):
+        indexes = _copy_cargo_ready_date(frame, cells, default_date, count)
+    for index in indexes:
         marked = cells.nth(index).evaluate(_MARK_CARGO_READY_DATE_CELL_JS)
         if not marked.get("ok"):
             raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
