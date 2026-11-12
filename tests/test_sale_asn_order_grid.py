@@ -620,11 +620,12 @@ def test_only_the_columns_with_a_value_are_written(monkeypatch):
 
 
 @pytest.mark.parametrize("date_case", ["common", "later_row", "per_po", "blank"])
-@pytest.mark.parametrize("file_pos, wfx_pos", [
-    (("PO0003760", "PO0003762"), ("PO0003760", "PO0003762")),
-    (("19942", "19949"), ("PO 19942", "PO 19949")),
+@pytest.mark.parametrize("file_pos, wfx_pos, copy_rows", [
+    (("PO0003760", "PO0003762"), ("PO0003760", "PO0003762"), None),
+    (("19942", "19949"), ("PO 19942", "PO 19949"), 5),
+    (("19942", "19949"), ("PO 19942", "PO 19949"), 3),
 ])
-def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case, file_pos, wfx_pos):
+def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case, file_pos, wfx_pos, copy_rows):
     rows = [
         {"po_no": file_pos[0], "style_no": "F21-0001", "cargo_ready_date": "2026-10-26", "carton": "35"},
         {"po_no": file_pos[1], "style_no": "S22-0001", "cargo_ready_date": "", "carton": "8"},
@@ -643,12 +644,14 @@ def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case, file_pos, 
         (wfx_pos[1], "S22-0001"),
         (f"{wfx_pos[1]}- ADD", "S22-0001"),
     ]
+    copy_link = '<a id="imgCopyBelowFFDate1">Copy Below</a>' if copy_rows else ""
     markup = "".join(
         f'<tr class="trContent"><td id="colOrderRefNum">{po}</td>'
         f'<td id="colStyle">TW-{style}-MEN PANTS</td>'
         '<td id="colTotalNoOfCartons"><input value="5"></td>'
-        '<td id="colFFDate1"><input value="01 Jan 2020"></td></tr>'
-        for po, style in identities
+        '<td id="colFFDate1"><input value="01 Jan 2020">'
+        f'{copy_link if index == 0 else ""}</td></tr>'
+        for index, (po, style) in enumerate(identities)
     )
     logs = []
     with sync_playwright() as playwright:
@@ -659,6 +662,20 @@ def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case, file_pos, 
                 f'<table id="gridOrderDetails_tblGridContent"><tbody>{markup}</tbody></table>'
                 '<table id="other-grid"><tr class="trContent">'
                 '<td id="colFFDate1"><input value="untouched"></td></tr></table>'
+            )
+            page.evaluate(
+                """({gridSelector, copyRows}) => {
+                    const grid = document.querySelector(gridSelector);
+                    const inputs = [...grid.querySelectorAll('td#colFFDate1 input')];
+                    window.dateEdits = 0;
+                    window.copyClicks = 0;
+                    inputs.forEach(input => input.addEventListener('input', () => window.dateEdits++));
+                    grid.querySelector('#imgCopyBelowFFDate1')?.addEventListener('click', () => {
+                        window.copyClicks++;
+                        inputs.slice(1, copyRows).forEach(input => { input.value = inputs[0].value; });
+                    });
+                }""",
+                {"gridSelector": ORDER_GRID_SELECTOR, "copyRows": copy_rows},
             )
 
             order_details._wait_order_grid(page, rows, timeout_s=1)
@@ -673,6 +690,10 @@ def test_cargo_ready_date_covers_split_and_add_rows_on_wfx(date_case, file_pos, 
             elif date_case == "blank":
                 expected = ["01 Jan 2020"] * 5
             assert actual == expected
+            use_copy = copy_rows is not None and date_case in {"common", "later_row"}
+            assert page.evaluate("window.copyClicks") == int(use_copy)
+            if use_copy:
+                assert page.evaluate("window.dateEdits") == 1 + len(identities) - copy_rows
             assert page.locator("#other-grid input").input_value() == "untouched"
             assert page.locator(f"{ORDER_GRID_SELECTOR} td#colTotalNoOfCartons input").evaluate_all(
                 "inputs => inputs.map(input => input.value)"
