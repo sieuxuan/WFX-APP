@@ -220,9 +220,11 @@ liệu.
   để trống vì ứng dụng dùng mode của dòng đầu cho toàn bộ chứng từ.
 - `Destination`, `HS CODE`, `Goods Description`, `Qty`, `Price`, `Carton`, `NW`, `GW`,
   `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`, `Consignee Address`
-  và `Ship To` có thể để trống. Khi có `Goods Description`, app điền vào đúng dòng
-  Style Details trên WFX. Khi để trống, app xóa Goods Description đang có ở dòng
-  Style tương ứng để dữ liệu cũ không còn sót lại. App đối chiếu bằng cột
+  và `Ship To` có thể để trống. Khi chạy `Style Details`, app xóa toàn bộ
+  `Goods Description` trên form đang làm trước. App chỉ điền lại mô tả có trong
+  Excel sau khi điền xong HS Code của Style nếu có mã. Nếu HS Code lỗi, mô tả
+  của Style đó giữ trống và app báo dòng Excel, Style, mã HS và nguyên nhân.
+  App đối chiếu bằng cột
   `Style`; nếu WFX tách cùng Style thành nhiều dòng theo `Style Description`
   (chẳng hạn SLIM FIT/CLASSIC FIT), HS Code và Goods Description được cập nhật
   cho tất cả các dòng cùng Style đó.

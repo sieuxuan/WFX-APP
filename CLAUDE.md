@@ -965,7 +965,11 @@ Các workflow riêng hiện có:
   dòng cùng PO + Style thì mỗi dòng ghi vào các OC đã gắn riêng, không cùng ghi
   đè lên dòng đầu. Cargo Ready Date theo đúng dòng đã gắn nếu có ngày riêng;
   các dòng khác vẫn theo quy tắc ngày chung. Style Details phải map bằng cột Style, không dùng
-  Style Description. Khi WFX có nhiều dòng cùng khớp mạnh một Style (ví dụ các
+  Style Description. Trước khi điền HS Code, xóa Goods Description trên toàn
+  bộ bảng Style Details của form hiện tại. Chỉ điền lại mô tả có dữ liệu trong
+  Excel, sau khi xác nhận HS Code của Style nếu có. Khi nhập HS Code lỗi, báo
+  dòng Excel, Style, mã đã nhập và nguyên nhân. Mô tả của Style đó giữ trống.
+  Khi WFX có nhiều dòng cùng khớp mạnh một Style (ví dụ các
   biến thể SLIM FIT/CLASSIC FIT), áp dụng cùng dữ liệu Style cho tất cả; chỉ
   dừng ambiguous khi nhiều kết quả chỉ khớp token yếu. Sau đó điền Shipping
   Info với Consignor Address `BILL-ADD - Billing Address` khi Division đang là

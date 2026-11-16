@@ -6,7 +6,10 @@ from collections.abc import Callable, Sequence
 
 from wfx_panel.automation._common import Frame, _wait, _write_log
 from wfx_panel.automation.sale_asn_create.errors import _filling_cell
-from wfx_panel.automation.sale_asn_create.order_details import _edit_marked_table_cell
+from wfx_panel.automation.sale_asn_create.order_details import (
+    _READ_TABLE_CELL_JS,
+    _edit_marked_table_cell,
+)
 from wfx_panel.automation.sale_asn_create.progress import _emit_stage_progress
 
 _MARK_STYLE_HTS_CELL_JS = r"""spec => {
@@ -131,6 +134,40 @@ def _set_style_goods_description_cell(
     )
 
 
+_MARK_DESCRIPTION_FOR_CLEAR_JS = """row => {
+    const cell = row.querySelector('td#colGoodsDescription');
+    const styleCell = row.querySelector('td#colStyle');
+    const styleLabel = styleCell?.querySelector('#lblStyle');
+    const style = (styleLabel?.getAttribute('title') || styleCell?.textContent || '').trim();
+    if (!cell) return {style_no: style, missing: true};
+    const value = (READ_CELL)(cell).trim();
+    if (value) {
+        document.querySelector('[data-wfx-sale-asn-target]')?.removeAttribute('data-wfx-sale-asn-target');
+        cell.setAttribute('data-wfx-sale-asn-target', '1');
+    }
+    return {style_no: style, value};
+}""".replace("READ_CELL", _READ_TABLE_CELL_JS)
+
+
+def _clear_style_goods_descriptions(frame: Frame, log: Callable[[str], None]) -> None:
+    rows = frame.locator("#gridStyleDetails_tblGridContent tr.trContent")
+    with _filling_cell({}, "Goods Description"):
+        rows.first.wait_for(state="visible", timeout=8_000)
+    count = rows.count()
+    for index in range(count):
+        row_label = f"Goods Description (dòng WFX {index + 1})"
+        with _filling_cell({}, row_label):
+            marked = rows.nth(index).evaluate(_MARK_DESCRIPTION_FOR_CLEAR_JS, timeout=3_000)
+        with _filling_cell(marked, row_label):
+            if marked.get("missing"):
+                raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cell-not-found")
+            if marked.get("value"):
+                actual = _edit_marked_table_cell(frame, "")
+                if actual:
+                    raise RuntimeError(f"SALE_ASN_FIELD_VALUE_NOT_CONFIRMED:{actual}")
+    _write_log(log, f"[SALE ASN] Đã xóa Goods Description trên toàn bộ {count} dòng Style Details.")
+
+
 def _fill_style_details(
     frame: Frame,
     rows: Sequence[dict],
@@ -141,36 +178,33 @@ def _fill_style_details(
     tab.wait_for(state="visible", timeout=8_000)
     tab.click(timeout=5_000)
     _wait(frame, 500)
-    grouped: dict[str, dict[str, str]] = {}
-    source_rows: dict[str, dict] = {}
+    _clear_style_goods_descriptions(frame, log)
+
+    grouped: dict[str, dict[str, tuple[str, dict]]] = {}
     for row in rows:
         style = str(row.get("style_no") or "")
-        source_rows.setdefault(style, row)
         detail = grouped.setdefault(style, {})
-        hs_code = str(row.get("hs_code") or "")
+        hs_code = str(row.get("hs_code") or "").strip()
         if hs_code:
-            old_hs_code = detail.setdefault("hs_code", hs_code)
+            old_hs_code, _ = detail.setdefault("hs_code", (hs_code, row))
             if old_hs_code != hs_code:
-                with _filling_cell(row, "HS Code"):
-                    raise RuntimeError("SALE_ASN_STYLE_HS_CODE_CONFLICT")
-
-        # Khác HS Code, ô trống ở Goods Description là dữ liệu có chủ ý: user
-        # muốn xóa mô tả WFX đang có. Giữ cả giá trị trống để mọi Style trong
-        # file đều được cập nhật, thay vì âm thầm bỏ qua và giữ dữ liệu cũ.
-        description = str(row.get("goods_description") or "")
-        if "goods_description" not in detail:
-            detail["goods_description"] = description
-        elif detail["goods_description"] != description:
-            with _filling_cell(row, "Goods Description"):
-                raise RuntimeError("SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT")
+                with _filling_cell(row, f"HS Code {hs_code}"):
+                    raise RuntimeError(f"SALE_ASN_STYLE_HS_CODE_CONFLICT:{old_hs_code} và {hs_code}")
+        description = str(row.get("goods_description") or "").strip()
+        if description:
+            old_description, _ = detail.setdefault("goods_description", (description, row))
+            if old_description != description:
+                with _filling_cell(row, "Goods Description"):
+                    raise RuntimeError("SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT")
     for index, (style, values) in enumerate(grouped.items(), 1):
         _emit_stage_progress(
             progress,
             "style_details",
             f"Style Details {index}/{len(grouped)}",
         )
-        if code := values.get("hs_code"):
-            with _filling_cell(source_rows[style], "HS Code"):
+        if "hs_code" in values:
+            code, source_row = values["hs_code"]
+            with _filling_cell(source_row, f"HS Code {code}"):
                 hts_count = _set_style_hts_cell(frame, style, code)
             hts_scope = (
                 f"{hts_count} dòng "
@@ -181,10 +215,11 @@ def _fill_style_details(
                 log,
                 f"[SALE ASN] Đã điền HS Code cho {hts_scope}Style {style}.",
             )
-        description = values["goods_description"]
-        with _filling_cell(source_rows[style], "Goods Description"):
+        if "goods_description" not in values:
+            continue
+        description, source_row = values["goods_description"]
+        with _filling_cell(source_row, "Goods Description"):
             description_count = _set_style_goods_description_cell(frame, style, description)
-        action = "xóa" if not description else "điền"
         description_scope = (
             f"{description_count} dòng "
             if isinstance(description_count, int) and description_count > 1
@@ -192,5 +227,5 @@ def _fill_style_details(
         )
         _write_log(
             log,
-            f"[SALE ASN] Đã {action} Goods Description cho {description_scope}Style {style}.",
+            f"[SALE ASN] Đã điền Goods Description cho {description_scope}Style {style}.",
         )

@@ -2520,11 +2520,7 @@ def test_order_and_style_stages_report_row_counters(monkeypatch):
     patch_automation(
         monkeypatch, sale_asn_create, "_set_style_hts_cell", lambda *a, **k: {"ok": True}
     )
-    patch_automation(
-        monkeypatch, sale_asn_create,
-        "_set_style_goods_description_cell",
-        lambda *a, **k: {"ok": True},
-    )
+    patch_automation(monkeypatch, sale_asn_create, "_clear_style_goods_descriptions", lambda *_a: None)
     patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *a, **k: None)
 
     frame = FakeFrame()
@@ -2538,45 +2534,47 @@ def test_order_and_style_stages_report_row_counters(monkeypatch):
     assert style == ["Style Details 1/2", "Style Details 2/2"]
 
 
-def test_blank_goods_description_clears_every_style_row(monkeypatch):
-    calls = []
-    logs = []
+@pytest.mark.parametrize("hs_editable", [True, False])
+def test_style_details_clears_all_descriptions_before_entering_hs_code(hs_editable):
+    from wfx_panel.automation.sale_asn_create.errors import _CellFillError
 
-    class FakeLocator:
-        first = property(lambda self: self)
-
-        def wait_for(self, **_kwargs):
-            return None
-
-        def click(self, **_kwargs):
-            return None
-
-    class FakeFrame:
-        def locator(self, selector):
-            assert selector == "#tabStyleDetails"
-            return FakeLocator()
-
-    patch_automation(monkeypatch, sale_asn_create, "_wait", lambda *_args: None)
-    patch_automation(
-        monkeypatch, sale_asn_create,
-        "_set_style_goods_description_cell",
-        lambda _frame, style, value: calls.append((style, value)),
-    )
-
-    sale_asn_create._fill_style_details(
-        FakeFrame(),
-        [
-            {"style_no": "STYLE A", "hs_code": "", "goods_description": ""},
-            {"style_no": "STYLE B", "hs_code": "", "goods_description": None},
-        ],
-        logs.append,
-    )
-
-    assert calls == [("STYLE A", ""), ("STYLE B", "")]
-    assert logs == [
-        "[SALE ASN] Đã xóa Goods Description cho Style STYLE A.",
-        "[SALE ASN] Đã xóa Goods Description cho Style STYLE B.",
+    rows = [
+        {"source_row": 2, "style_no": "STYLE A", "goods_description": ""},
+        {"source_row": 3, "style_no": "STYLE A", "hs_code": "6203", "goods_description": "JACKET"},
+        {"source_row": 4, "style_no": "STYLE B"},
     ]
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page()
+            hs_cell = '<input value="0000">' if hs_editable else "<span>0000</span>"
+            page.set_content(
+                '<button id="tabStyleDetails">Style Details</button>'
+                '<table id="gridStyleDetails_tblGridContent">'
+                f'<tr class="trContent"><td id="colStyle">STYLE A</td><td id="colHTSCode">{hs_cell}</td>'
+                '<td id="colGoodsDescription"><input value="Old A"></td></tr>'
+                '<tr class="trContent"><td id="colStyle">STYLE B</td>'
+                '<td id="colGoodsDescription"><input value="Old B"></td></tr>'
+                '<tr class="trContent"><td id="colStyle">EXTRA</td>'
+                '<td id="colGoodsDescription"><input value="Old extra"></td></tr></table>'
+                '<table id="other"><tr class="trContent">'
+                '<td id="colGoodsDescription"><input value="Keep"></td></tr></table>'
+            )
+            if hs_editable:
+                sale_asn_create._fill_style_details(page, rows, lambda _line: None)
+                assert page.locator("#colHTSCode input").input_value() == "6203"
+            else:
+                with pytest.raises(_CellFillError, match="SALE_ASN_FIELD_NOT_EDITABLE") as error:
+                    sale_asn_create._fill_style_details(page, rows, lambda _line: None)
+                assert error.value.location == "Dòng Excel 3 · Style STYLE A · HS Code 6203"
+
+            actual = page.locator("#gridStyleDetails_tblGridContent td#colGoodsDescription input")
+            assert actual.evaluate_all("inputs => inputs.map(input => input.value)") == [
+                "JACKET" if hs_editable else "", "", "",
+            ]
+            assert page.locator("#other input").input_value() == "Keep"
+        finally:
+            browser.close()
 
 
 def test_panel_api_remembers_selected_sale_asn_stages(tmp_path):
