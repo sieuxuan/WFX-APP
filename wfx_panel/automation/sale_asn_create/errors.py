@@ -31,7 +31,7 @@ _FAILURE_REASONS = {
     "SALE_ASN_ORDER_GRID_NOT_READY": "WFX chưa tải đủ các dòng trong Order Details.",
     "SALE_ASN_FIELD_NOT_EDITABLE": "WFX không cho sửa ô này.",
     "SALE_ASN_FIELD_VALUE_NOT_CONFIRMED": "Giá trị WFX ghi nhận là “{detail}”, khác dữ liệu cần điền.",
-    "SALE_ASN_STYLE_HS_CODE_CONFLICT": "Các dòng cùng Style có HS Code khác nhau.",
+    "SALE_ASN_STYLE_HS_CODE_CONFLICT": "Các dòng cùng Style có HS Code khác nhau ({detail}).",
     "SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT": "Các dòng cùng Style có Goods Description khác nhau.",
     "SALE_ASN_SHIPMENT_DETAILS_EMPTY": "Bảng Shipment Details chưa có dòng để đối chiếu.",
     "SALE_ASN_SUMMARY_TOTAL_EMPTY": "WFX chưa hiển thị số liệu Summary Total.",

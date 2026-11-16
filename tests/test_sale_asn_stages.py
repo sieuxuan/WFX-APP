@@ -1231,6 +1231,7 @@ def test_one_style_with_two_different_hs_codes_is_a_file_error(monkeypatch):
     import wfx_panel.automation.sale_asn_create.style_details as style_details
 
     clock = FakeClock()
+    monkeypatch.setattr(style_details, "_clear_style_goods_descriptions", lambda *_a: None)
 
     with pytest.raises(RuntimeError, match="SALE_ASN_STYLE_HS_CODE_CONFLICT"):
         style_details._fill_style_details(
@@ -1244,6 +1245,7 @@ def test_one_style_with_two_different_descriptions_is_a_file_error(monkeypatch):
     import wfx_panel.automation.sale_asn_create.style_details as style_details
 
     clock = FakeClock()
+    monkeypatch.setattr(style_details, "_clear_style_goods_descriptions", lambda *_a: None)
 
     with pytest.raises(
         RuntimeError, match="SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT"
