@@ -77,6 +77,7 @@ const moduleActions = {
   "sale-asn-import": chooseSaleAsnInput,
   "sale-asn-review-cancel": cancelSaleAsnReview,
   "sale-asn-start": startSaleAsnCreate,
+  "sale-asn-start-stepwise": () => startSaleAsnCreate(true),
   "sale-asn-continue": continueSaleAsnCreate,
   "sale-asn-skip-step": skipSaleAsnCreateStep,
   "sale-asn-handoff-documents": handoffSaleAsnDocuments,

@@ -29,7 +29,10 @@ from wfx_panel.automation.sale_asn_create.constants import (
     PO_POPUP_SELECTOR,
     SALE_ASN_PO_SEARCH_FIELDS,
 )
-from wfx_panel.automation.sale_asn_create.errors import _POSelectionRequired
+from wfx_panel.automation.sale_asn_create.errors import (
+    _filling_cell,
+    _POSelectionRequired,
+)
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
 from wfx_panel.automation.sale_asn_create.line_mapping import (
     _combined_line_owners,
@@ -177,6 +180,10 @@ _READ_TABLE_CELL_JS = """cell => {
     return label?.getAttribute('title') || label?.textContent || cell.textContent || '';
 }"""
 
+_ORDER_FIELD_LABELS = {
+    "carton": "Carton", "nw": "NW", "gw": "GW", "cbm": "CBM",
+    "fob_price": "FOB Price", "service_price": "Service Price",
+}
 
 def _edit_marked_table_cell(frame: Frame, value: str) -> str:
     target = frame.locator("[data-wfx-sale-asn-target='1']").first
@@ -232,7 +239,10 @@ def _set_order_grid_cell(
         },
     )
     if not marked.get("ok"):
-        raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}")
+        reason = marked.get("reason")
+        if reason == "row-ambiguous" and marked.get("count") == 0:
+            reason = "row-not-found"
+        raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{reason}")
     _edit_marked_table_cell(frame, value)
 
 
@@ -335,6 +345,8 @@ def _ensure_po_popup_for_next_row(
     context: Any,
     added_rows: Sequence[dict],
     log: Callable[[str], None],
+    *,
+    main_frame: Frame | None = None,
 ) -> Frame:
     """Giữ flow chạy tiếp nếu WFX tự đóng popup sau Add & Continue."""
 
@@ -348,11 +360,10 @@ def _ensure_po_popup_for_next_row(
     except PlaywrightTimeoutError:
         pass
 
-    _main_page, main_frame = _frame_with_selector(
-        context,
-        "#sectionOrderDetails",
-        timeout_s=PO_POPUP_RECOVERY_TIMEOUT_SECONDS,
-    )
+    if main_frame is None:
+        _main_page, main_frame = _frame_with_selector(
+            context, "#sectionOrderDetails", timeout_s=PO_POPUP_RECOVERY_TIMEOUT_SECONDS,
+        )
     # Chỉ mở lại sau khi các dòng vừa chọn đã thật sự vào grid; nếu request WFX
     # còn chạy thì bước chờ này ngăn click Add chồng lên postback cũ.
     _write_log(
@@ -360,11 +371,8 @@ def _ensure_po_popup_for_next_row(
         "[SALE ASN] Add & Continue đang được WFX ghi nhận; "
         "đang chờ Order Details cập nhật...",
     )
-    _wait_order_grid(
-        main_frame,
-        added_rows,
-        timeout_s=ORDER_GRID_SYNC_TIMEOUT_SECONDS,
-    )
+    if added_rows:
+        _wait_order_grid(main_frame, added_rows, timeout_s=ORDER_GRID_SYNC_TIMEOUT_SECONDS)
     add = main_frame.locator(f"xpath={ADD_ORDER_XPATH}").first
     _click_dom_action(add)
     _popup_page, popup_frame = _frame_with_selector(
@@ -655,7 +663,8 @@ def _fill_order_cargo_ready_dates(
         if str(marked.get("row_id") or "") in skipped_targets:
             continue
         if (specific := dates_by_target.get(str(marked.get("row_id") or ""))):
-            _edit_marked_table_cell(frame, specific)
+            with _filling_cell(marked, "Cargo Ready Date"):
+                _edit_marked_table_cell(frame, specific)
             continue
         matches = [item for item in dates if item[0] == po_key]
         if not matches:
@@ -664,10 +673,11 @@ def _fill_order_cargo_ready_dates(
         if len(matches) > 1 and style_key:
             matches = [item for item in matches if not item[1] or _order_style_matches(item[1], style_key)]
         specific_dates = {item[2] for item in matches}
-        if len(specific_dates) > 1:
-            raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cargo-ready-date-ambiguous")
-        value = next(iter(specific_dates), default_date)
-        _edit_marked_table_cell(frame, value)
+        with _filling_cell(marked, "Cargo Ready Date"):
+            if len(specific_dates) > 1:
+                raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cargo-ready-date-ambiguous")
+            value = next(iter(specific_dates), default_date)
+            _edit_marked_table_cell(frame, value)
     if skipped_targets:
         _write_log(
             log,
@@ -728,17 +738,18 @@ def _fill_order_details(
             if not value:
                 continue
             value = _number_for_wfx(value, integer=key == "carton")
-            _set_order_grid_cell(
-                frame,
-                str(row.get("po_no") or ""),
-                str(row.get("style_no") or ""),
-                column_id,
-                value,
-                allow_add=f"{_po_key(row.get('po_no'))} add" not in separate_pos,
-                first_match=True,
-                **({"row_id": str(targets[int(row["source_row"])][0]["row_id"])}
-                   if int(row.get("source_row") or 0) in targets else {}),
-            )
+            with _filling_cell(row, _ORDER_FIELD_LABELS[key]):
+                _set_order_grid_cell(
+                    frame,
+                    str(row.get("po_no") or ""),
+                    str(row.get("style_no") or ""),
+                    column_id,
+                    value,
+                    allow_add=f"{_po_key(row.get('po_no'))} add" not in separate_pos,
+                    first_match=True,
+                    **({"row_id": str(targets[int(row["source_row"])][0]["row_id"])}
+                       if int(row.get("source_row") or 0) in targets else {}),
+                )
         _write_log(log, f"[SALE ASN] Đã điền Order Details cho {row.get('po_no')}.")
     _fill_order_cargo_ready_dates(frame, fill_rows, log, **({"line_targets": targets} if targets else {}))
 

@@ -289,7 +289,9 @@ def test_sale_asn_create_flow_is_reviewed_and_resumable():
         assert f'"{method}"' in JS
     assert "SALE_ASN_PO_SELECTION_REQUIRED" in JS
     assert "result.resumable" in JS
-    assert 'manual ? "Thêm dòng đã chọn" : "Thử lại bước này"' in JS
+    for label in ("Thêm dòng đã chọn", "Chạy bước này", "Thử lại bước này"):
+        assert label in JS
+    assert "SALE_ASN_STAGE_READY" in JS
     assert '"continue_sale_asn_create",\n    saleAsnReviewToken,\n    selectedCandidates' in JS
     assert "saleAsnExactBuyer" in JS
     assert "saleAsnReviewToken" in JS
@@ -354,9 +356,10 @@ def test_sale_asn_progress_is_ignored_outside_an_active_run():
             assert 'const result = await call(\n    "continue_sale_asn_create"' in JS
             assert "    selectedCandidates," in JS
         else:
+            args = "saleAsnReviewToken, stepByStep === true" if method == "start_sale_asn_create" else "saleAsnReviewToken"
             guarded = (
                 "  saleAsnRunActive = true;\n"
-                f'  const result = await call("{method}", saleAsnReviewToken);\n'
+                f'  const result = await call("{method}", {args});\n'
                 "  saleAsnRunActive = false;"
             )
             assert guarded in JS, method

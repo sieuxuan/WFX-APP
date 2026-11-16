@@ -241,6 +241,7 @@ class SaleASNController:
         *,
         continue_existing: bool,
         selected_candidate_ids: list[str] | None = None,
+        step_by_step: bool = False,
     ) -> dict:
         panel = self._panel
         token = str(review_token or "").strip()
@@ -259,7 +260,7 @@ class SaleASNController:
                 "message": "Phiên bản tự động hóa chưa hỗ trợ tạo Sale ASN.",
             }
         document = review["document"]
-        start_index = int(review.get("next_index") or 0) if continue_existing else 0
+        start_index = int(review.get("next_index") or 0)
         stage = str(review.get("next_stage") or "po")
         skipped_stages = tuple(review.get("skipped_stages") or ())
         po_search_fields = tuple(
@@ -297,7 +298,10 @@ class SaleASNController:
             "skip_stages": skipped_stages,
             "search_fields": po_search_fields,
             "progress": panel._progress_for(method),
+            "draft": review.setdefault("draft", {"token": token}),
         }
+        if step_by_step or review.get("step_by_step"):
+            runner_kwargs["step_by_step"] = True
         if _separate_line_groups(document["rows"]):
             runner_kwargs["line_bindings"] = review.setdefault("line_bindings", {})
         if selected_candidates:
@@ -307,6 +311,7 @@ class SaleASNController:
                 selected_po_final=bool(review.get("pending_po_final")),
             )
         def action() -> dict:
+            nonlocal start_index, stage
             division_state: dict[str, Any] = {}
             if str(review["buyer"]).strip().casefold() == "oneill":
                 if not callable(getattr(panel._login, "switch_division", None)):
@@ -329,8 +334,17 @@ class SaleASNController:
                 list(document["rows"]),
                 start_index,
                 panel._log,
-                **runner_kwargs,
+                **{**runner_kwargs, "stage": stage},
             )
+            if created.get("resumable"):
+                start_index = int(created.get("resume_index", start_index))
+                stage = str(created.get("resume_stage") or stage)
+                if created.get("code") in {"CHROME_CLOSED", "NOT_LOGGED_IN"}:
+                    for key in ("selected_po_row", "selected_po_candidates", "selected_po_final"):
+                        runner_kwargs.pop(key, None)
+                # Session recovery may replace this result before it reaches the UI.
+                review["next_index"] = start_index
+                review["next_stage"] = stage
             return with_document_division_state(
                 created, division_state, label="Buyer ONEILL"
             )
@@ -345,8 +359,10 @@ class SaleASNController:
                 "stage": stage,
             },
         )
+        if result.get("code") != "ACTION_IN_PROGRESS" and step_by_step:
+            review["step_by_step"] = True
         if result.get("code") == "SALE_ASN_PO_SELECTION_REQUIRED":
-            review["next_index"] = int(result.get("pending_index") or start_index)
+            review["next_index"] = int(result.get("pending_index", start_index))
             review["next_stage"] = "po"
             review["pending_po_candidates"] = list(result.get("candidates") or ())
             review["pending_po_row"] = {
@@ -356,7 +372,7 @@ class SaleASNController:
             }
             review["pending_po_final"] = bool(result.get("final"))
             result["review_token"] = token
-        elif result.get("resumable"):
+        elif result.get("resumable") or result.get("code") == "SALE_ASN_STAGE_READY":
             review.pop("pending_po_candidates", None)
             review.pop("pending_po_row", None)
             review.pop("pending_po_final", None)
@@ -366,10 +382,11 @@ class SaleASNController:
             self._discard_sale_asn_create_review(token)
         return result
 
-    def start_sale_asn_create(self, review_token: str) -> dict:
+    def start_sale_asn_create(self, review_token: str, step_by_step: bool = False) -> dict:
         return self._run_sale_asn_create_review(
             review_token,
             continue_existing=False,
+            step_by_step=step_by_step,
         )
 
     def continue_sale_asn_create(

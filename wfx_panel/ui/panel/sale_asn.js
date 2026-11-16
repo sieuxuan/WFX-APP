@@ -279,7 +279,7 @@ function renderSaleAsnCandidates(candidates) {
 
 // Thẻ hành động là duy nhất trong DOM và được chuyển vào đúng dòng bước đang
 // vướng, để trạng thái chờ/lỗi không rời khỏi ngữ cảnh bước.
-function showSaleAsnStageAction(stage, { message, manual, canSkip, stageLabel, candidates = [] }) {
+function showSaleAsnStageAction(stage, { message, manual, canSkip, stageLabel, candidates = [], ready = false }) {
   const row = saleAsnStageRow(stage);
   const action = $(".sale-asn-stage-action");
   if (!row || !action) return;
@@ -291,7 +291,7 @@ function showSaleAsnStageAction(stage, { message, manual, canSkip, stageLabel, c
   skipButton.hidden = !canSkip;
   skipButton.textContent = `Bỏ qua ${stageLabel || "bước này"}`;
   const continueButton = $('[data-module-action="sale-asn-continue"]');
-  continueButton.textContent = manual ? "Thêm dòng đã chọn" : "Thử lại bước này";
+  continueButton.textContent = manual ? "Thêm dòng đã chọn" : ready ? "Chạy bước này" : "Thử lại bước này";
   continueButton.disabled = Boolean(manual);
   $(".sale-asn-progress-card").hidden = false;
 }
@@ -428,6 +428,7 @@ function updateSaleAsnProgress(progress) {
   const stage = String(progress.stage || "");
   const index = SALE_ASN_STAGES.indexOf(stage);
   if (index < 0) return;
+  if (!$(".sale-asn-stage-action").hidden) hideSaleAsnStageAction();
   card.hidden = false;
   $(".sale-asn-review").hidden = true;
   $(".sale-asn-done").hidden = true;
@@ -455,9 +456,6 @@ function updateSaleAsnProgress(progress) {
   }
 }
 
-// Stop, ACTION_IN_PROGRESS, review hết hiệu lực hay watchdog đều dừng lượt
-// chạy mà không có checkpoint để tiếp tục. Thẻ review là nơi duy nhất chứa
-// nút Bắt đầu, nên phải trả nó lại; nếu không user kẹt với thẻ tiến độ trống.
 function haltSaleAsnRun(result) {
   hideSaleAsnStageAction();
   SALE_ASN_STAGES.forEach((stage) => {
@@ -495,19 +493,34 @@ function renderSaleAsnRunResult(result) {
     });
     return;
   }
-  if (result.resumable) {
+  if (result.code === "ACTION_IN_PROGRESS" && !$(".sale-asn-stage-action").hidden) return;
+  if (result.code === "SALE_ASN_CREATE_REVIEW_EXPIRED") {
+    resetSaleAsnReview(result.message);
+    return;
+  }
+  const ready = result.code === "SALE_ASN_STAGE_READY";
+  if (result.resumable || ready) {
     saleAsnReviewToken = String(result.review_token || saleAsnReviewToken);
     const stage = stageOf(result.resume_stage) || "po";
     showSaleAsnView("create", { focus: false });
     $(".sale-asn-review").hidden = true;
     setSaleAsnStageView("running");
-    setSaleAsnStageState(stage, "warn", "chưa hoàn tất");
+    if (ready) {
+      SALE_ASN_STAGES.slice(0, SALE_ASN_STAGES.indexOf(stage)).forEach((earlier) => {
+        if (saleAsnStageRow(earlier)?.dataset.state !== "skipped") {
+          setSaleAsnStageState(earlier, "done", "");
+        }
+      });
+    }
+    setSaleAsnStageState(stage, ready ? "pending" : "warn", ready ? "sẵn sàng" : "chưa hoàn tất");
     showSaleAsnStageAction(stage, {
-      message: result.message
-        || "Có lỗi trên WFX. Bạn có thể thử lại mà không tạo lại ASN.",
+      message: ready && result.warnings?.length
+        ? `${result.message} Cần kiểm tra ${result.warnings.join(" · ")}.`
+        : result.message,
       manual: false,
       canSkip: Boolean(result.can_skip),
       stageLabel: result.stage_label || "bước này",
+      ready,
     });
     return;
   }
@@ -664,12 +677,12 @@ async function exportSaleAsnPriceCheck() {
   return call("export_sale_asn_price_check", saleAsnPriceCheck, selected.file_path);
 }
 
-async function startSaleAsnCreate() {
+async function startSaleAsnCreate(stepByStep = false) {
   if (!saleAsnReviewToken) return null;
   resetSaleAsnProgress({ show: true });
   $(".sale-asn-review").hidden = true;
   saleAsnRunActive = true;
-  const result = await call("start_sale_asn_create", saleAsnReviewToken);
+  const result = await call("start_sale_asn_create", saleAsnReviewToken, stepByStep === true);
   saleAsnRunActive = false;
   renderSaleAsnRunResult(result);
   return result;
@@ -679,7 +692,6 @@ async function continueSaleAsnCreate() {
   if (!saleAsnReviewToken) return null;
   const selectedCandidates = selectedSaleAsnCandidateIds();
   if ($$(".sale-asn-candidate-select").length && !selectedCandidates.length) return null;
-  hideSaleAsnStageAction();
   saleAsnRunActive = true;
   const result = await call(
     "continue_sale_asn_create",
@@ -693,7 +705,6 @@ async function continueSaleAsnCreate() {
 
 async function skipSaleAsnCreateStep() {
   if (!saleAsnReviewToken) return null;
-  hideSaleAsnStageAction();
   saleAsnRunActive = true;
   const result = await call("skip_sale_asn_create_step", saleAsnReviewToken);
   saleAsnRunActive = false;

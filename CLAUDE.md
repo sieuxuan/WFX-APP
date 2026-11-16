@@ -817,9 +817,9 @@ Các workflow riêng hiện có:
   Thẻ `Tạo mới` chỉ hiện đúng phần của giai đoạn hiện tại qua
   `data-stage-view` (`idle`/`review`/`running`/`done`) do `setSaleAsnStageView`
   đặt: từ `review` trở đi, hàng Buyer, nút chọn file và `Tùy chọn nâng cao` thu
-  về một dòng ngữ cảnh `Buyer · tên file` kèm nút `Đổi`. Mở lại module phải suy
-  giai đoạn từ `saleAsnReviewToken`, không được để kẹt ở `done` làm mất hẳn hàng
-  Buyer/chọn file. `.sale-asn-inline-status` nằm TRONG khối setup nên chỉ sống ở
+  về một dòng ngữ cảnh `Buyer · tên file` kèm nút `Đổi`. Mở lại module phải giữ
+  thẻ tiến độ nếu review còn lượt đang dở, hoặc về `idle` khi đã hết review.
+  `.sale-asn-inline-status` nằm TRONG khối setup nên chỉ sống ở
   `idle`: nó là hướng dẫn chọn Buyer/file, không phải trạng thái tác vụ (footer
   mới là nơi đó). Không được ghi lại vào nó câu mà thẻ review/kết quả đã in.
   Thông điệp khi lượt chạy dừng đi vào `.sale-asn-review-note` cạnh nút Bắt đầu.
@@ -854,6 +854,12 @@ Các workflow riêng hiện có:
   chuyển sang thẻ `Tra cứu` với Invoice No. điền sẵn; nút đó không được tự chạy
   xuất báo cáo vì user còn phải Save trên WFX. Ngay khi thẻ kết quả hiện, UI phải
   tự scroll thẻ đó vào viewport của module để user không phải kéo xuống tìm.
+  `Chạy từng bước` dừng sau mỗi bước được chọn để user kiểm tra WFX trước khi
+  tiếp tục. Khi lỗi hoặc Stop, giữ file review, bước đang dở và vị trí PO.
+  Retry phải dùng đúng form của lượt hiện tại; nếu form không còn thì báo rõ.
+  Nếu chưa rõ cú Add PO đã ghi nhận hay chưa, kiểm tra dòng trong Order Details
+  trước khi đi tiếp, không bấm Add lần nữa. Lỗi phải nêu nguyên nhân cùng bước,
+  dòng Excel, PO, Style hoặc trường WFX khi xác định được.
   Form Excel có đúng 22 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Price`, `Carton`,
   `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
   `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
@@ -916,7 +922,12 @@ Các workflow riêng hiện có:
   gốc. Danh sách chờ chọn phải giữ đúng nhãn ADD, không đổi thành nhãn PO gốc.
   Style từ file là từ khóa gần đúng (ví dụ `M Acel Jacket` phải khớp được
   `JLD-SMOW17905-M ACEL JACKET-MEN` trên WFX), không phải mã exact. Sau mỗi lần
-  thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay. Sau bước Style,
+  thêm điều kiện, nếu chỉ còn một dòng thì chọn và add ngay. Riêng ở bước tìm
+  theo PO, nếu có đúng hai dòng hợp lệ thì dùng Qty để chọn tại bước đó:
+  tổng bằng Qty Excel thì chọn cả hai, thiếu dữ liệu hoặc không khớp thì chờ
+  user chọn nếu không có dòng khớp duy nhất. Riêng khi xét một dòng WFX gộp hai
+  dòng Excel, vẫn có thể tìm theo Style để xác nhận dòng tổng. Nếu có hơn hai
+  dòng hợp lệ và đã bật Style, tìm tiếp theo Style trước khi chọn. Sau bước Style,
   nếu Qty file xác định duy nhất một dòng theo Dispatched Qty thì add dòng đó
   ngay và bỏ qua Destination. Nếu dùng hết tiêu chí mà vẫn còn nhiều dòng thì
   dùng Qty file và Dispatched Qty để tìm một dòng hoặc một tập dòng duy nhất
@@ -928,9 +939,9 @@ Các workflow riêng hiện có:
   phải trả danh sách checkbox vào app. User chọn một hoặc nhiều dòng trong app rồi
   backend xác thực identity từ review token, tự tick đúng checkbox WFX và bấm
   Add & Continue/OK; không bắt user thao tác popup thủ công. Một dòng hợp lệ vẫn
-  phải tự add ngay, không hiện checkpoint. Nếu 0 kết quả, giữ
-  cửa sổ cho user xử lý thủ công; app dùng review token để tiếp tục từ dòng kế,
-  không đọc lại hay đảo thứ tự file. Bộ tiêu chí phải được snapshot vào review
+  phải tự add ngay, không hiện checkpoint. Nếu 0 kết quả, báo PO và dòng Excel
+  đang vướng, giữ form để user kiểm tra và tìm lại đúng dòng khi bấm thử lại.
+  Bộ tiêu chí phải được snapshot vào review
   token để thay đổi Settings giữa lượt không đổi hành vi của lượt đang chạy.
   Trước một lượt tạo mới, nếu
   frame Sale ASN New đang mở — kể

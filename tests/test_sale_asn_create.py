@@ -468,11 +468,16 @@ def test_auto_add_po_narrows_by_enabled_fields_in_fixed_order(monkeypatch):
     candidates = [
         {"row_index": 1, "selection_value": "A", "po_no": "PO-1"},
         {"row_index": 2, "selection_value": "B", "po_no": "PO-1"},
+        {"row_index": 3, "selection_value": "C", "po_no": "PO-1"},
     ]
 
     def fake_search(_frame, _row, *, fields):
         searches.append(tuple(fields))
-        return candidates[:1] if fields == ("po", "style", "destination") else candidates
+        return {
+            ("po",): candidates,
+            ("po", "style"): candidates[:2],
+            ("po", "style", "destination"): candidates[:1],
+        }[tuple(fields)]
 
     class FakeLocator:
         first = property(lambda self: self)
@@ -2100,6 +2105,7 @@ class _FakeSaleASNLogin:
         selected_po_row=None,
         selected_po_candidates=(),
         selected_po_final=False,
+        draft=None,
     ):
         self.calls.append(
             (
@@ -2309,6 +2315,7 @@ def test_panel_api_retries_or_skips_failed_sale_asn_stage(tmp_path):
             skip_stages=(),
             search_fields=("po", "style", "destination"),
             progress=None,
+            draft=None,
         ):
             self.calls.append(
                 (
@@ -2368,6 +2375,7 @@ def test_panel_api_starts_at_first_selected_stage_without_buyer(tmp_path):
             skip_stages=(),
             search_fields=("po", "style", "destination"),
             progress=None,
+            draft=None,
         ):
             self.calls.append(
                 (
@@ -2454,6 +2462,7 @@ def test_panel_api_streams_sale_asn_progress_with_its_own_method(tmp_path):
             skip_stages=(),
             search_fields=("po", "style", "destination"),
             progress=None,
+            draft=None,
         ):
             progress("order_details", "Đang điền Order Details", 2, 4)
             return {
