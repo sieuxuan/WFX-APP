@@ -32,7 +32,9 @@ Module có đúng hai thẻ. `Tạo mới` là thẻ mặc định và là nơi 
    Từ lúc này, ô Buyer, nút chọn file và `Tùy chọn nâng cao` thu lại thành một
    dòng gọn ở trên cùng ghi Buyer và tên file. Bấm `Đổi` trên dòng đó để quay về
    chọn Buyer/file khác.
-8. Bấm `Bắt đầu tạo Sale ASN`.
+8. Bấm `Bắt đầu tạo Sale ASN` để chạy liền các bước đã chọn. Nếu muốn kiểm tra
+   trên WFX giữa các bước, bấm `Chạy từng bước`. Khi một bước xong, ứng dụng
+   dừng và hiện nút `Chạy bước này` tại bước tiếp theo.
    Với Buyer `ONEILL`, ứng dụng luôn kiểm tra và tự chuyển sang Division `PSSG`
    trước khi mở form, thêm PO hoặc điền dữ liệu. Mỗi lần tiếp tục cũng kiểm tra
    lại; nếu đã ở PSSG thì giữ nguyên. Nếu không chuyển được, ứng dụng dừng import
@@ -91,7 +93,12 @@ từng dòng Excel. Nếu WFX chỉ hiện một giá cho dòng tổng, ứng d�
 kiểm tra giá khi Excel có hai giá khác nhau.
 
 Ứng dụng mặc định tìm PO theo thứ tự `PO` → `Style` → `Destination`. Nếu một
-bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu sau bước `Style` có
+bước chỉ còn một dòng, ứng dụng chọn và thêm ngay. Nếu tìm theo `PO` có đúng
+hai dòng hợp lệ và tổng `Dispatched Qty` bằng `Qty` của dòng Excel, ứng dụng
+thêm cả hai ngay. Nếu tổng lệch và chưa xác định được một dòng khớp `Qty`,
+ứng dụng hiện hai dòng để bạn chọn. Khi cần xác nhận dòng tổng cho hai dòng
+Excel hoặc khi có hơn hai kết quả, ứng dụng có thể lọc tiếp theo `Style` nếu
+tiêu chí này được bật. Nếu sau bước `Style` có
 nhiều dòng và `Qty` trong file xác định được đúng một dòng theo
 `Dispatched Qty`, ứng dụng thêm dòng đó ngay và bỏ qua `Destination`.
 Nếu dùng hết các tiêu chí mà vẫn còn nhiều dòng, ứng dụng so `Qty` trong file
@@ -118,15 +125,20 @@ Mọi trạng thái chờ và lỗi hiện ngay bên trong dòng bước đang v
   cần thêm rồi bấm `Thêm dòng đã chọn`; ứng dụng tự xử lý popup WFX và chạy tiếp.
   Nếu muốn bỏ hẳn lượt này để làm lại từ file khác, bấm
   `Chọn file khác`.
-- **Một bước bị lỗi.** Dòng bước đó chuyển sang màu cảnh báo. Form WFX hiện tại
-  được giữ nguyên: xử lý nguyên nhân rồi bấm `Thử lại bước này`, hoặc bấm
+- **Một bước bị lỗi.** Dòng bước đó nêu nguyên nhân, kèm dòng Excel, PO, Style
+  hoặc ô WFX nếu xác định được. Giữ mở form đang làm, xử lý nguyên nhân rồi bấm
+  `Thử lại bước này`, hoặc bấm
   `Bỏ qua ...` để chuyển sang bước sau. Bỏ qua chỉ áp dụng cho ba bước điền dữ
   liệu; bước thêm PO không thể bỏ qua để tránh tạo chứng từ thiếu đơn hàng.
   Khi bỏ qua, ứng dụng đi thẳng sang bước kế tiếp và không chờ tab của bước vừa
   bỏ, nên bạn dùng được nút này cả khi tab đó đang không mở lên được.
-- **Bạn bấm `Stop`, hoặc ứng dụng đang bận việc khác.** Lượt chạy dừng lại và
-  thẻ file quay lại với nút `Bắt đầu tạo Sale ASN`. Bấm lại để chạy tiếp cùng
-  file đó; không cần chọn file lại từ đầu.
+- **Không tìm thấy PO.** Kiểm tra Buyer, PO, Style, Destination và số lượng đã
+  xuất trên WFX. Bấm `Thử lại bước này` để tìm lại đúng PO đang vướng. Nếu app
+  báo WFX chưa xác nhận lần thêm PO, kiểm tra `Order Details` và bổ sung đúng
+  dòng còn thiếu trên WFX trước khi thử lại.
+- **Bạn bấm `Stop`.** Bấm `Thử lại bước này` để tiếp tục với file đã kiểm tra.
+  App tiếp tục từ PO đang vướng hoặc chạy lại bước điền đang dở. Giữ nguyên
+  form Sale ASN đang làm trên WFX trong lúc dừng.
 
 Trong `Shipping Info`, Division PSSG dùng `BILL-ADD - Billing Address` cho
 `Consignor Address`. Các Division khác dùng `BILL-ADD - PSHK`.
@@ -303,3 +315,4 @@ Delivery Terms theo mode đó:
 | Không xuất được form Order Details | Mở đúng chứng từ có PO và vào tab Order Details rồi bấm xuất lại. |
 | PO trong form Order Details hoặc form 22 cột không có trên trang | Mở đúng Sale ASN có đủ PO rồi bấm thử lại; app không tự thêm PO khi bước Thêm PO đã được bỏ chọn. |
 | Order Details, Style Details hoặc cả tab Shipping Info bị lỗi | Giữ nguyên form WFX, sửa trạng thái/ô đang vướng rồi bấm `Thử lại bước này` ngay trong dòng bước đó; hoặc bấm `Bỏ qua ...` nếu muốn tự điền bước đó. Một field riêng lẻ trong Shipping Info sẽ tự được bỏ qua và báo lại trong thẻ kết quả. |
+| Không tìm thấy đúng form đang làm | Quay lại form Sale ASN còn dang dở trên WFX rồi bấm `Thử lại bước này`. Nếu form đã đóng và mất dữ liệu chưa lưu, bấm `Chọn file khác` để bắt đầu lượt mới. |

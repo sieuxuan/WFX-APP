@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from wfx_panel.automation._common import Frame, _wait, _write_log
+from wfx_panel.automation.sale_asn_create.errors import _filling_cell
 from wfx_panel.automation.sale_asn_create.order_details import _edit_marked_table_cell
 from wfx_panel.automation.sale_asn_create.progress import _emit_stage_progress
 
@@ -97,9 +98,10 @@ def _set_style_cells(
             {"style": style, "target_index": target_index},
         )
         if not marked.get("ok"):
-            raise RuntimeError(
-                f"SALE_ASN_TABLE_MAPPING_FAILED:{marked.get('reason')}"
-            )
+            reason = marked.get("reason")
+            if reason == "style-row-ambiguous" and marked.get("count") == 0:
+                reason = "style-not-found"
+            raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{reason}")
         if target_count is None:
             target_count = max(1, int(marked.get("target_count") or 1))
         elif int(marked.get("target_count") or target_count) != target_count:
@@ -140,14 +142,17 @@ def _fill_style_details(
     tab.click(timeout=5_000)
     _wait(frame, 500)
     grouped: dict[str, dict[str, str]] = {}
+    source_rows: dict[str, dict] = {}
     for row in rows:
         style = str(row.get("style_no") or "")
+        source_rows.setdefault(style, row)
         detail = grouped.setdefault(style, {})
         hs_code = str(row.get("hs_code") or "")
         if hs_code:
             old_hs_code = detail.setdefault("hs_code", hs_code)
             if old_hs_code != hs_code:
-                raise RuntimeError("SALE_ASN_STYLE_HS_CODE_CONFLICT")
+                with _filling_cell(row, "HS Code"):
+                    raise RuntimeError("SALE_ASN_STYLE_HS_CODE_CONFLICT")
 
         # Khác HS Code, ô trống ở Goods Description là dữ liệu có chủ ý: user
         # muốn xóa mô tả WFX đang có. Giữ cả giá trị trống để mọi Style trong
@@ -156,7 +161,8 @@ def _fill_style_details(
         if "goods_description" not in detail:
             detail["goods_description"] = description
         elif detail["goods_description"] != description:
-            raise RuntimeError("SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT")
+            with _filling_cell(row, "Goods Description"):
+                raise RuntimeError("SALE_ASN_STYLE_GOODS_DESCRIPTION_CONFLICT")
     for index, (style, values) in enumerate(grouped.items(), 1):
         _emit_stage_progress(
             progress,
@@ -164,7 +170,8 @@ def _fill_style_details(
             f"Style Details {index}/{len(grouped)}",
         )
         if code := values.get("hs_code"):
-            hts_count = _set_style_hts_cell(frame, style, code)
+            with _filling_cell(source_rows[style], "HS Code"):
+                hts_count = _set_style_hts_cell(frame, style, code)
             hts_scope = (
                 f"{hts_count} dòng "
                 if isinstance(hts_count, int) and hts_count > 1
@@ -175,11 +182,8 @@ def _fill_style_details(
                 f"[SALE ASN] Đã điền HS Code cho {hts_scope}Style {style}.",
             )
         description = values["goods_description"]
-        description_count = _set_style_goods_description_cell(
-            frame,
-            style,
-            description,
-        )
+        with _filling_cell(source_rows[style], "Goods Description"):
+            description_count = _set_style_goods_description_cell(frame, style, description)
         action = "xóa" if not description else "điền"
         description_scope = (
             f"{description_count} dòng "

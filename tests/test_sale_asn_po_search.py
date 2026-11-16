@@ -927,6 +927,55 @@ def _wire_auto_add(monkeypatch, results, *, added=None):
 
 
 @pytest.mark.parametrize("final", [False, True])
+def test_two_exact_po_rows_matching_total_qty_are_added_without_style(monkeypatch, final):
+    first = _candidate(1, "FIRST", po_no="779", dispatched_qty="40")
+    second = _candidate(2, "SECOND", po_no="779", dispatched_qty="60")
+    similar = _candidate(3, "SIMILAR", po_no="779A", dispatched_qty="100")
+    searched, picked = _wire_auto_add(monkeypatch, {("po",): [first, second, similar]})
+
+    added, selected, label = po._auto_add_po(
+        PopupFrame(), _row(qty="100"), lambda _m: None, final=final,
+    )
+
+    assert added
+    assert label == "PO"
+    assert searched == [("po",)]
+    assert selected == [first, second]
+    assert picked == [[first, second]]
+
+
+def test_two_po_rows_with_no_qty_match_are_offered_without_style(monkeypatch):
+    first = _candidate(1, "FIRST", po_no="779", dispatched_qty="40")
+    second = _candidate(2, "SECOND", po_no="779", dispatched_qty="50")
+    searched, picked = _wire_auto_add(monkeypatch, {("po",): [first, second]})
+
+    added, candidates, reason = po._auto_add_po(PopupFrame(), _row(qty="100"), lambda _m: None)
+
+    assert not added
+    assert searched == [("po",)]
+    assert candidates == [first, second]
+    assert reason.startswith("qty_mismatch:")
+    assert not picked
+
+
+def test_more_than_two_related_po_rows_still_use_style(monkeypatch):
+    base = _candidate(1, "BASE", po_no="779", dispatched_qty="100")
+    add_a = _candidate(2, "ADD-A", po_no="779 - ADD", dispatched_qty="40")
+    add_b = _candidate(3, "ADD-B", po_no="779 - ADD", dispatched_qty="60")
+    searched, picked = _wire_auto_add(monkeypatch, {
+        ("po",): [base, add_a, add_b],
+        ("po", "style"): [base],
+    })
+
+    added, selected, _label = po._auto_add_po(PopupFrame(), _row(qty="100"), lambda _m: None)
+
+    assert added
+    assert searched == [("po",), ("po", "style")]
+    assert selected == [base]
+    assert picked == [[base]]
+
+
+@pytest.mark.parametrize("final", [False, True])
 def test_a_unique_qty_match_after_style_is_added_before_destination(monkeypatch, final):
     matching = _candidate(1, "MATCH", po_no="779", dispatched_qty="131.0000")
     other_color = _candidate(2, "OTHER", po_no="779", dispatched_qty="49")
@@ -955,8 +1004,9 @@ def test_destination_is_still_used_without_a_unique_single_qty_match(
 ):
     first = _candidate(1, "FIRST", po_no="779", dispatched_qty=quantities[0])
     second = _candidate(2, "SECOND", po_no="779", dispatched_qty=quantities[1])
+    other_style = _candidate(3, "OTHER-STYLE", po_no="779", dispatched_qty="200")
     searched, picked = _wire_auto_add(monkeypatch, {
-        ("po",): [first, second],
+        ("po",): [first, second, other_style],
         ("po", "style"): [first, second],
         ("po", "style", "destination"): [first, second],
     })

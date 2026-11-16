@@ -19,7 +19,10 @@ from tests.fakes.automation_boundary import FakePage, WfxWorld, wire_automation
 from tests.fakes.module_reflection import patch_automation
 from tests.fakes.wfx_dom import FakeClock
 from wfx_panel.automation._common import PlaywrightError, PlaywrightTimeoutError
+from wfx_panel.automation.runtime import AutomationCancelled
 from wfx_panel.automation.sale_asn_create.errors import (
+    _filling_cell,
+    _POAddUnconfirmed,
     _POSelectionRequired,
     _shipping_warning,
 )
@@ -307,6 +310,89 @@ def test_the_popup_is_reopened_between_pos_but_not_after_the_last_one(
     assert reopened == [1, 2]
 
 
+@pytest.mark.parametrize("failure", ["not-found", "stop", "uncertain"])
+def test_po_retry_keeps_the_draft_and_continues_at_the_failed_row(monkeypatch, clock, failure):
+    calls = []
+    rows = _rows(3)
+    draft = {"token": "test"}
+
+    def add(_context, popup, row, _log, **_kwargs):
+        calls.append(row["po_no"])
+        if row["po_no"] == "PO-1" and calls.count("PO-1") == 1:
+            if failure == "stop":
+                raise AutomationCancelled("ACTION_CANCELLED")
+            if failure == "uncertain":
+                raise _POAddUnconfirmed(row, [{"selection_value": "1_123"}])
+            return False, [], "not_found", popup
+        return True, [], "PO No.", popup
+
+    class DraftFrame(StubFrame):
+        page = "page"
+
+        def evaluate(self, _script, _arg):
+            return [{"row_id": "123", "po_no": "PO-1", "style_no": rows[1]["style_no"]}]
+
+    frame = DraftFrame()
+    _wire_flow(monkeypatch, clock, _auto_add_po_with_frame_retry=add,
+               _refresh_existing_new_form=lambda *_a: frame)
+    stopped = _run(rows=rows, draft=draft)
+    assert not stopped["ok"]
+    assert "Dòng Excel 3 · PO PO-1" in stopped["message"]
+    assert stopped["resume_index"] == 1
+
+    def fail_if_refreshed(*_args):
+        pytest.fail("Retry không được refresh form đang làm")
+
+    monkeypatch.setattr(flow, "_refresh_existing_new_form", fail_if_refreshed)
+    monkeypatch.setattr(flow, "_find_draft", lambda *_a: frame)
+    assert _run(rows=rows, draft=draft, start_index=stopped["resume_index"])["ok"]
+    expected = ["PO-0", "PO-1", "PO-2"]
+    if failure != "uncertain":
+        expected.insert(2, "PO-1")
+    assert calls == expected
+
+
+def test_stepwise_runs_only_one_enabled_stage(monkeypatch, clock):
+    calls = []
+    _wire_flow(
+        monkeypatch, clock,
+        _fill_order_details=lambda *_a, **_k: calls.append("order_details"),
+        _fill_shipping=lambda *_a, **_k: calls.append("shipping_info") or ["Cảnh báo thử"],
+    )
+
+    paused = _run(stage="order_details", step_by_step=True, skip_stages=("style_details",))
+    assert paused["code"] == "SALE_ASN_STAGE_READY"
+    assert paused["resume_stage"] == "shipping_info"
+    assert calls == ["order_details"]
+    paused = _run(stage=paused["resume_stage"], step_by_step=True)
+    assert paused["resume_stage"] == "price_check"
+    assert paused["warnings"] == ["Cảnh báo thử"]
+
+
+def test_retry_refuses_to_apply_changes_to_another_form(monkeypatch, clock):
+    def missing(*_args, **_kwargs):
+        raise PlaywrightTimeoutError("draft missing")
+
+    _wire_flow(monkeypatch, clock, _frame_with_selector=missing)
+    result = _run(stage="order_details", draft={"token": "test", "bound": True})
+    assert result["code"] == "SALE_ASN_DRAFT_UNAVAILABLE"
+    assert result["resume_stage"] == "order_details"
+    assert not result["can_skip"]
+
+
+def test_failure_reports_step_excel_row_and_field(monkeypatch, clock):
+    def fill(_frame, rows, *_args, **_kwargs):
+        with _filling_cell(rows[0], "Carton"):
+            raise RuntimeError("SALE_ASN_FIELD_NOT_EDITABLE:editor-not-found")
+
+    _wire_flow(monkeypatch, clock, _fill_order_details=fill)
+    result = _run(stage="order_details")
+    assert result["code"] == "SALE_ASN_FIELD_NOT_EDITABLE"
+    assert result["message"] == (
+        "Order Details · Dòng Excel 2 · PO PO-0 · Style M ACEL JACKET · Carton: WFX không cho sửa ô này."
+    )
+
+
 def test_separate_color_choices_survive_a_manual_checkpoint_without_readding(monkeypatch, clock):
     rows = [
         {**_rows()[0], "source_row": 2, "qty": "15"},
@@ -517,7 +603,7 @@ def test_an_unexpected_error_still_says_which_stage_to_resume(
     result = _run(stage="shipping_info", log=lines.append)
 
     assert result["code"] == "SALE_ASN_CREATE_FAILED"
-    assert result["message"].startswith("ZeroDivisionError: ")
+    assert result["message"].startswith("Shipping Info: ZeroDivisionError: ")
     assert result["resume_stage"] == "shipping_info"
     assert lines[-1] == result["message"]
 

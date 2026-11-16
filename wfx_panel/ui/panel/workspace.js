@@ -50,11 +50,10 @@ function openModulePage(moduleId) {
     autoPrepareCatalog();
   } else if (module.kind === "sale_asn") {
     showSaleAsnView("create", { focus: false });
-    resetSaleAsnProgress();
-    // resetSaleAsnProgress ẩn thẻ kết quả nhưng không xóa review đang chờ, nên
-    // giai đoạn phải bám theo token; nếu không, mở lại module sau một lượt xong
-    // sẽ kẹt ở "done" và mất hẳn hàng Buyer/chọn file.
-    setSaleAsnStageView(saleAsnReviewToken ? "review" : "idle");
+    if (!saleAsnReviewToken || $(".sale-asn-progress-card").hidden) {
+      resetSaleAsnProgress();
+      setSaleAsnStageView(saleAsnReviewToken ? "review" : "idle");
+    }
     // Bung sẵn khối nâng cao nếu còn bước đang bỏ tích, để user không bất ngờ
     // vì app chạy thiếu bước.
     if (selectedSaleAsnStages().length < SALE_ASN_USER_STAGES.length) {

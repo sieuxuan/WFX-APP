@@ -467,8 +467,8 @@ class PanelAPI:
             selected_candidate_ids=selected_candidate_ids,
         )
 
-    def start_sale_asn_create(self, review_token: str) -> dict:
-        return self._sale_asn.start_sale_asn_create(review_token)
+    def start_sale_asn_create(self, review_token: str, step_by_step: bool = False) -> dict:
+        return self._sale_asn.start_sale_asn_create(review_token, step_by_step)
 
     def continue_sale_asn_create(self, review_token: str, selected_candidate_ids: list[str] | None=None) -> dict:
         return self._sale_asn.continue_sale_asn_create(

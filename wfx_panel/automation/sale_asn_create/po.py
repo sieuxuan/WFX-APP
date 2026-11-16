@@ -19,6 +19,7 @@ from wfx_panel.automation._common import (
     _write_log,
     time,
 )
+from wfx_panel.automation.runtime import cancellation_deferred
 from wfx_panel.automation.sale_asn_create.constants import (
     PO_CONTINUE_SELECTOR,
     PO_OK_SELECTOR,
@@ -32,6 +33,7 @@ from wfx_panel.automation.sale_asn_create.constants import (
 )
 from wfx_panel.automation.sale_asn_create.errors import (
     _is_transient_frame_error,
+    _POAddUnconfirmed,
     _POFrameChanged,
 )
 from wfx_panel.automation.sale_asn_create.form import _frame_with_selector
@@ -563,16 +565,19 @@ def _add_selected_po_candidates(
     action_selector = PO_OK_SELECTOR if final else PO_CONTINUE_SELECTOR
     button = frame.locator(action_selector).first
     button.wait_for(state="visible", timeout=5_000)
-    clicked = button.evaluate(
-        """container => {
-            const action = container.matches('a, button, input, [onclick]')
-                ? container
-                : container.querySelector('a, button, input, [onclick]');
-            if (!action) return {ok: false, reason: 'action-not-found'};
-            action.click();
-            return {ok: true, tag: action.tagName, id: action.id || ''};
-        }"""
-    )
+    try:
+        clicked = button.evaluate(
+            """container => {
+                const action = container.matches('a, button, input, [onclick]')
+                    ? container
+                    : container.querySelector('a, button, input, [onclick]');
+                if (!action) return {ok: false, reason: 'action-not-found'};
+                action.click();
+                return {ok: true, tag: action.tagName, id: action.id || ''};
+            }"""
+        )
+    except PlaywrightError as error:
+        raise _POAddUnconfirmed(row, candidates) from error
     if not clicked.get("ok"):
         raise RuntimeError(
             f"SALE_ASN_PO_SELECTION_NOT_CONFIRMED:{clicked.get('reason')}"
@@ -586,7 +591,11 @@ def _add_selected_po_candidates(
             ),
         )
         return
-    _wait(frame, 250)
+    try:
+        with cancellation_deferred():
+            _wait(frame, 250)
+    except PlaywrightError as error:
+        raise _POAddUnconfirmed(row, candidates) from error
 
 
 def _unique_dispatched_qty_subset(
@@ -782,7 +791,8 @@ def _auto_add_po(
                 last = exact + related_add
                 # Một PO gốc duy nhất đã đúng Qty thì vẫn thêm ngay, không để
                 # các dòng ADD làm mất đường nhanh cũ hoặc tạo mơ hồ giả.
-                if len(exact) == 1 and (
+                needs_style = field == "po" and "style" in enabled and len(last) > 2
+                if not needs_style and len(exact) == 1 and (
                     expected_qty is None
                     or _decimal_or_none(exact[0].get("dispatched_qty")) == expected_qty
                 ):
@@ -815,7 +825,15 @@ def _auto_add_po(
         if not last:
             # Mỗi lượt chỉ thêm điều kiện nên 0 kết quả không thể tăng lại.
             break
-        more_filters = field != enabled[-1]
+        two_valid_po_rows = field == "po" and len(last) == 2 and len(exact) + len(related_add) == 2
+        if two_valid_po_rows and expected_qty is None:
+            return False, last, "qty_unavailable:thiếu Qty file để đối chiếu hai dòng PO"
+        # Dòng WFX gộp hai dòng Excel vẫn cần xác nhận Style nếu Qty riêng chưa khớp.
+        check_combined_style = (
+            two_valid_po_rows and bool(row.get("_next_line_qty"))
+            and _unique_dispatched_qty_subset(last, expected_qty) is None
+        )
+        more_filters = field != enabled[-1] and (not two_valid_po_rows or check_combined_style)
         if row.get("_next_line_qty") and expected_qty is not None and expected_qty > 0:
             if field == "po" and "style" in enabled and len(last) == 1:
                 dispatched = _decimal_or_none(last[0].get("dispatched_qty"))
