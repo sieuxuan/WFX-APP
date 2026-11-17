@@ -4,6 +4,9 @@
 // scope và chạy theo đúng thứ tự index.html khai báo.
 
 function showReportList() {
+  if (selectedReportId && !$(".report-parameters").hidden) {
+    reportParameterCache.set(selectedReportId, reportParameterValues());
+  }
   selectedReportId = "";
   $(".reports-list").hidden = false;
   $(".reports-detail").hidden = true;
@@ -17,7 +20,7 @@ function showReportDetail(reportId, title) {
   $(".reports-list").hidden = true;
   $(".reports-detail").hidden = false;
   $(".reports-detail-title").textContent = title;
-  $(".report-parameters").hidden = reportId !== "shipment_summary";
+  $(".report-parameters").hidden = true;
   $(".color-report-workspace").hidden =
     !["color_combination_production", "color_combination_po_wise"].includes(reportId);
 }
@@ -28,7 +31,7 @@ function colorReportIsPo(reportId = selectedReportId) {
 
 function renderReportParameters(result, section = $(".report-parameters")) {
   const reportId = String(result.report_id || result.report_token || "");
-  if (!result.report_token) selectedReportId = reportId;
+  if (!result.report_token && reportId !== selectedReportId) return;
   const savedValues = result.saved_parameters || {};
   if (Object.keys(savedValues).length) {
     reportParameterCache.set(reportId, savedValues);
@@ -414,14 +417,10 @@ async function runColorReportBatch(onlyRefs = null, retrySelection = null, retry
   }
 }
 
-async function loadShipmentSummaryReport() {
-  if (selectedReportId) {
-    reportParameterCache.set(selectedReportId, reportParameterValues());
-  }
-  showReportDetail("shipment_summary", "Shipment Summary");
-  const result = await runSelectedModuleAction(
-    "load_report_parameters", "shipment_summary"
-  );
+async function loadSimpleReport(reportId, title) {
+  showReportDetail(reportId, title);
+  $(".report-last-month-button").hidden = reportId !== "shipment_summary";
+  const result = await runSelectedModuleAction("load_report_parameters", reportId);
   if (result?.ok) renderReportParameters(result);
   return result;
 }

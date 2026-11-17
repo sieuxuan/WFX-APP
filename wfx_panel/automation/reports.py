@@ -74,6 +74,19 @@ REPORTS = {
             "ReportParams="
         ),
     },
+    "color_size_breakdown_factory": {
+        "id": "color_size_breakdown_factory",
+        "name": "Color Size Breakdown_Factory",
+        "kind": "simple",
+        "custom_report_id": "4f26a14b-1a89-412a-818d-e858914ab715",
+        "url": (
+            "https://prosports.worldfashionexchange.com/WFXBase4.0/"
+            "WFXBICustomReportView.aspx?BICustomReportID="
+            "4f26a14b-1a89-412a-818d-e858914ab715&Path="
+            "/WFXPSHLIVE/MD%20Reports/MD%20Report/"
+            "Color%20Size%20Break%20down_Factory&ReportParams="
+        ),
+    },
 }
 PARAMETER_TABLE = "#ParameterTable_rptCustomReportViewer_ctl04"
 REPORT_READY_TIMEOUT_SECONDS = 300
@@ -402,7 +415,9 @@ def load_report_parameters(
         _write_log(log, f"[REPORT] Đang tải tham số {report['name']}...")
         report_page = _open_report(page, report)
         _attach_dialog_handler(report_page, log)
-        parameters = _read_parameters(report_page)
+        parameters = _read_parameters(
+            report_page, shipment_date_ids=report["id"] == "shipment_summary"
+        )
         _write_log(log, f"[REPORT] Đã đọc {len(parameters)} tham số.")
         return _result(
             True,
