@@ -785,7 +785,7 @@ class FileDialogController:
         }
 
     def download_sale_asn_template(self) -> dict:
-        """Tạo form 19 cột cho luồng New Sale ASN."""
+        """Tạo form Excel cho luồng New Sale ASN."""
         app = self._app
         if app.window is None:
             return {
@@ -831,7 +831,7 @@ class FileDialogController:
         }
 
     def save_sale_asn_continue_template(self, rows: list[dict]) -> dict:
-        """Xuất form 22 cột có sẵn PO/Order Details của Sale ASN đang mở."""
+        """Xuất form Excel có sẵn PO/Order Details của Sale ASN đang mở."""
         app = self._app
 
         if app.window is None:

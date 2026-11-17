@@ -77,11 +77,11 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert tuple(cell.value for cell in sheet[1]) == SALE_ASN_COLUMNS
     assert sheet.freeze_panes == "A2"
     assert sheet.sheet_view.showGridLines is False
-    assert sheet.tables["SaleASNInput"].ref == "A1:V21"
+    assert sheet.tables["SaleASNInput"].ref == "A1:U21"
     assert sheet.auto_filter.ref is None
     assert sheet["A1"].fill.fgColor.rgb == "00FDE68A"
     assert sheet["G1"].fill.fgColor.rgb == "00DBEAFE"
-    assert sheet["V1"].fill.fgColor.rgb == "00FDE68A"
+    assert sheet["U1"].fill.fgColor.rgb == "00FDE68A"
     assert SALE_ASN_COLUMNS == (
         "Style No",
         "PO No",
@@ -91,8 +91,7 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "NW",
         "GW",
         "CBM",
-        "FOB Price",
-        "Service Price",
+        "Container/ Seal no",
         "Cargo Ready Date",
         "HS CODE",
         "Goods Description",
@@ -106,9 +105,11 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
         "Ship To",
         "Shipping Mode",
     )
-    assert sheet["K2"].number_format == "dd/mm/yyyy"
-    assert sheet["O2"].number_format == "dd/mm/yyyy"
-    assert sheet["Q2"].number_format == "dd/mm/yyyy"
+    assert sheet["I2"].number_format == "@"
+    assert sheet.column_dimensions["I"].number_format == "@"
+    assert sheet["J2"].number_format == "dd/mm/yyyy"
+    assert sheet["N2"].number_format == "dd/mm/yyyy"
+    assert sheet["P2"].number_format == "dd/mm/yyyy"
     assert "SEASON" not in SALE_ASN_COLUMNS
     assert "DESCRIPTION" not in SALE_ASN_COLUMNS
     assert SALE_ASN_COLUMNS[-3:] == (
@@ -120,13 +121,13 @@ def test_template_keeps_reference_schema_and_readable_format(tmp_path):
     assert len(validations) == 4
     shipping_validation = next(item for item in validations if item.type == "list")
     assert shipping_validation.formula1 == '"AIR,SEA,COURIER"'
-    assert str(shipping_validation.sqref) == "V2"
+    assert str(shipping_validation.sqref) == "U2"
     assert shipping_validation.allow_blank is False
     date_validations = [item for item in validations if item.type == "date"]
     assert {str(item.sqref) for item in date_validations} == {
-        "K2:K2001",
-        "O2:O2001",
-        "Q2:Q2001",
+        "J2:J2001",
+        "N2:N2001",
+        "P2:P2001",
     }
     assert all(item.allow_blank is True for item in date_validations)
     workbook.close()
@@ -301,6 +302,7 @@ def test_full_template_can_prefill_current_order_details(tmp_path):
                 "cbm": "1.25",
                 "fob_price": "12.75",
                 "service_price": "0.5",
+                "container_seal_no": "00001 / S-002",
                 "cargo_ready_date": "03 Aug 2026",
             }
         ],
@@ -311,9 +313,9 @@ def test_full_template_can_prefill_current_order_details(tmp_path):
     assert sheet["B2"].value == "PO-001"
     assert sheet["E2"].value == 2
     assert sheet["F2"].value == 9.5
-    assert sheet["I2"].value == 12.75
-    assert sheet["K2"].value.date() == date(2026, 8, 3)
-    assert sheet.tables["SaleASNInput"].ref == "A1:V21"
+    assert sheet["I2"].value == "00001 / S-002"
+    assert sheet["J2"].value.date() == date(2026, 8, 3)
+    assert sheet.tables["SaleASNInput"].ref == "A1:U21"
     workbook.close()
 
 

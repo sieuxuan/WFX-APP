@@ -810,9 +810,9 @@ Các workflow riêng hiện có:
   `Xuất form từ WFX`/`Chọn file 8 cột` và các API
   `read/write_sale_asn_order_details_*`, `prepare/start/cancel_sale_asn_order_details`,
   `run_sale_asn_order_details` đã bị gỡ. Chứng từ đã có sẵn PO thì bỏ tích bước
-  `Thêm PO`, bấm `Xuất PO đang mở` để lấy form 22 cột đã điền sẵn PO rồi chạy
+  `Thêm PO`, bấm `Xuất PO đang mở` để lấy form đã điền sẵn PO rồi chạy
   các bước còn lại. Nút đó chạy `scan_sale_asn_order_details` (chỉ đọc grid
-  Order Details đang mở) rồi `save_sale_asn_continue_template` (ghi form 22 cột);
+  Order Details đang mở) rồi `save_sale_asn_continue_template` (ghi form Excel);
   hai hàm này phải được giữ lại.
   Thẻ `Tạo mới` chỉ hiện đúng phần của giai đoạn hiện tại qua
   `data-stage-view` (`idle`/`review`/`running`/`done`) do `setSaleAsnStageView`
@@ -860,11 +860,16 @@ Các workflow riêng hiện có:
   Nếu chưa rõ cú Add PO đã ghi nhận hay chưa, kiểm tra dòng trong Order Details
   trước khi đi tiếp, không bấm Add lần nữa. Lỗi phải nêu nguyên nhân cùng bước,
   dòng Excel, PO, Style hoặc trường WFX khi xác định được.
-  Form Excel có đúng 22 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Price`, `Carton`,
-  `NW`, `GW`, `CBM`, `FOB Price`, `Service Price`, `Cargo Ready Date`,
+  Form Excel có đúng 21 cột theo thứ tự `Style No`, `PO No`, `Qty`, `Price`, `Carton`,
+  `NW`, `GW`, `CBM`, `Container/ Seal no`, `Cargo Ready Date`,
   `HS CODE`, `Goods Description`, `Invoice No`, `Invoice Date`, `Shipping Bill No`, `Shipping Bill Date`,
   `Destination`, `FTY`, `Consignee Address`, `Ship To`, `Shipping Mode`; bỏ
-  `SEASON`/cột `DESCRIPTION` cũ. Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
+  `SEASON`/cột `DESCRIPTION` cũ. Import vẫn nhận `FOB Price` và `Service Price`
+  nếu người dùng tự thêm các tiêu đề đó, và vẫn đọc được form cũ.
+  `Container/ Seal no` là dữ liệu text giống Style No. Khi đọc file theo thứ tự,
+  điền dòng PO trống bằng giá trị gần nhất phía trên, nếu có. Mỗi giá trị mới
+  thay giá trị kế thừa cho các dòng phía dưới. Cả cột có thể để trống.
+  Mỗi file chỉ chứa một Invoice No. và một FTY, xử lý PO
   đúng thứ tự dòng. Một PO có thể có nhiều Style. Các dòng ghi đủ PO No. + Style
   No. giống nhau (ví dụ khác màu) phải giữ riêng Qty, Price, FOB Price, Service
   Price, Carton/NW/GW/CBM và ngày của từng dòng; không báo lỗi trùng hoặc tự gộp.
@@ -884,8 +889,9 @@ Các workflow riêng hiện có:
   OC/GDN tổng đúng một lần và đánh dấu đã xử lý cả hai dòng trong review.
   Binding giữ qua checkpoint và retry. Trước khi điền Order Details, xác
   nhận identity và tổng Qty trên WFX. Nếu WFX giữ một dòng tổng, cộng các số
-  liệu đóng gói và giữ nguyên các ô giá hoặc ngày có dữ liệu khác nhau giữa
-  hai dòng. Nếu WFX tách ra, chỉ điền riêng khi xác định được đích bằng Qty.
+  liệu đóng gói và giữ nguyên ô WFX khi giá, ngày hoặc Container/ Seal no
+  khác nhau giữa hai dòng. Nếu WFX tách ra, chỉ điền riêng khi xác định được
+  đích bằng Qty.
   Shipping Mode chỉ
   bắt buộc và chỉ được đọc ở dòng dữ liệu đầu tiên khi chạy Shipping Info, chỉ
   nhận AIR/SEA/COURIER; các dòng sau không cần điền và không được ghi đè mode đầu;
@@ -899,7 +905,7 @@ Các workflow riêng hiện có:
   dòng khác dùng ngày có dữ liệu đầu tiên. Khi mọi dòng dùng chung một ngày,
   điền ô đầu rồi dùng `Copy Below` (`#imgCopyBelowFFDate1`) và kiểm tra đủ các
   dòng. Nếu nút không có hoặc chưa copy đủ, điền từng ô còn thiếu. Không áp
-  dụng copy toàn bảng cho Carton/NW/GW/CBM/FOB Price/Service Price. Ba cột Cargo
+  dụng copy toàn bảng cho Carton/NW/GW/CBM/FOB Price/Service Price/Container/ Seal no. Ba cột Cargo
   Ready Date/Invoice Date/Shipping Bill Date phải có date validation trong form
   Excel và cho phép để trống. Invoice Date/Shipping Bill Date vẫn kế thừa ngày
   đầu tiên, không có nữa mới dùng ngày hiện tại; Shipping Bill No. trống thì dùng
@@ -957,10 +963,10 @@ Các workflow riêng hiện có:
   cell `td` bao ngoài, và không bấm `Add & Continue` trước `OK` vì thao tác đó
   xóa selection khiến WFX báo `Please select a record`. Sau click `OK`, popup
   có thể đóng/dispose frame ngay; không wait trên frame popup nữa mà resolve lại
-  trang Sale ASN chính rồi điền 7 cột Order Details, map Style gần đúng để điền
+  trang Sale ASN chính rồi điền Order Details, map Style gần đúng để điền
   HS Code/Goods Description. Khi file chỉ có một dòng cho PO + Style nhưng
   Order Details có nhiều dòng cùng cặp đó,
-  chỉ điền Carton/NW/GW/CBM/FOB Price/Service Price vào dòng khớp trên cùng;
+  chỉ điền Carton/NW/GW/CBM/FOB Price/Service Price/Container/ Seal no vào dòng khớp trên cùng;
   không phân bổ hoặc nhân bản số sang các dòng phía dưới. Khi file có nhiều
   dòng cùng PO + Style thì mỗi dòng ghi vào các OC đã gắn riêng, không cùng ghi
   đè lên dòng đầu. Cargo Ready Date theo đúng dòng đã gắn nếu có ngày riêng;

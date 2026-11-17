@@ -1,4 +1,4 @@
-"""Đọc form 22 cột Sale ASN: giá trị, ngày, và các luật một-Invoice-một-FTY.
+"""Đọc form Sale ASN: giá trị, ngày, và các luật một-Invoice-một-FTY.
 
 CLAUDE.md: mỗi file chỉ chứa một Invoice No. và một FTY; chỉ cặp PO No. + Style
 No. trùng được giữ riêng theo dòng; Shipping Mode chỉ bắt buộc và chỉ được đọc ở dòng dữ
@@ -24,7 +24,7 @@ from wfx_panel.workbooks.sale_asn import (
 )
 
 
-def _row(**overrides):
+def _row(*, headers=SALE_ASN_COLUMNS, **overrides):
     values = {
         "Style No": "M ACEL JACKET",
         "PO No": "PO-1",
@@ -34,8 +34,6 @@ def _row(**overrides):
         "NW": 1.5,
         "GW": 2.0,
         "CBM": 0.3,
-        "FOB Price": 2.5,
-        "Service Price": 0.1,
         "Cargo Ready Date": date(2026, 3, 1),
         "HS CODE": "6203",
         "Goods Description": "JACKET",
@@ -50,7 +48,7 @@ def _row(**overrides):
         "Shipping Mode": "SEA",
     }
     values.update(overrides)
-    return [values[column] for column in SALE_ASN_COLUMNS]
+    return [values.get(column) for column in headers]
 
 
 def _file(tmp_path, *rows, name="Sale ASN.xlsx", headers=None, sheet="Sheet1"):
@@ -66,8 +64,8 @@ def _file(tmp_path, *rows, name="Sale ASN.xlsx", headers=None, sheet="Sheet1"):
     return path
 
 
-def _read(tmp_path, *rows, **kwargs):
-    return read_sale_asn_workbook(_file(tmp_path, *rows), **kwargs)
+def _read(tmp_path, *rows, headers=None, **kwargs):
+    return read_sale_asn_workbook(_file(tmp_path, *rows, headers=headers), **kwargs)
 
 
 # --- an toàn file -------------------------------------------------------
@@ -259,12 +257,44 @@ def test_a_valid_file_reports_its_totals(tmp_path):
     assert document["file_name"] == "Sale ASN.xlsx"
 
 
-def test_two_rows_with_the_same_po_and_style_are_kept_separate(tmp_path):
-    document = _read(tmp_path, _row(Qty=15, **{"FOB Price": 24.08}), _row(Qty=117, **{"FOB Price": 23.04}))
+@pytest.mark.parametrize("legacy", [False, True])
+def test_two_rows_with_the_same_po_and_style_keep_optional_prices_separate(tmp_path, legacy):
+    headers = (*SALE_ASN_COLUMNS, "Service Price", "FOB Price")
+    if legacy:
+        headers = (*SALE_ASN_COLUMNS[:8], "FOB Price", "Service Price", *SALE_ASN_COLUMNS[9:])
+    document = _read(
+        tmp_path,
+        _row(headers=headers, Qty=15, **{"FOB Price": 24.08, "Service Price": 0.1}),
+        _row(headers=headers, Qty=117, **{"FOB Price": 23.04, "Service Price": 0.2}),
+        headers=headers,
+    )
 
     assert [row["qty"] for row in document["rows"]] == ["15", "117"]
     assert [row["fob_price"] for row in document["rows"]] == ["24.08", "23.04"]
+    assert [row["service_price"] for row in document["rows"]] == ["0.1", "0.2"]
     assert [row["source_row"] for row in document["rows"]] == [2, 3]
+
+
+@pytest.mark.parametrize("first", ["000123 / S-004", None])
+def test_container_seal_fills_blanks_from_latest_populated_data_row(tmp_path, first):
+    column = "Container/ Seal no"
+    document = _read(
+        tmp_path,
+        [],
+        _row(**{column: first}),
+        _row(**{"PO No": "PO-2"}),
+        _row(**{"PO No": "PO-3", column: "002"}),
+        _row(**{"PO No": "PO-4"}),
+    )
+    assert [row["container_seal_no"] for row in document["rows"]] == [
+        first or "", first or "", "002", "002",
+    ]
+
+
+def test_price_and_container_cells_can_all_be_blank(tmp_path):
+    row = _read(tmp_path, _row())["rows"][0]
+
+    assert row["container_seal_no"] == row["fob_price"] == row["service_price"] == ""
 
 
 @pytest.mark.parametrize("qty", [None, 0])

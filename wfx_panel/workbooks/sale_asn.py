@@ -14,10 +14,12 @@ from zipfile import BadZipFile, ZipFile
 from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 SALE_ASN_SHEET = "SALE ASN"
+_CONTAINER_SEAL_COLUMN = "Container/ Seal no"
 SALE_ASN_COLUMNS = (
     "Style No",
     "PO No",
@@ -27,8 +29,7 @@ SALE_ASN_COLUMNS = (
     "NW",
     "GW",
     "CBM",
-    "FOB Price",
-    "Service Price",
+    _CONTAINER_SEAL_COLUMN,
     "Cargo Ready Date",
     "HS CODE",
     "Goods Description",
@@ -46,8 +47,9 @@ SALE_ASN_COLUMNS = (
 SHIPPING_MODES = ("AIR", "SEA", "COURIER")
 
 _TEMPLATE_NUMBER_COLUMNS = frozenset(
-    {"Carton", "NW", "GW", "CBM", "FOB Price", "Service Price"}
+    {"Carton", "NW", "GW", "CBM"}
 )
+_OPTIONAL_PRICE_COLUMNS = ("FOB Price", "Service Price")
 
 MAX_SALE_ASN_ROWS = 2_000
 MAX_SALE_ASN_BYTES = 20 * 1024 * 1024
@@ -65,8 +67,7 @@ _OPTIONAL_COLUMNS = frozenset(
         "NW",
         "GW",
         "CBM",
-        "FOB Price",
-        "Service Price",
+        _CONTAINER_SEAL_COLUMN,
         "Cargo Ready Date",
         "Consignee Address",
         "Ship To",
@@ -118,6 +119,7 @@ class SaleASNRow:
     consignee_address: str
     ship_to: str
     shipping_mode: str
+    container_seal_no: str = ""
 
     def automation_payload(self) -> dict[str, str | int]:
         return {
@@ -238,12 +240,11 @@ def _header_identity(value: object) -> str:
 
 
 def _find_input_sheet(workbook) -> object:
-    # Giữ đọc được form cũ chưa có Goods Description/Price; hai cột mới đều
-    # tùy chọn để lượt tạo Sale ASN cũ không bị chặn chỉ vì muốn Check giá.
+    # Form đã lưu có thể thiếu các cột được thêm sau này.
     expected_columns = tuple(
         value
         for value in SALE_ASN_COLUMNS
-        if value not in {"Goods Description", "Price"}
+        if value not in {"Goods Description", "Price", _CONTAINER_SEAL_COLUMN}
     )
     expected = {_header_identity(value) for value in expected_columns}
     missing_by_sheet: list[str] = []
@@ -311,7 +312,7 @@ def read_sale_asn_workbook(
                     if (identity := _header_identity(column)) in header_map
                     else None
                 )
-                for column in SALE_ASN_COLUMNS
+                for column in SALE_ASN_COLUMNS + _OPTIONAL_PRICE_COLUMNS
             }
             # Dòng màu chỉ có Qty kế thừa PO/Style gần nhất phía trên. Các
             # dòng ghi chú có Style nhưng không có PO vẫn được bỏ qua như cũ.
@@ -384,16 +385,17 @@ def read_sale_asn_workbook(
             errors.append(str(error))
             first_values[column] = ""
 
-    first_shipping_row = int(raw_rows[0]["source_row"])
-    first_values["Shipping Mode"] = _text(
-        raw_rows[0]["Shipping Mode"]
-    ).upper()
+    first_row = raw_rows[0]
+    first_shipping_row = int(first_row["source_row"])
+    shipping_mode_column = get_column_letter(header_map[_header_identity("Shipping Mode")])
+    factory_column = get_column_letter(header_map[_header_identity("FTY")])
+    first_values["Shipping Mode"] = _text(first_row["Shipping Mode"]).upper()
     if (
         require_shipping
         and first_values["Shipping Mode"] not in SHIPPING_MODES
     ):
         errors.append(
-            f"T{first_shipping_row}: Shipping Mode ở dòng dữ liệu đầu tiên "
+            f"{shipping_mode_column}{first_shipping_row}: Shipping Mode ở dòng dữ liệu đầu tiên "
             "bắt buộc chọn AIR, SEA hoặc COURIER."
         )
 
@@ -413,8 +415,10 @@ def read_sale_asn_workbook(
 
     rows: list[SaleASNRow] = []
     invoice_values: set[str] = set()
+    container_seal_no = ""
     for raw in raw_rows:
         source_row = int(raw["source_row"])
+        container_seal_no = _identifier(raw[_CONTAINER_SEAL_COLUMN]) or container_seal_no
         invoice_no = _identifier(raw["Invoice No"]) or first_values["Invoice No"]
         if invoice_no:
             invoice_values.add(invoice_no.casefold())
@@ -431,7 +435,7 @@ def read_sale_asn_workbook(
         if require_style and not style_no:
             errors.append(f"A{source_row}: Style No bắt buộc.")
         if require_factory and not factory:
-            errors.append(f"Q{source_row}: FTY bắt buộc.")
+            errors.append(f"{factory_column}{source_row}: FTY bắt buộc.")
 
         numbers: dict[str, str] = {}
         for column in _NUMBER_COLUMNS:
@@ -489,6 +493,7 @@ def read_sale_asn_workbook(
                 factory=factory,
                 fob_price=numbers["FOB Price"],
                 service_price=numbers["Service Price"],
+                container_seal_no=container_seal_no,
                 cargo_ready_date=dates["Cargo Ready Date"],
                 consignee_address=consignee_address,
                 ship_to=ship_to,
@@ -563,8 +568,7 @@ def write_sale_asn_template(
         "CBM": "cbm",
         "Destination": "destination",
         "FTY": "factory",
-        "FOB Price": "fob_price",
-        "Service Price": "service_price",
+        _CONTAINER_SEAL_COLUMN: "container_seal_no",
         "Cargo Ready Date": "cargo_ready_date",
         "Consignee Address": "consignee_address",
         "Ship To": "ship_to",
@@ -582,7 +586,7 @@ def write_sale_asn_template(
         sheet.append([None] * len(SALE_ASN_COLUMNS))
 
     widths = (
-        34, 22, 12, 14, 12, 12, 12, 12, 14, 14, 18,
+        34, 22, 12, 14, 12, 12, 12, 12, 26, 18,
         15, 34, 20, 14, 20, 18, 20, 34, 34, 34, 16,
     )
     for index, width in enumerate(widths, start=1):
@@ -599,16 +603,24 @@ def write_sale_asn_template(
             if cell.value in _OPTIONAL_COLUMNS
             else "Cột bắt buộc hoặc được app kế thừa từ dòng có dữ liệu đầu tiên."
         )
+        if cell.value == _CONTAINER_SEAL_COLUMN:
+            note = "Ô trống kế thừa giá trị gần nhất ở dòng PO phía trên, nếu có."
         cell.comment = Comment(note, "WFX Smart")
     sheet.row_dimensions[1].height = 34
 
-    for row in range(2, reserved_rows + 2):
-        for column in (11, 15, 17):
-            sheet.cell(row, column).number_format = "dd/mm/yyyy"
-        for column in (3, 4, 5, 6, 7, 8, 9, 10):
-            sheet.cell(row, column).number_format = "#,##0.00"
-
-    for cell_range in ("K2:K2001", "O2:O2001", "Q2:Q2001"):
+    column_formats = {
+        **dict.fromkeys(_DATE_COLUMNS, "dd/mm/yyyy"),
+        **dict.fromkeys(_NUMBER_COLUMNS, "#,##0.00"),
+        _CONTAINER_SEAL_COLUMN: "@",
+    }
+    for header in sheet[1]:
+        if number_format := column_formats.get(header.value):
+            for row in range(2, reserved_rows + 2):
+                sheet.cell(row, header.column).number_format = number_format
+        if header.value == _CONTAINER_SEAL_COLUMN:
+            sheet.column_dimensions[header.column_letter].number_format = "@"
+        if header.value not in _DATE_COLUMNS:
+            continue
         date_validation = DataValidation(
             type="date",
             operator="between",
@@ -621,7 +633,8 @@ def write_sale_asn_template(
         date_validation.prompt = "Chọn hoặc nhập ngày theo định dạng dd/mm/yyyy."
         date_validation.promptTitle = "Ngày"
         sheet.add_data_validation(date_validation)
-        date_validation.add(cell_range)
+        letter = header.column_letter
+        date_validation.add(f"{letter}2:{letter}{MAX_SALE_ASN_ROWS + 1}")
 
     shipping_mode_validation = DataValidation(
         type="list",
@@ -633,8 +646,8 @@ def write_sale_asn_template(
     shipping_mode_validation.prompt = "Chọn AIR, SEA hoặc COURIER."
     shipping_mode_validation.promptTitle = "Shipping Mode"
     sheet.add_data_validation(shipping_mode_validation)
-    shipping_mode_validation.add("V2")
-    table_ref = f"A1:V{reserved_rows + 1}"
+    shipping_mode_validation.add(sheet.cell(2, SALE_ASN_COLUMNS.index("Shipping Mode") + 1))
+    table_ref = f"A1:{get_column_letter(len(SALE_ASN_COLUMNS))}{reserved_rows + 1}"
     table = Table(displayName="SaleASNInput", ref=table_ref)
     table.tableStyleInfo = TableStyleInfo(
         name="TableStyleMedium2",

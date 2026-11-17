@@ -84,7 +84,7 @@ class SaleASNController:
         return result
 
     def scan_sale_asn_order_details(self) -> dict:
-        """Đọc PO/Order Details đang mở để xuất sẵn vào form 22 cột."""
+        """Đọc PO/Order Details đang mở để xuất sẵn vào form Excel."""
         panel = self._panel
 
         scanner = getattr(panel._login, "scan_sale_asn_order_details", None)
