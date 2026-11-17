@@ -1,6 +1,6 @@
 ## Dùng để làm gì
 
-Màn hình `Reports` giúp bạn chạy báo cáo WFX và tải file Excel. Hiện có báo cáo `Shipment Summary`.
+Màn hình `Reports` giúp bạn chạy báo cáo WFX và tải file Excel.
 
 ## Các bước
 
@@ -18,6 +18,12 @@ Màn hình `Reports` giúp bạn chạy báo cáo WFX và tải file Excel. Hi�
 
 > [!loi]
 > Nếu báo `WFX chưa tải xong tham số báo cáo`, hãy chờ trang WFX ổn định rồi bấm lại `Shipment Summary`.
+
+## Color Size Breakdown_Factory
+
+1. Mở `Reports` rồi bấm `Color Size Breakdown_Factory`.
+2. Chọn hoặc nhập các tham số ứng dụng tải từ WFX.
+3. Bấm `View report & Export Excel` để chạy báo cáo và tải file Excel.
 
 ## ColorCombination Style Wise
 

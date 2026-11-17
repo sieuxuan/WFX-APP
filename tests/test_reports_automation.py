@@ -715,7 +715,13 @@ class _Browser:
         self.contexts = [page.context]
 
 
-def test_loading_parameters_never_fronts_the_main_wfx_tab(clock, monkeypatch):
+@pytest.mark.parametrize(
+    ("report_id", "shipment_date_ids"),
+    [("shipment_summary", True), ("color_size_breakdown_factory", False)],
+)
+def test_loading_parameters_never_fronts_the_main_wfx_tab(
+    clock, monkeypatch, report_id, shipment_date_ids
+):
     main = _Page(clock, url="https://wfx.test/wfx/default.aspx")
     report_page = _report_page(clock, controls=[element("input", id="p1")])
     _Context([main, report_page])
@@ -726,12 +732,19 @@ def test_loading_parameters_never_fronts_the_main_wfx_tab(clock, monkeypatch):
         "_connect_to_chrome",
         lambda _playwright, **kwargs: seen.append(kwargs) or (_Browser(main), main),
     )
-    monkeypatch.setattr(reports, "_read_parameters", lambda _page: [{"key": "p1"}])
+    def read_parameters(page, *, shipment_date_ids):
+        assert page is report_page
+        return [{"key": "p1", "shipment_date_ids": shipment_date_ids}]
 
-    result = reports.load_report_parameters(_report_id(), _quiet())
+    monkeypatch.setattr(reports, "_read_parameters", read_parameters)
+
+    result = reports.load_report_parameters(report_id, _quiet())
 
     assert result["code"] == "REPORT_PARAMETERS_LOADED"
-    assert result["parameters"] == [{"key": "p1"}]
+    assert result["report_id"] == report_id
+    assert result["parameters"] == [
+        {"key": "p1", "shipment_date_ids": shipment_date_ids}
+    ]
     assert seen == [{"bring_to_front": False}]
 
 
