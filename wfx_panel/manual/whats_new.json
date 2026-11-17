@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.2.0",
+    "date": "2026-11-17",
+    "highlights": [
+      {
+        "title": "Sale ASN chạy từng bước và tiếp tục khi gặp lỗi",
+        "body": "Chọn các bước cần nhập từ Excel hoặc chạy từng bước để kiểm tra trên WFX. Khi có lỗi, ứng dụng báo dòng và trường gặp lỗi để bạn sửa rồi tiếp tục từ bước đó.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Nhập số container, số seal và ngày sẵn sàng giao hàng",
+        "body": "Cột Container/ Seal no trong Excel dùng giá trị gần nhất phía trên cho các dòng trống. Nếu tất cả dòng dùng chung Cargo Ready Date, ứng dụng điền ngày bằng Copy Below trên WFX.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Sale ASN hiển thị PO đang xử lý và làm sạch mô tả hàng",
+        "body": "Theo dõi PO hiện tại trong lúc nhập. Ứng dụng xóa mô tả hàng cũ trong Style Details trước khi nhập mã HS.",
+        "entry": "don-hang-sale-asn"
+      },
+      {
+        "title": "Báo cáo Color Size Breakdown Factory",
+        "body": "Mở báo cáo trong Reports, chọn tham số trên panel và tải kết quả dưới dạng Excel.",
+        "entry": "danh-sach-reports"
+      }
+    ]
+  },
+  {
     "version": "1.1.9",
     "date": "2026-11-10",
     "highlights": [

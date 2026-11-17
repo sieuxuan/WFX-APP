@@ -4,7 +4,7 @@
 > sửa nội dung trong `wfx_panel/manual/` rồi chạy
 > `python scripts/generate_user_features.py`.
 
-Phiên bản: 1.1.9
+Phiên bản: 1.2.0
 
 ## 1. Bắt đầu
 

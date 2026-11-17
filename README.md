@@ -1,132 +1,18 @@
-# WFX Smart 1.0.34
+# WFX Smart
 
-WFX Smart là ứng dụng desktop Windows giúp mở và tự động hóa các màn thường
-dùng của WorldFashionExchange (WFX). App chạy bằng pywebview và điều khiển một
-Chromium browser hệ thống qua Playwright/CDP.
+WFX Smart là ứng dụng Windows giúp tra cứu, nhập liệu và xuất báo cáo trên WorldFashionExchange (WFX).
 
-Xem danh sách đầy đủ dành cho người dùng tại
-[`docs/USER_FEATURES.md`](./docs/USER_FEATURES.md).
-Hướng dẫn file Costing nằm tại
-[`docs/CATALOG_COSTING_FILES.md`](./docs/CATALOG_COSTING_FILES.md).
-Benchmark RAM/tốc độ của bản này nằm tại
-[`docs/PERFORMANCE_1.0.15.md`](./docs/PERFORMANCE_1.0.15.md).
+[Tải bản cài đặt hoặc bản portable](https://github.com/sieuxuan/WFX-APP/releases/latest)
 
-## Chức năng nổi bật
+## Tính năng cơ bản
 
-- Mở panel bằng launcher nổi, taskbar, system tray hoặc hotkey `Ctrl+Shift+X`;
-  chuột phải launcher để chọn nơi thu gọn.
-- Launcher và menu tự scale theo DPI của từng màn hình, gồm màn 2K ở 125%.
-- Alert nghiệp vụ của WFX vẫn hiện trên Chrome và chờ người dùng xác nhận.
-- Bản EXE mặc định khởi động cùng Windows; người dùng có thể tắt trong Settings
-  và lựa chọn này được giữ nguyên.
-- Chuyển màn và phản hồi tiến trình có animation ngắn, mượt, đồng thời tự giảm
-  chuyển động theo thiết lập accessibility của Windows.
-- Ghim module yêu thích lên đầu, trước ô tìm kiếm; module đã ghim không bị lặp
-  lại ở danh sách bên dưới.
-- Nhớ màn hình đang làm; có setting `Trở về List sau khi thao tác`.
-- Đổi Division WOVEN/KNIT/PSSG và chỉ xác nhận khi WFX đổi thành công.
-- Catalog có workspace Costing để nhận đúng Style Code/Style Name/status từ tab
-  đang mở, scan Color/Size và phối Table theo từng item trong XLSX,
-  tải `.xlsx` với tên Style Name vào thư mục gần nhất, tùy chọn mở file,
-  thêm CM/Production/Indirect Costs bằng danh sách quét từ WFX, rồi cập
-  nhật và Save CostSheet `Open` tự động; hỗ trợ Splitter cho Article nhiều dòng,
-  dropdown phối Color/Size Dependency và kiểm tra Purchase Officer bắt buộc.
-  Ba danh sách chi phí dùng cache 7 ngày theo tài khoản/Division; công tắc gọn
-  cùng hàng với `Clear All Dependency` ép quét lại đúng một lần rồi tự tắt. Nút này
-  có xác nhận sẽ xóa phối ở mọi section của Costing đang mở và Save.
-- Tạo Style dùng picker Group có tìm kiếm. Form Excel nhận dropdown dùng chung,
-  Sub-Category phụ thuộc Product Group; snapshot dùng chung đọc từ GitHub Raw
-  và cache chỉ quét lại WFX sau 30 ngày.
-  `Tự động Save` có thể bật theo nhu cầu nhưng luôn mặc định tắt.
-- Catalog tách màn tìm Article và màn Costing; mở Costing hoặc Import file tự
-  chuyển sang workspace Costing. Thư viện CSV bốn cột từ server tự đồng bộ mỗi
-  giờ: Category lọc gợi ý Article Code, Apparel tìm Buyer Reference, category
-  khác tìm Article Name. Costing chỉ đưa mã F vào Fabric, mã T vào Trim và tự
-  điền Article Name trong Excel; chọn Article Name cũng được đồng bộ ngược sang
-  Article Code lúc đọc/import nếu tên là duy nhất, còn tên trùng mã sẽ được báo
-  để chọn Code. User không phải scan hay chọn file. Khi Apply,
-  Material Color/Size
-  còn thiếu được bổ sung vào đúng Article card rồi Save trước khi điền Costing.
-  Chọn một gợi ý Buyer Reference/Article Name sẽ chuyển sang exact Article Code,
-  nên không phải chọn lại trong danh sách kết quả gần giống.
-- OC List có form Upload OC một hàng header: app kiểm tra dữ liệu, tự sinh
-  `Sheet1` 51 cột không công thức, hiện review Buyer/Season/PO/Article/Units
-  trước khi xác nhận upload `StandardSalesOrder`, kiểm tra đủ ba trạng thái EDI
-  rồi mới Create Transaction; hỗ trợ cả OC New và Revise OC. Chọn lại cùng file
-  sau khi sửa luôn tạo snapshot mới, không dùng dữ liệu review cũ. Trạng thái
-  EDI `InProgress` hoặc Fail được coi là lỗi ngay; app mở `Failed Record`, hiện
-  Mapping/Doc No. cụ thể và lưu ảnh chẩn đoán trước khi dừng transaction.
-  Form có thêm `SMS` và danh sách gợi ý Payment Terms nhưng vẫn cho phép nhập
-  giá trị khác đang có trên WFX; tự bỏ dòng Units bằng 0, mặc định Zone trống
-  thành FOB/Extra Production trống thành 0 và chặn sai thứ tự ngày.
-- Workflow riêng cho Catalog, OC List, Sample List, Sale ASN, RMPO,
-  Indent/User Indent, QA/Advance PR/Expense Invoice, Supplier List, Buyer List
-  và Company Setup. Nút New của QA, Advance Payment Request và Expense Invoice
-  mở thẳng màn tạo mới, không yêu cầu vào List trước.
-- Sample List có `Check File`: app tìm theo filter hiện tại, tự mở Style Code
-  khi chỉ có một kết quả; nếu có nhiều kết quả thì cho chọn đúng Sample, sau đó
-  liệt kê file đính kèm và cho tải trực tiếp như Catalog.
-- Sale ASN có `Tải Packing List + Buyer Invoice`: dùng Invoice No. đang
-  nhập hoặc dòng đang chọn, tự mở Docs, chờ từng Report Viewer,
-  export Excel cả hai báo cáo, ghép thành workbook hai sheet mà không
-  dựng lại format Packing List, rồi mở Save As với tên Invoice No.
-- Sau mọi lần tải/export file thành công, app tự mở đúng thư mục
-  chứa file vừa lưu.
-- Panel có fallback Win32 để tự thu ổn định khi click ra ngoài; backend hoàn tất
-  cũng tự giải phóng trạng thái bận nếu Promise WebView phản hồi chậm. Panel
-  không tự thu sau flow khi chuột vẫn nằm trên UI.
-- Phiên WFX được duy trì nền mỗi 4 phút sau lần login đầu tiên; nếu timeout,
-  app tự đăng nhập lại và retry thao tác đúng một lần. Keepalive chỉ đọc nền,
-  không kéo Chrome khỏi tab Costing. Popup Article được xác nhận bằng exact
-  Article Code và đồng bộ CDP sớm để mở Costing mà không chờ cứng hoặc quay
-  lại tìm Article lần hai.
-- Mọi flow `List` xác nhận WFX đã đổi màn hình trước khi báo thành công; `Đổi
-  FOC` tự mở lại đúng Company Setup khi context hiện tại đã cũ.
-- Search ưu tiên đúng List đã mở; nếu chưa mở, app tự vào đúng List, chờ
-  grid/Floating Filter rồi mới tìm.
-- Flow module bắt đầu automation ngay trong lúc app đưa Chrome lên foreground;
-  nhận diện Floating Filter phản hồi nhanh hơn nhưng vẫn xác nhận đúng grid.
-- Playwright/CDP chạy trên một worker tuần tự và được dùng lại giữa các bước
-  trong cùng flow. Driver được nhả ngay khi flow kết thúc để Chrome không bị
-  pause tab; phiên đăng nhập WFX và DOM đang mở vẫn được giữ cho flow sau.
-- Nút `Stop` nằm ngay dòng trạng thái dưới cùng, dừng ở checkpoint an toàn và
-  không cắt ngang bước Save của WFX.
-- Chrome/WebView2 được giới hạn số renderer và tắt dịch vụ nền không cần thiết,
-  tối ưu cho máy Windows RAM 8 GB.
-- Lịch sử tác vụ, Run ID, ảnh lỗi cục bộ, retry có kiểm soát và Log kỹ thuật có
-  thể bôi đen/copy.
-- Webhook lỗi có mô tả tiếng Việt, hướng xử lý và context tài khoản; không gửi
-  password, cookie, URL WFX hoặc nội dung tìm kiếm. Nếu nhánh automation cũ
-  không trả message, app vẫn suy ra module/trường tìm/Division từ metadata an
-  toàn thay vì gửi mô tả trống.
-- Endpoint webhook được chốt trước khi tạo background thread; môi trường test
-  đã tắt reporting không thể gửi trễ payload giả sang production.
-- Tự kiểm tra và cài GitHub Release có xác minh checksum/chữ ký, rollback và
-  cơ chế đóng đúng PID/path khi WebView2 giữ process quá lâu.
+- **Catalog và Costing** — tìm Style và Article, mở BOM hoặc Costing, nhập/xuất dữ liệu Excel và tạo Style hàng loạt.
+- **Đơn hàng và giao hàng** — tra cứu OC, GMPO và Sample Order, tạo Sale ASN từ Excel, tải Packing List và Invoice.
+- **Kho và tài chính** — tra cứu RMPO, GRN và Indent, hỗ trợ thao tác nhập/xuất kho, tra cứu hóa đơn và in đề nghị thanh toán.
+- **Báo cáo** — chọn tham số báo cáo WFX và tải kết quả dưới dạng Excel.
 
-## Hướng dẫn sử dụng trong ứng dụng
+Mở panel bằng biểu tượng nổi hoặc `Ctrl+Shift+X`. Trong Cài đặt, lưu tài khoản WFX, rồi chọn **Mở trình duyệt** để kết nối.
 
-Bấm biểu tượng quyển sách ở thanh trên để mở WFX Manual trong một cửa sổ riêng.
-Manual chứa đủ hướng dẫn theo module, tìm kiếm và bảng tra mã lỗi; toàn bộ nội
-dung được đóng gói cùng ứng dụng nên dùng được khi không có mạng, không cần mở
-Chrome hoặc đăng nhập WFX. Nút dấu hỏi trong từng module mở thẳng mục liên quan.
+Bấm biểu tượng quyển sách trong ứng dụng để mở hướng dẫn ngoại tuyến, hoặc xem [danh sách chức năng](docs/USER_FEATURES.md).
 
-Cách bổ sung nội dung khi có tính năng mới nằm tại
-[`docs/MANUAL_AUTHORING.md`](./docs/MANUAL_AUTHORING.md).
-
-## Cách sử dụng nhanh
-
-1. Mở WFX Smart và lưu User ID/password trong Settings. Khi đã kết nối, tab Tài
-   khoản chỉ hiện trạng thái và nút `Đổi tài khoản`.
-2. Bấm `Mở trình duyệt` để app mở browser automation và đăng nhập WFX.
-3. Chọn Division nếu cần.
-4. Chọn module. Có thể Search hoặc Đổi FOC ngay; app tự mở List khi cần. Nút
-   New của QA, Advance PR và Expense Invoice mở thẳng màn tạo mới; các module
-   New khác vẫn cần đúng màn List khi workflow yêu cầu.
-5. Dùng ngôi sao để ghim module thường dùng.
-
-Mật khẩu được DPAPI mã hóa thành `WFX_PASSWORD_ENC`. Bản Windows từ chối lưu
-mật khẩu nếu DPAPI không hoạt động. Settings của bản đóng gói nằm tại
-`%LOCALAPPDATA%\WFX-Panel`, tách khỏi thư mục cài đặt.
-
-
+**Tác giả** [sieuxuan](https://github.com/sieuxuan)
