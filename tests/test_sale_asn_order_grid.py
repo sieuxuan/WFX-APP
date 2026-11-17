@@ -709,11 +709,13 @@ def test_order_details_fills_only_the_top_matching_po_style_row_even_on_retry():
         "po_no": "PO0003791", "style_no": "S25-0125", "qty": "55",
         "carton": "2", "nw": "26", "gw": "28.4", "cbm": "0.167504",
         "fob_price": "17", "service_price": "0.5", "cargo_ready_date": "2026-10-25",
+        "container_seal_no": "00001",
     }]
     expected = {
         "colTotalNoOfCartons": "2", "colTotalNetWeight": "26",
         "colTotalGrossWeight": "28.4", "colTotalVolume": "0.1675",
         "colFFTextField1": "17", "colFFTextField2": "0.5",
+        "colFFTextField7": "00001",
     }
     markup = ""
     for row_id, style, quantity in (
@@ -732,7 +734,13 @@ def test_order_details_fills_only_the_top_matching_po_style_row_even_on_retry():
         browser = playwright.chromium.launch(channel="chrome", headless=True)
         try:
             page = browser.new_page()
-            page.set_content(f'<table id="gridOrderDetails_tblGridContent">{markup}</table>')
+            page.set_content(
+                '<table id="gridOrderDetails_tblGridHeader"><tr id="gridOrderDetails_trHeader">'
+                '<td id="gridOrderDetails_tblGridHeader_trHeader_td_colFFTextField7"'
+                ' title="Container / Seal No.">Container / Seal No.</td>'
+                '</tr></table>'
+                f'<table id="gridOrderDetails_tblGridContent">{markup}</table>'
+            )
             for _attempt in range(2):
                 order_details._fill_order_details(page, rows, lambda _m: None)
 
@@ -743,6 +751,11 @@ def test_order_details_fills_only_the_top_matching_po_style_row_even_on_retry():
                 assert page.locator("td#colFFDate1 input").evaluate_all(
                     "inputs => inputs.every(input => input.value === '25 Oct 2026')"
                 )
+            scanned = page.evaluate(
+                order_details._READ_ORDER_DETAILS_JS,
+                {"table": ORDER_GRID_SELECTOR, "container_seal_label": "Container/ Seal no"},
+            )
+            assert [row["container_seal_no"] for row in scanned] == ["0", "00001", "0"]
         finally:
             browser.close()
 

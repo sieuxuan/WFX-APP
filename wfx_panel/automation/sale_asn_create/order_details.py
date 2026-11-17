@@ -1,4 +1,4 @@
-"""Điền 7 cột Order Details và giữ grid đồng bộ với file."""
+"""Điền các cột Order Details và giữ grid đồng bộ với file."""
 
 from __future__ import annotations
 
@@ -113,20 +113,40 @@ _MARK_ORDER_GRID_CELL_JS = r"""spec => {
 }"""
 
 
+_ORDER_CONTAINER_SEAL_LABEL = "Container/ Seal no"
+_ORDER_COLUMN_BY_HEADER_JS = r"""(table, label) => {
+    const gridId = table.id.replace(/_tblGridContent$/, '');
+    const header = document.getElementById(gridId + '_trHeader');
+    if (!header) return '';
+    const prefix = gridId + '_tblGridHeader_trHeader_td_';
+    const key = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const wanted = key(label);
+    const matches = [...header.cells].filter(cell =>
+        cell.id.startsWith(prefix) &&
+        (key(cell.title) === wanted || key(cell.textContent) === wanted)
+    );
+    return matches.length === 1 ? matches[0].id.slice(prefix.length) : '';
+}"""
+
+
 _READ_ORDER_DETAILS_JS = r"""spec => {
     const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const strip = value => String(value || '').trim();
     const table = document.querySelector(spec.table);
     if (!table) return [];
-    const readCell = cell => {
+    const columnForHeader = """ + _ORDER_COLUMN_BY_HEADER_JS + r""";
+    const containerColumn = spec.container_seal_label
+        ? columnForHeader(table, spec.container_seal_label) : '';
+    const readCell = (cell, normalize = clean) => {
         if (!cell) return '';
         const editor = cell.querySelector(
             'input:not([type="hidden"]), textarea, [contenteditable="true"]'
         );
-        if (editor) return clean(editor.value || editor.textContent);
+        if (editor) return normalize(editor.value || editor.textContent);
         const label = cell.querySelector(
             '.lblEditable, .lblEditDatePicker, .clsGridLabelContent, span'
         );
-        return clean(
+        return normalize(
             label?.getAttribute('title') || label?.textContent || cell.textContent
         );
     };
@@ -145,6 +165,11 @@ _READ_ORDER_DETAILS_JS = r"""spec => {
                 [...row.children].find(cell => cell.id === columnId)
             );
         });
+        if (containerColumn) {
+            output.container_seal_no = readCell(
+                [...row.children].find(cell => cell.id === containerColumn), strip
+            );
+        }
         return output;
     }).filter(row => row.po_no);
 }"""
@@ -183,9 +208,13 @@ _READ_TABLE_CELL_JS = """cell => {
 _ORDER_FIELD_LABELS = {
     "carton": "Carton", "nw": "NW", "gw": "GW", "cbm": "CBM",
     "fob_price": "FOB Price", "service_price": "Service Price",
+    "container_seal_no": _ORDER_CONTAINER_SEAL_LABEL,
 }
 
-def _edit_marked_table_cell(frame: Frame, value: str) -> str:
+
+def _edit_marked_table_cell(
+    frame: Frame, value: str, *, exact_text: bool = False
+) -> str:
     target = frame.locator("[data-wfx-sale-asn-target='1']").first
     target.scroll_into_view_if_needed(timeout=3_000)
     editor = target.locator(
@@ -209,7 +238,7 @@ def _edit_marked_table_cell(frame: Frame, value: str) -> str:
     actual = ""
     while time.monotonic() < deadline:
         actual = str(target.evaluate(_READ_TABLE_CELL_JS) or "").strip()
-        if _table_value_matches(value, actual):
+        if (value == actual if exact_text else _table_value_matches(value, actual)):
             return actual
         _wait(frame, 120)
     raise RuntimeError(f"SALE_ASN_FIELD_VALUE_NOT_CONFIRMED:{actual}")
@@ -225,6 +254,7 @@ def _set_order_grid_cell(
     allow_add: bool = False,
     first_match: bool = False,
     row_id: str = "",
+    exact_text: bool = False,
 ) -> None:
     marked = frame.evaluate(
         _MARK_ORDER_GRID_CELL_JS,
@@ -243,7 +273,7 @@ def _set_order_grid_cell(
         if reason == "row-ambiguous" and marked.get("count") == 0:
             reason = "row-not-found"
         raise RuntimeError(f"SALE_ASN_TABLE_MAPPING_FAILED:{reason}")
-    _edit_marked_table_cell(frame, value)
+    _edit_marked_table_cell(frame, value, exact_text=exact_text)
 
 
 def _order_row_identity(row: dict) -> tuple[str, str]:
@@ -489,7 +519,7 @@ def _combined_order_rows(rows: Sequence[dict], bindings: dict) -> Sequence[dict]
                 if (value := _decimal_or_none(item.get(field))) is not None
             ]
             combined[field] = _decimal_display(sum(values)) if values else ""
-        for field in ("fob_price", "service_price", "cargo_ready_date"):
+        for field in ("fob_price", "service_price", "cargo_ready_date", "container_seal_no"):
             values = {item[field] for item in parts if item.get(field)}
             combined[field] = next(iter(values)) if len(values) == 1 else ""
             if field == "cargo_ready_date" and len(values) > 1:
@@ -725,19 +755,33 @@ def _fill_order_details(
         targets[source_row] = first_targets
         targets[source_row + 1] = [item for item in chosen if item["row_id"] not in first_ids]
         fill_rows.extend((first, second))
+    columns = ORDER_FIELD_COLUMNS
+    if first_container_row := next(
+        (row for row in fill_rows if str(row.get("container_seal_no") or "").strip()), None
+    ):
+        with _filling_cell(first_container_row, _ORDER_CONTAINER_SEAL_LABEL):
+            container_column = frame.locator(ORDER_GRID_SELECTOR).first.evaluate(
+                _ORDER_COLUMN_BY_HEADER_JS, _ORDER_CONTAINER_SEAL_LABEL
+            )
+            if not container_column:
+                raise RuntimeError("SALE_ASN_TABLE_MAPPING_FAILED:cell-not-found")
+        columns = {**ORDER_FIELD_COLUMNS, "container_seal_no": container_column}
+
     for index, row in enumerate(fill_rows, 1):
         _emit_stage_progress(
             progress,
             "order_details",
             f"Order Details {index}/{len(fill_rows)}",
         )
-        for key, column_id in ORDER_FIELD_COLUMNS.items():
+        for key, column_id in columns.items():
             if key == "cargo_ready_date":
                 continue
             value = str(row.get(key) or "").strip()
             if not value:
                 continue
-            value = _number_for_wfx(value, integer=key == "carton")
+            exact_text = key == "container_seal_no"
+            if not exact_text:
+                value = _number_for_wfx(value, integer=key == "carton")
             with _filling_cell(row, _ORDER_FIELD_LABELS[key]):
                 _set_order_grid_cell(
                     frame,
@@ -747,6 +791,7 @@ def _fill_order_details(
                     value,
                     allow_add=f"{_po_key(row.get('po_no'))} add" not in separate_pos,
                     first_match=True,
+                    **({"exact_text": True} if exact_text else {}),
                     **({"row_id": str(targets[int(row["source_row"])][0]["row_id"])}
                        if int(row.get("source_row") or 0) in targets else {}),
                 )
@@ -770,7 +815,11 @@ def scan_sale_asn_order_details(
         )
         rows = frame.evaluate(
             _READ_ORDER_DETAILS_JS,
-            {"table": ORDER_GRID_SELECTOR, "columns": ORDER_FIELD_COLUMNS},
+            {
+                "table": ORDER_GRID_SELECTOR,
+                "columns": ORDER_FIELD_COLUMNS,
+                "container_seal_label": _ORDER_CONTAINER_SEAL_LABEL,
+            },
         )
         if not rows:
             raise RuntimeError("SALE_ASN_ORDER_GRID_EMPTY")

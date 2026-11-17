@@ -1,4 +1,4 @@
-"""Tạo Sale ASN từ workbook 22 cột: PO → Order Details → Style → Shipping.
+"""Tạo Sale ASN từ Excel: PO → Order Details → Style → Shipping.
 
 Trước đây là một file 2739 dòng. Nay tách theo tầng: constants/errors/
 values/progress → form → buyers/po → order_details →
