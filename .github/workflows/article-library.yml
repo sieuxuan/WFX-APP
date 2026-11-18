@@ -32,8 +32,8 @@ jobs:
           if git diff --quiet -- data/article-library-manifest.json; then
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "WFX Smart Automation"
+          git config user.email "automation@wfx-smart.invalid"
           git add data/article-library-manifest.json
           git commit -m "chore: update article library manifest"
           git push
